@@ -3,3 +3,4 @@
 .gitattributes
 dwarf_backup.db
 /__pycache__
+/build
