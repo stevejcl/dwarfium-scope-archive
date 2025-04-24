@@ -4,3 +4,6 @@
 dwarf_backup.db
 /__pycache__
 /build
+/__pycache__
+/__pycache__
+*.pyc

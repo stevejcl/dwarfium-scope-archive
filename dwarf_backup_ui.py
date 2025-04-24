@@ -3,9 +3,13 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox
 
-from dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive, get_session_present_in_Dwarf
-from dwarf_backup_fct import has_related_backup_entries, delete_backup_entries_and_dwarf_data, delete_dwarf_entries_and_dwarf_data
- 
+from dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive 
+
+from dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
+from dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
+from dwarf_backup_db_api import get_session_present_in_Dwarf, get_session_present_in_backupDrive
+from dwarf_backup_db_api import has_related_backup_entries, delete_backup_entries_and_dwarf_data, delete_dwarf_entries_and_dwarf_data
+
 from dwarf_backup_explore import ExploreApp
 
 class ConfigApp:
@@ -113,9 +117,7 @@ class ConfigApp:
         self.refresh_backupDrive_list()
 
     def refresh_dwarf_list(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id, name FROM Dwarf")
-        self.dwarfs = cursor.fetchall()
+        self.dwarfs = get_dwarf_Names(self.conn)
 
         display_names = [f"{id} - {name}" for id, name in self.dwarfs]
         self.dwarf_combobox["values"] = display_names
@@ -140,9 +142,7 @@ class ConfigApp:
             print("Invalid dwarf selection.")
             return
 
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name, description, usb_astronomy_dir, type FROM Dwarf WHERE id = ?", (self.dwarf_id,))
-        row = cursor.fetchone()
+        row = get_dwarf_detail(self.conn, self.dwarf_id)
         if row:
             self.dwarf_name.delete(0, tk.END)
             self.dwarf_name.insert(0, row[0])
@@ -182,25 +182,17 @@ class ConfigApp:
             messagebox.showerror("Error", "Name is required")
             return
 
-        cursor = self.conn.cursor()
-
         if self.dwarf_id:  # Update
-            cursor.execute("UPDATE Dwarf SET name=?, description=?, usb_astronomy_dir=?, type=? WHERE id=?",
-                           (name, desc, usb_astronomy_dir, dtype, self.dwarf_id))
+            set_dwarf_detail(self.conn, name, desc, usb_astronomy_dir, dtype, self.dwarf_id)
             messagebox.showinfo("Updated", f"Dwarf '{name}' updated.")
         else:  # Insert
-            cursor.execute("INSERT INTO Dwarf (name, description, usb_astronomy_dir, type) VALUES (?, ?, ?, ?)",
-                           (name, desc, usb_astronomy_dir, dtype))
-            self.dwarf_id = cursor.lastrowid
+            self.dwarf_id = add_dwarf_detail(self.conn, name, desc, usb_astronomy_dir, dtype)
             messagebox.showinfo("Saved", f"Dwarf '{name}' created with ID {self.dwarf_id}")
 
-        self.conn.commit()
         self.refresh_dwarf_list()
 
     def refresh_backupDrive_list(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id, name, description, location, dwarf_id FROM BackupDrive")
-        self.backupDrives = cursor.fetchall()
+        self.backupDrives = get_backupDrive_list(self.conn)
 
         display_names = [f"{id} - {name}" for id, name, description, location, dwarf_id in self.backupDrives]
         self.backupDrive_combobox["values"] = display_names
@@ -217,9 +209,7 @@ class ConfigApp:
             print("Invalid dwarf selection.")
             return
 
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT BackupDrive.name, BackupDrive.description, BackupDrive.location, BackupDrive.astronomy_dir, Dwarf.name type FROM BackupDrive, Dwarf WHERE BackupDrive.id = ? and BackupDrive.dwarf_id = Dwarf.id", (self.backupDrive_id,))
-        row = cursor.fetchone()
+        row = get_backupDrive_detail(self.conn, self.backupDrive_id)
 
         if row:
             self.backupDrive_name.delete(0, tk.END)
@@ -287,27 +277,18 @@ class ConfigApp:
             messagebox.showerror("Error", "Fill all fields and save a Dwarf first.")
             return
 
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM BackupDrive WHERE location=?", (location,))
-        existing = cursor.fetchone()
+        existing = get_backupDrive_id_from_location(self.conn, location)
 
         if existing:
             # Ask user for confirmation before updating
             confirm = messagebox.askyesno("Confirm Update", "This location already exists. Do you want to update its data?")
             if confirm:
-                cursor.execute("""
-                    UPDATE BackupDrive SET name=?, description=?, astronomy_dir=?, dwarf_id=? WHERE location=?
-                """, (name, desc, astroDir, dwarf_id, location))
-                self.conn.commit()
+                set_backupDrive_detail(self.conn,name, desc, astroDir, dwarf_id, location)
                 self.refresh_backupDrive_list()
                 messagebox.showinfo("Updated", "BackupDrive info updated.")
         else:
             try:
-                cursor.execute("""
-                    INSERT INTO BackupDrive (name, description, location, astronomy_dir, dwarf_id)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (name, desc, location, astroDir, dwarf_id))
-                self.conn.commit()
+                add_backupDrive_detail(self.conn, name, desc, location, astroDir, dwarf_id)
                 self.refresh_backupDrive_list()
                 messagebox.showinfo("Saved", "Backup drive saved.")
             except sqlite3.IntegrityError:
@@ -326,10 +307,7 @@ class ConfigApp:
 
         cursor = self.conn.cursor()
         try:
-            cursor.execute("""
-                INSERT INTO BackupDrive (name, description, location, astroDir, dwarf_id)
-                VALUES (?, ?, ?, ?)""", (name, desc, location, astronomy_dir, dwarf_id))
-            self.conn.commit()
+            add_backupDrive_detail(self.conn, name, desc, location, astroDir, dwarf_id)
             self.refresh_backupDrive_list()
             messagebox.showinfo("Saved", "Backup drive saved.")
         except sqlite3.IntegrityError:
@@ -346,16 +324,12 @@ class ConfigApp:
             messagebox.showwarning("Warning", "No location selected.")
             return
 
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM BackupDrive WHERE location=?", (location,))
-        existing = cursor.fetchone()
+        existing = get_backupDrive_id_from_location(self.conn, location)
         if not existing:
             messagebox.showinfo("Not Found", "No BackupDrive registered at this location.")
             return
 
-        cursor.execute("UPDATE BackupDrive SET name=?, description=?, astronomy_dir=?, dwarf_id=? WHERE location=?",
-                       (name, desc, astroDir, dwarf_id, location))
-        self.conn.commit()
+        set_backupDrive_detail(self.conn, name, desc, astroDir, dwarf_id, location)
         self.refresh_backupDrive_list()
         messagebox.showinfo("Updated", "BackupDrive info updated.")
 
@@ -400,8 +374,6 @@ class ConfigApp:
             messagebox.showerror("Error", "No Backup Drive selected.")
             return
 
-        self.conn.execute("PRAGMA foreign_keys = ON")
-
         if has_related_backup_entries(self.conn, self.backupDrive_id):
             messagebox.showwarning(
                 "Cannot Delete",
@@ -415,10 +387,8 @@ class ConfigApp:
         )
         if confirm:
             # Delete the BackupDrive
-            cursor = self.conn.cursor()
-            cursor.execute("DELETE FROM BackupDrive WHERE id = ?", (self.backupDrive_id,))
+            del_backupDrive(self.conn, self.backupDrive_id)
 
-            self.conn.commit()
             self.refresh_backupDrive_list()
             self.set_new_BackupDrive()
             print(f"Deleted BackupDrive {self.backupDrive_id}.")

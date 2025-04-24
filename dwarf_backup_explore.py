@@ -4,7 +4,10 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 from astropy.io import fits
 from datetime import datetime
-from dwarf_backup_fct import get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_Backup_fullpath, open_folder
+from dwarf_backup_fct import get_Backup_fullpath, open_folder
+from dwarf_backup_db_api import get_dwarf_Names, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf
+from dwarf_backup_db_api import get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup
+from dwarf_backup_db_api import get_session_present_in_Dwarf, get_session_present_in_backupDrive
 
 class ExploreApp:
     def __init__(self, master, conn, BackupDriveId = None, mode="backup"):
@@ -111,9 +114,7 @@ class ExploreApp:
         self.run()
 
     def populate_backup_filter(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id, name FROM BackupDrive ORDER BY name")
-        self.backup_options = cursor.fetchall()
+        self.backup_options = get_backupDrive_Names(self.conn)
 
         display_values = ["(All Backups)"] + [name for _, name in self.backup_options]
         self.backup_filter_combobox["values"] = display_values
@@ -146,29 +147,17 @@ class ExploreApp:
         self.load_objects()
 
     def populate_dwarf_filter(self, backup_drive_id=None):
-        cursor = self.conn.cursor()
 
         if backup_drive_id:
             # Get the dwarf_id for the given BackupDrive
-            cursor.execute("SELECT dwarf_id FROM BackupDrive WHERE id = ?", (backup_drive_id,))
-            result = cursor.fetchone()
-            current_dwarf_id = result[0] if result else None
-
+            current_dwarf_id = get_backupDrive_dwarfId(self.conn, backup_drive_id)
             # Fetch dwarfs linked to this backup
-            cursor.execute("""
-                SELECT DISTINCT Dwarf.id, Dwarf.name
-                FROM Dwarf
-                JOIN BackupDrive ON BackupDrive.dwarf_id = Dwarf.id
-                WHERE BackupDrive.id = ?
-                ORDER BY Dwarf.name
-            """, (backup_drive_id,))
+            self.dwarf_options =  get_backupDrive_dwarfNames(self.conn, backup_drive_id)
             show_all = False
         else:
             current_dwarf_id = None
-            cursor.execute("SELECT id, name FROM Dwarf ORDER BY name")
+            self.dwarf_options = get_dwarf_Names(self.conn)
             show_all = True
-
-        self.dwarf_options = cursor.fetchall()
 
         if show_all:
             display_values = ["(All Dwarfs)"] + [name for _, name in self.dwarf_options]
@@ -220,136 +209,28 @@ class ExploreApp:
                 self.only_on_backup_check.config(state="normal")
 
     def load_objects(self):
-        cursor = self.conn.cursor()
 
+        dwarf_id = self.get_selected_dwarf_id()
         if self.mode == "backup":
-            query = """
-                SELECT DISTINCT AstroObject.id, AstroObject.name
-                FROM AstroObject
-                JOIN BackupEntry ON BackupEntry.astro_object_id = AstroObject.id
-                JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
-                JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
-            """
-            conditions = []
-            params = []
+            objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, self.only_on_dwarf_var.get())
 
-            if self.BackupDriveId:
-                conditions.append("BackupEntry.backup_drive_id = ?")
-                params.append(self.BackupDriveId)
-
-            dwarf_id = self.get_selected_dwarf_id()
-            if dwarf_id:  # not "(All Dwarfs)"
-                conditions.append("BackupEntry.dwarf_id = ?")
-                params.append(dwarf_id)
-
-                if self.only_on_dwarf_var.get():
-                    # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
-                    conditions.append("""
-                        BackupEntry.session_dir IN (
-                            SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
-                        )
-                    """)
-                    params.append(dwarf_id)
         else:
-            query = """
-                SELECT DISTINCT AstroObject.id, AstroObject.name
-                FROM AstroObject
-                JOIN DwarfEntry ON DwarfEntry.astro_object_id = AstroObject.id
-                JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
-            """
-            conditions = []
-            params = []
-
-            dwarf_id = self.get_selected_dwarf_id()
-            if dwarf_id:  # not "(All Dwarfs)"
-                conditions.append("DwarfEntry.dwarf_id = ?")
-                params.append(dwarf_id)
-
-                if self.only_on_backup_var.get():
-                    # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
-                    conditions.append("""
-                        DwarfEntry.session_dir IN (
-                            SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
-                        )
-                    """)
-                    params.append(dwarf_id)
-
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-
-        query += " ORDER BY AstroObject.name"
-
-        cursor.execute(query, params)
+            objects = get_Objects_dwarf(self.conn, dwarf_id, self.only_on_backup_var.get())
 
         self.count_objects(dwarf_id)
 
         self.object_listbox.delete(0, tk.END)
-        for oid, name in cursor.fetchall():
+        for oid, name in objects:
             print(f"{oid} - {name}")
             self.object_listbox.insert(tk.END, f"{oid} - {name}")
 
     def count_objects(self, dwarf_id):
-        cursor = self.conn.cursor()
+
         if self.mode == "backup":
-            query = ""
-            # Global count of all matching DwarfData entries
-            count_query = """
-                SELECT COUNT(*)
-                FROM BackupEntry
-                JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
-                JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
-            """
-            count_conditions = []
-            count_params = []
-
-            if self.BackupDriveId:
-                count_conditions.append("BackupEntry.backup_drive_id = ?")
-                count_params.append(self.BackupDriveId)
-
-            if dwarf_id:
-                count_conditions.append("BackupEntry.dwarf_id = ?")
-                count_params.append(dwarf_id)
-
-                if self.only_on_dwarf_var.get():
-                    # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
-                    count_conditions.append("""
-                        BackupEntry.session_dir IN (
-                            SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
-                        )
-                    """)
-                    count_params.append(dwarf_id)
-
-            if count_conditions:
-                count_query += " WHERE " + " AND ".join(count_conditions)
+            global_count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, self.only_on_dwarf_var.get())
         else:
-            query = ""
-            # Global count of all matching DwarfData entries
-            count_query = """
-                SELECT COUNT(*)
-                FROM DwarfEntry
-                JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
-            """
-            count_conditions = []
-            count_params = []
+            global_count = get_countObjects_dwarf(self.conn, dwarf_id, self.only_on_backup_var.get())
 
-            if dwarf_id:
-                count_conditions.append("DwarfEntry.dwarf_id = ?")
-                count_params.append(dwarf_id)
-
-                if self.only_on_backup_var.get():
-                    # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
-                    count_conditions.append("""
-                        DwarfEntry.session_dir IN (
-                            SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
-                        )
-                    """)
-                    count_params.append(dwarf_id)
-
-            if count_conditions:
-                count_query += " WHERE " + " AND ".join(count_conditions)
-
-        cursor.execute(count_query, count_params)
-        global_count = cursor.fetchone()[0]
         print(f"Global count of matching sessions: {global_count}")
 
         # Optional: show it in a label
@@ -418,94 +299,12 @@ class ExploreApp:
         line = self.object_listbox.get(index)
         object_id = int(line.split(" - ")[0])
 
-        cursor = self.conn.cursor()
+        dwarf_id = self.get_selected_dwarf_id()
 
         if self.mode == "backup":
-            query = """
-                SELECT 
-                    DwarfData.id,
-                    DwarfData.file_path,
-                    DwarfData.exp_time,
-                    DwarfData.gain,
-                    DwarfData.ircut,
-                    DwarfData.shotsStacked,
-                    BackupDrive.location,
-                    BackupEntry.session_date,
-                    BackupEntry.session_dir,
-                    Dwarf.name
-                FROM BackupEntry
-                JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
-                JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
-                JOIN Dwarf ON BackupDrive.dwarf_id = Dwarf.id
-                WHERE BackupEntry.astro_object_id = ?
-            """
-
-            conditions = []
-            params = [object_id]
-
-            if self.BackupDriveId:
-                conditions.append("BackupEntry.backup_drive_id = ?")
-                params.append(self.BackupDriveId)
-
-            dwarf_id = self.get_selected_dwarf_id()
-            if dwarf_id:  # not "(All Dwarfs)"
-                conditions.append("BackupEntry.dwarf_id = ?")
-                params.append(dwarf_id)
-
-                if self.only_on_dwarf_var.get():
-                    # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
-                    conditions.append("""
-                        BackupEntry.session_dir IN (
-                            SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
-                        )
-                    """)
-                    params.append(dwarf_id)
-
-            if conditions:
-                query += " AND " + " AND ".join(conditions)
-
+            files = get_ObjectSelect_backup(self.conn, object_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf_var.get()) 
         else:
-            query = """
-                SELECT 
-                    DwarfData.id,
-                    DwarfData.file_path,
-                    DwarfData.exp_time,
-                    DwarfData.gain,
-                    DwarfData.ircut,
-                    DwarfData.shotsStacked,
-                    Dwarf.usb_astronomy_dir,
-                    DwarfEntry.session_date,
-                    DwarfEntry.session_dir,
-                    Dwarf.name
-                FROM DwarfEntry
-                JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
-                JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
-                WHERE DwarfEntry.astro_object_id = ?
-            """
-
-            conditions = []
-            params = [object_id]
-
-            dwarf_id = self.get_selected_dwarf_id()
-            if dwarf_id:  # not "(All Dwarfs)"
-                conditions.append("DwarfEntry.dwarf_id = ?")
-                params.append(dwarf_id)
-
-                if self.only_on_backup_var.get():
-                    # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
-                    conditions.append("""
-                        DwarfEntry.session_dir IN (
-                            SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
-                        )
-                    """)
-                    params.append(dwarf_id)
-
-            if conditions:
-                query += " AND " + " AND ".join(conditions)
-
-        cursor.execute(query, params)
-
-        files = cursor.fetchall()
+            files = get_ObjectSelect_dwarf(self.conn, object_id, dwarf_id, self.only_on_backup_var.get()) 
 
         # Store all rows globally so we can access them later
         self.file_combobox.file_rows = files

@@ -10,6 +10,9 @@ import re
 import platform
 import subprocess
 
+from dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry
+from dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail
+
 def parse_shots_info(json_path):
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
@@ -73,27 +76,20 @@ def compute_md5(filepath):
     return hash_md5.hexdigest()
 
 def get_or_create_dwarf_id(conn, dwarf_id=None, batch_mode=False, default_name="Default Dwarf", default_description="Auto-created"):
-    cursor = conn.cursor()
 
     if dwarf_id is not None:
         # Vérifie si l'ID existe
-        cursor.execute("SELECT COUNT(*) FROM Dwarf WHERE id = ?", (dwarf_id,))
-        if cursor.fetchone()[0]:
+        if is_dwarf_exists(conn, dwarf_id):
             return dwarf_id
         elif batch_mode:
             # Crée automatiquement si inexistant
-            cursor.execute(
-                "INSERT INTO Dwarf (id, name, description) VALUES (?, ?, ?)",
-                (dwarf_id, default_name, default_description)
-            )
-            conn.commit()
+            dwarf_id = add_dwarf_detail(conn, default_name, default_description, "", "2")
             return dwarf_id
         else:
             raise ValueError(f"Dwarf ID {dwarf_id} non trouvé.")
 
     # Aucun dwarf_id fourni
-    cursor.execute("SELECT id, name FROM Dwarf")
-    dwarfs = cursor.fetchall()
+    dwarfs = get_dwarf_Names(conn)
 
     if dwarfs:
         if batch_mode:
@@ -111,28 +107,20 @@ def get_or_create_dwarf_id(conn, dwarf_id=None, batch_mode=False, default_name="
     else:
         if batch_mode:
             # Crée un Dwarf par défaut si aucun n'existe
-            cursor.execute(
-                "INSERT INTO Dwarf (name, description) VALUES (?, ?)",
-                (default_name, default_description)
-            )
-            conn.commit()
-            return cursor.lastrowid
+            dwarf_id = add_dwarf_detail(conn, default_name, default_description, "", "2")
+            return dwarf_id
         else:
             create = input("No Dwarf. Do you want to create one? (y/n):").strip().lower()
             if create == 'o':
                 name = input("Name of the new Dwarf:").strip()
                 desc = input("Description: ").strip()
-                cursor.execute("INSERT INTO Dwarf (name, description) VALUES (?, ?)", (name, desc))
-                conn.commit()
-                return cursor.lastrowid
+                dwarf_id = add_dwarf_detail(conn, name, desc, "", "2")
+                return dwarf_id
             else:
                 raise ValueError("No Dwarf, cancellation.")
 
 def insert_or_get_backup_drive(conn, location, dwarf_id=None):
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, dwarf_id FROM BackupDrive WHERE location = ?", (location,))
-    row = cursor.fetchone()
-
+    row = get_backupDrive_id_from_location(conn, location)
     if row:
         found_id, found_dwarf_id = row
         if dwarf_id is None:
@@ -151,12 +139,8 @@ def insert_or_get_backup_drive(conn, location, dwarf_id=None):
         description = f"Auto-added for path {location}"
         astroDir = "DATA_OBJECTS"
 
-        cursor.execute("""
-            INSERT INTO BackupDrive (name, description, astronomy_dir, location, dwarf_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (name, description, location, astroDir, dwarf_id))
-        conn.commit()
-        return cursor.lastrowid, dwarf_id
+        backupDrive_id = add_backupDrive_detail(conn, name, description, location, astroDir, dwarf_id)
+        return backupDrive_id, dwarf_id
 
 def insert_dwarf_data(conn, root, filepath):
     relative_path = os.path.relpath(filepath, root)
@@ -182,32 +166,14 @@ def insert_dwarf_data(conn, root, filepath):
     meta = parse_shots_info(json_path) if os.path.exists(json_path) else {}
     thumbnail = os.path.relpath(thumbnail_path, root) if os.path.exists(thumbnail_path) else None
 
-    cursor = conn.execute("""
-        INSERT OR IGNORE INTO DwarfData (
-            file_path, modification_time, thumbnail_path, file_size,
-            dec, ra, target, binning, format, exp_time, gain,
-            shotsToTake, shotsTaken, shotsStacked, ircut, width,
-            height, media_type, stacked_fits_path, stacked_fits_md5
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        relative_path, mtime, thumbnail, size,
+    id_value = insert_DwarfData (conn, relative_path, mtime, thumbnail, size,
         meta.get('dec'), meta.get('ra'), meta.get('target'),
         meta.get('binning'), meta.get('format'), meta.get('exp_time'),
         meta.get('gain'), meta.get('shotsToTake'), meta.get('shotsTaken'),
-        meta.get('shotsStacked'), meta.get('ircut'), None,
-        None, None, stacked_path, stacked_md5
-    ))
+        meta.get('shotsStacked'), meta.get('ircut'), "0",
+        "0", 4, stacked_path, stacked_md5)
 
-    return cursor.lastrowid
-
-def insert_astro_object(conn, name):
-    cursor = conn.execute("SELECT id FROM AstroObject WHERE name = ?", (name,))
-    row = cursor.fetchone()
-    if row:
-        return row[0]
-    else:
-        cursor = conn.execute("INSERT INTO AstroObject (name, description) VALUES (?, ?)", (name, ""))
-        return cursor.lastrowid
+    return id_value
 
 def extract_astro_name_from_folder(folder_name: str) -> str | None:
     """
@@ -333,116 +299,13 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
         if dwarf_data_id:
             if backup_drive_id:
                 # Insert entry in BackupEntry
-                conn.execute("""
-                    INSERT OR IGNORE INTO BackupEntry (
-                        backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_date, session_dir
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                """, (backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir))
-                added += 1
+                new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir)
+                added += 1 if new_id != 0 else 0
             else:
                 # Insert entry in DwarfEntry
-                conn.execute("""
-                    INSERT OR IGNORE INTO DwarfEntry (
-                        dwarf_id, astro_object_id, dwarf_data_id, session_date, session_dir
-                    ) VALUES (?, ?, ?, ?, ?)
-                """, (dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir))
-                added += 1
+                new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir)
+                added += 1 if new_id != 0 else 0
     return added
-
-def has_related_backup_entries(conn, backup_drive_id):
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM BackupEntry WHERE backup_drive_id = ?",
-        (backup_drive_id,)
-    )
-    count = cursor.fetchone()[0]
-    return count > 0
-
-def delete_backup_entries_and_dwarf_data(conn, backup_drive_id):
-    conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK rules
-    cursor = conn.cursor()
-
-    # Step 1: Get all related DwarfData IDs
-    cursor.execute("""
-        SELECT dwarf_data_id FROM BackupEntry WHERE backup_drive_id = ?
-    """, (backup_drive_id,))
-    dwarf_data_ids = [row[0] for row in cursor.fetchall() if row[0] is not None]
-
-    # Step 2: Delete related BackupEntry rows
-    cursor.execute("DELETE FROM BackupEntry WHERE backup_drive_id = ?", (backup_drive_id,))
-
-    # Step 3: Delete associated DwarfData rows
-    for dwarf_data_id in dwarf_data_ids:
-        # Optional check: ensure it's not used elsewhere before deleting
-        cursor.execute("""
-            SELECT COUNT(*) FROM BackupEntry WHERE dwarf_data_id = ?
-        """, (dwarf_data_id,))
-        count = cursor.fetchone()[0]
-
-        if count == 0:
-            cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
-
-    conn.commit()
-    print(f"Deleted {len(dwarf_data_ids)} DwarfData entries (if not reused) and all related BackupEntry rows.")
-
-def delete_dwarf_entries_and_dwarf_data(conn, dwarf_id):
-    conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK rules
-    cursor = conn.cursor()
-
-    # Step 1: Get all related DwarfData IDs
-    cursor.execute("""
-        SELECT dwarf_data_id FROM DwarfEntry WHERE dwarf_id = ?
-    """, (dwarf_id,))
-    dwarf_data_ids = [row[0] for row in cursor.fetchall() if row[0] is not None]
-
-    # Step 2: Delete related BackupEntry rows
-    cursor.execute("DELETE FROM DwarfEntry WHERE dwarf_id = ?", (dwarf_id,))
-
-    # Step 3: Delete associated DwarfData rows
-    for dwarf_data_id in dwarf_data_ids:
-        # Optional check: ensure it's not used elsewhere before deleting
-        cursor.execute("""
-            SELECT COUNT(*) FROM DwarfEntry WHERE dwarf_data_id = ?
-        """, (dwarf_data_id,))
-        count = cursor.fetchone()[0]
-
-        if count == 0:
-            cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
-
-    conn.commit()
-    print(f"Deleted {len(dwarf_data_ids)} DwarfData entries (if not reused) and all related DwarfEntry rows.")
-
-def is_session_backed_up(conn, session_dir):
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT 1 FROM BackupEntry WHERE session_dir = ? LIMIT 1",
-        (session_dir,)
-    )
-    return cursor.fetchone() is not None
-
-def get_session_present_in_Dwarf(conn, session_dir):
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT Dwarf.id, Dwarf.name
-        FROM DwarfEntry
-        JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
-        WHERE DwarfEntry.session_dir = ?
-        LIMIT 1
-    """, (session_dir,))
-    result = cursor.fetchone()
-    return result
-
-def get_session_present_in_backupDrive(conn, session_dir):
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT BackupDrive.id, BackupDrive.name, BackupDrive.location, BackupDrive.astronomy_dir
-        FROM BackupEntry
-        JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
-        WHERE BackupEntry.session_dir = ?
-        LIMIT 1
-    """, (session_dir,))
-    result = cursor.fetchone()
-    return result
 
 def get_Backup_fullpath (location, subdir, filename):
     full_path = ""
