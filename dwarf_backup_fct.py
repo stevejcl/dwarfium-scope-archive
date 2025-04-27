@@ -10,6 +10,7 @@ import re
 import platform
 import subprocess
 
+from dwarf_backup_db import connect_db, close_db, commit_db
 from dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry
 from dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail
 
@@ -206,13 +207,27 @@ def extract_target_json(astro_path):
     else:
        return None
 
-def scan_backup_folder(conn, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None):
+def print_log(message, log):
+    if log:
+        log.push(message)
+    else:
+        print(message)
+
+def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, log = None):
+    if not db_name:
+        print_log(f"❌ database name can not be empty!",log)
+        return 0
+    conn = connect_db(db_name)
+    if not conn:
+        print_log(f"❌ {db_name} database couldn't be opened!",log)
+        return 0
+
     if astronomy_dir:
         data_root = os.path.join(backup_root, astronomy_dir)
     else:
         data_root = backup_root
     if not os.path.exists(data_root):
-        print(f"❌ {astronomy_dir} folder not found in {backup_root}")
+        print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
         return 0
 
     total_added = 0
@@ -223,7 +238,7 @@ def scan_backup_folder(conn, backup_root, astronomy_dir, dwarf_id, backup_drive_
             continue
 
         subdirs = [d for d in os.listdir(astro_path) if os.path.isdir(os.path.join(astro_path, d))]
-        print(f"🔍 Processing Dir: {astro_dir}")
+        print_log(f"🔍 Processing Dir: {astro_dir}",log)
 
         found_data = False
         total_previous = total_added
@@ -234,15 +249,15 @@ def scan_backup_folder(conn, backup_root, astronomy_dir, dwarf_id, backup_drive_
         if astro_name:
             found_data = True
             astro_object_id = insert_astro_object(conn, astro_name)
-            print(f"📂 Processing direct Dwarf data: {astro_dir}")
+            print_log(f"📂 Processing direct Dwarf data: {astro_dir}",log)
             total_added += process_dwarf_folder(
                 conn, backup_root, astro_path,
                 astro_object_id, dwarf_id, backup_drive_id
             )
             if total_added - total_previous == 1:
-                print(f"📂 Found 1 new file in {astro_dir}")
+                print_log(f"📂 Found 1 new file in {astro_dir}",log)
             elif total_added != total_previous:
-                print(f"📂 Found {total_added - total_previous} new files in {astro_dir}")
+                print_log(f"📂 Found {total_added - total_previous} new files in {astro_dir}",log)
 
         else:
             astro_name = astro_dir
@@ -258,26 +273,27 @@ def scan_backup_folder(conn, backup_root, astronomy_dir, dwarf_id, backup_drive_
                         if not found_data:
                             if astro_name == "RESTACKED":
                                 astro_object_id = insert_astro_object(conn, check_target)
-                                print(f"add astro_object_id : {check_target}")
+                                print_log(f"add astro_object_id : {check_target}",log)
                             else: # use Main AstroDir Name
                                 astro_object_id = insert_astro_object(conn, astro_name)
-                                print(f"add astro_object_id : {astro_name}")
+                                print_log(f"add astro_object_id : {astro_name}",log)
                                 found_data = True
-                        print(f"📂 Processing session folder (deep): {root}")
+                        print_log(f"📂 Processing session folder (deep): {root}",log)
                         total_added += process_dwarf_folder(
                             conn, backup_root, root,
                             astro_object_id, dwarf_id, backup_drive_id
                         )
 
             if total_added - total_previous == 1:
-                print(f"📂 Found 1 new file in {astro_dir}")
+                print_log(f"📂 Found 1 new file in {astro_dir}",log)
             elif total_added != total_previous:
-                print(f"📂 Found {total_added - total_previous} new files in {astro_dir}")
+                print_log(f"📂 Found {total_added - total_previous} new files in {astro_dir}",log)
 
         if not found_data:
-            print(f"⚠️ Ignored unrecognized folder: {astro_dir}")
+            print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
 
-    conn.commit()
+    commit_db(conn)
+    close_db(conn)
     return total_added
 
 def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id = None): 

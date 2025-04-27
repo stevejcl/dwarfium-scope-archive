@@ -13,7 +13,7 @@ import tkinter as tk
 from dwarf_backup_ui import ConfigApp 
 from dwarf_backup_fct import scan_backup_folder
 
-from dwarf_backup_db import DB_NAME, connect_db, init_db, get_backup_entries, get_astro_object_summary
+from dwarf_backup_db import DB_NAME, connect_db, init_db, close_db, get_backup_entries, get_astro_object_summary
 
 def show_backup_entries(conn):
     rows = get_backup_entries(conn)
@@ -40,15 +40,16 @@ def main():
     parser.add_argument("folder", nargs="?", help="Backup folder to scan")
     args = parser.parse_args()
 
-    # Connect to the database
-    conn = connect_db(args.db)
-    init_db(conn)
 
     if args.gui:
         # Launch the Tkinter GUI
         root = tk.Tk()
-        app = ConfigApp(root, conn)
+        app = ConfigApp(root, args.db)
         root.mainloop()
+
+    # Connect to the database
+    conn = connect_db(args.db)
+    init_db(conn)
 
     if not args.folder:
         show_astro_object_summary(conn)
@@ -59,16 +60,16 @@ def main():
     else:
         backup_drive_id, dwarf_id = insert_or_get_backup_drive(conn, args.folder, args.dwarf_id)
 
+        close_db(conn)
         print(f"🔍 Scanning: {args.folder}")
-        total = scan_backup_folder(conn, args.folder, dwarf_id, backup_drive_id)
-
+        total = scan_backup_folder(args.db, args.folder, dwarf_id, backup_drive_id)
         print(f"✅ Scan complete! {total} FITS file(s) indexed.")
         print(f"📦 Database saved to: {args.db}")
-
+        conn = connect_db(args.db)
         print("")
         show_astro_object_summary(conn)
 
-    conn.close()
+    close_db(conn)
 
 if __name__ == "__main__":
     main()

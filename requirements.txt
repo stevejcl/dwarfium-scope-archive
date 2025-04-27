@@ -1,2 +1,5 @@
 Pillow
 astropy
+pywin32
+pywebview
+PyInstaller

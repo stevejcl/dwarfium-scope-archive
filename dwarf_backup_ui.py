@@ -1,9 +1,12 @@
 import os
+import sqlite3
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox
 
 from dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive 
+
+from dwarf_backup_db import connect_db, close_db, commit_db
 
 from dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
@@ -13,9 +16,10 @@ from dwarf_backup_db_api import has_related_backup_entries, delete_backup_entrie
 from dwarf_backup_explore import ExploreApp
 
 class ConfigApp:
-    def __init__(self, master, conn):
+    def __init__(self, master, database):
         self.master = master
-        self.conn = conn
+        self.database = database
+        self.conn = connect_db(self.database)
         self.master.title("Dwarf Config Tool")
         self.dwarfs = []
         self.dwarf_id = None
@@ -344,9 +348,12 @@ class ConfigApp:
             return
 
         try:
+            close_db(self.conn)
             print(f"🔍 Scanning: {dwarf_location}")
-            total = scan_backup_folder(self.conn, dwarf_location, None, self.dwarf_id, None)
+            total = scan_backup_folder(self.database, dwarf_location, None, self.dwarf_id, None)
             messagebox.showinfo("Analysis Complete", f"{total} new files found.")
+
+            self.conn = connect_db(self.database)
             ExploreApp(tk.Toplevel(self.master), self.conn, None, None)
 
         except Exception as e:
@@ -361,9 +368,12 @@ class ConfigApp:
             astroDir = self.backupDrive_astroDir.get()
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
 
+            close_db(self.conn)
             print(f"🔍 Scanning: {location}-{astroDir}")
             total = scan_backup_folder(self.conn, location, astroDir, dwarf_id, backup_drive_id)
             messagebox.showinfo("Analysis Complete", f"{total} new files found.")
+
+            self.conn = connect_db(self.database)
             ExploreApp(tk.Toplevel(self.master), self.conn, backup_drive_id)
 
         except Exception as e:

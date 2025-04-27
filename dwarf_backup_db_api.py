@@ -143,6 +143,18 @@ def add_backupDrive_detail(conn: sqlite3.Connection, name, desc, location, astro
         print(f"[DB ERROR] Failed to add backupDrive detail: {e}")
         return None
 
+def del_dwarf(conn: sqlite3.Connection, dwarf_id: None):
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Dwarf WHERE id = ?", (dwarf_id,))
+        commit_db(conn)
+        return True
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete Dwarf {dwarf_id}: {e}")
+        return False
+
 def del_backupDrive(conn: sqlite3.Connection, backupDrive_id: None):
     try:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -475,6 +487,24 @@ def get_backup_entries(conn: sqlite3.Connection):
         print(f"[DB ERROR] Failed to fetch backup drives: {e}")
         return []
 
+def has_related_dwarf_entries(conn: sqlite3.Connection, dwarf_id: int) -> bool:
+    try:
+        cursor = conn.cursor()
+
+        # Verify in DwarfEntry
+        cursor.execute("SELECT COUNT(*) FROM DwarfEntry WHERE dwarf_id = ?", (dwarf_id,))
+        dwarfentry_count = cursor.fetchone()[0]
+
+        # Verify in  BackupDrive
+        cursor.execute("SELECT COUNT(*) FROM BackupDrive WHERE dwarf_id = ?", (dwarf_id,))
+        backup_count = cursor.fetchone()[0]
+
+        return (dwarfentry_count + backup_count) > 0
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to check related entries for dwarf_id {dwarf_id}: {e}")
+        return True  # For Security
+
 def has_related_backup_entries(conn: sqlite3.Connection, backup_drive_id:None):
     try:
         cursor = conn.cursor()
@@ -487,7 +517,7 @@ def has_related_backup_entries(conn: sqlite3.Connection, backup_drive_id:None):
 
     except Exception as e:
         print(f"[DB ERROR] Failed to verify has related backup entries: {e}")
-        return False
+        return True  # For Security
 
 def delete_backup_entries_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id:None):
     try:
