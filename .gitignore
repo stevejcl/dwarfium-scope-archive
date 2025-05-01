@@ -7,3 +7,7 @@ dwarf_backup.db
 /__pycache__
 /__pycache__
 *.pyc
+*.pyc
+/exe.win-amd64-3.12
+/old
+*.pyc

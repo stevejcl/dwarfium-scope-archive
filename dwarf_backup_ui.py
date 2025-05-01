@@ -350,8 +350,13 @@ class ConfigApp:
         try:
             close_db(self.conn)
             print(f"🔍 Scanning: {dwarf_location}")
-            total = scan_backup_folder(self.database, dwarf_location, None, self.dwarf_id, None)
-            messagebox.showinfo("Analysis Complete", f"{total} new files found.")
+            total, deleted = scan_backup_folder(self.database, dwarf_location, None, self.dwarf_id, None)
+            if deleted and deleted > 1:
+                messagebox.showinfo("Analysis Complete", f"{total} new files found, {deleted} files are s not more present.")
+            elif deleted == 1:
+                messagebox.showinfo("Analysis Complete", f"{total} new files found, {deleted} file is not more present.")
+            else:
+                messagebox.showinfo("Analysis Complete", f"{total} new files found.")
 
             self.conn = connect_db(self.database)
             ExploreApp(tk.Toplevel(self.master), self.conn, None, None)
@@ -370,8 +375,13 @@ class ConfigApp:
 
             close_db(self.conn)
             print(f"🔍 Scanning: {location}-{astroDir}")
-            total = scan_backup_folder(self.conn, location, astroDir, dwarf_id, backup_drive_id)
-            messagebox.showinfo("Analysis Complete", f"{total} new files found.")
+            total, deleted = scan_backup_folder(self.conn, location, astroDir, dwarf_id, backup_drive_id)
+            if deleted > 1:
+                messagebox.showinfo("Analysis Complete", f"{total} new files found, {deleted} files are s not more present.")
+            elif deleted == 1:
+                messagebox.showinfo("Analysis Complete", f"{total} new files found, {deleted} file is not more present.")
+            else:
+                messagebox.showinfo("Analysis Complete", f"{total} new files found.")
 
             self.conn = connect_db(self.database)
             ExploreApp(tk.Toplevel(self.master), self.conn, backup_drive_id)

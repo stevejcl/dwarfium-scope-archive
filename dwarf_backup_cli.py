@@ -62,8 +62,13 @@ def main():
 
         close_db(conn)
         print(f"🔍 Scanning: {args.folder}")
-        total = scan_backup_folder(args.db, args.folder, dwarf_id, backup_drive_id)
-        print(f"✅ Scan complete! {total} FITS file(s) indexed.")
+        total, deleted = scan_backup_folder(args.db, args.folder, None, dwarf_id, backup_drive_id)
+        if deleted and deleted > 1:
+            print(f"✅ Scan complete! {total} FITS file(s) indexed, {deleted} file is not more present.")
+        elif deleted == 1:
+            print(f"✅ Scan complete! {total} FITS file(s) indexed, {deleted} files are not more present.")
+        else:
+            print(f"✅ Scan complete! {total} FITS file(s) indexed.")
         print(f"📦 Database saved to: {args.db}")
         conn = connect_db(args.db)
         print("")

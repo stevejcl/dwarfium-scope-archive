@@ -12,7 +12,7 @@ import subprocess
 
 from dwarf_backup_db import connect_db, close_db, commit_db
 from dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry
-from dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail
+from dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
 
 def parse_shots_info(json_path):
     try:
@@ -29,7 +29,9 @@ def parse_shots_info(json_path):
                 "shotsToTake": raw.get("shotsToTake"),
                 "shotsTaken": raw.get("shotsTaken"),
                 "shotsStacked": raw.get("shotsStacked"),
-                "ircut": raw.get("ir")
+                "ircut": raw.get("ir"),
+                "maxTemp": raw.get("maxTemp"),
+                "minTemp": raw.get("maxTemp"),
             }
     except Exception as e:
         print(f"Error reading {json_path}: {e}")
@@ -167,14 +169,14 @@ def insert_dwarf_data(conn, root, filepath):
     meta = parse_shots_info(json_path) if os.path.exists(json_path) else {}
     thumbnail = os.path.relpath(thumbnail_path, root) if os.path.exists(thumbnail_path) else None
 
-    id_value = insert_DwarfData (conn, relative_path, mtime, thumbnail, size,
+    new_value , data_id = insert_DwarfData (conn, relative_path, mtime, thumbnail, size,
         meta.get('dec'), meta.get('ra'), meta.get('target'),
         meta.get('binning'), meta.get('format'), meta.get('exp_time'),
         meta.get('gain'), meta.get('shotsToTake'), meta.get('shotsTaken'),
-        meta.get('shotsStacked'), meta.get('ircut'), "0",
-        "0", 4, stacked_path, stacked_md5)
+        meta.get('shotsStacked'), meta.get('ircut'), meta.get('maxTemp'), meta.get('minTemp'),
+        "0","0", 4, stacked_path, stacked_md5)
 
-    return id_value
+    return new_value, data_id
 
 def extract_astro_name_from_folder(folder_name: str) -> str | None:
     """
@@ -213,14 +215,14 @@ def print_log(message, log):
     else:
         print(message)
 
-def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, log = None):
+def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, log=None):
     if not db_name:
         print_log(f"❌ database name can not be empty!",log)
-        return 0
+        return 0,0
     conn = connect_db(db_name)
     if not conn:
         print_log(f"❌ {db_name} database couldn't be opened!",log)
-        return 0
+        return 0,0
 
     if astronomy_dir:
         data_root = os.path.join(backup_root, astronomy_dir)
@@ -228,9 +230,11 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         data_root = backup_root
     if not os.path.exists(data_root):
         print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
-        return 0
+        return 0,0
 
+    valid_ids = set()
     total_added = 0
+    deleted = 0
 
     for astro_dir in os.listdir(data_root):
         astro_path = os.path.join(data_root, astro_dir)
@@ -250,10 +254,16 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             found_data = True
             astro_object_id = insert_astro_object(conn, astro_name)
             print_log(f"📂 Processing direct Dwarf data: {astro_dir}",log)
-            total_added += process_dwarf_folder(
+            new_added, data_ids = process_dwarf_folder(
                 conn, backup_root, astro_path,
                 astro_object_id, dwarf_id, backup_drive_id
             )
+            total_added += new_added
+            if data_ids:
+                if isinstance(data_ids, (list, tuple, set)):
+                    valid_ids.update(data_ids)
+                else:
+                    valid_ids.add(data_ids)
             if total_added - total_previous == 1:
                 print_log(f"📂 Found 1 new file in {astro_dir}",log)
             elif total_added != total_previous:
@@ -279,10 +289,16 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                                 print_log(f"add astro_object_id : {astro_name}",log)
                                 found_data = True
                         print_log(f"📂 Processing session folder (deep): {root}",log)
-                        total_added += process_dwarf_folder(
+                        new_added, data_ids = process_dwarf_folder(
                             conn, backup_root, root,
                             astro_object_id, dwarf_id, backup_drive_id
                         )
+                        total_added += new_added
+                        if data_ids:
+                            if isinstance(data_ids, (list, tuple, set)):
+                                valid_ids.update(data_ids)
+                            else:
+                                valid_ids.add(data_ids)
 
             if total_added - total_previous == 1:
                 print_log(f"📂 Found 1 new file in {astro_dir}",log)
@@ -292,23 +308,38 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         if not found_data:
             print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
 
+    # delete data that are not more present
+    if not backup_drive_id:
+        deleted = delete_notpresent_dwarf_entries_and_dwarf_data(conn, dwarf_id, valid_ids)
+        if deleted == 1:
+            print_log(f"📂 Deleted 1 entry in DB not more present",log)
+        elif deleted and deleted > 1:
+            print_log(f"📂 deleted {deleted} entries in DB not more present",log)
+    else:
+        deleted = delete_notpresent_backup_entries_and_dwarf_data(conn, dwarf_id, backup_drive_id, valid_ids)
+        if deleted == 1:
+            print_log(f"📂 Deleted 1 entry in DB not more present",log)
+        elif deleted and deleted > 1:
+            print_log(f"📂 deleted {deleted} entries in DB not more present",log)
+
     commit_db(conn)
     close_db(conn)
-    return total_added
+    return total_added, deleted
 
-def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id = None): 
+def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id=None): 
     added = 0
+    data_ids = set()
     session_date = extract_session_datetime(dwarf_path)
     if not session_date:
         print("Error : No session_date")
-        return added
+        return added, data_ids
 
     for filename in os.listdir(dwarf_path):
         if not filename.lower().endswith(("stacked.jpg", "stacked.png")):
             continue
 
         full_file_path = os.path.join(dwarf_path, filename)
-        dwarf_data_id = insert_dwarf_data(conn, backup_root, full_file_path)
+        dwarf_data_id, data_id = insert_dwarf_data(conn, backup_root, full_file_path)
         session_dt_str = session_date.strftime("%Y-%m-%d %H:%M:%S.%f")
         session_dir = os.path.basename(os.path.normpath(dwarf_path))
 
@@ -321,7 +352,9 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
                 # Insert entry in DwarfEntry
                 new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir)
                 added += 1 if new_id != 0 else 0
-    return added
+        if data_id:
+            data_ids.add(data_id)
+    return added, data_ids
 
 def get_Backup_fullpath (location, subdir, filename):
     full_path = ""
@@ -337,3 +370,22 @@ def get_Backup_fullpath (location, subdir, filename):
         full_path = filename
 
     return full_path
+
+def get_directory_size(directory: str) -> str:
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if os.path.isfile(fp):
+                total_size += os.path.getsize(fp)
+    # Format size nicely
+    return format_size(total_size)
+
+def format_size(size_bytes: int) -> str:
+    if size_bytes == 0:
+        return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(min(len(size_name) - 1, (size_bytes.bit_length() - 1) // 10))
+    p = 1 << (i * 10)
+    s = round(size_bytes / p, 2)
+    return f"{s} {size_name[i]}"

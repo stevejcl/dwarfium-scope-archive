@@ -5,7 +5,7 @@ import os
 #from tkinter import filedialog, messagebox
 
 from dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
-from dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive 
+from dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive 
 
 from dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from dwarf_backup_db_api import get_session_present_in_Dwarf
@@ -69,7 +69,7 @@ class ConfigApp:
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
             with ui.grid(columns=2):
-                ui.button("Show All Current Dwarf Data", on_click=self.show_dwarf_data)
+                ui.button("Show All Current Dwarf Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
                 ui.button("Analyze USB Drive", on_click=self.analyze_usb_drive)
 
             ui.separator()
@@ -84,8 +84,9 @@ class ConfigApp:
                     # Dwarf Selection
                     self.dwarf_selector = ui.select(
                         options=[],
-                        on_change=self.load_selected_dwarf
-                    ).props('outlined')
+                        on_change=self.load_selected_dwarf,
+                        label="Please select"
+                    ).props('stack-label').props('outlined').classes('w-40')
 
                     with ui.grid(columns=2):
                         self.dwarf_name = ui.input("Dwarf Name")
@@ -101,8 +102,9 @@ class ConfigApp:
                     # Dwarf Type selection
                     self.dwarf_type_var = ui.select(
                         options=list(self.dwarf_type_map.values()),
-                        value="Dwarf3", label="Type"
-                    ).props('outlined')
+                        value="Dwarf3",
+                        label="Type"
+                    ).props('stack-label').props('outlined').classes('w-40')
 
                     with ui.row().classes("gap-4 mt-4"):
                          ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
@@ -212,7 +214,7 @@ class ConfigApp:
         with ui.dialog() as dialog, ui.card():
             ui.label("🔍 Scanning USB drive, please wait...")
             ui.spinner(size="lg")
-            log = ui.log(max_lines=10).classes('w-full').style('height: 100px; overflow: hidden;')
+            log = ui.log(max_lines=10).classes('w-full').style('height: 150px; overflow: hidden;')
 
         dialog.open()  # show the dialog
 
@@ -268,7 +270,11 @@ class ConfigApp:
         delete_dwarf_entries_and_dwarf_data(self.conn, self.dwarf_id)
         ui.notify("DwarfData entries deleted.", type="positive")
  
-    def show_dwarf_data(self):
-        """Placeholder for showing all current Dwarf data."""
-        # You can later define this to open a separate window or page
+    def get_explore_url(self):
         ui.notify("Showing Dwarf Data...")  # Simulate showing data
+        if self.dwarf_id:
+            explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode=dwarf"
+        else:
+            explore_url = f"/Explore?mode=dwarf"
+        print(explore_url)
+        return explore_url

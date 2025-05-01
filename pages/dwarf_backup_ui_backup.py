@@ -7,7 +7,7 @@ from nicegui import native, app, run, ui
 #from tkinter import filedialog, messagebox
 
 from dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
-from dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive 
+from dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive 
 
 from dwarf_backup_db_api import get_dwarf_Names
 from dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
@@ -70,7 +70,7 @@ class ConfigApp:
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
             with ui.grid(columns=2):
-                ui.button("Show All Current Backup Data", on_click=self.show_backup_data)
+                ui.button("Show All Current Backup Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
                 ui.button("Analyze Current Drive", on_click=self.analyze_drive)
 
             ui.separator()
@@ -85,8 +85,9 @@ class ConfigApp:
                     # BackupDrive Selection
                     self.backupDrive_selector = ui.select(
                         options=[],
-                        on_change=self.load_selected_backupDrive
-                    ).props('outlined')
+                        on_change=self.load_selected_backupDrive,
+                        label="Please select"
+                    ).props('stack-label').props('outlined').classes('w-40')
 
                     with ui.grid(columns=2):
                         self.backupDrive_name = ui.input("Backup Drive Name")
@@ -113,7 +114,7 @@ class ConfigApp:
                     self.dwarf_selector = ui.select(
                         options=list(self.dwarf_name_to_id.keys()),
                         label="Select Dwarf"
-                    ).props("outlined")
+                    ).props('stack-label').props('outlined').classes('w-40')
 
                     with ui.row().classes("gap-4 mt-4"):
                          ui.button("Save / Update Backup Drive", on_click=self.save_or_update_backup_drive)
@@ -294,7 +295,7 @@ class ConfigApp:
         self.refresh_backupDrive_list()
         ui.notify("BackupDrive info updated", type="positive")
 
-    def analyze_drive(self):
+    def analyze_drive_old(self):
         location = self.backupDrive_location.value
         if not location:
             ui.notify("No location selected.", type="negative")
@@ -387,8 +388,10 @@ class ConfigApp:
         delete_backup_entries_and_dwarf_data(self.conn, self.backupDrive_id)
         ui.notify("Backup entries and DwarfData deleted.", type="positive")
 
-    def show_backup_data(self):
-        """Placeholder for showing all current Backup data."""
-        # You can later define this to open a separate window or page
+    def get_explore_url(self):
         ui.notify("Showing Backup Data...")  # Simulate showing data
-
+        if self.backupDrive_id is None:
+            explore_url = f"/Explore?mode=backup"
+        else:
+            explore_url = f"/Explore?BackupDriveId={self.backupDrive_id}&mode=backup"
+        return explore_url

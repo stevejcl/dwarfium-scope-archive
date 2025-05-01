@@ -69,6 +69,8 @@ def init_db(conn):
                 shotsTaken INTEGER,
                 shotsStacked INTEGER,
                 ircut TEXT,
+                maxTemp INTEGER,
+                minTemp INTEGER,
                 width TEXT,
                 height TEXT,
                 media_type INTEGER,
