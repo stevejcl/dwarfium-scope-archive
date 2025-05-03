@@ -5,7 +5,8 @@ DB_NAME = "dwarf_backup.db"
 def connect_db(database:DB_NAME):
     try:
         conn = sqlite3.connect(database)
-
+        if conn:
+            init_db(conn)
         return conn
 
     except Exception as e:

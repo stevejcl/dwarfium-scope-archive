@@ -11,3 +11,4 @@ dwarf_backup.db
 /exe.win-amd64-3.12
 /old
 *.pyc
+*.pyc

@@ -3,3 +3,4 @@ astropy
 pywin32
 pywebview
 PyInstaller
+glob

@@ -200,7 +200,7 @@ def get_backupDrive_dwarfNames(conn: sqlite3.Connection, backup_drive_id=None):
         print(f"[DB ERROR] Failed to fetch backupDrive dwarfNames: {e}")
         return []
 
-def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None):
+def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -231,6 +231,15 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                 """)
                 params.append(dwarf_id)
 
+            if only_on_backup:
+                # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir NOT IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
@@ -244,7 +253,7 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
         print(f"[DB ERROR] Failed to fetch get_Objects_backup: {e}")
         return []
 
-def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_backup=None):
+def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -260,6 +269,15 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_backup=No
         if dwarf_id:  # not "(All Dwarfs)"
             conditions.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
+
+            if only_on_dwarf:
+                # Filter DwarfEntry to only those with session_dir not present in BackupEntry for same dwarf
+                conditions.append("""
+                    DwarfEntry.session_dir NOT IN (
+                        SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
 
             if only_on_backup:
                 # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
@@ -283,7 +301,7 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_backup=No
         print(f"[DB ERROR] Failed to fetch get_Objects_backup: {e}")
         return []
 
-def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None):
+def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -313,6 +331,15 @@ def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwar
                 """)
                 params.append(dwarf_id)
 
+            if only_on_backup:
+                # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir NOT IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
@@ -324,7 +351,7 @@ def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwar
         print(f"[DB ERROR] Failed to fetch get_Objects_backup: {e}")
         return []
 
-def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_backup=None):
+def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -339,6 +366,15 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_back
         if dwarf_id:  # not "(All Dwarfs)"
             conditions.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
+
+            if only_on_dwarf:
+                # Filter DwarfEntry to only those with session_dir not present in BackupEntry for same dwarf
+                conditions.append("""
+                    DwarfEntry.session_dir NOT IN (
+                        SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
 
             if only_on_backup:
                 # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf

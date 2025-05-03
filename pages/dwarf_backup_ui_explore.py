@@ -13,7 +13,7 @@ from dwarf_backup_db_api import (
     get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames,
     get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup
 )
-from dwarf_backup_fct import get_Backup_fullpath
+from dwarf_backup_fct import get_Backup_fullpath, get_extension, check_files, get_file_path
 
 BASE_FOLDER = None
 
@@ -55,13 +55,18 @@ class ExploreApp:
         self.objects = []
         self.base_folder = None
         self.selected_object = None
+        self.preview_image_type = "jpg"
+        self.astro_files = {}
+        self.open_folder_icon = {}
+        self.preview_icons = {}
+        self.selected_path = ""
         self.build_ui()
 
     def build_ui(self):
         self.conn = connect_db(self.database)
 
         with ui.row().classes('w-full h-screen items-center justify-center'):
-            with ui.grid(columns=2):
+            with ui.grid(columns='1fr 2fr'):
                 with ui.column().classes('w-full'):
                     if self.mode == "backup":
                         with ui.grid(columns=2):
@@ -73,40 +78,50 @@ class ExploreApp:
                                 ui.label("Dwarf:")
                                 self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
-                        self.only_on_dwarf = ui.checkbox("Only show sessions on selected Dwarf",on_change = self.load_objects)
+                        with ui.card().tight():
+                            self.only_on_dwarf = ui.checkbox("Only show sessions on selected Dwarf",on_change = self.load_objects)
+                            self.only_on_backup = ui.checkbox("Only show backed up sessions of selected Dwarf",on_change = self.load_objects)
                     else:
-                        with ui.row():
+                        with ui.row().classes('w-full'):
                             ui.label("Dwarf:")
                             self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
-                        with ui.row():
-                            ui.label("")
-                            self.only_on_backup = ui.checkbox("Only show backed up sessions of selected Dwarf",on_change = self.load_objects)
+                        with ui.row().classes('w-full'):
+                            with ui.card().tight():
+                                ui.label("")
+                                self.only_on_dwarf = ui.checkbox("Only show sessions on selected Dwarf",on_change = self.load_objects)
+                                ui.label("")
+                                self.only_on_backup = ui.checkbox("Only show backed up sessions of selected Dwarf",on_change = self.load_objects)
 
                     self.count_label = ui.label("Total matching sessions: 0")
-                    with ui.card():
+                    with ui.card().tight().classes('w-full'):
                         self.object_list = ui.list().classes('h-150 overflow-y-auto')
 
-                with ui.column().classes('w-full items-start'):
+                with ui.column().classes('w-full'):
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):
                             ui.label('Files List')
                             self.file_list = ui.select(options=[], on_change=self.on_file_selected).props('outlined').style('overflow-x: auto;')
-
-                        with ui.row().classes('justify-around'):
-                            ui.button("🗁 Open", on_click=lambda: self.open_folder())
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
-                            
-                            self.jpg_icon = ui.icon('image').classes('text-6xl text-green-500')  # Example JPG icon
-                            self.png_icon = ui.icon('image').classes('text-6xl text-blue-500')  # Example PNG icon
-                            self.fits_icon = ui.icon('image').classes('text-6xl text-purple-500')  # Example FITS icon
+
+                        with ui.row().classes('items-center gap-4') as self.icon_row:
+                            self.open_folder_icon = ui.button("🗁 Open", on_click=lambda: self.open_folder()).classes('h-16')
+                            self.update_preview_icons()  # populate icons
+
+                            #self.preview_icons['jpg'] = ui.image('image/image-jpg.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('JPG File')
+                            #self.preview_icons['png'] = ui.image('image/image-png.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('PNG File')
+                            #self.preview_icons['fits'] = ui.image('image/image-fits.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('FITS File')
+
+                            #Optional: Add click behavior
+                            #self.preview_icons['jpg'].on('click', lambda e: ui.notify('JPG icon clicked'))
+                            #self.preview_icons['png'].on('click', lambda e: ui.notify('PNG icon clicked'))
+                            #self.preview_icons['fits'].on('click', lambda e: ui.notify('FITS icon clicked'))
 
                     with ui.row().classes('w-full'):
-                        with ui.card():
-                            with ui.column().classes('w-full'):
-                                with ui.row():
-                                    # List on the side
-                                    self.details_files = ui.list().classes('h-50 overflow-y-auto')
+                        with ui.card().tight():
+                            # List on the side
+                            self.details_files = ui.list().classes('h-50 overflow-y-auto')
+                            self.details_preview = ui.list().classes('h-50 overflow-y-auto')
 
                     with ui.row().classes('w-full'):
                         self.preview_image = ui.image().classes('w-full h-auto').props('fit=contain')
@@ -172,14 +187,18 @@ class ExploreApp:
         self.preview_image.visible = False
         self.file_list.set_options([])
         self.details_files.clear()
+        self.details_preview.clear()
+        self.reset_preview_icons()
         if self.mode == "backup":
-            show_only = self.only_on_dwarf.value if self.only_on_dwarf else False
-            self.objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only)
-            count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only)
+            show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
+            show_only_backup = self.only_on_backup.value if self.only_on_backup else False
+            self.objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup)
+            count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup)
         else:
-            show_only = self.only_on_backup.value if self.only_on_backup else False
-            self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only)
-            count = get_countObjects_dwarf(self.conn, dwarf_id, show_only)
+            show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
+            show_only_backup = self.only_on_backup.value if self.only_on_backup else False
+            self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup)
+            count = get_countObjects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup)
 
         self.count_label.text = f"Total matching sessions: {count}"
         print (f"Total matching sessions: {count}")
@@ -222,6 +241,8 @@ class ExploreApp:
         self.preview_image.visible = False
         dwarf_id = self.get_selected_dwarf_id()
         self.details_files.clear()
+        self.details_preview.clear()
+        self.reset_preview_icons()
         details = []
 
         if self.mode == "backup":
@@ -251,19 +272,31 @@ class ExploreApp:
             details_text = f"Taken with {files[0][9]} on {self.show_date_session(files[0][7])}"
 
             # details
-            size_kb = os.path.getsize(full_path) / 1024
-            size_mb = size_kb / 1024
-            details.append(f"{self.show_date_session(files[0][7])}")
+            size_kb = None
+            size_mb = None
+            try:
+                size_kb = os.path.getsize(full_path) / 1024
+                size_mb = size_kb / 1024
+            except FileNotFoundError:
+                print("File not found")
+                pass
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                size_kb = None
+                size_mb = None
+
+            #details.append(f"{self.show_date_session(files[0][7])}")
             details.append(f"Session: {files[0][8]}")
-            details.append(f"Filename: {full_path}")
-            if size_mb < 2:
-                details.append(f"Size: {size_kb:.2f} KB")
-            if size_mb >= 1:
-                details.append(f"Size: {size_mb:.2f} MB")
             details.append(f"Exposure: {files[0][2]}s | Gain: {files[0][3]} | Filter: {files[0][4]}")
             if files[0][10] and files[0][11]:
                 details.append(f"MinTemp: {files[0][10]} | MaxTemp: {files[0][11]}")
             details.append(f"Stacks: {files[0][5]}")
+
+            details.append(f"Filename: {full_path}")
+            if size_kb is not None and size_mb < 2:
+                details.append(f"Size: {size_kb:.2f} KB")
+            if size_kb is not None and size_mb >= 1:
+                details.append(f"Size: {size_mb:.2f} MB")
             
             self.selected_path = os.path.dirname(full_path)
             #with self.details_files:
@@ -314,6 +347,9 @@ class ExploreApp:
             return
 
         self.details_files.clear()
+        self.details_preview.clear()
+        self.reset_preview_icons()
+
         details_files_text = ""
         if selected_value and len(self.all_files_rows) == 1:
             selection_index = 0
@@ -341,7 +377,6 @@ class ExploreApp:
         if selection_index is not None:
 
             row = self.all_files_rows[selection_index]
-            print(f"Selected row: {row}")
 
             file_path = row[1]
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
@@ -349,31 +384,17 @@ class ExploreApp:
             full_path = get_Backup_fullpath (backup_path, "", file_path)
             self.selected_path = os.path.dirname(full_path)
 
-            if not full_path:
-                self.preview_image.visible = False
-                return
-
-            if not os.path.isfile(full_path):
-                self.preview_image.visible = False
-                return
-
             # Store the base folder once
             global BASE_FOLDER
             BASE_FOLDER = BASE_FOLDER = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
-
             print(f"BASE_FOLDER: {BASE_FOLDER}")
+
             details_files_text = f"Taken with {row[9]} on {self.show_date_session(row[7])}"
 
             # details
-            size_kb = os.path.getsize(full_path) / 1024
-            size_mb = size_kb / 1024
-            details.append(f"{self.show_date_session(row[7])}")
+
+            #details.append(f"{self.show_date_session(row[7])}")
             details.append(f"Session: {row[8]}")
-            details.append(f"Filename: {full_path}")
-            if size_mb < 2:
-                details.append(f"Size: {size_kb:.2f} KB")
-            if size_mb >= 1:
-                details.append(f"Size: {size_mb:.2f} MB")
             details.append(f"Exposure: {row[2]}s | Gain: {row[3]} | Filter: {row[4]}")
             if row[10] and row[11]:
                 details.append(f"MinTemp: {row[10]} | MaxTemp: {row[11]}")
@@ -386,13 +407,92 @@ class ExploreApp:
                 for data_detail in details:
                    ui.item(data_detail)
 
-            # Check if the file is an image
-            if file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
-                # To show a local file, we need to serve it. Quick way:
-                url_path = f'/preview/{quote(file_path.replace("\\", "/"))}'
+            self.astro_files = check_files(full_path)
+            print(self.astro_files)
+            self.update_preview_icons()
+            self.preview_image_path = full_path
+            self.update_preview(full_path)
 
-                self.preview_image.visible = True
-                self.preview_image.source = url_path
+    def update_preview(self, preview_image_path):
+        details_preview = []
+        self.details_preview.clear()
+        self.preview_image_type = get_extension(preview_image_path)
+        self.preview_image_path = preview_image_path
+
+        details_preview.append(f"Filename: {self.preview_image_path}")
+        file_path = get_file_path(self.preview_image_path, BASE_FOLDER)
+        print(file_path)
+
+        size_kb = None
+        size_mb = None
+        try:
+            size_kb = os.path.getsize(self.preview_image_path) / 1024
+            size_mb = size_kb / 1024
+        except FileNotFoundError:
+            print("File2 not found")
+            pass
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            size_kb = None
+            size_mb = None
+
+        if size_kb is not None and size_mb < 2:
+            details_preview.append(f"Size: {size_kb:.2f} KB")
+        if size_kb is not None and size_mb >= 1:
+            details_preview.append(f"Size: {size_mb:.2f} MB")
+
+        print(self.preview_image_path)
+
+        # Check if the file is an image
+        if not self.preview_image_path:
+            self.preview_image.visible = False
+            details_preview.append(f"Image File Path is empty - Preview is disable")
+
+        elif not os.path.isfile(self.preview_image_path):
+            self.preview_image.visible = False
+            details_preview.append(f"Image File is not reachable - Preview is disable")
+
+        elif file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+            # To show a local file, we need to serve it. Quick way:
+            url_path = f'/preview/{quote(file_path.replace("\\", "/"))}'
+
+            self.preview_image.visible = True
+            self.preview_image.source = url_path
+        else:
+            self.preview_image.visible = False
+
+        with self.details_preview:
+            for data_detail in details_preview:
+               ui.item(data_detail)
+
+    def reset_preview_icons(self):
+        self.open_folder_icon.disable()
+        # Delete old icons from UI
+        for icon in self.preview_icons.values():
+            icon.delete()
+        self.preview_icons.clear()
+
+    def update_preview_icons(self):
+        with self.icon_row:
+            if not self.open_folder_icon:
+                self.open_folder_icon = ui.button("🗁 Open", on_click=lambda: self.open_folder()).classes('h-16')
+            elif self.selected_path and os.path.isdir(self.selected_path):
+                self.open_folder_icon.enable()
             else:
-                self.preview_image.visible = False
+                self.open_folder_icon.disable()
+            for fmt, path in self.astro_files.items():
+                exists = path and os.path.isfile(path)
+                icon = ui.image(f'image/image-{fmt}.png').classes(
+                    'w-16 h-16 cursor-pointer hover:opacity-80' if exists else 'w-16 h-16 opacity-30'
+                ).tooltip(f"{fmt.upper()} {'available' if exists else 'missing'}")
 
+                if exists:
+                    icon.on('click', lambda e, p=path: self.update_preview(p))
+
+                self.preview_icons[fmt] = icon
+                #self.icon_row.add(icon)  # Add icon to the row
+
+    def set_preview(self, path: str):
+        if path.lower().endswith('.fits'):
+            path = self.generate_fits_preview(path)
+        self.preview_image.set_source(path)

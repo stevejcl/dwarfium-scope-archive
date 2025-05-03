@@ -9,6 +9,7 @@ from datetime import datetime
 import re
 import platform
 import subprocess
+import glob
 
 from dwarf_backup_db import connect_db, close_db, commit_db
 from dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry
@@ -389,3 +390,29 @@ def format_size(size_bytes: int) -> str:
     p = 1 << (i * 10)
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
+
+def get_file_path(full_path, base_folder):
+    # Normalize both paths to use forward slashes and strip trailing slashes
+    full_path = os.path.normpath(full_path)
+    base_folder = os.path.normpath(base_folder)
+    
+    # Get the relative path
+    return os.path.relpath(full_path, base_folder)
+
+def get_extension(file_path):
+    return os.path.splitext(file_path)[1].lower().lstrip('.')
+
+def check_files(full_path: str) -> dict:
+    # Get directory from full path
+    directory = os.path.dirname(full_path)
+
+    # Look for matching files
+    jpg_match = glob.glob(os.path.join(directory, 'stacked.jpg'))
+    png_match = glob.glob(os.path.join(directory, 'stacked*.png'))
+    fits_match = glob.glob(os.path.join(directory, 'stacked*.fits'))
+
+    return {
+        'jpg': jpg_match[0] if jpg_match else None,
+        'png': png_match[0] if png_match else None,
+        'fits': fits_match[0] if fits_match else None
+    }
