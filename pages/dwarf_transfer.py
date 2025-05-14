@@ -110,7 +110,7 @@ class TransferApp:
         if self.DwarfId:
             self.backup_options = get_backupDrive_list_dwarfId(self.conn, self.DwarfId)
             self.backup_data = {
-                backup[1]: (backup[3], backup[4]) for backup in self.backup_options
+                backup[1]: (backup[0], backup[3], backup[4]) for backup in self.backup_options
             }
             names = list(self.backup_data.keys())
         else:
@@ -162,11 +162,12 @@ class TransferApp:
 
     def update_backup_details(self, selected_name):
         if selected_name in self.backup_data:
-            self.backup_location, self.backup_astrodir = self.backup_data[selected_name]
+            self.BackupId, self.backup_location, self.backup_astrodir = self.backup_data[selected_name]
             self.backup_path = os.path.join(self.backup_location, self.backup_astrodir)
-            print(f"Backup Location: {self.backup_location}, Astro Directory: {self.backup_astrodir}")
+            print(f"Backup ID: {self.BackupId}, Backup Location: {self.backup_location}, Astro Directory: {self.backup_astrodir}")
             self.check_status_backup()
         else:
+            self.BackupId = None
             self.backup_location = ""
             self.backup_astrodir = ""
             self.backup_path = ""
@@ -288,7 +289,7 @@ class TransferApp:
                 else:
                     total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, self.dwarf_astroDir, None, self.DwarfId, None, dest_path, log)
                 spinner.visible = False
-                label.text = EndScanningMessage
+                label.text = self.EndScanningMessage
                 ui.notify(f"✅ Analysis Complete: {total} new sessions found.", type="positive")
 
             except Exception as e:
