@@ -49,20 +49,13 @@ To install the Dwarfium Scope Archive, follow these steps:
 
 - Python 3.10+
 
-Setting Up a Virtual Environment
+### Setting Up a Virtual Environment
 
 We recommend using a virtual environment to manage dependencies cleanly.
-
+  ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows use `venv\Scripts\activate`
 
-Installation Steps
-
-- Required Python Packages:
-  You can install the dependencies using:
-  ```bash
-  pip install -r requirements.txt
-   
   ```
 
 ### Installation Steps
