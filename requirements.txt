@@ -4,5 +4,4 @@ matplotlib
 pywin32
 pywebview
 PyInstaller
-glob
 opencv-python-headless
