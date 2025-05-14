@@ -1,9 +1,14 @@
 import sqlite3
+import os
 
-DB_NAME = "dwarf_backup.db"
+DB_NAME = "db\\dwarf_backup.db"
 
 def connect_db(database:DB_NAME):
     try:
+        db_dir = os.path.dirname(database)
+        if not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+
         conn = sqlite3.connect(database)
         if conn:
             init_db(conn)
@@ -31,17 +36,22 @@ def init_db(conn):
                 name TEXT NOT NULL,
                 description TEXT,
                 usb_astronomy_dir TEXT,
-                type TEXT
+                type TEXT,
+                last_scan_date DATETIME,
+                ip_sta_mode TEXT,
+                mtp_id INTEGER,
+                FOREIGN KEY (mtp_id) REFERENCES MtpDevices(id)
             )
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS BackupDrive (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
                 description TEXT,
                 location TEXT UNIQUE,
                 astronomy_dir TEXT,
                 dwarf_id INTEGER,
+                last_backup_scan_date DATETIME,
                 FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id)
             )
         """)
@@ -88,10 +98,12 @@ def init_db(conn):
                 dwarf_data_id INTEGER,
                 session_date DATETIME,
                 session_dir TEXT,
+                favorite BOOLEAN DEFAULT 0,
                 FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
                 FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
                 FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
-                FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id)
+                FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id),
+                UNIQUE("dwarf_id", "astro_object_id", "dwarf_data_id")
             )
         """)
         cursor.execute("""
@@ -102,9 +114,18 @@ def init_db(conn):
                 dwarf_data_id INTEGER,
                 session_date DATETIME,
                 session_dir TEXT,
+                favorite BOOLEAN DEFAULT 0,
                 FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
                 FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
                 FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id)
+                UNIQUE("dwarf_id", "astro_object_id", "dwarf_data_id")
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS MtpDevices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_name TEXT,
+                mtp_drive_id TEXT
             )
         """)
         cursor.execute("""

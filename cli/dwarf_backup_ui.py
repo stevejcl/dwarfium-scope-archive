@@ -4,16 +4,16 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox
 
-from dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive 
+from api.dwarf_backup_fct import scan_backup_folder, open_folder, insert_or_get_backup_drive 
 
-from dwarf_backup_db import connect_db, close_db, commit_db
+from api.dwarf_backup_db import connect_db, close_db, commit_db
 
-from dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
-from dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
-from dwarf_backup_db_api import get_session_present_in_Dwarf, get_session_present_in_backupDrive
-from dwarf_backup_db_api import has_related_backup_entries, delete_backup_entries_and_dwarf_data, delete_dwarf_entries_and_dwarf_data
+from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
+from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
+from api.dwarf_backup_db_api import get_session_present_in_Dwarf, get_session_present_in_backupDrive
+from api.dwarf_backup_db_api import has_related_backup_entries, delete_backup_entries_and_dwarf_data, delete_dwarf_entries_and_dwarf_data
 
-from dwarf_backup_explore import ExploreApp
+from cli.dwarf_backup_explore import ExploreApp
 
 class ConfigApp:
     def __init__(self, master, database):
@@ -198,7 +198,7 @@ class ConfigApp:
     def refresh_backupDrive_list(self):
         self.backupDrives = get_backupDrive_list(self.conn)
 
-        display_names = [f"{id} - {name}" for id, name, description, location, dwarf_id in self.backupDrives]
+        display_names = [f"{id} - {name}" for id, name, description, location, astrodir, dwarf_id, scan_date in self.backupDrives]
         self.backupDrive_combobox["values"] = display_names
 
         self.backupDrive_var.set("")
@@ -375,7 +375,7 @@ class ConfigApp:
 
             close_db(self.conn)
             print(f"🔍 Scanning: {location}-{astroDir}")
-            total, deleted = scan_backup_folder(self.conn, location, astroDir, dwarf_id, backup_drive_id)
+            total, deleted = scan_backup_folder(self.database, location, astroDir, dwarf_id, backup_drive_id)
             if deleted > 1:
                 messagebox.showinfo("Analysis Complete", f"{total} new files found, {deleted} files are s not more present.")
             elif deleted == 1:

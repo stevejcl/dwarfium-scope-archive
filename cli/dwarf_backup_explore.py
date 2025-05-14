@@ -4,10 +4,10 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 from astropy.io import fits
 from datetime import datetime
-from dwarf_backup_fct import get_Backup_fullpath, open_folder
-from dwarf_backup_db_api import get_dwarf_Names, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf
-from dwarf_backup_db_api import get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup
-from dwarf_backup_db_api import get_session_present_in_Dwarf, get_session_present_in_backupDrive
+from api.dwarf_backup_fct import get_Backup_fullpath, open_folder
+from api.dwarf_backup_db_api import get_dwarf_Names, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf
+from api.dwarf_backup_db_api import get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup
+from api.dwarf_backup_db_api import get_session_present_in_Dwarf, get_session_present_in_backupDrive
 
 class ExploreApp:
     def __init__(self, master, conn, BackupDriveId = None, mode="backup"):
@@ -359,7 +359,8 @@ class ExploreApp:
             return
 
         row = self.file_combobox.file_rows[selection_index]
-        file_path, exp, gain, ircut, stacks, backup_path, date_session, dir_session, dwarf = row[1:]
+        print(row)
+        file_path, exp, gain, ircut, stacks, backup_path, date_session, dir_session, dwarf, maxTemp, minTemp, favorite = row[1:]
 
         full_path = get_Backup_fullpath (backup_path, "", file_path)
         self.details_text.delete("1.0", tk.END)

@@ -1,8 +1,8 @@
 import os
 import sys
 import sqlite3
-
-from dwarf_backup_db import commit_db
+from datetime import datetime
+from api.dwarf_backup_db import commit_db
 
 def is_dwarf_exists(conn: sqlite3.Connection, dwarf_id=None):
     try:
@@ -29,7 +29,7 @@ def get_dwarf_detail(conn: sqlite3.Connection, dwarf_id=None):
     try:
         if dwarf_id:
             cursor = conn.cursor()
-            cursor.execute("SELECT name, description, usb_astronomy_dir, type FROM Dwarf WHERE id = ?", (dwarf_id,))
+            cursor.execute("SELECT name, description, usb_astronomy_dir, type, last_scan_date, ip_sta_mode, mtp_id FROM Dwarf WHERE id = ?", (dwarf_id,))
             return cursor.fetchone()
         else:
            return []
@@ -38,33 +38,83 @@ def get_dwarf_detail(conn: sqlite3.Connection, dwarf_id=None):
         print(f"[DB ERROR] Failed to fetch dwarf detail: {e}")
         return []
 
-def set_dwarf_detail(conn: sqlite3.Connection, name, desc, usb_astronomy_dir, dtype, dwarf_id=None):
+def set_dwarf_detail(conn: sqlite3.Connection, name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id, dwarf_id=None):
     try:
         if dwarf_id:
             cursor = conn.cursor()
-            cursor.execute("UPDATE Dwarf SET name=?, description=?, usb_astronomy_dir=?, type=? WHERE id=?",
-                           (name, desc, usb_astronomy_dir, dtype, dwarf_id))
+            cursor.execute("UPDATE Dwarf SET name=?, description=?, usb_astronomy_dir=?, type=?, ip_sta_mode=?, mtp_id=?  WHERE id=?",
+                           (name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id, dwarf_id))
             commit_db(conn)
             return True
         else:
             return False
 
     except Exception as e:
-        print(f"[DB ERROR] Failed to fetch dwarf detail: {e}")
+        print(f"[DB ERROR] Failed to update dwarf detail: {e}")
         return False
 
-def add_dwarf_detail(conn: sqlite3.Connection, name, desc, usb_astronomy_dir, dtype):
+def add_dwarf_detail(conn: sqlite3.Connection, name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id = None):
     try:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO Dwarf (name, description, usb_astronomy_dir, type) VALUES (?, ?, ?, ?)",
-                       (name, desc, usb_astronomy_dir, dtype))
-        dwarf_id = cursor.lastrowid
-        commit_db(conn)
-        return dwarf_id
+        cursor.execute("INSERT INTO Dwarf (name, description, usb_astronomy_dir, type, ip_sta_mode, mtp_id) VALUES (?, ?, ?, ?, ?, ?)",
+                       (name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id))
+        if cursor.rowcount > 0:
+            dwarf_id = cursor.lastrowid
+            commit_db(conn)
+            return dwarf_id
+        else:
+            print("Error Insert ignored : add_dwarf_detail")
+            return None
 
     except Exception as e:
         print(f"[DB ERROR] Failed to add dwarf detail: {e}")
         return None
+
+def set_dwarf_scan_date(conn: sqlite3.Connection, dwarf_id=None):
+    try:
+        if dwarf_id:
+            date_scan = datetime.now().isoformat(sep=' ', timespec='seconds')  # e.g., '2025-05-05 12:34:56'
+            cursor = conn.cursor()
+            cursor.execute("UPDATE Dwarf SET last_scan_date=? WHERE id=?",
+                           (date_scan, dwarf_id))
+            commit_db(conn)
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        print(f"[DB ERROR] failed to set dwarf backup last_scan_date: {e}")
+        return False
+
+def set_dwarf_mtp_id(conn: sqlite3.Connection, dwarf_id=None, mtp_id = None):
+    try:
+        if dwarf_id and mtp_id:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE Dwarf SET mtp_id=? WHERE id=?",
+                           (mtp_id, dwarf_id))
+            commit_db(conn)
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        print(f"[DB ERROR] failed to set dwarf set_dwarf_mtp_id: {e}")
+        return False
+
+def get_dwarf_mtp_drive(conn: sqlite3.Connection, path = None):
+    try:
+        if path:
+            cursor = conn.cursor()
+            cursor.execute("SELECT Dwarf.id, name, mtp_id FROM Dwarf, MtpDevices WHERE mtp_id = MtpDevices.id and MtpDevices.mtp_drive_id = ? ORDER BY name",
+                            (str(path),))
+            return cursor.fetchall()
+
+        else:
+            return []
+
+    except Exception as e:
+        print(f"[DB ERROR] failed to get dwarf get_dwarf_mtp_drive: {e}")
+        return []
 
 def get_backupDrive_Names(conn: sqlite3.Connection):
     try:
@@ -79,7 +129,7 @@ def get_backupDrive_detail(conn: sqlite3.Connection, backupDrive_id=None):
     try:
         if backupDrive_id:
             cursor = conn.cursor()
-            cursor.execute("SELECT BackupDrive.name, BackupDrive.description, BackupDrive.location, BackupDrive.astronomy_dir, Dwarf.name type FROM BackupDrive, Dwarf WHERE BackupDrive.id = ? and BackupDrive.dwarf_id = Dwarf.id", (backupDrive_id,))
+            cursor.execute("SELECT BackupDrive.name, BackupDrive.description, BackupDrive.location, BackupDrive.astronomy_dir, Dwarf.name, BackupDrive.last_backup_scan_date FROM BackupDrive, Dwarf WHERE BackupDrive.id = ? and BackupDrive.dwarf_id = Dwarf.id", (backupDrive_id,))
             return cursor.fetchone()
         else:
            return []
@@ -104,11 +154,21 @@ def get_backupDrive_id_from_location(conn: sqlite3.Connection, location=None):
 def get_backupDrive_list(conn: sqlite3.Connection):
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, description, location, dwarf_id FROM BackupDrive")
+        cursor.execute("SELECT id, name, description, location, astronomy_dir, dwarf_id, last_backup_scan_date FROM BackupDrive")
         return cursor.fetchall()
 
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch backupDrive list: {e}")
+        return []
+
+def get_backupDrive_list_dwarfId(conn: sqlite3.Connection, dwarf_id = None):
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT id, name, description, location, astronomy_dir, dwarf_id FROM BackupDrive Where dwarf_id = {dwarf_id}")
+        return cursor.fetchall()
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backupDrive list dwarfId: {e}")
         return []
 
 
@@ -135,13 +195,34 @@ def add_backupDrive_detail(conn: sqlite3.Connection, name, desc, location, astro
             INSERT INTO BackupDrive (name, description, location, astronomy_dir, dwarf_id)
             VALUES (?, ?, ?, ?, ?)
         """, (name, desc, location, astroDir, dwarf_id))
-        backupDrive_id = cursor.lastrowid
-        commit_db(conn)
-        return backupDrive_id
+
+        if cursor.rowcount > 0:
+            backupDrive_id = cursor.lastrowid
+            commit_db(conn)
+            return backupDrive_id
+        else:
+            print("Error Insert ignored : add_backupDrive_detail")
+            return None
 
     except Exception as e:
         print(f"[DB ERROR] Failed to add backupDrive detail: {e}")
         return None
+
+def set_backup_scan_date(conn: sqlite3.Connection, backupDrive_id=None):
+    try:
+        if backupDrive_id:
+            date_scan = datetime.now().isoformat(sep=' ', timespec='seconds')  # e.g., '2025-05-05 12:34:56'
+            cursor = conn.cursor()
+            cursor.execute("UPDATE BackupDrive SET last_backup_scan_date=? WHERE id=?",
+                           (date_scan, backupDrive_id))
+            commit_db(conn)
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to set backup last_backup_scan_date: {e}")
+        return False
 
 def del_dwarf(conn: sqlite3.Connection, dwarf_id=None):
     try:
@@ -222,7 +303,7 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
             conditions.append("BackupEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
-            if only_on_dwarf:
+            if only_on_dwarf and not only_on_backup:
                 # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
                 conditions.append("""
                     BackupEntry.session_dir IN (
@@ -231,7 +312,7 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                 """)
                 params.append(dwarf_id)
 
-            if only_on_backup:
+            if only_on_backup and not only_on_dwarf:
                 # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
                 conditions.append("""
                     BackupEntry.session_dir NOT IN (
@@ -270,7 +351,7 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
             conditions.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
-            if only_on_dwarf:
+            if only_on_dwarf and not only_on_backup:
                 # Filter DwarfEntry to only those with session_dir not present in BackupEntry for same dwarf
                 conditions.append("""
                     DwarfEntry.session_dir NOT IN (
@@ -279,7 +360,7 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
                 """)
                 params.append(dwarf_id)
 
-            if only_on_backup:
+            if only_on_backup and not only_on_dwarf:
                 # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
                 conditions.append("""
                     DwarfEntry.session_dir IN (
@@ -322,7 +403,7 @@ def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwar
             conditions.append("BackupEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
-            if only_on_dwarf:
+            if only_on_dwarf and not only_on_backup:
                 # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
                 conditions.append("""
                     BackupEntry.session_dir IN (
@@ -331,7 +412,7 @@ def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwar
                 """)
                 params.append(dwarf_id)
 
-            if only_on_backup:
+            if only_on_backup and not only_on_dwarf:
                 # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
                 conditions.append("""
                     BackupEntry.session_dir NOT IN (
@@ -367,7 +448,7 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwar
             conditions.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
-            if only_on_dwarf:
+            if only_on_dwarf and not only_on_backup:
                 # Filter DwarfEntry to only those with session_dir not present in BackupEntry for same dwarf
                 conditions.append("""
                     DwarfEntry.session_dir NOT IN (
@@ -376,7 +457,7 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwar
                 """)
                 params.append(dwarf_id)
 
-            if only_on_backup:
+            if only_on_backup and not only_on_dwarf:
                 # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
                 conditions.append("""
                     DwarfEntry.session_dir IN (
@@ -396,7 +477,7 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwar
         print(f"[DB ERROR] Failed to fetch get_countObjects_dwarf: {e}")
         return []
 
-def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None):
+def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -413,7 +494,8 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_d
                 BackupEntry.session_dir,
                 Dwarf.name,
                 DwarfData.minTemp,
-                DwarfData.maxTemp
+                DwarfData.maxTemp,
+                BackupEntry.favorite
             FROM BackupEntry
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
@@ -431,10 +513,19 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_d
             conditions.append("BackupEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
-            if only_on_dwarf:
+            if only_on_dwarf and not only_on_backup:
                 # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
                 conditions.append("""
                     BackupEntry.session_dir IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+            if only_on_backup and not only_on_dwarf:
+                # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir NOT IN (
                         SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
                     )
                 """)
@@ -453,7 +544,27 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_d
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_backup: {e}")
         return []
 
-def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=None, only_on_backup=None):
+def toggle_favorite(conn: sqlite3.Connection, entry_id, label_element, mode):
+    try:
+        cursor = conn.cursor()
+        if mode=="backup":
+            cursor.execute("UPDATE BackupEntry SET favorite = NOT favorite WHERE BackupEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+        else:
+            cursor.execute("UPDATE DwarfEntry SET favorite = NOT favorite WHERE DwarfEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+        commit_db(conn)
+
+        if mode=="backup":
+            cursor.execute("SELECT favorite FROM BackupEntry WHERE BackupEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+        else:
+            cursor.execute("SELECT favorite FROM DwarfEntry WHERE DwarfEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+
+        return cursor.fetchone()[0]
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to toggle_favorite: {e}")
+        return 0
+
+def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -470,7 +581,8 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=
                 DwarfEntry.session_dir,
                 Dwarf.name,
                 DwarfData.minTemp,
-                DwarfData.maxTemp
+                DwarfData.maxTemp,
+                DwarfEntry.favorite
             FROM DwarfEntry
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
             JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
@@ -483,7 +595,16 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=
             conditions.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
-            if only_on_backup:
+            if only_on_dwarf and not only_on_backup:
+                # Filter DwarfEntry to only those with session_dir not present in BackupEntry for same dwarf
+                conditions.append("""
+                    DwarfEntry.session_dir NOT IN (
+                        SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+            if only_on_backup and not only_on_dwarf:
                 # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
                 conditions.append("""
                     DwarfEntry.session_dir IN (
@@ -527,6 +648,60 @@ def get_backup_entries(conn: sqlite3.Connection):
         return rows
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch backup drives: {e}")
+        return []
+
+def get_backup_favorites(conn: sqlite3.Connection):
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                BackupEntry.id,
+                BackupEntry.session_date,
+                AstroObject.name AS object_name,
+                DwarfData.file_path,
+                Dwarf.name AS dwarf_name,
+                BackupDrive.name AS backup_drive_name,
+                BackupDrive.location
+            FROM BackupEntry
+            LEFT JOIN AstroObject ON BackupEntry.astro_object_id = AstroObject.id
+            LEFT JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+            LEFT JOIN Dwarf ON BackupEntry.dwarf_id = Dwarf.id
+            LEFT JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+            WHERE BackupEntry.favorite = TRUE
+            ORDER BY BackupEntry.id DESC
+        """)
+        rows = cursor.fetchall()
+
+        return rows
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup favorites: {e}")
+        return []
+
+def get_dwarf_favorites(conn: sqlite3.Connection):
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                DwarfEntry.id,
+                DwarfEntry.session_date,
+                AstroObject.name AS object_name,
+                DwarfData.file_path,
+                Dwarf.name AS dwarf_name,
+                BackupDrive.name AS backup_drive_name,
+                BackupDrive.location
+            FROM DwarfEntry
+            LEFT JOIN AstroObject ON DwarfEntry.astro_object_id = AstroObject.id
+            LEFT JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
+            LEFT JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
+            LEFT JOIN BackupDrive ON DwarfEntry.backup_drive_id = BackupDrive.id
+            WHERE DwarfEntry.favorite = TRUE
+            ORDER BY DwarfEntry.id DESC
+        """)
+        rows = cursor.fetchall()
+
+        return rows
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch dwarf favorites: {e}")
         return []
 
 def has_related_dwarf_entries(conn: sqlite3.Connection, dwarf_id: int) -> bool:
@@ -585,6 +760,7 @@ def delete_backup_entries_and_dwarf_data(conn: sqlite3.Connection, backup_drive_
 
             if count == 0:
                 cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
+                cursor.execute("UPDATE BackupDrive SET last_backup_scan_date=NULL WHERE id=?", (backup_drive_id,))
 
         conn.commit()
         print(f"Deleted {len(dwarf_data_ids)} DwarfData entries (if not reused) and all related BackupEntry rows.")
@@ -617,6 +793,7 @@ def delete_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwarf_id=None)
 
             if count == 0:
                 cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
+                cursor.execute("UPDATE Dwarf SET last_scan_date=NULL WHERE id=?", (dwarf_id,))
 
         conn.commit()
         print(f"Deleted {len(dwarf_data_ids)} DwarfData entries (if not reused) and all related DwarfEntry rows.")
@@ -652,15 +829,17 @@ def delete_notpresent_backup_entries_and_dwarf_data(conn: sqlite3.Connection, ba
                     SELECT COUNT(*) FROM BackupEntry WHERE dwarf_data_id = ?
                 """, (dwarf_data_id,))
                 count = cursor.fetchone()[0]
-
+                print(f" COUNT(*) FROM BackupEntry {count}")
                 if count == 0:
                     cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
 
             conn.commit()
             print(f"Deleted {len(dwarf_data_ids)} unused DwarfData entries and obsolete BackupEntry rows.")
+            return len(dwarf_data_ids)
 
         else:
             print(f"no Deletion made, because valid_ids has not be set for {backup_drive_id}!")
+            return False
 
     except Exception as e:
         print(f"[DB ERROR] Failed to delete entries for backup_drive_id={backup_drive_id}: {e}")
@@ -699,10 +878,12 @@ def delete_notpresent_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwa
 
             conn.commit()
             print(f"Deleted {len(dwarf_data_ids)} unused DwarfData entries and obsolete DwarfEntry rows.")
+            return len(dwarf_data_ids)
 
         else:
             print(f"no Deletion made, because valid_ids has not be set for {dwarf_id}!")
-
+            return False
+            
     except Exception as e:
         print(f"[DB ERROR] Failed to delete entries for dwarf_id={dwarf_id}: {e}")
         return False
@@ -727,9 +908,10 @@ def get_session_present_in_Dwarf(conn: sqlite3.Connection, session_dir=None):
         if session_dir:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT Dwarf.id, Dwarf.name
+                SELECT Dwarf.id, Dwarf.name, Dwarf.usb_astronomy_dir, DwarfData.file_path
                 FROM DwarfEntry
                 JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
+                JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
                 WHERE DwarfEntry.session_dir = ?
                 LIMIT 1
             """, (session_dir,))
@@ -747,9 +929,10 @@ def get_session_present_in_backupDrive(conn: sqlite3.Connection, session_dir=Non
         if session_dir:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT BackupDrive.id, BackupDrive.name, BackupDrive.location, BackupDrive.astronomy_dir
+                SELECT BackupDrive.id, BackupDrive.name, BackupDrive.location, BackupDrive.astronomy_dir, DwarfData.file_path
                 FROM BackupEntry
                 JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+                JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
                 WHERE BackupEntry.session_dir = ?
                 LIMIT 1
             """, (session_dir,))
@@ -768,12 +951,17 @@ def insert_astro_object(conn: sqlite3.Connection, name=None):
             cursor = conn.execute("SELECT id FROM AstroObject WHERE name = ?", (name,))
             row = cursor.fetchone()
             if row:
-                 return row[0]
+                 return row[0] , False
             else:
                 cursor = conn.execute("INSERT INTO AstroObject (name, description) VALUES (?, ?)", (name, ""))
-                return cursor.lastrowid
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    return cursor.lastrowid , True
+                else:
+                    print("Error Insert ignored : insert_astro_object")
+                    return None, False
         else: 
-            return None
+            return None, False
 
     except Exception as e:
         print(f"[DB ERROR] Failed to insert astro object {name}: {e}")
@@ -798,11 +986,12 @@ def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path,
             width, height, media_type, stacked_path, stacked_md5
         ))
 
-        last_id = cursor.lastrowid
-
-        if last_id:
+        if cursor.rowcount > 0:
+            conn.commit()
+            last_id = cursor.lastrowid
             print(f" DwarData : Adding new Id :{last_id}")
-            return last_id, last_id  # New insert: both IDs are the same
+            return last_id, last_id
+   
         else:
             row = conn.execute("SELECT id FROM DwarfData WHERE file_path = ?", (file_path,)).fetchone()
             exist_id = row[0] if row else None  # Already existed
@@ -822,7 +1011,13 @@ def insert_BackupEntry(conn: sqlite3.Connection, backup_drive_id, dwarf_id, astr
             ) VALUES (?, ?, ?, ?, ?, ?)
         """, (backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir))
 
-        return cursor.lastrowid
+        if cursor.rowcount > 0:
+            backupEntry_id = cursor.lastrowid
+            commit_db(conn)
+            return backupEntry_id
+        else:
+            print("Error Insert ignored : insert_BackupEntry")
+            return None
 
     except Exception as e:
         print(f"[DB ERROR] Failed to insert BackupEntry: {e}")
@@ -838,9 +1033,66 @@ def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf
             ) VALUES (?, ?, ?, ?, ?)
          """, (dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir))
 
-        return cursor.lastrowid
+        if cursor.rowcount > 0:
+            dwarfEntry_id = cursor.lastrowid
+            commit_db(conn)
+            return dwarfEntry_id
+        else:
+            print("Error Insert ignored : insert_BackupEntry")
+            return None
 
     except Exception as e:
         print(f"[DB ERROR] Failed to insert DwarfEntry: {e}")
         return []
 
+def device_exists_in_db(conn: sqlite3.Connection, mtp_drive_id):
+    try:
+        exists = False
+        if mtp_drive_id:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM MtpDevices WHERE mtp_drive_id = ?", (mtp_drive_id,))
+            exists = cursor.fetchone() is not None
+        return exists
+    except Exception as e:
+        print(f"[DB ERROR] Failed to insert device_exists_in_db: {e}")
+        return False
+
+
+# Add MTP Device to Database
+def add_mtp_device_to_db(conn: sqlite3.Connection, device_name, mtp_drive_id):
+    try:
+        if device_name:
+            cursor = conn.cursor()
+            conn.execute("SELECT id FROM MtpDevices WHERE device_name = ?", (device_name,))
+            row = cursor.fetchone()
+            if row:
+                 return True
+            else:
+                cursor.execute("INSERT INTO MtpDevices (device_name, mtp_drive_id) VALUES (?, ?)", (device_name, mtp_drive_id))
+                conn.commit()
+                return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to insert add_mtp_device_to_db: {e}")
+        return False
+
+def get_mtp_devices(conn: sqlite3.Connection):
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM MtpDevices")
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch MtpDevices: {e}")
+        return []
+
+def get_mtp_device(conn: sqlite3.Connection, mtp_id):
+    try:
+        if mtp_id:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM MtpDevices where id = ?", (mtp_id,))
+            result = cursor.fetchall()  # Fetch all results as a list
+            return result if result else []  # Return list or empty list
+        else: 
+            return []
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch MtpDevices: {e}")
+        return []

@@ -3,39 +3,26 @@ import mimetypes
 from astropy.io import fits
 from datetime import datetime
 import subprocess
-from urllib.parse import quote
-from fastapi.responses import FileResponse
 
 from nicegui import app, ui
-from dwarf_backup_db import DB_NAME, connect_db
-from dwarf_backup_db_api import (
+from api.dwarf_backup_db import DB_NAME, connect_db
+from api.dwarf_backup_db_api import (
     get_dwarf_Names, get_dwarf_detail, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf,
     get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames,
-    get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup
+    get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup,
+    get_session_present_in_Dwarf, get_session_present_in_backupDrive, toggle_favorite
 )
-from dwarf_backup_fct import get_Backup_fullpath, get_extension, check_files, get_file_path
-
-BASE_FOLDER = None
-
-@app.get('/preview/{file_path:path}')
-def serve_preview(file_path: str):
-    global BASE_FOLDER
-    if BASE_FOLDER is None:
-        return {"error": "Base folder not set"}
-    full_path = os.path.join(BASE_FOLDER, file_path.replace("\\", "/"))
-    if os.path.exists(full_path):
-        return FileResponse(full_path)
-    else:
-        return {"error": "File not found"}
-
+from api.dwarf_backup_fct import (
+    get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session,
+    get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files
+)
+from api.image_preview import set_base_folder, build_preview_url
+from components.menu import menu
 
 @ui.page('/Explore/')
 def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup'):
-    from components.menu import menu
-    menu()
 
-    # Call your menu function (assuming it's a predefined menu setup)
-    menu()
+    menu("Explore")
 
     # Launch the GUI with the parameters
     ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode)
@@ -59,6 +46,8 @@ class ExploreApp:
         self.astro_files = {}
         self.open_folder_icon = {}
         self.preview_icons = {}
+        self.fullscreen_icon = {}
+        self.image_dialog = {}
         self.selected_path = ""
         self.build_ui()
 
@@ -78,9 +67,9 @@ class ExploreApp:
                                 ui.label("Dwarf:")
                                 self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
-                        with ui.card().tight():
-                            self.only_on_dwarf = ui.checkbox("Only show sessions on selected Dwarf",on_change = self.load_objects)
-                            self.only_on_backup = ui.checkbox("Only show backed up sessions of selected Dwarf",on_change = self.load_objects)
+                        with ui.card().tight().classes('pr-3'):
+                            self.only_on_dwarf = ui.checkbox("Only show sessions present on selected Dwarf ",on_change = self.load_objects)
+                            self.only_on_backup = ui.checkbox("Only show backed up sessions of selected Dwarf ",on_change = self.load_objects)
                     else:
                         with ui.row().classes('w-full'):
                             ui.label("Dwarf:")
@@ -98,14 +87,19 @@ class ExploreApp:
                         self.object_list = ui.list().classes('h-150 overflow-y-auto')
 
                 with ui.column().classes('w-full'):
+                    # Create the dialog that simulates fullscreen
+                    with ui.dialog().props('maximized') as self.image_dialog, ui.card().classes("w-full h-full no-padding"):
+                        self.fullscreen_image = ui.image().classes('w-full h-full object-contain')
+
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):
-                            ui.label('Files List')
+                            ui.label('Session List')
                             self.file_list = ui.select(options=[], on_change=self.on_file_selected).props('outlined').style('overflow-x: auto;')
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
 
                         with ui.row().classes('items-center gap-4') as self.icon_row:
                             self.open_folder_icon = ui.button("🗁 Open", on_click=lambda: self.open_folder()).classes('h-16')
+                            self.fullscreen_icon = ui.button("Show Fullscreen Image", on_click=self.show_fullscreen_image).classes('h-16')
                             self.update_preview_icons()  # populate icons
 
                             #self.preview_icons['jpg'] = ui.image('image/image-jpg.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('JPG File')
@@ -118,7 +112,7 @@ class ExploreApp:
                             #self.preview_icons['fits'].on('click', lambda e: ui.notify('FITS icon clicked'))
 
                     with ui.row().classes('w-full'):
-                        with ui.card().tight():
+                        with ui.card().tight().classes('w-full'):
                             # List on the side
                             self.details_files = ui.list().classes('h-50 overflow-y-auto')
                             self.details_preview = ui.list().classes('h-50 overflow-y-auto')
@@ -126,6 +120,7 @@ class ExploreApp:
                     with ui.row().classes('w-full'):
                         self.preview_image = ui.image().classes('w-full h-auto').props('fit=contain')
 
+        self.fullscreen_image.visible = False
         self.preview_image.visible = False
 
         if self.mode == "backup":
@@ -134,6 +129,11 @@ class ExploreApp:
             self.populate_dwarf_filter()
 
         self.selected_path = ""
+
+    def show_fullscreen_image(self):
+        if self.fullscreen_image.visible: 
+            self.image_dialog.open()
+            ui.notify("Press ESC to close the image", position="top", type="info")
 
     def populate_backup_filter(self):
         self.backup_options = get_backupDrive_Names(self.conn)
@@ -184,6 +184,7 @@ class ExploreApp:
 
     def load_objects(self):
         dwarf_id = self.get_selected_dwarf_id()
+        self.fullscreen_image.visible = False
         self.preview_image.visible = False
         self.file_list.set_options([])
         self.details_files.clear()
@@ -204,7 +205,7 @@ class ExploreApp:
         print (f"Total matching sessions: {count}")
         print (f"Total objects: {len(self.objects)}")
         print (f"Total objects: {[f"{oid} - {name}" for oid, name in self.objects]}")
-        #self.selected_object = None
+        self.selected_object = None
         self.load_objects_ui()
 
     def load_objects_ui(self, init_view = True):
@@ -231,13 +232,9 @@ class ExploreApp:
         self.select_object(oid)
         self.load_objects_ui()
 
-    def show_date_session(self,date_db):
-        dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-        date_session = dt.strftime("%B %d, %Y at %I:%M:%S %p")
-        return date_session
-
     def select_object(self, object_id):
 
+        self.fullscreen_image.visible = False
         self.preview_image.visible = False
         dwarf_id = self.get_selected_dwarf_id()
         self.details_files.clear()
@@ -246,9 +243,9 @@ class ExploreApp:
         details = []
 
         if self.mode == "backup":
-            files = get_ObjectSelect_backup(self.conn, object_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value)
+            files = get_ObjectSelect_backup(self.conn, object_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value)
         else:
-            files = get_ObjectSelect_dwarf(self.conn, object_id, dwarf_id, self.only_on_backup.value)
+            files = get_ObjectSelect_dwarf(self.conn, object_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value)
 
         # Store all rows globally so we can access them later
         self.all_files_rows = files
@@ -257,7 +254,7 @@ class ExploreApp:
      
             self.file_list.set_options([])
             with self.details_files:
-                ui.item_label('No files found.').props('header').classes('text-bold')
+                ui.item_label('No Session found.').props('header').classes('text-bold')
 
         if len(files) == 1:
             # If only one file, put it in the ComboBox and display it directly
@@ -269,65 +266,52 @@ class ExploreApp:
             select_file = [file_path]
             self.file_list.set_options(select_file, value=select_file[0])
 
-            details_text = f"Taken with {files[0][9]} on {self.show_date_session(files[0][7])}"
-
-            # details
-            size_kb = None
-            size_mb = None
-            try:
-                size_kb = os.path.getsize(full_path) / 1024
-                size_mb = size_kb / 1024
-            except FileNotFoundError:
-                print("File not found")
-                pass
-            except Exception as e:
-                print(f"Unexpected error: {e}")
-                size_kb = None
-                size_mb = None
-
-            #details.append(f"{self.show_date_session(files[0][7])}")
-            details.append(f"Session: {files[0][8]}")
-            details.append(f"Exposure: {files[0][2]}s | Gain: {files[0][3]} | Filter: {files[0][4]}")
-            if files[0][10] and files[0][11]:
-                details.append(f"MinTemp: {files[0][10]} | MaxTemp: {files[0][11]}")
-            details.append(f"Stacks: {files[0][5]}")
-
-            details.append(f"Filename: {full_path}")
-            if size_kb is not None and size_mb < 2:
-                details.append(f"Size: {size_kb:.2f} KB")
-            if size_kb is not None and size_mb >= 1:
-                details.append(f"Size: {size_mb:.2f} MB")
-            
-            self.selected_path = os.path.dirname(full_path)
-            #with self.details_files:
-            #    ui.item_label('One file found.').props('header').classes('text-bold')
-            #    ui.separator()
-            #    ui.item_label(details_text).props('header').classes('text-bold')
-            #    for data_detail in details:
-            #      ui.item(data_detail)
-
         else:
             # Populate combobox with readable file names
             self.all_files_rows = files
-            #select_file = ['Select a file'] + [f"{row[1]} (Taken with {row[9]} | {self.show_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]})" for row in files]
-            select_file = ['Select a file'] + [f"Taken with {row[9]} | {self.show_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]}" for row in files]
-            self.file_list.set_options(select_file, value='Select a file')
+            details = []
+            select_file = ['Select a session']
 
-            details.append(f"{len(files)} files(s) available(s) for this object.")
+            for row in files:
+                # Extracting values for clarity
+                device = row[9]
+                session_date = show_date_session(row[7])
+                exp = f"{row[2]}s" if row[2] is not None else "N/A"
+                gain = row[3] if row[3] is not None else "N/A"
+                astro_filter = row[4]
+                stacks = row[5]
+                is_favorite = row[12]  # The favorite column (0 or 1)
+
+                # Displaying star icon based on favorite status only in backup mode
+                star_icon = '⭐ ' if is_favorite else '☆ '
+
+                # Building the details string with the star icon
+                details.append(
+                    f"{star_icon}Taken with {device} | {session_date}, exp {exp}, gain {gain}, filter {astro_filter}, stacks {stacks}"
+                )
+
+                select_file.append(
+                    f"Taken with {device} | {session_date}, exp {exp}, gain {gain}, filter {astro_filter}, stacks {stacks}"
+                )
+
+            self.file_list.set_options(select_file, value='Select a session')
 
             with self.details_files:
-                ui.item_label(f"{len(files)} files found.").props('header').classes('text-bold')
+                ui.item_label(f"{len(files)} sessions found.").props('header').classes('text-bold')
                 ui.separator()
                 for data_detail in details:
-                   ui.item(data_detail)
+                   ui.item(data_detail, on_click=lambda i=data_detail.lstrip('⭐').lstrip('☆').strip(): self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
 
-    def open_folder(self):
-        if not self.selected_path:
+    def open_folder(self, directory = None):
+        if not self.selected_path and not directory:
             print("No folder selected!")
             return
 
         # Normalize the path
-        folder_path = os.path.normpath(self.selected_path)
+        if directory:
+            folder_path = os.path.normpath(directory)
+        else:
+            folder_path = os.path.normpath(self.selected_path)
         if folder_path and os.path.exists(folder_path):
             if os.name == 'nt':  # Windows
                 subprocess.Popen(f'explorer "{folder_path}"')
@@ -343,7 +327,7 @@ class ExploreApp:
         print(f"Selected value: {selected_value}")
         details = []
 
-        if not selected_value or selected_value=='Select a file':
+        if not selected_value or selected_value=='Select a session':
             return
 
         self.details_files.clear()
@@ -362,13 +346,21 @@ class ExploreApp:
                 # Map the selected value back to the corresponding row
                 for idx, row in enumerate(self.all_files_rows):
                     # Build the label that matches the options shown
-                    #label = f"{row[1]} (Taken with {row[9]} | {self.show_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]})"
-                    label = f"Taken with {row[9]} | {self.show_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]}"
+                    #label = f"{row[1]} (Taken with {row[9]} | {show_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]})"
+                    exp = f"{row[2]}s" if row[2] is not None else "N/A"
+                    gain = row[3] if row[3] is not None else "N/A"
+                    is_favorite = row[12]  # The favorite column (0 or 1)
+                    star_icon = '⭐ ' if is_favorite else '☆ '
+                    label = f"Taken with {row[9]} | {show_date_session(row[7])}, exp {exp}, gain {gain}, filter {row[4]}, stacks {row[5]}"
+                    # Strip out the star icon to compare only the text portion
+                    comparison_label = label.lstrip('⭐').lstrip('☆').strip()
+                    # Strip the star icon from the selected value for comparison
+                    selected_value_stripped = selected_value.lstrip('⭐').lstrip('☆').strip()
                 
                     # Check if this label matches the selected value
-                    if selected_value == label:
+                    if selected_value_stripped == label:
                         selection_index = idx
-                        details_files_text = f"Taken with {row[9]} on {self.show_date_session(row[7])}"
+                        details_files_text = f"{star_icon}Taken with {row[9]} on {show_date_session(row[7])}"
                         break
 
         except ValueError:
@@ -380,62 +372,128 @@ class ExploreApp:
 
             file_path = row[1]
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
-
+            is_favorite = row[12]  # The favorite column (0 or 1)
+            star_icon = '⭐ ' if is_favorite else '☆ '
             full_path = get_Backup_fullpath (backup_path, "", file_path)
             self.selected_path = os.path.dirname(full_path)
 
             # Store the base folder once
-            global BASE_FOLDER
-            BASE_FOLDER = BASE_FOLDER = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
-            print(f"BASE_FOLDER: {BASE_FOLDER}")
+            self.base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
+            set_base_folder(full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0])
 
-            details_files_text = f"Taken with {row[9]} on {self.show_date_session(row[7])}"
+            details_files_text = f"{star_icon}Taken with {row[9]} on {show_date_session(row[7])}"
 
             # details
 
-            #details.append(f"{self.show_date_session(row[7])}")
-            details.append(f"Session: {row[8]}")
-            details.append(f"Exposure: {row[2]}s | Gain: {row[3]} | Filter: {row[4]}")
+            #details.append(f"{show_date_session(row[7])}")
+            session_dir = row[8]
+            details.append(f"Session: {session_dir}")
+
+            exp = f"{row[2]}s" if row[2] is not None else "N/A"
+            gain = row[3] if row[3] is not None else "N/A"
+
+            details.append(f"Exposure: {exp} | Gain: {gain} | Filter: {row[4]}")
             if row[10] and row[11]:
                 details.append(f"MinTemp: {row[10]} | MaxTemp: {row[11]}")
             details.append(f"Stacks: {row[5]}")
 
             with self.details_files:
-                ui.item_label(f"{details_files_text}").props('header').classes('text-bold')
-
+                label = ui.item_label(f"{details_files_text}").props('header').classes('text-bold').props('clickable').classes(f'cursor-pointer {self.get_hover_class()} transition-colors duration-200 rounded')
+                # Set the tooltip text based on the favorite state
+                tooltip_text = "Click to Remove from Favorites" if is_favorite else "Click to Add to Favorites"
+                # Add tooltip
+                label.props(f'title="{tooltip_text}"')
+                # Make the label clickable to toggle favorite
+                label.on('click', lambda _, eid=row[0], lbl=label, mode=self.mode: self.toggle_favorite_ui(eid, lbl, mode))
                 ui.separator()
                 for data_detail in details:
                    ui.item(data_detail)
 
             self.astro_files = check_files(full_path)
-            print(self.astro_files)
             self.update_preview_icons()
             self.preview_image_path = full_path
             self.update_preview(full_path)
 
-    def update_preview(self, preview_image_path):
+    def get_hover_class(self):
+        return 'hover:bg-gray-700' if app.storage.user.get('ui_mode', 0) == 'dark' else 'hover:bg-gray-300'
+
+    def toggle_favorite_ui(self, entry_id, label_element, mode):
+        # Call the API function directly
+        new_favorite = toggle_favorite(self.conn, entry_id, label_element, mode)
+    
+        # Update the UI based on the new state
+        star_icon = '⭐ ' if new_favorite else '☆ '
+        label_text = label_element.text.split(' ', 1)[1]  # Remove existing star
+        label_element.set_text(f"{star_icon}{label_text}")
+        # Set the tooltip text based on the favorite state
+        tooltip_text = "Click to Remove from Favorites" if new_favorite else "Click to Add to Favorites"
+        # Add tooltip
+        label_element.props(f'title="{tooltip_text}"')
+        #label_element.classes('text-yellow-500' if new_favorite else 'text-gray-400')
+        label_element.update()
+
+    def update_preview(self, preview_image_path ):
         details_preview = []
         self.details_preview.clear()
         self.preview_image_type = get_extension(preview_image_path)
         self.preview_image_path = preview_image_path
 
-        details_preview.append(f"Filename: {self.preview_image_path}")
-        file_path = get_file_path(self.preview_image_path, BASE_FOLDER)
+        # convert Fits for preview
+        preview_image_path = self.set_preview(self.preview_image_path)
+        file_path = get_file_path(preview_image_path, self.base_folder)
         print(file_path)
 
+        size_dir_kb = None
+        size_dir_mb = None
         size_kb = None
         size_mb = None
+        nb_fits_files = None
+        nb_failed_fits_files = None
+        nb_tiff_files = None
+        nb_failed_tiff_files = None
         try:
+            directory = os.path.dirname(self.preview_image_path)
+            size_dir_kb = get_directory_size(directory) / 1024
+            size_dir_mb = size_dir_kb / 1024
             size_kb = os.path.getsize(self.preview_image_path) / 1024
             size_mb = size_kb / 1024
+            nb_fits_files = count_fits_files(directory)
+            nb_failed_fits_files = count_failed_fits_files(directory)
+            nb_tiff_files = count_tiff_files(directory)
+            nb_failed_tiff_files = count_failed_tiff_files(directory)
         except FileNotFoundError:
             print("File2 not found")
             pass
         except Exception as e:
             print(f"Unexpected error: {e}")
+            size_dir_kb = None
+            size_dir_mb = None
             size_kb = None
             size_mb = None
 
+        if nb_fits_files is not None and nb_fits_files == 1:
+            details_preview.append(f"Found one fits image on the disk")
+        if nb_fits_files is not None and nb_fits_files > 1:
+            details_preview.append(f"Found {nb_fits_files} fits images on the disk")
+        if nb_failed_fits_files is not None and nb_failed_fits_files == 1:
+            details_preview.append(f"Found one failed image on the disk")
+        if nb_failed_fits_files is not None and nb_failed_fits_files > 1:
+            details_preview.append(f"Found {nb_failed_fits_files} failed images on the disk")
+
+        if nb_tiff_files is not None and nb_tiff_files == 1:
+            details_preview.append(f"Found one tiff image on the disk")
+        if nb_tiff_files is not None and nb_tiff_files > 1:
+            details_preview.append(f"Found {nb_tiff_files} tiff images on the disk")
+        if nb_failed_tiff_files is not None and nb_failed_tiff_files == 1:
+            details_preview.append(f"Found one failed image on the disk")
+        if nb_failed_tiff_files is not None and nb_failed_tiff_files > 1:
+            details_preview.append(f"Found {nb_failed_tiff_files} failed images on the disk")
+
+        if size_dir_kb is not None and size_dir_mb < 2:
+            details_preview.append(f"Directory Size: {size_dir_kb:.2f} KB")
+        if size_dir_kb is not None and size_dir_mb >= 1:
+            details_preview.append(f"Directory Size: {size_dir_mb:.2f} MB")
+        details_preview.append(f"Filename: {self.preview_image_path}")
         if size_kb is not None and size_mb < 2:
             details_preview.append(f"Size: {size_kb:.2f} KB")
         if size_kb is not None and size_mb >= 1:
@@ -445,28 +503,76 @@ class ExploreApp:
 
         # Check if the file is an image
         if not self.preview_image_path:
+            self.fullscreen_image.visible = False
             self.preview_image.visible = False
             details_preview.append(f"Image File Path is empty - Preview is disable")
 
         elif not os.path.isfile(self.preview_image_path):
+            self.fullscreen_image.visible = False
             self.preview_image.visible = False
             details_preview.append(f"Image File is not reachable - Preview is disable")
 
-        elif file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+        elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.tiff')):
             # To show a local file, we need to serve it. Quick way:
-            url_path = f'/preview/{quote(file_path.replace("\\", "/"))}'
-
+            #url_path = f'/preview/{quote(file_path.replace("\\", "/"))}'
+            url_path = build_preview_url(file_path)
             self.preview_image.visible = True
             self.preview_image.source = url_path
+            self.fullscreen_image.visible = True
+            self.fullscreen_image.source = url_path
+
         else:
             self.preview_image.visible = False
 
         with self.details_preview:
             for data_detail in details_preview:
                ui.item(data_detail)
+            if nb_fits_files is None or nb_fits_files == 0:
+                ui.item_label(f"No fits image Found on the disk").classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
+            self.get_details_presence_label(self.preview_image_path, file_path)
+
+    def get_details_presence_label(self, preview_image_path: str, file_path):
+        if preview_image_path:
+            session_dir = os.path.basename(os.path.dirname(preview_image_path))
+
+            if self.mode == "backup":
+                result_on_Dwarf = get_session_present_in_Dwarf(self.conn, session_dir)
+                print(f"result_on_Dwarf: {result_on_Dwarf}")
+                if result_on_Dwarf:
+                    dwarf_full_path = get_Backup_fullpath (result_on_Dwarf[2], "", result_on_Dwarf[3])
+                    print(f"dwarf_full_path: {dwarf_full_path}")
+                    if os.path.isdir(os.path.dirname(dwarf_full_path)):
+                        return {
+                            ui.item_label(f"Actually available on {result_on_Dwarf[1]}").classes("text-green-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold'),
+                            ui.label(f"{os.path.dirname(dwarf_full_path)}") \
+                            .on('click', lambda: self.open_folder(os.path.dirname(dwarf_full_path))) \
+                            .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
+                        }
+                    else:
+                        return {
+                            ui.item_label(f"Actually available on {result_on_Dwarf[1]}").classes("text-green-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
+                        }
+            else:
+                result_on_backupDrive = get_session_present_in_backupDrive(self.conn, session_dir)
+
+                if result_on_backupDrive:
+                    backup_full_path = get_Backup_fullpath(
+                        result_on_backupDrive[2],
+                        "",
+                        result_on_backupDrive[4]
+                    )
+                    return { 
+                        ui.item_label(f"Backup Available on:").classes("text-green-600").classes("pl-4 pr-4").props('header').classes('text-bold'),
+                        ui.label(f"{os.path.dirname(backup_full_path)}") \
+                        .on('click', lambda: self.open_folder(os.path.dirname(backup_full_path))) \
+                        .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
+                    }
+        return ui.item_label("")
 
     def reset_preview_icons(self):
         self.open_folder_icon.disable()
+        self.fullscreen_icon.disable()
+
         # Delete old icons from UI
         for icon in self.preview_icons.values():
             icon.delete()
@@ -480,6 +586,14 @@ class ExploreApp:
                 self.open_folder_icon.enable()
             else:
                 self.open_folder_icon.disable()
+
+            if not self.fullscreen_icon:
+                self.fullscreen_icon =  ui.button("Show Fullscreen Image", on_click=self.image_dialog.open).classes('h-16')
+            elif self.selected_path and os.path.isdir(self.selected_path):
+                self.fullscreen_icon.enable()
+            else:
+                self.fullscreen_icon.disable()
+
             for fmt, path in self.astro_files.items():
                 exists = path and os.path.isfile(path)
                 icon = ui.image(f'image/image-{fmt}.png').classes(
@@ -494,5 +608,5 @@ class ExploreApp:
 
     def set_preview(self, path: str):
         if path.lower().endswith('.fits'):
-            path = self.generate_fits_preview(path)
-        self.preview_image.set_source(path)
+            path = generate_fits_preview(path)
+        return path

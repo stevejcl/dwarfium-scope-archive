@@ -12,3 +12,4 @@ dwarf_backup.db
 /old
 *.pyc
 *.pyc
+/MTP_Downloads

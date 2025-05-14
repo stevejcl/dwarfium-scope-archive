@@ -10,10 +10,10 @@ import re
 import platform
 import subprocess
 import tkinter as tk
-from dwarf_backup_ui import ConfigApp 
-from dwarf_backup_fct import scan_backup_folder
+from cli.dwarf_backup_ui import ConfigApp 
+from api.dwarf_backup_fct import scan_backup_folder
 
-from dwarf_backup_db import DB_NAME, connect_db, init_db, close_db, get_backup_entries, get_astro_object_summary
+from api.dwarf_backup_db import DB_NAME, connect_db, init_db, close_db, get_backup_entries, get_astro_object_summary
 
 def show_backup_entries(conn):
     rows = get_backup_entries(conn)
