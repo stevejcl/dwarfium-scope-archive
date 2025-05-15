@@ -11,15 +11,28 @@ class MTPManager:
     def __init__(self):
         self.platform = platform.system()
         self.mtp_namespace = None
+        self.shell = None
+        self.ensure_pywin32()
 
-        if self.platform == "Windows":
-            self.init_windows_mtp()
+    def ensure_pywin32(self):
+        if platform.system() == "Windows":
+            try:
+                import win32com.client
+            except ImportError:
+                print("pywin32 is not installed. Installing...")
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "pywin32"])
+                subprocess.check_call([sys.executable, "-m", "pywin32_postinstall"])
+                print("pywin32 installed successfully.")
+            finally :
+                self.init_windows_mtp()
 
     def init_windows_mtp(self):
         try:
             import win32com.client
             self.shell = win32com.client.Dispatch("Shell.Application")
             self.mtp_namespace = self.shell.NameSpace(MTP_NAMESPACE_ID)  # MTP Namespace ID
+            if self.mtp_namespace is None:
+                log.error("MTP namespace could not be initialized.")
         except ImportError as e:
             log.error(f"Windows MTP initialization failed: {e}")
 
