@@ -3,14 +3,16 @@ from nicegui import native, app, run, ui
 import os
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
-from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, check_ftp_connection, connect_to_dwarf, list_mtp_devices
+from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, check_ftp_connection, connect_to_dwarf
 
+from api.dwarf_backup_mtp_handler import MTPManager 
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
-from api.dwarf_backup_db_api import get_session_present_in_Dwarf, get_mtp_devices, get_mtp_device, set_dwarf_mtp_id, device_exists_in_db, add_mtp_device_to_db
+from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
 from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entries_and_dwarf_data, del_dwarf
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+
 
 @ui.page('/Dwarf')
 def dwarf_settings():
@@ -276,23 +278,23 @@ class ConfigApp:
 
     async def detect_mtp_devices(self):
         add_new = False
-        self.mtp_devices = list_mtp_devices()
-        print(f"detect_mtp_devices {len(self.mtp_devices)}")
+        mtp = MTPManager()
+
+        if mtp.is_MTP_available():
+            self.mtp_devices = mtp.list_mtp_devices()
+            print(f"detect_mtp_devices {len(self.mtp_devices)}")
         
-        for name, path in self.mtp_devices:
-            print(f" device: {name}-{path}")
-            is_in_db = device_exists_in_db(self.conn, path)
-            print(f" in db: {is_in_db}")
-            if not is_in_db:
-                add_new = add_mtp_device_to_db(self.conn, name, path)
+            for name, path in self.mtp_devices:
+                print(f" device: {name}-{path}")
+                is_in_db = device_exists_in_db(self.conn, path)
+                print(f" in db: {is_in_db}")
+                if not is_in_db:
+                    add_new = add_mtp_device_to_db(self.conn, name, path)
 
-        if add_new:
-            self.render_mtp_section()
-
-    async def check_status_mtp(self):
-        self.check_dir_dwarf()
-        if self.dwarf_ip_sta_mode.value:
-            self.ftp_status_label.text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode.value)
+            if add_new:
+                self.render_mtp_section()
+        else:
+            print("MTP is not available.")
 
     def set_new_dwarf(self):
         """Reset the form for adding a new dwarf."""

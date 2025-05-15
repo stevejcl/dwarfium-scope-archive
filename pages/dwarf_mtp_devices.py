@@ -2,14 +2,11 @@ import webview
 from nicegui import ui, run, app
 
 import os
-import shutil
-import asyncio
-import hashlib
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
 from api.dwarf_backup_db_api import device_exists_in_db, get_mtp_devices, add_mtp_device_to_db, get_dwarf_mtp_drive
-from api.dwarf_backup_fct import list_mtp_devices, copy_files_from_mtp, list_subdirectories, list_files_in_subdirectory
-from api.dwarf_backup_fct import get_files_from_mtp, get_folder_from_mtp, copy_file_from_mtp
+
+from api.dwarf_backup_mtp_handler import MTPManager 
 
 from components.menu import menu
 
@@ -28,14 +25,19 @@ class TransferApp:
         self.destination_dir = "./MTP_Downloads"
         self.destination_input = {}
         self.notification_label = {}
+        self.mtp = MTPManager()
         self.build_ui()
 
     def build_ui(self):
+        if not self.mtp.is_MTP_available():
+            ui.label("MTP functions are not available! Can't use this page")
+            return
+
         self.conn = connect_db(self.database)
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             ui.label("Connected MTP Devices:")
-            devices = list_mtp_devices()
+            devices = self.mtp.list_mtp_devices()
             for name, path in devices:
                 print(f" device: {name}-{path}")
                 is_in_db = device_exists_in_db(self.conn, path)
@@ -70,7 +72,7 @@ class TransferApp:
                     if dwarf_options:
                         names = [name for _, name, _ in dwarf_options]
                         ui.select(options=names,value=names[0]).props('outlined')
-                subdirs = list_subdirectories(device[2])
+                subdirs = self.mtp.list_subdirectories(device[2])
                 if subdirs:
                     ui.label("Select Directory")
                     selected_subdir = ui.select(label="Please select", options=subdirs, on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[300px] w-auto overflow-x-auto whitespace-nowrap")
@@ -106,7 +108,7 @@ class TransferApp:
 
         self.notification_label.set_text("Check Files...")
 
-        list_files = await get_files_from_mtp(
+        list_files = await self.mtp.get_files_from_mtp(
             device_id,
             subdir_name,
             progress_label
@@ -123,7 +125,7 @@ class TransferApp:
         self.notification_label.set_text("Starting...")
         destination_path = os.path.join(self.destination_dir, subdir_name)
 
-        dest_folder = await get_folder_from_mtp(destination_path)
+        dest_folder = await self.mtp.get_folder_from_mtp(destination_path)
         ui.notify(f"Starting the copy to {os.path.abspath(destination_path)}")
 
         # Find the specific file 
