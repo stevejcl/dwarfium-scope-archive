@@ -100,11 +100,45 @@ class TransferApp:
             self.destination_input.value = folder
 
 
-    async def start_copy(self, device_id, subdir_name, progress_bar,progress_label  ):
+    async def start_copy(self, device_id, subdir_name, progress_bar, progress_label):
 
+        self.destination_dir = self.destination_input.value
         if not self.destination_dir:
             progress_label.set_text("Select a destination Directory.")
+            ui.notify("No destination Directory selected.", type='warning')
             return
+
+        if not subdir_name:
+            progress_label.set_text("Select a source directory.")
+            ui.notify("No source Directory selected.", type='warning')
+            return
+
+        # Check if destination path exists
+        destination_path = os.path.join(self.destination_dir, subdir_name)
+        if os.path.exists(destination_path):
+            await self.confirm_overwrite(destination_path, device_id, subdir_name, progress_bar, progress_label)
+        else:
+            await self.execute_backup(device_id, subdir_name, progress_bar, progress_label)
+
+    async def confirm_overwrite(self, dest_path, device_id, subdir_name, progress_bar, progress_label):
+
+        print("confirm_overwrite")
+        ui.notify(f"The destination '{dest_path}' already exists.!", type='warning')
+
+        # Display confirmation dialog
+        with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
+            ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
+            with ui.row():
+                ui.button("Yes", on_click=lambda: dialog.submit('Yes'))
+                ui.button("No", on_click=lambda: dialog.submit('No'))
+
+        result = await dialog
+        if result == 'Yes':
+            await self.execute_backup(device_id, subdir_name, progress_bar, progress_label)
+        else:
+            progress_label.set_text("Backup canceled.")
+
+    async def execute_backup(self, device_id, subdir_name, progress_bar, progress_label):
 
         self.notification_label.set_text("Check Files...")
 

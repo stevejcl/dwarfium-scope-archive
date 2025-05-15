@@ -285,12 +285,15 @@ class TransferApp:
             try:
                 ui.notify("Starting Analysis ...")
                 if self.mode == "Archive":
-                    total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dest_path, log)
+                    total_dwarf, deleted_dwarf = await run.io_bound (scan_backup_folder, DB_NAME, self.dwarf_astroDir, None, self.DwarfId, None, src_dir, log)
+                    total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dest_path, log)
                 else:
-                    total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, self.dwarf_astroDir, None, self.DwarfId, None, dest_path, log)
+                    total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, src_dir, log)
+                    total_dwarf, deleted_dwarf = await run.io_bound (scan_backup_folder, DB_NAME, self.dwarf_astroDir, None, self.DwarfId, None, dest_path, log)
                 spinner.visible = False
                 label.text = self.EndScanningMessage
-                ui.notify(f"✅ Analysis Complete: {total} new sessions found.", type="positive")
+                ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive")
+                ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
 
             except Exception as e:
                 ui.notify(f"❌ Error: {str(e)}", type="negative")

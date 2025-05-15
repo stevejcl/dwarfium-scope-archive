@@ -18,13 +18,10 @@ class MTPManager:
         if platform.system() == "Windows":
             try:
                 import win32com.client
-            except ImportError:
-                print("pywin32 is not installed. Installing...")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "pywin32"])
-                subprocess.check_call([sys.executable, "-m", "pywin32_postinstall"])
-                print("pywin32 installed successfully.")
-            finally :
                 self.init_windows_mtp()
+            except ImportError:
+                log.error("pywin32 is not correcly installed.")
+                log.error("use: python -m pip install -r requirements-windows.txt")
 
     def init_windows_mtp(self):
         try:

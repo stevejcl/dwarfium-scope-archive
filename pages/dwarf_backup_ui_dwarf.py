@@ -293,6 +293,7 @@ class ConfigApp:
 
             if add_new:
                 self.render_mtp_section()
+            self.refesh_mtp_status(self.device_path)
         else:
             print("MTP is not available.")
 
