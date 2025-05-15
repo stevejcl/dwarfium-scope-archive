@@ -71,6 +71,12 @@ Install the necessary Python libraries:
 pip install -r requirements.txt
   ```
 
+Install the necessary Python libraries on windows:
+
+  ```bash
+pip install -r requirements-windows.txt
+  ```
+
 Currently Supported Devices: USB (more details to follow).
 
 ## Chapter 3: Usage
