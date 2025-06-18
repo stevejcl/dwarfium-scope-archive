@@ -56,13 +56,6 @@ def init_db(conn):
             )
         """)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS AstroObject (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT
-            )
-        """)
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS DwarfData (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_path TEXT UNIQUE NOT NULL,
@@ -152,6 +145,14 @@ def init_db(conn):
                 notes TEXT,
                 favorite BOOLEAN,
                 alternateNames TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS AstroObject (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                dso_id INTEGER REFERENCES DsoCatalog(id)
             )
         """)
         cursor.execute("""
