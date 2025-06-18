@@ -67,32 +67,23 @@ class MTPManager:
 
         return []
 
-    # Full Path Mtp Directory for MTP Device
-    def getFullPathOfMtpDir(self, mtpDir):
-
+    # List Subdirectories in Astronomy Folder
+    def list_subdirectories(self, device_id):
         if not self.is_MTP_available():
             log.warning("MTP is not available on this system.")
-            return ""
+            return []
 
         if platform.system() == "Windows":
 
-            fullDirPath = ""
-            lastDirPath = ""
-            directory = mtpDir.GetFolder
-            while directory:
-            
-                print(f"ParentFolder: {directory.ParentFolder}")
-                if directory.ParentFolder:
-                    lastDirPath = fullDirPath
-                    fullDirPath =  os.path.join(directory.Title, fullDirPath)
-                directory = directory.ParentFolder;
-            
-            print(f"fullDirPath: {fullDirPath}")
-            print(f"lastDirPath: {lastDirPath}")
-            return lastDirPath
+            for device in self.mtp_namespace.Items():
+                if device.Path == device_id:
+                    astronomy_folder = device.GetFolder.ParseName("MTP\\sdcard\\DWARF_II\\Astronomy")
+                    if not astronomy_folder:
+                        return []
+                    return [item.Name for item in astronomy_folder.GetFolder.Items() if item.IsFolder]
 
         elif platform.system() in ["Linux", "Darwin"]:
-            return ""
+            return []
 
     # get Files from MTP Device
     async def get_files_from_mtp(self, device_id, subdir_name, progress_label):
@@ -112,10 +103,17 @@ class MTPManager:
                             items = list(subfolder.GetFolder.Items())
                             return items
                         else:
-                            progress_label.set_text("Selected subdirectory not found.")
+                            if progress_label:
+                                progress_label.set_text("Selected subdirectory not found.")
+                            else:
+                                log.warning("Selected subdirectory not found.")
+
                             return []
                     else:
-                        progress_label.set_text("Astronomy folder not found.")
+                        if progress_label:
+                            progress_label.set_text("Astronomy folder not found.")
+                        else:
+                            log.error("Selected subdirectory not found.")
                         return []
 
         elif platform.system() in ["Linux", "Darwin"]:
@@ -154,81 +152,33 @@ class MTPManager:
         elif platform.system() in ["Linux", "Darwin"]:
             return False
 
-    # Copy Files from MTP Device
-    async def copy_files_from_mtp(self, device_id, subdir_name, destination, progress_bar, progress_label):
+
+    # Full Path Mtp Directory for MTP Device
+    def getFullPathOfMtpDir(self, mtpDir):
+
         if not self.is_MTP_available():
-            progress_label.set_text("MTP not available on this system.")
             log.warning("MTP is not available on this system.")
-            return
+            return ""
 
         if platform.system() == "Windows":
 
-            # Define the destination path
-            full_path = os.path.abspath(destination)
-            dest_folder = self.shell.NameSpace(full_path)
-            os.makedirs(destination, exist_ok=True)
-            print(f"full_path: {full_path}")
-
-            for device in self.mtp_namespace.Items():
-                if device.Path == device_id:
-                    astronomy_folder = device.GetFolder.ParseName("MTP\\sdcard\\DWARF_II\\Astronomy")
-                    if astronomy_folder:
-                        subfolder = astronomy_folder.GetFolder.ParseName(subdir_name)
-                        if subfolder:
-                            print(f"subfolder: {subfolder}")
-                            items = list(subfolder.GetFolder.Items())
-                            total_files = len(items)
-
-                            if total_files == 0:
-                                progress_label.set_text("No files to copy.")
-                                return
-
-                            # Find the specific file 
-                            await run.io_bound(copy_files_with_progress, items, dest_folder, total_files, progress_bar, progress_label)
-                            return
-                        else:
-                            progress_label.set_text("Selected subdirectory not found.")
-                    else:
-                        progress_label.set_text("Astronomy folder not found.")
+            fullDirPath = ""
+            lastDirPath = ""
+            directory = mtpDir.GetFolder
+            while directory:
+            
+                print(f"ParentFolder: {directory.ParentFolder}")
+                if directory.ParentFolder:
+                    lastDirPath = fullDirPath
+                    fullDirPath =  os.path.join(directory.Title, fullDirPath)
+                directory = directory.ParentFolder;
+            
+            print(f"fullDirPath: {fullDirPath}")
+            print(f"lastDirPath: {lastDirPath}")
+            return lastDirPath
 
         elif platform.system() in ["Linux", "Darwin"]:
-            return
-
-    # Function to copy files with progress tracking
-    def copy_files_with_progress(self, items, dest_folder, total_files, progress_bar, progress_label):
-        if not self.is_MTP_available():
-            progress_label.set_text("MTP not available on this system.")
-            log.warning("MTP is not available on this system.")
-            return
-
-        if platform.system() == "Windows":
-
-            for i, item in enumerate(items):
-                print(f"Copying: {item.Name}")
-                dest_folder.CopyHere(item)
-                progress = (i + 1) / total_files
-                update_progress(progress_bar, progress_label, progress, i + 1, total_files)
-
-        elif platform.system() in ["Linux", "Darwin"]:
-            return
-
-    # List Subdirectories in Astronomy Folder
-    def list_subdirectories(self, device_id):
-        if not self.is_MTP_available():
-            log.warning("MTP is not available on this system.")
-            return []
-
-        if platform.system() == "Windows":
-
-            for device in self.mtp_namespace.Items():
-                if device.Path == device_id:
-                    astronomy_folder = device.GetFolder.ParseName("MTP\\sdcard\\DWARF_II\\Astronomy")
-                    if not astronomy_folder:
-                        return []
-                    return [item.Name for item in astronomy_folder.GetFolder.Items() if item.IsFolder]
-
-        elif platform.system() in ["Linux", "Darwin"]:
-            return []
+            return ""
 
     def copy_folder_contents(self, folder, destination):
         if not self.is_MTP_available():
@@ -237,14 +187,13 @@ class MTPManager:
 
         if platform.system() == "Windows":
             os.makedirs(destination, exist_ok=True)
+            mtp_destination = self.get_folder_from_mtp(destination)
             for item in folder.GetFolder.Items():
                 if item.IsFolder:
                     copy_folder_contents(item, os.path.join(destination, item.Name))
                 else:
                     print(f"Copying: {item.Name}")
-                    temp_folder = os.path.join(os.getenv("TEMP"), item.Name)
-                    item.InvokeVerb("copy")
-                    shutil.copy(temp_folder, os.path.join(destination, item.Name))
+                    self.copy_file_from_mtp(item.Name, mtp_destination)
             return True
 
         elif platform.system() in ["Linux", "Darwin"]:
@@ -253,7 +202,8 @@ class MTPManager:
     # Debug: List Files in Selected Subdirectory
     def list_files_in_subdirectory(self, device_id, subdir_name, notification_label):
         if not self.is_MTP_available():
-            notification_label.set_text("MTP not available on this system.")
+            if notification_label:
+                notification_label.set_text("MTP not available on this system.")
             log.warning("MTP is not available on this system.")
             return
 
@@ -269,13 +219,26 @@ class MTPManager:
                             for item in subfolder.GetFolder.Items():  # Ensure we are accessing GetFolder
                                 file_list.append(item.Name)
                             if file_list:
-                                notification_label.set_text(f"Files in {subdir_name}: {', '.join(file_list)}")
+                                if notification_label:
+                                    notification_label.set_text(f"Files in {subdir_name}: {', '.join(file_list)}")
+                                else:
+                                    log.info(f"Files in {subdir_name}: {', '.join(file_list)}")
                             else:
-                                notification_label.set_text(f"No files found in {subdir_name}.")
+                                if notification_label:
+                                    notification_label.set_text(f"No files found in {subdir_name}.")
+                                else:
+                                    log.warning(f"No files found in {subdir_name}.")
                         else:
-                            notification_label.set_text("Subdirectory not found.")
+                            if notification_label:
+                                notification_label.set_text("Subdirectory not found.")
+                            else:
+                                log.warning("Subdirectory not found.")
                     else:
-                        notification_label.set_text("Astronomy folder not found.")
+                        if notification_label:
+                            notification_label.set_text("Astronomy folder not found.")
+                        else:
+                            log.error("Astronomy folder not found.")
 
         elif platform.system() in ["Linux", "Darwin"]:
             return False
+

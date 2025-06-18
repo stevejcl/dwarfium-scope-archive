@@ -26,6 +26,7 @@ class TransferApp:
         self.destination_input = {}
         self.notification_label = {}
         self.mtp = MTPManager()
+        self.dwarf_select = []
         self.build_ui()
 
     def build_ui(self):
@@ -37,6 +38,7 @@ class TransferApp:
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             ui.label("Connected MTP Devices:")
+            self.dwarf_select = []
             devices = self.mtp.list_mtp_devices()
             for name, path in devices:
                 print(f" device: {name}-{path}")
@@ -50,6 +52,7 @@ class TransferApp:
                         if dwarf_options:
                             ui.label("Dwarf:")
                             names = [name for _, name, _ in dwarf_options]
+                            self.dwarf_select.append(names[0])
                             ui.select(options=names,value=names[0]).props('outlined')
                     else:
                         ui.button("Save", on_click=lambda n=name, p=path: add_mtp_device_to_db(self.conn, n, p))
@@ -66,20 +69,25 @@ class TransferApp:
             self.notification_label = ui.label("Idle...")
 
             for device in devices:
+                is_visible = False
                 with ui.row().classes("items-center"):
-                    ui.label(f"{device[1]}")
                     dwarf_options = get_dwarf_mtp_drive(self.conn, device[2])
                     if dwarf_options:
                         names = [name for _, name, _ in dwarf_options]
-                        ui.select(options=names,value=names[0]).props('outlined')
-                subdirs = self.mtp.list_subdirectories(device[2])
-                if subdirs:
-                    ui.label("Select Directory")
-                    selected_subdir = ui.select(label="Please select", options=subdirs, on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[300px] w-auto overflow-x-auto whitespace-nowrap")
-                    progress_label = ui.label("Idle...")
-                    ui.button(f"Copy from {device[1]}", on_click=lambda d=device[2], sd = selected_subdir, pb=progress_bar, pl=progress_label: self.start_copy(d, sd.value, pb, pl))
-                else:
-                    ui.label("No subdirectories found in Astronomy folder.")
+                        # visible if connected
+                        if names[0] in self.dwarf_select:
+                            is_visible = True
+                            ui.label(f"{device[1]}")
+                            ui.select(options=names,value=names[0]).props('outlined')
+                if is_visible:
+                    subdirs = self.mtp.list_subdirectories(device[2])
+                    if subdirs:
+                        ui.label("Select Directory")
+                        selected_subdir = ui.select(label="Please select", options=subdirs, on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[300px] w-auto overflow-x-auto whitespace-nowrap")
+                        progress_label = ui.label("Idle...")
+                        ui.button(f"Copy from {device[1]}", on_click=lambda d=device[2], sd = selected_subdir, pb=progress_bar, pl=progress_label: self.start_copy(d, sd.value, pb, pl))
+                    else:
+                        ui.label("No subdirectories found in Astronomy folder.")
 
     def resize_input(self):
         ui.run_javascript(f'''
@@ -170,7 +178,7 @@ class TransferApp:
         self.notification_label.set_text("Copy...")
         for i, item in enumerate(list_files):
             print(f"Copying: {item.Name}")
-            dest_folder.CopyHere(item)
+            self.mtp.copy_file_from_mtp(item.Name, dest_folder)
             progress = round((i + 1) / total_files * 100)
             self.update_progress(progress_bar, progress_label, progress, i + 1, total_files)
 

@@ -3,7 +3,8 @@ from nicegui import native, app, run, ui
 import os
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
-from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, check_ftp_connection, connect_to_dwarf
+from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive
+from api.dwarf_backup_fct_ftp import check_ftp_connection, connect_to_dwarf
 
 from api.dwarf_backup_mtp_handler import MTPManager 
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
@@ -167,12 +168,16 @@ class ConfigApp:
         self.check_dir_dwarf()
         if not self.dwarf_ip_sta_mode.value:
             return
+        current_ip = self.dwarf_ip_sta_mode.value
+        status_text = "❌ Unable to check status."  # valeur par défaut
         try:
             self.ftp_spinner.visible = True
             status_text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode.value)
         finally:
-            self.ftp_spinner.visible = False
-            self.ftp_status_label.text = status_text  # Show the result
+            # Update only if the IP has not changed
+            if current_ip == self.dwarf_ip_sta_mode.value:
+                self.ftp_spinner.visible = False
+                self.ftp_status_label.text = status_text  # Show the result
 
     async def load_selected_dwarf(self, event):
         """Load data when a dwarf is selected from the dropdown."""
@@ -376,7 +381,7 @@ class ConfigApp:
         with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
             ui.label("🔍 Scanning Dwarf drive, please wait...")
             ui.spinner(size="lg")
-            log = ui.log(max_lines=15).classes('w-full').style('height: 250px; overflow: hidden;')
+            log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
         dialog.open()  # show the dialog
 

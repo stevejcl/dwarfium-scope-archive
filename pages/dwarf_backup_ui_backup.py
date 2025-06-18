@@ -291,7 +291,7 @@ class ConfigApp:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
 
             # Dialog to block interaction and show progress
-            with ui.dialog().props('persistent')  as dialog, ui.card():
+            with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
                 ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
                 ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')

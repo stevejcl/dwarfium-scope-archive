@@ -14,7 +14,8 @@ from api.dwarf_backup_db_api import (
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session,
-    get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files
+    get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files,
+	hours_to_hms, deg_to_dms
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.menu import menu
@@ -42,6 +43,7 @@ class ExploreApp:
         self.objects = []
         self.base_folder = None
         self.selected_object = None
+        self.selected_object_description = None
         self.preview_image_type = "jpg"
         self.astro_files = {}
         self.open_folder_icon = {}
@@ -206,6 +208,7 @@ class ExploreApp:
         print (f"Total objects: {len(self.objects)}")
         print (f"Total objects: {[f"{oid} - {name}" for oid, name in self.objects]}")
         self.selected_object = None
+        self.selected_object_description = None
         self.load_objects_ui()
 
     def load_objects_ui(self, init_view = True):
@@ -215,10 +218,20 @@ class ExploreApp:
             ui.item_label('List Objects').props('header').classes('text-bold')
             ui.separator()
             for oid, name in self.objects:
-                item = ui.item(name, on_click=lambda oid=oid, name=name: self._handle_object_click(oid, name))
+                name_object = name #name.split(" (")[0]
+                # Get before " (" if present
+                main_part = name.split(" (")[0]
+
+                # Get the last part that begins with " ["
+                bracket_pos = name.rfind(" [")
+                suffix = name[bracket_pos:] if bracket_pos != -1 else ""
+
+                name_object = (f"{main_part} {suffix}").strip()
+ 
+                item = ui.item(name_object, on_click=lambda oid=oid, name=name_object, desc=name : self._handle_object_click(oid, name, desc))
 
                 # Highlight if selected
-                if name == self.selected_object:
+                if name_object == self.selected_object:
                     item.classes('bg-primary text-white')  # Change background and text color
                 else:
                     item.classes('bg-transparent')  # Normal background
@@ -227,8 +240,9 @@ class ExploreApp:
         self.object_list.update()  # Refresh the list
         ui.update()  # Refresh the UI
 
-    def _handle_object_click(self, oid, name):
+    def _handle_object_click(self, oid, name, desc):
         self.selected_object = name 
+        self.selected_object_description = desc 
         self.select_object(oid)
         self.load_objects_ui()
 
@@ -388,6 +402,13 @@ class ExploreApp:
             #details.append(f"{show_date_session(row[7])}")
             session_dir = row[8]
             details.append(f"Session: {session_dir}")
+            init_target = row[13]
+            details.append(f"Dwarf Target: {init_target}")
+            if self.selected_object_description != init_target:
+                details.append(f"Classified as: {self.selected_object_description.rsplit(" [")[0]}")
+            declination = row[14]
+            right_ascencion = row[15]
+            details.append(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}")
 
             exp = f"{row[2]}s" if row[2] is not None else "N/A"
             gain = row[3] if row[3] is not None else "N/A"

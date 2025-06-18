@@ -21,8 +21,21 @@ from api.dwarf_backup_db import connect_db, close_db, commit_db
 from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data, set_dwarf_scan_date, set_backup_scan_date
 
-import ftplib
-from ftplib import FTP
+def hours_to_hms(ra_hours_str):
+    hours = float(ra_hours_str)
+    h = int(hours)
+    m = int((hours - h) * 60)
+    s = (hours - h - m / 60) * 3600
+    return f"{h:02d}h {m:02d}m {s:05.2f}s"
+
+def deg_to_dms(dec_deg_str):
+    dec_deg = float(dec_deg_str)
+    sign = "+" if dec_deg >= 0 else "-"
+    dec_deg = abs(dec_deg)
+    d = int(dec_deg)
+    m = int((dec_deg - d) * 60)
+    s = (dec_deg - d - m / 60) * 3600
+    return f"{sign}{d:02d}° {m:02d}′ {s:05.2f}″"
 
 def parse_shots_info(json_path, ftp=None):
     try:
@@ -243,50 +256,16 @@ def extract_astro_name_from_folder(folder_name: str) -> str | None:
     return None
 
 # Function to parse shotsInfo.json
-def extract_target_json(astro_path, ftp_conn=None):
+def extract_target_json(astro_path):
     json_path = os.path.join(astro_path, 'shotsInfo.json')
 
-    if ftp_conn:
-        try:
-            with ftp_conn.open(json_path, 'r') as file:
-                meta = json.load(file)
-        except:
-            meta = {}
+    if os.path.exists(json_path):
+        with open(json_path, 'r') as file:
+            meta = json.load(file)
     else:
-        if os.path.exists(json_path):
-            with open(json_path, 'r') as file:
-                meta = json.load(file)
-        else:
-            meta = {}
+        meta = {}
 
     return meta.get('target') if meta else None
-
-def check_ftp_connection(ip_address):
-    """Check FTP connection and determine if Dwarf2 or Dwarf3 is connected."""
-    if not ip_address:
-        return "❌ Please enter an IP address."
-
-    try:
-        with ftplib.FTP(ip_address) as ftp:
-            ftp.login()  # Anonymous login
-            # Check for Dwarf2 or Dwarf3 directory
-            dwarf2_path = "/DWARF_II/Astronomy"
-            dwarf3_path = "/Astronomy"
-
-            if dwarf2_path in ftp.nlst("/DWARF_II"):
-                return "✅ Connected to Dwarf2 FTP"
-            elif dwarf3_path in ftp.nlst("/"):
-                return "✅ Connected to Dwarf3 FTP"
-            else:
-                return "❌ Connected to FTP (not Dwarf)."
-
-    except ftplib.all_errors as e:
-        return f"❌ FTP Error: not connected"
-
-# Function to connect to Dwarf via FTP
-def connect_to_dwarf(ip_address, status_label):
-    status_message = check_ftp_connection(ip_address)
-    status_label.text = status_message
 
 def show_date_session(date_db):
     dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
@@ -299,7 +278,7 @@ def print_log(message, log):
     else:
         print(message)
 
-def determine_session_dir(data_root, session_dir_path):
+def determine_session_dir_ok(data_root, session_dir_path):
     # session_dir_path must be inside data_root"
     if not session_dir_path.startswith(data_root):
         return None, None
@@ -312,17 +291,35 @@ def determine_session_dir(data_root, session_dir_path):
 
     return session_dir_main_dir, is_session_dir
 
+def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
+    # session_dir_path must be inside data_root"
+    if not session_dir_path.startswith(data_root):
+        return None, None
+
+    # Normalize separators for FTP mode
+    if ftp_mode:
+        data_root = data_root.strip('/')
+        session_dir_path = session_dir_path.strip('/')
+        if not session_dir_path.startswith(data_root):
+            return None, False
+        relative_path = os.path.relpath('/' + session_dir_path, '/' + data_root)
+        sep = '/'
+    else:
+        if not session_dir_path.startswith(data_root):
+            return None, False
+        relative_path = os.path.relpath(session_dir_path, data_root)
+        sep = os.sep
+
+    session_dir_main_dir = relative_path.split(sep)[0]
+    session_dir = os.path.basename(session_dir_path)
+    is_session_dir = session_dir_main_dir == session_dir
+
+    return session_dir_main_dir, is_session_dir
+
 def check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
     if session_dir_main_dir:
-        if session_dir_main_dir and session_dir == os.path.basename(os.path.normpath(root)):
-            return True
-        else:
-            return False
-
-    elif not dirs and files:
-        return True
-    else:
-        return False
+        return session_dir == os.path.basename(os.path.normpath(root))
+    return not dirs and bool(files)
 
 def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None):
     if not db_name:
@@ -337,6 +334,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         data_root = os.path.join(backup_root, astronomy_dir)
     else:
         data_root = backup_root
+
     if not os.path.exists(data_root):
         print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
         return 0,0
@@ -412,6 +410,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 
         else:
             astro_name = astro_dir
+            print(f"astro_name: {astro_name}")
             # Traverse all folders below astro_path
             for root, dirs, files in os.walk(astro_path):
                 if check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
@@ -442,7 +441,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                                     print_log(f"add astro object : {check_target}",log)
                                 else:
                                     print_log(f"use astro object : {check_target}",log)
-                                found_data = True
+                                #found_data = True
                             else: # use Main AstroDir Name
                                 print(f"astro_object_id {astro_name}")
                                 astro_object_id, new = insert_astro_object(conn, astro_name)
@@ -509,7 +508,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     close_db(conn)
     return total_added, deleted
 
-def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, log=None):
+def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, log=None, ip_adress="", ftp_mode=False):
     if not db_name:
         print_log(f"❌ database name can not be empty!",log)
         return 0,0
@@ -535,10 +534,6 @@ def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup
         if not os.path.isdir(astro_path):
             continue
 
-        #subdirs = [
-        #    d for d in os.listdir(astro_path)
-        #    if os.path.isdir(os.path.join(astro_path, d)) and d != 'Thumbnail'
-        #]
         print_log(f"🔍 Processing Dir: {astro_dir}",log)
         print(f"astro_path Dir: {astro_path}")
         print(f"Processing Dir: {astro_dir}")
@@ -608,7 +603,7 @@ def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup
                                     print_log(f"add astro object : {check_target}",log)
                                 else:
                                     print_log(f"use astro object : {check_target}",log)
-                                found_data = True
+                                #found_data = True
                             else: # use Main AstroDir Name
                                 print(f"astro_object_id {astro_name}")
                                 astro_object_id, new = insert_astro_object(conn, astro_name)
@@ -639,7 +634,7 @@ def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup
             elif total_added != total_previous:
                 print_log(f"📂 Found {total_added - total_previous} new Sessions in {astro_dir}",log)
 
-        if not found_data:
+        if not found_data and astro_name != "RESTACKED":
             print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
 
     # delete data that are not more present

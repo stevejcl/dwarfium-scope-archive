@@ -7,8 +7,12 @@ import pages.dwarf_backup_ui_backup
 import pages.dwarf_backup_ui_explore
 import pages.dwarf_mtp_devices
 import pages.dwarf_transfer
+import pages.dwarf_transfer_ftp
+import pages.dwarf_dso_catalog
 
 from api.image_preview import serve_preview
+
+app.native.settings['ALLOW_DOWNLOADS'] = True
 
 @app.get('/preview/{file_path:path}')
 def preview_image(file_path: str):

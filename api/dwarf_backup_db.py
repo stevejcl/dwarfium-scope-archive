@@ -103,7 +103,7 @@ def init_db(conn):
                 FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
                 FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
                 FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id),
-                UNIQUE("dwarf_id", "astro_object_id", "dwarf_data_id")
+                UNIQUE("backup_drive_id", "dwarf_id", "dwarf_data_id")
             )
         """)
         cursor.execute("""
@@ -118,7 +118,7 @@ def init_db(conn):
                 FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
                 FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
                 FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id)
-                UNIQUE("dwarf_id", "astro_object_id", "dwarf_data_id")
+                UNIQUE("dwarf_id", "dwarf_data_id")
             )
         """)
         cursor.execute("""
@@ -134,6 +134,42 @@ def init_db(conn):
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_dwarfentry_session_dir ON DwarfEntry(session_dir);
         """)
+        # Create table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS DsoCatalog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                designation TEXT UNIQUE,
+                displayName TEXT,
+                catalogue TEXT,
+                objectNumber INTEGER,
+                type TEXT,
+                typeCategory TEXT,
+                ra TEXT,
+                dec TEXT,
+                magnitude REAL,
+                constellation TEXT,
+                size TEXT,
+                notes TEXT,
+                favorite BOOLEAN,
+                alternateNames TEXT
+            )
+        """)
+        cursor.execute("""
+          CREATE INDEX IF NOT EXISTS idx_catalogue ON DsoCatalog(catalogue);
+        """)
+        cursor.execute("""
+          CREATE INDEX IF NOT EXISTS idx_type ON DsoCatalog(type);
+        """)
+        cursor.execute("""
+          CREATE INDEX IF NOT EXISTS idx_constellation ON DsoCatalog(constellation);
+        """)
+        # Check if the table is empty
+        cursor.execute("SELECT COUNT(*) FROM DsoCatalog")
+        row_count = cursor.fetchone()[0]
+
+        if row_count == 0:
+            import_dso_catalog(conn)
+
         conn.commit()
 
     except Exception as e:
@@ -183,4 +219,66 @@ def get_astro_object_summary(conn):
 
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch astro object summary: {e}")
+        return []
+
+import json
+def import_dso_catalog(conn):
+    try:
+        cursor = conn.cursor()
+
+        with open('./db/dso_catalog.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+            for obj in data:
+                cursor.execute("""
+                    INSERT INTO DsoCatalog (
+                        designation, displayName, catalogue, objectNumber,
+                        type, typeCategory, ra, dec, magnitude,
+                        constellation, size, notes, favorite, alternateNames
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(designation) DO UPDATE SET
+                        displayName=excluded.displayName,
+                        catalogue=excluded.catalogue,
+                        objectNumber=excluded.objectNumber,
+                        type=excluded.type,
+                        typeCategory=excluded.typeCategory,
+                        ra=excluded.ra,
+                        dec=excluded.dec,
+                        magnitude=excluded.magnitude,
+                        constellation=excluded.constellation,
+                        size=excluded.size,
+                        notes=excluded.notes,
+                        favorite=excluded.favorite,
+                        alternateNames=excluded.alternateNames
+                """, (
+                    obj.get('designation'),
+                    obj.get('displayName'),
+                    obj.get('catalogue'),
+                    obj.get('objectNumber'),
+                    obj.get('type'),
+                    obj.get('typeCategory'),
+                    obj.get('ra'),
+                    obj.get('dec'),
+                    obj.get('magnitude'),
+                    obj.get('constellation'),
+                    obj.get('size'),
+                    obj.get('notes'),
+                    int(obj.get('favorite', False)),
+                    obj.get('alternateNames')
+                ))
+
+            conn.commit()
+
+            # Check inserted data
+            cursor.execute("SELECT COUNT(*) FROM DsoCatalog")
+            row_count = cursor.fetchone()[0]
+            if row_count == 0:
+                print(f" no object found in DSO catalog")
+            elif row_count == 1:
+                print(f" {row_count} object has been inserted in DSO catalog")
+            else:
+                print(f" {row_count} objects have been inserted in DSO catalog")
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to insert dso_catalog: {e}")
         return []

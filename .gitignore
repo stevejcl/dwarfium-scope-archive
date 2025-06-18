@@ -13,3 +13,5 @@ dwarf_backup.db
 *.pyc
 *.pyc
 /MTP_Downloads
+/.nicegui
+*.pyc

@@ -60,6 +60,16 @@ class TransferApp:
     def switch_mode(self):
         self.mode = self.mode_toggle.value
         print(self.mode)
+
+        input_src_value = self.input_src_dir.value
+        input_dest_value = self.input_dest_dir.value
+
+        self.input_src_dir.value = input_dest_value
+        self.src_main_dir = input_dest_value
+
+        self.input_dest_dir.value = input_src_value
+        self.dest_main_dir = input_src_value
+
         self.set_mode_UI()
         self.main_ui.update()
 
@@ -71,12 +81,12 @@ class TransferApp:
 
             with ui.grid(columns=2):
                 with ui.column():
-                    ui.label("Dwarf:")
+                    ui.label("Select Dwarf:").classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
                     self.usb_status_label = ui.label("").classes('pb-2')
 
                 with ui.column():
-                    ui.label("Backup Drive:")
+                    ui.label("Backup Drive:").classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[]).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
 

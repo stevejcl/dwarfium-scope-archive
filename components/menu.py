@@ -27,7 +27,9 @@ def menu(title):
                 ui.menu_item('Backup Setting', on_click=lambda: ui.navigate.to('/Backup'))
                 ui.menu_item('Explore', on_click=lambda: ui.navigate.to('/Explore'))
                 ui.menu_item('Transfer', on_click=lambda: ui.navigate.to('/Transfer'))
+                ui.menu_item('TransferFtp', on_click=lambda: ui.navigate.to('/TransferFtp'))
                 ui.menu_item('MtpDevice', on_click=lambda: ui.navigate.to('/MtpDevice'))
+                ui.menu_item('Catalog', on_click=lambda: ui.navigate.to('/Catalog'))
                 ui.menu_item('Dark Mode', on_click=lambda: dark_mode())
                 ui.menu_item('Light Mode', on_click=lambda: light_mode())
 
