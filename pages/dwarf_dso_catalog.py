@@ -31,11 +31,11 @@ class CatalogApp:
             ui.label('🔭 AstroObject to DSO Association').classes('text-2xl')
             ui.button('Export Associations to CSV', on_click=self.on_export_click).classes('my-4')
 
-            columns = [
-                {'name': 'id', 'label': 'ID', 'field': 'id'},
-                {'name': 'name', 'label': 'Name', 'field': 'name'},
-                {'name': 'description', 'label': 'Description', 'field': 'description'},
-                {'name': 'dso', 'label': 'DSO', 'field': 'dso'},
+            columns=[
+                {'name': 'id', 'label': 'ID', 'field': 'id', 'sortable': True},
+                {'name': 'name', 'label': 'Name', 'field': 'name', 'sortable': True},
+                {'name': 'description', 'label': 'Description', 'field': 'description', 'sortable': True},
+                {'name': 'dso', 'label': 'DSO', 'field': 'dso', 'sortable': True},
                 {'name': 'actions', 'label': 'Actions', 'field': 'actions'},
             ]
 

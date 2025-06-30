@@ -3,6 +3,7 @@ import sys
 import sqlite3
 import json
 import hashlib
+import shutil
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -22,6 +23,8 @@ from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_ast
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data, set_dwarf_scan_date, set_backup_scan_date
 
 def hours_to_hms(ra_hours_str):
+    if any(x in ra_hours_str for x in ["h", "m", "s"]):
+        return ra_hours_str  # Already formatted
     hours = float(ra_hours_str)
     h = int(hours)
     m = int((hours - h) * 60)
@@ -29,6 +32,8 @@ def hours_to_hms(ra_hours_str):
     return f"{h:02d}h {m:02d}m {s:05.2f}s"
 
 def deg_to_dms(dec_deg_str):
+    if any(x in dec_deg_str for x in ["°", "′", "″"]):
+        return dec_deg_str  # Already formatted
     dec_deg = float(dec_deg_str)
     sign = "+" if dec_deg >= 0 else "-"
     dec_deg = abs(dec_deg)
@@ -58,6 +63,14 @@ def parse_shots_info(json_path, ftp=None):
             with open(json_path, 'r', encoding='utf-8') as f:
                 raw = json.load(f)
 
+        shotsToTake = raw.get("shotsToTake")
+        shotsTaken = raw.get("shotsTaken")
+        # case RESTACKED
+        if raw.get("shotsToStack"):
+            shotsToTake = raw.get("shotsToStack")
+            if raw.get("shotsDiscard"):
+                shotsTaken = shotsToTake - raw.get("shotsDiscard")
+
         return {
             "dec": str(raw.get("DEC")),
             "ra": str(raw.get("RA")),
@@ -66,8 +79,8 @@ def parse_shots_info(json_path, ftp=None):
             "format": raw.get("format"),
             "exp_time": str(raw.get("exp")) if raw.get('exp') is not None else None,
             "gain": raw.get("gain"),
-            "shotsToTake": raw.get("shotsToTake"),
-            "shotsTaken": raw.get("shotsTaken"),
+            "shotsToTake": shotsToTake,
+            "shotsTaken": shotsTaken,
             "shotsStacked": raw.get("shotsStacked"),
             "ircut": raw.get("ir"),
             "maxTemp": raw.get("maxTemp"),
@@ -125,12 +138,31 @@ def compute_md5(filepath):
                 while chunk := conn.recv(4096):
                     hash_md5.update(chunk)
     else:
-        long_path = f"\\\\?\\{os.path.abspath(filepath)}"
-        with open(long_path, "rb") as f:
+        with open(win_long_path(filepath), "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_md5.update(chunk)
 
     return hash_md5.hexdigest()
+
+def files_are_different(src, dst, check_md5):
+    if not os.path.exists(dst):
+        return True
+    if os.path.getsize(src) != os.path.getsize(dst):
+        return True
+    if int(os.path.getmtime(src)) != int(os.path.getmtime(dst)):
+        return True
+    if check_md5 and compute_md5(src) != compute_md5(dst): return True
+    return False
+
+def win_long_path(filepath):
+    if os.name == 'nt':
+        filepath_str = str(filepath)
+        if filepath_str.startswith('\\\\?\\'):
+            return filepath_str  # already in long path format
+        else:
+            return '\\\\?\\' + os.path.abspath(filepath_str)
+    else:
+        return str(filepath)
 
 def get_or_create_dwarf_id(conn, dwarf_id=None, batch_mode=False, default_name="Default Dwarf", default_description="Auto-created"):
 
@@ -278,18 +310,75 @@ def print_log(message, log):
     else:
         print(message)
 
-def determine_session_dir_ok(data_root, session_dir_path):
-    # session_dir_path must be inside data_root"
-    if not session_dir_path.startswith(data_root):
-        return None, None
+def create_local_dwarf_dir():
+    result = False
 
-    relative_path = os.path.relpath(session_dir_path, data_root)
-    session_dir_main_dir = relative_path.split(os.sep)[0]
+    DwarfLocal_dir = get_local_dwarf_dir()
+    try:
+        os.makedirs(DwarfLocal_dir, exist_ok=True)
+        return DwarfLocal_dir
+    except Exception as e:
+        print(f"❌ Failed to create directory: {e}")
+        return False
 
-    session_dir = os.path.basename(session_dir_path)
-    is_session_dir = session_dir_main_dir == session_dir
+def get_local_dwarf_dir(dwarf_id = None):
+    local_Main_Dwarf_dir = os.path.join(".", "Dwarf_Local")
+    if dwarf_id:
+        local_Dwarf_dir = os.path.join(local_Main_Dwarf_dir, f"DWARF_{dwarf_id}")
+        return local_Dwarf_dir
+    else:
+        return local_Main_Dwarf_dir
 
-    return session_dir_main_dir, is_session_dir
+def is_path_local_dwarf_dir(full_path):
+    return "Dwarf_Local" in str(full_path)
+
+def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local",log=None):
+    dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
+    archive_dir = os.path.join(dwarf_dir, "Archive")
+    os.makedirs(archive_dir, exist_ok=True)
+
+    session_dirs = [
+        d for d in os.listdir(source_root)
+        if os.path.isdir(os.path.join(source_root, d))
+    ]
+
+    local_sessions = [
+        d for d in os.listdir(dwarf_dir)
+        if os.path.isdir(os.path.join(dwarf_dir, d)) and d != "Archive"
+    ]
+
+    print_log(f"\n🔄 Syncing {len(session_dirs)} sessions from source...\n", log)
+
+    for session in session_dirs:
+        print_log(f"✅ Checking local session {session}.", log)
+        src_session = os.path.join(source_root, session)
+        dst_session = os.path.join(dwarf_dir, session)
+        os.makedirs(dst_session, exist_ok=True)
+
+        for file_name in os.listdir(src_session):
+            if file_name.startswith("stacked") or file_name == "shotsInfo.json":
+                src_file = win_long_path(os.path.join(src_session, file_name))
+                dst_file = win_long_path(os.path.join(dst_session, file_name))
+                if files_are_different(src_file, dst_file, file_name == "shotsInfo.json"):
+                    print(f"📥 Copying {file_name} to {session}...")
+                    print_log(f"📥 Copying {file_name} to {session}...", log)
+                    shutil.copy2(src_file, dst_file)
+                else:
+                    print(f"✅ Skipping {file_name} (unchanged)")
+                    print_log(f"✅ Skipping {file_name} (unchanged)", log)
+
+    print("\n✅ Copy complete.")
+
+    # Archive removed sessions
+    removed_sessions = set(local_sessions) - set(session_dirs)
+    for session in removed_sessions:
+        src_path = os.path.join(dwarf_dir, session)
+        dst_path = os.path.join(archive_dir, session)
+        print_log(f"📦 Archiving removed session: {session}", log)
+        shutil.move(src_path, dst_path)
+
+    print_log("\n✅ Sync complete.", log)
+    print("\n✅ Sync complete.")
 
 def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
     # session_dir_path must be inside data_root"
@@ -335,8 +424,9 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     else:
         data_root = backup_root
 
-    if not os.path.exists(data_root):
-        print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
+    if not data_root or not os.path.exists(data_root):
+        if data_root:
+            print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
         return 0,0
 
     # Scan only one session dir
@@ -355,6 +445,10 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     deleted = 0
 
     for astro_dir in os.listdir(data_root):
+        if astro_dir == "Archive":
+            print(f"🔍 Skip: {astro_dir}")
+            continue
+
         astro_path = os.path.join(data_root, astro_dir)
         if not os.path.isdir(astro_path):
             continue
@@ -365,7 +459,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         if session_dir_main_dir:
             if is_session_dir:
                 print_log(f"🔍 Processing Session Dir: {session_dir}",log)
-                print(f"🔍 Processing Session Dir: {session_dir}",log)
+                print(f"🔍 Processing Session Dir: {session_dir}")
 
         else:
             print_log(f"🔍 Processing Dir:",log)
@@ -809,7 +903,7 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
             data_ids.add(data_id)
     return added, data_ids
 
-def get_Backup_fullpath (location, subdir, filename):
+def get_Backup_fullpath (location, subdir, filename, dwarf_id = None):
     full_path = ""
     if location:
         full_path = location
@@ -821,6 +915,12 @@ def get_Backup_fullpath (location, subdir, filename):
         full_path = os.path.join(full_path, filename)
     else:
         full_path = filename
+
+    # use local_copy if not connected
+    if not os.path.isdir(os.path.dirname(full_path)) and dwarf_id:
+        local_Dwarf_dir = get_local_dwarf_dir(dwarf_id)
+        test_path = os.path.join(local_Dwarf_dir, filename)
+        full_path = test_path if os.path.isdir(os.path.dirname(test_path)) else full_path
 
     return full_path
 
@@ -911,6 +1011,14 @@ def count_failed_tiff_files(directory):
         1 for f in os.listdir(directory)
         if f.endswith('.tiff') and f.startswith('failed_')
     )
+
+def get_total_exposure(fits_file):
+    try:
+        with fits.open(fits_file) as hdul:
+            return float(hdul[0].header.get("EXPTIME", 0))
+    except Exception as e:
+        print(f"Error reading EXPTIME from {fits_file}: {e}")
+        return 0
 
 def generate_fits_preview1(fits_path: str) -> str:
     try:

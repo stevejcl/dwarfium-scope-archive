@@ -20,7 +20,9 @@ def menu(title):
     with ui.row().classes('w-full items-center'):
         ui.label(title).classes("text-2xl font-bold my-2 mr-auto")
 
-        with ui.button(icon='menu'):
+        #ui.button('Dwarf Connect').classes('text-sm')
+
+        with ui.button(icon='menu').classes('text-sm ml-auto'):
             with ui.menu():
                 ui.menu_item('Home', on_click=lambda: ui.navigate.to('/'))
                 ui.menu_item('Dwarfs Settings', on_click=lambda: ui.navigate.to('/Dwarf'))

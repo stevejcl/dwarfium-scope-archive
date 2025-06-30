@@ -6,3 +6,4 @@ PyInstaller
 opencv-python-headless
 auto_stretch
 nicegui
+asyncssh

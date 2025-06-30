@@ -16,22 +16,22 @@ from components.win_log import WinLog
 from components.menu import menu, setStyle
 
 @ui.page('/Backup')
-def backup_settings():
+def backup_settings(BackupId:int = None):
 
     menu("Backup Backup Configuration")
 
     # Launch the GUI
-    ConfigApp(DB_NAME)
+    ConfigApp(DB_NAME, BackupId=BackupId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class ConfigApp:
-    def __init__(self, database):
+    def __init__(self, database, BackupId=None):
         self.database = database
         self.dwarfs = []
 
         self.dwarf_id = None
         self.backupDrives = []
-        self.backupDrive_id = None
+        self.backupDrive_id = BackupId
         self.backup_scan_date = None
 
         self.WinLog = WinLog()
@@ -125,7 +125,12 @@ class ConfigApp:
             except (ValueError, IndexError):
                 selected_id = None
 
-            if self.backupDrive_id and selected_id != self.backupDrive_id:
+            if self.backupDrive_id and not self.backupDrive_selector.value:
+                selected_value = next((name for id, name, *_  in self.backupDrives if id == self.backupDrive_id), None)
+                print(selected_value)
+                selected_display = f"{self.backupDrive_id} - {selected_value}" if selected_value else display_names[0]
+                self.backupDrive_selector.set_options(options, value=selected_display)
+            elif self.backupDrive_id and selected_id != self.backupDrive_id:
                 selected_value = next((name for id, name, *_ in self.backupDrives if id == self.backupDrive_id), None)
                 selected_display = f"{self.backupDrive_id} - {selected_value}" if selected_value else options[0]
                 self.backupDrive_selector.set_options(options, value=selected_display)
@@ -356,5 +361,7 @@ class ConfigApp:
         if self.backupDrive_id is None:
             explore_url = f"/Explore?mode=backup"
         else:
-            explore_url = f"/Explore?BackupDriveId={self.backupDrive_id}&mode=backup"
+            back_url = f"/Backup?BackupId="
+            explore_url = f"/Explore?BackupDriveId={self.backupDrive_id}&mode=backup&back_url={back_url}"
+        print(explore_url)
         return explore_url

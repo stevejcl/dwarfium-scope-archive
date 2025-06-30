@@ -295,7 +295,8 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                     WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
-                END AS display_name
+                END AS display_name,
+                AstroObject.dso_id
             FROM AstroObject
             JOIN BackupEntry ON BackupEntry.astro_object_id = AstroObject.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
@@ -322,7 +323,7 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                 params.append(dwarf_id)
 
             if only_on_backup and not only_on_dwarf:
-                # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
+                # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
                 conditions.append("""
                     BackupEntry.session_dir NOT IN (
                         SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
@@ -343,6 +344,76 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
         print(f"[DB ERROR] Failed to fetch get_Objects_backup: {e}")
         return []
 
+def get_Objects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+    try:
+        cursor = conn.cursor()
+
+        query = """
+            SELECT DISTINCT 
+                AstroObject.id, 
+                CASE 
+                    WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
+                    THEN AstroObject.description || ' [' || AstroObject.name || ']' 
+                    ELSE AstroObject.name 
+                END AS display_name,
+                AstroObject.dso_id
+            FROM AstroObject
+            JOIN BackupEntry ON BackupEntry.astro_object_id = AstroObject.id
+            JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+            JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+        """
+        conditions = []
+        params = []
+
+        # Filter Duplicates Sessions
+        conditions.append("""
+            BackupEntry.session_dir IN (
+                SELECT session_dir
+                FROM BackupEntry
+                GROUP BY session_dir
+                HAVING COUNT(*) > 1
+            ) 
+        """)
+
+        if backup_drive_id:
+            conditions.append("BackupEntry.backup_drive_id = ?")
+            params.append(backup_drive_id)
+
+        if dwarf_id:  # not "(All Dwarfs)"
+            conditions.append("BackupEntry.dwarf_id = ?")
+            params.append(dwarf_id)
+
+            if only_on_dwarf and not only_on_backup:
+                # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+            if only_on_backup and not only_on_dwarf:
+                # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir NOT IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY display_name"
+
+        cursor.execute(query, params)
+
+        return cursor.fetchall()
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_Objects_duplicate_backup: {e}")
+        return []
+
 def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
@@ -354,7 +425,8 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
                     WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
-                END AS display_name
+                END AS display_name,
+                AstroObject.dso_id
             FROM AstroObject
             JOIN DwarfEntry ON DwarfEntry.astro_object_id = AstroObject.id
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
@@ -394,7 +466,7 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
         return cursor.fetchall()
 
     except Exception as e:
-        print(f"[DB ERROR] Failed to fetch get_Objects_backup: {e}")
+        print(f"[DB ERROR] Failed to fetch get_Objects_dwarf: {e}")
         return []
 
 def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
@@ -444,7 +516,67 @@ def get_countObjects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwar
         return cursor.fetchone()[0]
 
     except Exception as e:
-        print(f"[DB ERROR] Failed to fetch get_Objects_backup: {e}")
+        print(f"[DB ERROR] Failed to fetch get_countObjects_backup: {e}")
+        return []
+
+def get_countObjects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+    try:
+        cursor = conn.cursor()
+
+        query = """
+                SELECT COUNT(*)
+                FROM BackupEntry
+                JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+                JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+        """
+        conditions = []
+        params = []
+
+        # Filter Duplicates Sessions
+        conditions.append("""
+            BackupEntry.session_dir IN (
+                SELECT session_dir
+                FROM BackupEntry
+                GROUP BY session_dir
+                HAVING COUNT(*) > 1
+            ) 
+        """)
+
+        if backup_drive_id:
+            conditions.append("BackupEntry.backup_drive_id = ?")
+            params.append(backup_drive_id)
+
+        if dwarf_id:  # not "(All Dwarfs)"
+            conditions.append("BackupEntry.dwarf_id = ?")
+            params.append(dwarf_id)
+
+            if only_on_dwarf and not only_on_backup:
+                # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+            if only_on_backup and not only_on_dwarf:
+                # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
+                conditions.append("""
+                    BackupEntry.session_dir NOT IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        cursor.execute(query, params)
+
+        return cursor.fetchone()[0]
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_countObjects_duplicate_backup: {e}")
         return []
 
 def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
@@ -492,7 +624,7 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwar
         print(f"[DB ERROR] Failed to fetch get_countObjects_dwarf: {e}")
         return []
 
-def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -518,22 +650,34 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_d
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN Dwarf ON BackupDrive.dwarf_id = Dwarf.id
-            WHERE BackupEntry.astro_object_id = ?
         """
-        conditions = []
-        params = [object_id]
+
+        where_clauses = []
+        params = []
+
+        if object_id is not None:
+            where_clauses.append("BackupEntry.astro_object_id = ?")
+            params.append(object_id)
+
+        elif dso_id is not None:
+            where_clauses.append("""
+                BackupEntry.astro_object_id IN (
+                    SELECT id FROM AstroObject WHERE dso_id = ?
+                )
+            """)
+            params.append(dso_id)
 
         if backup_drive_id:
-            conditions.append("BackupEntry.backup_drive_id = ?")
+            where_clauses.append("BackupEntry.backup_drive_id = ?")
             params.append(backup_drive_id)
 
         if dwarf_id:  # not "(All Dwarfs)"
-            conditions.append("BackupEntry.dwarf_id = ?")
+            where_clauses.append("BackupEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
             if only_on_dwarf and not only_on_backup:
                 # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
-                conditions.append("""
+                where_clauses.append("""
                     BackupEntry.session_dir IN (
                         SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
                     )
@@ -542,15 +686,15 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_d
 
             if only_on_backup and not only_on_dwarf:
                 # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
-                conditions.append("""
+                where_clauses.append("""
                     BackupEntry.session_dir NOT IN (
                         SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
                     )
                 """)
                 params.append(dwarf_id)
 
-        if conditions:
-            query += " AND " + " AND ".join(conditions)
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
 
         query += " ORDER BY BackupEntry.session_date DESC"
 
@@ -560,6 +704,98 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, backup_d
 
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_backup: {e}")
+        return []
+
+def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None, dso_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+    try:
+        cursor = conn.cursor()
+
+        query = """
+            SELECT 
+                DwarfData.id,
+                DwarfData.file_path,
+                DwarfData.exp_time,
+                DwarfData.gain,
+                DwarfData.ircut,
+                DwarfData.shotsStacked,
+                BackupDrive.location,
+                BackupEntry.session_date,
+                BackupEntry.session_dir,
+                Dwarf.name,
+                DwarfData.minTemp,
+                DwarfData.maxTemp,
+                BackupEntry.favorite,
+                DwarfData.target,
+                DwarfData.dec,
+                DwarfData.ra
+            FROM BackupEntry
+            JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+            JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+            JOIN Dwarf ON BackupDrive.dwarf_id = Dwarf.id
+        """
+
+        where_clauses = []
+        params = []
+
+        # Filter Duplicates Sessions
+        where_clauses.append("""
+            BackupEntry.session_dir IN (
+                SELECT session_dir
+                FROM BackupEntry
+                GROUP BY session_dir
+                HAVING COUNT(*) > 1
+            ) 
+        """)
+
+        if object_id is not None:
+            where_clauses.append("BackupEntry.astro_object_id = ?")
+            params.append(object_id)
+
+        elif dso_id is not None:
+            where_clauses.append("""
+                BackupEntry.astro_object_id IN (
+                    SELECT id FROM AstroObject WHERE dso_id = ?
+                )
+            """)
+            params.append(dso_id)
+
+        if backup_drive_id:
+            where_clauses.append("BackupEntry.backup_drive_id = ?")
+            params.append(backup_drive_id)
+
+        if dwarf_id:  # not "(All Dwarfs)"
+            where_clauses.append("BackupEntry.dwarf_id = ?")
+            params.append(dwarf_id)
+
+            if only_on_dwarf and not only_on_backup:
+                # Filter BackupEntry to only those with session_dir present in DwarfEntry for same dwarf
+                where_clauses.append("""
+                    BackupEntry.session_dir IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+            if only_on_backup and not only_on_dwarf:
+                # Filter BackupEntry to only those with session_dir not present in DwarfEntry for same dwarf
+                where_clauses.append("""
+                    BackupEntry.session_dir NOT IN (
+                        SELECT session_dir FROM DwarfEntry WHERE dwarf_id = ?
+                    )
+                """)
+                params.append(dwarf_id)
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        query += " ORDER BY BackupEntry.session_date DESC"
+
+        cursor.execute(query, params)
+
+        return cursor.fetchall()
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_ObjectSelect_duplicate_backup: {e}")
         return []
 
 def toggle_favorite(conn: sqlite3.Connection, entry_id, label_element, mode):
@@ -582,7 +818,7 @@ def toggle_favorite(conn: sqlite3.Connection, entry_id, label_element, mode):
         print(f"[DB ERROR] Failed to toggle_favorite: {e}")
         return 0
 
-def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
     try:
         cursor = conn.cursor()
 
@@ -607,18 +843,30 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=
             FROM DwarfEntry
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
             JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
-            WHERE DwarfEntry.astro_object_id = ?
         """
-        conditions = []
-        params = [object_id]
+
+        where_clauses = []
+        params = []
+
+        if object_id is not None:
+            where_clauses.append("DwarfEntry.astro_object_id = ?")
+            params.append(object_id)
+
+        elif dso_id is not None:
+            where_clauses.append("""
+                DwarfEntry.astro_object_id IN (
+                    SELECT id FROM AstroObject WHERE dso_id = ?
+                )
+            """)
+            params.append(dso_id)
 
         if dwarf_id:  # not "(All Dwarfs)"
-            conditions.append("DwarfEntry.dwarf_id = ?")
+            where_clauses.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
             if only_on_dwarf and not only_on_backup:
                 # Filter DwarfEntry to only those with session_dir not present in BackupEntry for same dwarf
-                conditions.append("""
+                where_clauses.append("""
                     DwarfEntry.session_dir NOT IN (
                         SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
                     )
@@ -627,15 +875,15 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dwarf_id=
 
             if only_on_backup and not only_on_dwarf:
                 # Filter DwarfEntry to only those with session_dir present in BackupEntry for same dwarf
-                conditions.append("""
+                where_clauses.append("""
                     DwarfEntry.session_dir IN (
                         SELECT session_dir FROM BackupEntry WHERE dwarf_id = ?
                     )
                 """)
                 params.append(dwarf_id)
 
-        if conditions:
-            query += " AND " + " AND ".join(conditions)
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
 
         cursor.execute(query, params)
 
@@ -1115,12 +1363,6 @@ def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf
 def get_astro_objects(conn: sqlite3.Connection):
     with conn:
         return conn.execute('SELECT id, name, description, dso_id FROM AstroObject').fetchall()
-
-def get_dso_name(conn: sqlite3.Connection, dso_id):
-    with conn:
-        result = conn.execute('SELECT designation FROM DsoCatalog WHERE id = ?', (dso_id,)).fetchone()
-        return result[0] if result else None
-
 
 def get_dso_name(conn: sqlite3.Connection, dso_id):
     with conn:

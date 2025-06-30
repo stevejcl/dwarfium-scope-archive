@@ -4,12 +4,17 @@ from ftplib import FTP
 
 from contextlib import contextmanager
 
+from api.dwarf_backup_fct import print_log
+
+DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
+DWARF3_FTP_PATH = "/Astronomy"
+
 @contextmanager
 def ftp_conn(ip_address):
     ftp = ftplib.FTP()
     try:
         ftp.connect(ip_address)
-        ftp.login()  # Anonymous
+        ftp.login()  # Anonymous login
         yield ftp
     finally:
         try:
@@ -23,8 +28,8 @@ def get_ftp_astroDir(ip_address):
 
     try:
         with ftp_conn(ip_address) as ftp:
-            dwarf2_path = "/DWARF_II/Astronomy"
-            dwarf3_path = "/Astronomy"
+            dwarf2_path = DWARF2_FTP_PATH
+            dwarf3_path = DWARF3_FTP_PATH
 
             if dwarf2_path in ftp.nlst("/DWARF_II"):
                 return dwarf2_path
@@ -41,10 +46,10 @@ def list_ftp_subdirectories(ip_address):
 
     try:
         with ftp_conn(ip_address) as ftp:
-            if "/DWARF_II/Astronomy" in ftp.nlst("/DWARF_II"):
-                return ftp.nlst("/DWARF_II/Astronomy")
-            elif "/Astronomy" in ftp.nlst("/"):
-                return ftp.nlst("/Astronomy")
+            if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
+                return ftp.nlst(DWARF2_FTP_PATH)
+            elif DWARF3_FTP_PATH in ftp.nlst("/"):
+                return ftp.nlst(DWARF3_FTP_PATH)
     except ftplib.all_errors:
         pass
 
@@ -64,9 +69,9 @@ def check_ftp_connection(ip_address):
 
     try:
         with ftp_conn(ip_address) as ftp:
-            if "/DWARF_II/Astronomy" in ftp.nlst("/DWARF_II"):
+            if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
                 return "✅ Connected to Dwarf2 FTP"
-            elif "/Astronomy" in ftp.nlst("/"):
+            elif DWARF3_FTP_PATH in ftp.nlst("/"):
                 return "✅ Connected to Dwarf3 FTP"
             else:
                 return "❌ Connected to FTP (not Dwarf)."
@@ -143,9 +148,81 @@ def ftp_download_file(ftp, remote_path, local_path):
         ftp.retrbinary(f"RETR {remote_path}", f.write)
 
 # --- Upload file from local to FTP ---
+# not working as READ ONLY need sftp on DWARF 2 only
 def ftp_upload_file(ftp, local_path, remote_path):
     with open(local_path, 'rb') as f:
         ftp.storbinary(f"STOR {remote_path}", f)
+
+def files_are_different(dst, size):
+    if not os.path.exists(dst):
+        return True
+    if os.path.getsize(dst) != size:
+        return True
+    return False
+
+def safe_path(path):
+    abspath = os.path.abspath(path)
+    if os.name == 'nt':
+        return f"\\\\?\\{abspath}"
+    return abspath
+
+def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_root="./Dwarf_Local", log=None):
+    dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
+    archive_dir = os.path.join(dwarf_dir, "Archive")
+    os.makedirs(archive_dir, exist_ok=True)
+
+    ftp.cwd(source_root)
+    sessions = ftp.nlst()
+
+    local_sessions = [
+        d for d in os.listdir(dwarf_dir)
+        if os.path.isdir(os.path.join(dwarf_dir, d)) and d != "Archive"
+    ]
+
+    print_log(f"🔄 Syncing {len(sessions)} sessions from FTP...", log)
+
+    for session in sessions:
+        remote_session_path = f"{source_root}/{session}"
+        dst_session = os.path.join(dwarf_dir, session)
+        os.makedirs(dst_session, exist_ok=True)
+
+        ftp.cwd(remote_session_path)
+        files = ftp.nlst()
+        for file_name in files:
+            if file_name.startswith("stacked") or file_name == "shotsInfo.json":
+                local_file_path = safe_path(os.path.join(dst_session, file_name))
+
+                # Get size from FTP (needed to compare)
+                size = ftp.size(file_name)
+
+                if files_are_different(local_file_path, size):
+                    print_log(f"📥 Downloading {file_name} from {session}...", log)
+                    with open(local_file_path, 'wb') as f:
+                        ftp.retrbinary(f"RETR {file_name}", f.write)
+                else:
+                    print_log(f"✅ Skipping {file_name} (unchanged)", log)
+
+    # Archive removed sessions
+    removed_sessions = set(local_sessions) - set(sessions)
+    for session in removed_sessions:
+        src_path = os.path.join(dwarf_dir, session)
+        dst_path = os.path.join(archive_dir, session)
+        print_log(f"📦 Archiving removed session: {session}", log)
+        shutil.move(src_path, dst_path)
+
+    print_log("✅ FTP sync complete.", log)
+
+
+
+
+
+
+
+
+
+
+
+
 
 # --- Ensure remote FTP path exists (optional) ---
 def ftp_ensure_dirs(ftp, remote_path, created_dirs_cache):
@@ -244,6 +321,7 @@ def extract_target_json_ftp(ip_address, astro_path):
         meta = {}
 
     return meta.get("target") if meta else None
+
 
 ## TO DO ##
 def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None):

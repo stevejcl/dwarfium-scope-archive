@@ -3,8 +3,10 @@ from nicegui import native, app, run, ui
 import os
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
-from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive
-from api.dwarf_backup_fct_ftp import check_ftp_connection, connect_to_dwarf
+from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive
+from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
+from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
+
 
 from api.dwarf_backup_mtp_handler import MTPManager 
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
@@ -16,24 +18,25 @@ from components.menu import menu, setStyle
 
 
 @ui.page('/Dwarf')
-def dwarf_settings():
+def dwarf_settings(DwarfId:int = None):
 
     menu("Dwarf Configuration")
 
     # Launch the GUI
-    ConfigApp(DB_NAME)
+    ConfigApp(DB_NAME, DwarfId=DwarfId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
     
 
 class ConfigApp:
-    def __init__(self, database):
+    def __init__(self, database, DwarfId=None):
         self.database = database
         self.dwarfs = []
-        self.dwarf_id = None
+        self.dwarf_id = DwarfId
         self.dwarf_type_map = {
             1: "Dwarf2",
             2: "Dwarf3"
         }
+        self.dwarf_status = None
         self.show_info_ftp = True
         self.dwarf_mtp_id = None
         self.mtp_select = {}
@@ -132,12 +135,14 @@ class ConfigApp:
     def check_dir_dwarf(self):
         if self.dwarf_astroDir.value:
            if os.path.exists(self.dwarf_astroDir.value):
+               self.dwarf_status = "USB"
                self.usb_status_label.text = "✅ Path detected."
            else:
                self.usb_status_label.text = "❌ Path not detected."
 
     def refresh_dwarf_list(self):
         """Refresh the list of dwarfs and update the selection dropdown."""
+        self.dwarf_status = None
         self.ftp_spinner.visible = False
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
@@ -147,8 +152,15 @@ class ConfigApp:
         display_names = [f"{id} - {name}" for id, name in self.dwarfs]
 
         # Update the select options AND set a default value if needed
+        print(f"initial:{self.dwarf_selector.value}")
+        print(f"dwarf_id:{self.dwarf_id}")
         if display_names:
-            if self.dwarf_id and self.dwarf_selector.value and self.dwarf_id != int(self.dwarf_selector.value.split(" - ")[0]):
+            if self.dwarf_id and not self.dwarf_selector.value:
+                selected_value = next((name for id, name in self.dwarfs if id == self.dwarf_id), None)
+                print(selected_value)
+                selected_display = f"{self.dwarf_id} - {selected_value}" if selected_value else display_names[0]
+                self.dwarf_selector.set_options(display_names, value=selected_display)
+            elif self.dwarf_id and self.dwarf_selector.value and self.dwarf_id != int(self.dwarf_selector.value.split(" - ")[0]):
                 # Find the display name that matches self.dwarf_id
                 selected_value = next((name for id, name in self.dwarfs if id == self.dwarf_id), None)
                 selected_display = f"{self.dwarf_id} - {selected_value}" if selected_value else display_names[0]
@@ -178,11 +190,14 @@ class ConfigApp:
             if current_ip == self.dwarf_ip_sta_mode.value:
                 self.ftp_spinner.visible = False
                 self.ftp_status_label.text = status_text  # Show the result
+                if not self.dwarf_status and status_text.startswith("✅ Connected"):
+                    self.dwarf_status = "FTP"
 
     async def load_selected_dwarf(self, event):
         """Load data when a dwarf is selected from the dropdown."""
         await self.detect_mtp_devices()
 
+        self.dwarf_status = None
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
         value = self.dwarf_selector.value
@@ -272,7 +287,8 @@ class ConfigApp:
         if self.mtp_visible and device_path and any(path == device_path for _, path in self.mtp_devices):
             self.mtp_status_label.visible = True
             self.mtp_status_label.text = "✅ MTP Connected"
-
+            if not self.dwarf_status:
+                self.dwarf_status = "MTP"
         elif self.mtp_visible:
             self.mtp_status_label.visible = True
             self.mtp_status_label.text = "❌ MTP not Connected"
@@ -372,9 +388,34 @@ class ConfigApp:
             ui.notify("No Dwarf selected", type="negative")
             return
 
-        dwarf_location = self.dwarf_astroDir.value.strip()
-        if not dwarf_location:
-            ui.notify("No USB location selected", type="negative")
+        if not self.dwarf_status:
+            ui.notify("Dwarf Device not connected", type="negative")
+            return
+
+        ftp = None
+        if self.dwarf_status == "USB":
+            dwarf_location = self.dwarf_astroDir.value.strip()
+            if not dwarf_location:
+                ui.notify("No USB location selected", type="negative")
+                return
+            if not os.path.isdir(dwarf_location):
+                ui.notify("USB Directory is inaccessible.", type="negative")
+                return
+        elif self.dwarf_status == "FTP":
+            if str(self.dwarf_type_var.value) == "Dwarf2":
+                dwarf_location = DWARF2_FTP_PATH
+            elif str(self.dwarf_type_var.value) == "Dwarf3":
+                dwarf_location = DWARF3_FTP_PATH
+            else:
+                ui.notify("Unsupported Device", type="negative")
+                return
+            ftp_ctx = ftp_conn(self.dwarf_ip_sta_mode.value) if self.dwarf_ip_sta_mode.value else None
+            ftp = ftp_ctx.__enter__() if ftp_ctx else None
+            if not ftp:
+                ui.notify("FTP disconnected", type="negative")
+                return
+        else:
+            ui.notify("Unsupported connection mode", type="negative")
             return
 
         # Dialog to block interaction and show progress
@@ -386,9 +427,20 @@ class ConfigApp:
         dialog.open()  # show the dialog
 
         try:
-            ui.notify("Starting Analysis ...")
-            total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, dwarf_location, None, self.dwarf_id, None,  None, log)
-            ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
+            local_Main_Dwarf_dir = create_local_dwarf_dir()
+            if local_Main_Dwarf_dir:
+                ui.notify("Starting Local Sync ...")
+                if self.dwarf_status == "USB":
+                    await run.io_bound (sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir,log)
+                if self.dwarf_status == "FTP":
+                    await run.io_bound (ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir,log)
+                local_Dwarf_dir = get_local_dwarf_dir(self.dwarf_id)
+                print(local_Dwarf_dir)
+                ui.notify("Starting Analysis ...")
+                total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None,  None, log)
+                ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
+            else:
+               ui.notify(f"❌ Error: can't create Local Dwarf Directory", type="negative")
 
         except Exception as e:
             ui.notify(f"❌ Error: {str(e)}", type="negative")
@@ -441,8 +493,10 @@ class ConfigApp:
  
     def get_explore_url(self):
         ui.notify("Showing Dwarf Data...")  # Simulate showing data
+
         if self.dwarf_id:
-            explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode=dwarf"
+            back_url = f"/Dwarf?DwarfId="
+            explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode=dwarf&back_url={back_url}"
         else:
             explore_url = f"/Explore?mode=dwarf"
         print(explore_url)

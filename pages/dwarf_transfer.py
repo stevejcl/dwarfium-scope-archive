@@ -12,25 +12,28 @@ from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
 
-@ui.page('/Transfer')
-def transfer_page():
+@ui.page('/Transfer/')
+def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive'):
 
     menu("Session Transfer")
 
     # Launch the GUI
-    TransferApp(DB_NAME)
+    ui.context.transfert_app =  TransferApp(DB_NAME, DwarfId=DwarfId, Session=session, Mode=mode)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class TransferApp:
-    def __init__(self, database):
-        self.mode = "Archive"  # Default mode
+    def __init__(self, database, DwarfId=None, Session=None, Mode="Archive"):
+        self.mode = Mode # "Archive"  Default mode
         self.database = database
         self.dwarfs = []
 
-        self.DwarfId = None
+        self.DwarfId = DwarfId
         self.dwarf_options = []
         self.BackupId = None
         self.backup_options = []
+
+        self.DwarfId_Init = DwarfId
+        self.session = Session
 
         self.src_dir = '' # 'G:\\Astronomy\\DWARF_RAW_WIDE_C 20_EXP_15_GAIN_80_2025-04-28-04-21-24-416'
         self.dest_dir = '' # 'T:\\DWARFLAB_2\\DATA4\\DATA_OBJECTS\\NGC7000_North_American_Nebula'
@@ -87,7 +90,7 @@ class TransferApp:
 
                 with ui.column():
                     ui.label("Backup Drive:").classes("text-lg font-semibold")
-                    self.backup_filter = ui.select(options=[]).props('outlined')
+                    self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
 
             self.SourceDirectory = ui.label("Source: Dwarf USB Drive")
@@ -113,7 +116,17 @@ class TransferApp:
     def populate_dwarf_filter(self):
         self.dwarf_options = get_dwarf_Names(self.conn)
         names = [name for _, name in self.dwarf_options]
-        self.dwarf_filter.set_options(names, value = names[0])
+
+        # Set initial value
+        initial_value = names[0] if names else None
+
+        # If self.DwarfId is set, try to find corresponding name
+        if self.DwarfId:
+            match = next((name for did, name in self.dwarf_options if did == self.DwarfId), None)
+            if match:
+                initial_value = match
+
+        self.dwarf_filter.set_options(names, value=initial_value)
 
     def populate_backup_filter(self):
         print(f"populate_backup_filter (DwarfId) : {self.DwarfId}")
@@ -137,6 +150,15 @@ class TransferApp:
         if initial_value:
             self.update_backup_details(initial_value)
 
+    def on_backup_filter_change(self):
+        print("on_backup_filter_change")
+        selected_name = self.backup_filter.value
+        for bid, name, *_ in self.backup_options:
+            if name == selected_name:
+                self.BackupDriveId = bid
+                break
+        self.update_backup_details(selected_name)
+
     def on_dwarf_filter_change(self):
         print("on_dwarf_filter_change")
         selected_name = self.dwarf_filter.value
@@ -154,7 +176,10 @@ class TransferApp:
         if row:
             self.dwarf_astroDir = row[2] or ""
             if self.mode == "Archive":
-                self.input_src_dir.value = self.dwarf_astroDir
+                if self.DwarfId_Init == self.DwarfId and self.session:
+                    self.input_src_dir.value = os.path.join(self.dwarf_astroDir, self.session)
+                else:
+                    self.input_src_dir.value = self.dwarf_astroDir
                 self.src_main_dir = self.dwarf_astroDir
             else:
                 self.input_dest_dir.value = self.dwarf_astroDir

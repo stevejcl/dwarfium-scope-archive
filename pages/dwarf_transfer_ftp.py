@@ -7,8 +7,10 @@ import asyncio
 import hashlib
 
 from components.menu import menu
-from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file, ftp_upload_file
+from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
+from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload
 from api.dwarf_backup_fct import scan_backup_folder
+
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
@@ -40,6 +42,7 @@ class TransferAppFTP:
 
         self.ftp_dwarf_dir = None
         self.dwarf_ip_sta_mode = ""
+        self.dwarf_type = None
         self.usb_available = False
         self.ftp_available = False
         self.build_ui()
@@ -199,7 +202,9 @@ class TransferAppFTP:
         if row:
             self.dwarf_astroDir = row[2] or ""
             self.dwarf_ip_sta_mode = row[5] or ""
+            self.dwarf_type = row[3] or None
             print(f"dwarf_ip_sta_mode: {self.dwarf_ip_sta_mode}")
+            print(f"dwarf_type: {int(self.dwarf_type)+1}")
             if self.mode == "Archive":
                 self.input_src_dir.set_options([], value = "")
                 self.src_main_dir = ""
@@ -383,19 +388,23 @@ class TransferAppFTP:
             return
 
         if self.mode == "Restore" and self.transfert_mode_select.value == "FTP":
-            self.notify_me.refresh("FTP is read-only: Restore not allowed.")
-            self.progress_label.set_text("FTP is read-only.")
-            return
+            if int(self.dwarf_type) != 1: #only D2 is not read-only
+                self.notify_me.refresh("FTP is read-only: Restore not allowed.")
+                self.progress_label.set_text("FTP is read-only.")
+                return
+            else:
+                self.cancel_btn.visible = True
 
-            # FTP paths: simple string manipulation
-            #src_basename = os.path.basename(os.path.normpath(src_dir))
-            #dest_path = f"{dest_dir.rstrip('/')}/{src_basename}"
+                # FTP paths: simple string manipulation
+                src_basename = os.path.basename(os.path.normpath(src_dir))
+                dest_path = f"{dest_dir.rstrip('/')}/{src_basename}"
 
-            # You would need to check existence via FTP
-            #if ftp_path_exists(self.dwarf_ip_sta_mode, dest_path):  # Implement this check
-            #    await self.confirm_overwrite(dest_path)
-            #else:
-            #    await self.execute_backup(src_dir, dest_path)
+                # You would need to check existence via FTP
+                if ftp_path_exists(self.dwarf_ip_sta_mode, dest_path):  # Implement this check
+                    base_path = "/mnt/sdcard" # use ssh
+                    await self.confirm_overwrite(dest_path)
+                else:
+                    await self.execute_backup(src_dir, dest_path)
         else:
             self.cancel_btn.visible = True
  
@@ -443,7 +452,8 @@ class TransferAppFTP:
         ui.notify("Starting...")
 
         print ( list_files)
-        result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
+        #result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
+        result = await self.copy_with_progress_async(list_files, self.progress, self.cancel_btn)
 
         if result:
             self.progress_label.set_text(f"End of Backup")
@@ -500,14 +510,16 @@ class TransferAppFTP:
             all_files = await run.io_bound(download_ftp_tree, self.dwarf_ip_sta_mode,src_dir, dest_dir)
 
         elif self.transfert_mode_select.value == "FTP" and self.mode == "Restore":
-            # USB → FTP : Not Possible Read Only system
+            # USB → FTP : Not Possible Read Only system for D3
             print(f"dest_dir: {dest_dir}")
+            base_path = "/mnt/sdcard" # ssh
             for root, _, files in os.walk(src_dir):
                 for file in files:
                     src_path = os.path.join(root, file)
                     rel_path = os.path.relpath(src_path, src_dir)
                     ftp_rel_path = rel_path.replace("\\", "/")
-                    dest_path = f'{dest_dir.rstrip("/")}/{ftp_rel_path}'
+                    #dest_path = f'{dest_dir.rstrip("/")}/{ftp_rel_path}'
+                    dest_path = f'{base_path}{dest_dir.rstrip("/")}/{ftp_rel_path}'
                     all_files.append((src_path, dest_path))
 
         else:
@@ -529,7 +541,7 @@ class TransferAppFTP:
                hash.update(chunk)
         return hash.hexdigest()
 
-    def copy_with_progress_async(self, all_files, progress_bar, cancel_button):
+    async def copy_with_progress_async(self, all_files, progress_bar, cancel_button):
         self.cancel_backup = False
         verified_files = 0
         result = True
@@ -541,11 +553,13 @@ class TransferAppFTP:
         is_archive = self.mode == "Archive"
         is_restore = self.mode == "Restore"
         use_ftp = transfer_mode == "FTP"
-
+        mode_use_ssh = True if use_ftp and is_restore else False
+        print(f"mode_use_ssh: {mode_use_ssh}")
         # Conditional FTP connection block
         ftp = None
-        ftp_ctx = ftp_conn(self.dwarf_ip_sta_mode) if use_ftp and self.dwarf_ip_sta_mode else None
+        ftp_ctx = ftp_conn(self.dwarf_ip_sta_mode) if use_ftp and self.dwarf_ip_sta_mode and not mode_use_ssh else None
         ftp = ftp_ctx.__enter__() if ftp_ctx else None
+
         created_dirs_cache = set()
 
         try:
@@ -561,8 +575,8 @@ class TransferAppFTP:
                         ftp_download_file(ftp, src_file, dest_file)
 
                     # --- LOCAL ➜ FTP (RESTORE) ---
-                    elif use_ftp and is_restore:
-                        ftp_upload_file(ftp, src_file, dest_file, created_dirs_cache)
+                    elif mode_use_ssh and is_restore:
+                        await async_sftp_upload(self.dwarf_ip_sta_mode, src_file, dest_file, created_dirs_cache)
 
                     # --- LOCAL ➜ LOCAL ---
                     else:
@@ -590,6 +604,9 @@ class TransferAppFTP:
             # Close FTP connection if it was opened
             if ftp_ctx:
                 ftp_ctx.__exit__(None, None, None)      
+            # Close SFTP connection if it was opened
+            #if sftp_ctx:
+            #   sftp_ctx.__exit__(None, None, None)      
 
         if not self.cancel_backup and verified_files == total_files:
             self.notify_me.refresh("✅ Backup complete and verified!")
