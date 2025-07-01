@@ -20,7 +20,7 @@ for folder in [DIST_DIR, BUILD_DIR]:
 
 # Step 2 – Run nicegui-pack
 print("📦 Building executable...")
-#subprocess.run([
+subprocess.run([
     "nicegui-pack",
     "--onefile",
     "--windowed",
