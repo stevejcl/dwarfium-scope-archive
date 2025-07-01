@@ -77,7 +77,7 @@ Install the necessary Python libraries on windows:
 pip install -r requirements-windows.txt
   ```
 
-Currently Supported Devices: USB (more details to follow).
+Currently Supported Devices: USB, FTP, and MTP but only to Archive the files.
 
 ## Chapter 3: Usage
 
@@ -88,7 +88,7 @@ To launch the application, run:
 python dwarfium_scope_archive.py
   ```
 
-or use the build exe directly on windows
+or use the build DwarfiumScopeArchivebuild.exe directly on windows
 
 ## Chapter 4: Features
 
@@ -118,6 +118,11 @@ Session details (exposure, gain, number of images).
 
 Whether the session is backed up or not.
 
+You can then directly bacedup with the Backup button
+
+![explore backeup](https://github.com/user-attachments/assets/e097e8f0-8b3e-4377-a9b5-87d018019524)
+
+
 ### Backup Page:
 
 Configure your Backup Drive by adding a name, description, and the main path of the backup drive. Specify a subdirectory within the backup drive where you want to store your Dwarf sessions.
@@ -128,14 +133,14 @@ A backup drive is associated with a Dwarf device.
 
 You can create multiple levels of directories. For example, you could create a sublevel with object names, and under each object, store its sessions. This way, all your sessions will be organized by object name (directory name) instead of the target present in the session.
 
-Later, a tool will be provided to manage your object list, allowing you to change the object of a session.
+A catalog is now included, Go to the Catalog page to manage your object list, allowing you to change the object of a session.
 
 Additionally, there will be a section to add Darks sessions, which you can associate with your sessions for processing.
 
 ### Explore Page:
 This is the main view where you can see your sessions, organized by object, backup, or Dwarf.
 
-![explore](https://github.com/user-attachments/assets/2b46a0eb-c110-4263-a3b7-1572aaab5537)
+![explore](https://github.com/user-attachments/assets/e5209aa7-4029-4059-b932-233d6bd196cc)
 
 You will be able to:
 
@@ -150,7 +155,26 @@ Open the image's directory.
 You will also have access to all the session details, such as the number of images, exposure, gain, and more.
 You'll also know if the session is stored on your Dwarf or not.
 
-### Chapter 5: Upcoming Features
+If you have taken a Mosaic you will have access to the different panels.
+
+![mosaic](https://github.com/user-attachments/assets/2e83d8a8-8a1a-432d-85f0-2f13997d1159)
+
+![pannels](https://github.com/user-attachments/assets/8ee96ed0-018f-41bd-898c-803b9afcea91)
+
+
+### Catalog Page
+In this page, you can associate a target detecting during the scan process to an object of the build in DSO Catalog from Dwarfium
+
+![catalog](https://github.com/user-attachments/assets/b566b572-6575-4741-aeb1-dad76df3cd02)
+
+Click on ASSIGN / CHANGE button on the right of the desired line 
+
+In the dialog you can type in the search input, the Select Dso list will be filled with the corresponding values
+![dialog box](https://github.com/user-attachments/assets/bccb4c1a-62ba-4da3-b082-a015bf7c6557)
+
+Then if you want you can edit the description as you want. 
+
+### Chapter 5: Features implemented but need more test
 
 FTP Support:
 Integration with FTP, allowing direct connection to the Dwarf for data retrieval and storage.
@@ -158,14 +182,10 @@ Integration with FTP, allowing direct connection to the Dwarf for data retrieval
 MTP Support:
 Integration with MTP (Media Transfer Protocol) for Dwarf 2 to analyze the current Dwarf disk.
 
+### Chapter 5: Upcoming Features
+
 FITS Updates:
 Enhancements and updates to better handle FITS files, including new features and improved processing.
-
-Object Management:
-Tools to manage and update the objects (targets) of your astrophotography sessions.
-
-Change Object (Target) of the Session:
-Ability to change the object (target) associated with a session, giving more flexibility for reclassification.
 
 Moving Files Between Backup / Object:
 Feature to move files between different backups or object directories, enabling better organization.
@@ -175,7 +195,6 @@ Support for managing Darks sessions, including adding and associating them with 
 
 Regroup Object Sessions for Mosaic:
 The ability to group sessions based on objects, enabling easier management and creation of mosaics.
-
 
 ### Chapter 6: Contributing
 
