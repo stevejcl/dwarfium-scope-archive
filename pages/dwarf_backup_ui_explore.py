@@ -499,11 +499,18 @@ class ExploreApp:
     def get_mosaic_panels(self, mosaic_dir: str) -> list[tuple[str, str]]:
         """Return list of (panel_name, stacked.jpg full path) for a mosaic directory."""
         panels = []
-        for subdir in sorted(os.listdir(mosaic_dir)):
-            panel_path = os.path.join(mosaic_dir, subdir)
-            stacked_img = os.path.join(panel_path, "stacked.jpg")
-            if os.path.isdir(panel_path) and os.path.isfile(stacked_img):
-                panels.append((subdir, stacked_img))
+        try :
+            for subdir in sorted(os.listdir(mosaic_dir)):
+                panel_path = os.path.join(mosaic_dir, subdir)
+                stacked_img = os.path.join(panel_path, "stacked.jpg")
+                if os.path.isdir(panel_path) and os.path.isfile(stacked_img):
+                    panels.append((subdir, stacked_img))
+
+        except FileNotFoundError as e::
+            print(f"Mosaic Directory not found: {e}")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+        
         return panels
 
     def open_gallery_dialog(self, mosaic_dir: str, panels):
