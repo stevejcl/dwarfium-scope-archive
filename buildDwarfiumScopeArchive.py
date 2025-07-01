@@ -15,11 +15,11 @@ DIST_DB_DIR = DIST_DIR / "db"
 # Step 1 – Clean old build folders
 for folder in [DIST_DIR, BUILD_DIR]:
     if folder.exists():
-        print(f"🧹 Removing {folder}...")
+        print(f"Removing {folder}...")
         shutil.rmtree(folder)
 
 # Step 2 – Run nicegui-pack
-print("📦 Building executable...")
+print("Building executable...")
 subprocess.run([
     "nicegui-pack",
     "--onefile",
@@ -30,7 +30,7 @@ subprocess.run([
 ], check=True)
 
 # Step 3 – Copy additional files into dist
-print("📁 Copying extra files into dist...")
+print("Copying extra files into dist...")
 
 # Create the folders dist/image and dist/db if they don't exist
 DIST_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -50,15 +50,15 @@ if src_json.exists():
     print(f"Copying {src_json} to {dest_json}")
     shutil.copy2(src_json, dest_json)
 else:
-    print(f" ⚠️ Warning: {src_json} does not exist, skipping.")
+    print(f"Warning: {src_json} does not exist, skipping.")
 
 # Step 4 – Zip everything in dist
 zip_path = Path(f"{APP_NAME}.zip")
-print(f"🗜️ Creating archive {zip_path}...")
+print(f"Creating archive {zip_path}...")
 
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
     for path in DIST_DIR.rglob("*"):
         arcname = path.relative_to(DIST_DIR)
         zipf.write(path, arcname)
 
-print("✅ Build and packaging complete.")
+print("Build and packaging complete.")
