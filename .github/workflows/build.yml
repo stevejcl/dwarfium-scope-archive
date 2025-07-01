@@ -50,3 +50,15 @@ jobs:
           name: zip-${{ runner.os }}
           path: |
             *.zip
+
+      - name: 🚀 Create GitHub Release and upload ZIP
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }} (${{ runner.os }})
+          body_path: ./release-notes.md
+          files: |
+            *.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
