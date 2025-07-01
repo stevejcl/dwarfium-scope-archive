@@ -39,13 +39,13 @@ jobs:
           python buildDwarfiumScopeArchive.py
 
       - name: 📤 Upload dist/ folder
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist-${{ runner.os }}
           path: dist/
 
       - name: 📤 Upload ZIP archive
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: zip-${{ runner.os }}
           path: |
