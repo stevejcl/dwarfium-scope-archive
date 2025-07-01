@@ -177,7 +177,11 @@ class TransferApp:
             self.dwarf_astroDir = row[2] or ""
             if self.mode == "Archive":
                 if self.DwarfId_Init == self.DwarfId and self.session:
-                    self.input_src_dir.value = os.path.join(self.dwarf_astroDir, self.session)
+                    if self.session.startswith("RESTACKED"):
+                        restacked_session = os.path.join("RESTACKED", self.session)
+                        self.input_src_dir.value = os.path.join(self.dwarf_astroDir, restacked_session)
+                    else:
+                        self.input_src_dir.value = os.path.join(self.dwarf_astroDir, self.session)
                 else:
                     self.input_src_dir.value = self.dwarf_astroDir
                 self.src_main_dir = self.dwarf_astroDir

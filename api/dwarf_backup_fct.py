@@ -276,6 +276,8 @@ def extract_astro_name_from_folder(folder_name: str) -> str | None:
     patterns = [
         r"DWARF_RAW_TELE_(.+?)_EXP_",
         r"DWARF_RAW_WIDE_(.+?)_EXP_",
+        r"RESTACKED_DWARF_RAW_TELE_MOSAIC_(.+?)_",
+        r"RESTACKED_DWARF_RAW_WIDE_MOSAIC_(.+?)_",
         r"RESTACKED_DWARF_RAW_TELE_(.+?)_",
         r"RESTACKED_DWARF_RAW_WIDE_(.+?)_",
         r"DWARF_RAW_(.+?)_EXP_"
@@ -283,7 +285,13 @@ def extract_astro_name_from_folder(folder_name: str) -> str | None:
     for pattern in patterns:
         m = re.match(pattern, folder_name)
         if m:
-            return m.group(1).strip()
+            name = m.group(1).strip()
+
+            # Check if the pattern itself had "MOSAIC"
+            if "_MOSAIC_" in pattern:
+                name = "MOSAIC_" + name
+
+            return name
 
     return None
 
@@ -341,15 +349,28 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local",log=No
         d for d in os.listdir(source_root)
         if os.path.isdir(os.path.join(source_root, d))
     ]
+    # Look for RESTACKED subdirectory inside source_root
+    source_restacked = os.path.join(source_root, "RESTACKED")
+    if os.path.isdir(source_restacked):
+        session_dirs_RESTACKED = [
+            os.path.join("RESTACKED", d)  # keep relative path
+            for d in os.listdir(source_restacked)
+            if os.path.isdir(os.path.join(source_restacked, d))
+        ]
+    else:
+        session_dirs_RESTACKED = []
+
+    # Combine both lists
+    all_sessions = session_dirs + session_dirs_RESTACKED
 
     local_sessions = [
         d for d in os.listdir(dwarf_dir)
         if os.path.isdir(os.path.join(dwarf_dir, d)) and d != "Archive"
     ]
 
-    print_log(f"\n🔄 Syncing {len(session_dirs)} sessions from source...\n", log)
+    print_log(f"\n🔄 Syncing {len(all_sessions)} sessions from source...\n", log)
 
-    for session in session_dirs:
+    for session in all_sessions:
         print_log(f"✅ Checking local session {session}.", log)
         src_session = os.path.join(source_root, session)
         dst_session = os.path.join(dwarf_dir, session)
@@ -370,7 +391,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local",log=No
     print("\n✅ Copy complete.")
 
     # Archive removed sessions
-    removed_sessions = set(local_sessions) - set(session_dirs)
+    removed_sessions = set(local_sessions) - set(all_sessions)
     for session in removed_sessions:
         src_path = os.path.join(dwarf_dir, session)
         dst_path = os.path.join(archive_dir, session)
@@ -406,9 +427,31 @@ def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
     return session_dir_main_dir, is_session_dir
 
 def check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
+    root_basename = os.path.basename(os.path.normpath(root))
+
     if session_dir_main_dir:
-        return session_dir == os.path.basename(os.path.normpath(root))
-    return not dirs and bool(files)
+        return session_dir == root_basename
+
+    # ❌ Exclude 'Thumbnail' directory itself
+    if root_basename == 'Thumbnail':
+        return False
+
+    # ✅ Accept Mosaic main dir, but reject its children
+    if "_MOSAIC_" in os.path.basename(os.path.dirname(root)):
+        return False  # Reject children of mosaic
+    if "_MOSAIC_" in root_basename:
+        return True  # Accept parent
+
+    # ✅ Accept normal session dir if:
+    #    - it's a leaf with files
+    #    - or only contains 'Thumbnail' folder and maybe files
+    if not dirs:
+        return bool(files)
+    elif dirs == ['Thumbnail']:  
+        return True
+
+    # ❌ Otherwise it's a container with other subdirs (multi-part or something else)
+    return False
 
 def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None):
     if not db_name:
@@ -511,7 +554,6 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                     current_dir = os.path.basename(os.path.normpath(root))
                     print(f"current_dir Dir: {current_dir}")
                     if current_dir == 'Thumbnail':
-                        last_dir = os.path.basename(os.path.dirname(root))  # Use parent dir
                         last_dir = os.path.basename(os.path.dirname(root))  # name
                         last_dir_path = os.path.dirname(root)               # full path
                     else:
@@ -989,10 +1031,23 @@ def get_directory_size(directory_path: str) -> int:
     return total_size
 
 def count_fits_files(directory):
-    return sum(
-        1 for f in os.listdir(directory)
-        if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
-    )
+    if "_MOSAIC_" in directory:
+        # Look in subdirectories
+        count = 0
+        for sub in os.listdir(directory):
+            sub_path = os.path.join(directory, sub)
+            if os.path.isdir(sub_path):
+                count += sum(
+                    1 for f in os.listdir(sub_path)
+                    if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
+                )
+        return count
+    else:
+        # Normal case: check directly in the directory
+        return sum(
+            1 for f in os.listdir(directory)
+            if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
+        )
 
 def count_failed_fits_files(directory):
     return sum(

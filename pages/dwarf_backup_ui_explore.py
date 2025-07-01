@@ -3,6 +3,7 @@ import mimetypes
 from astropy.io import fits
 from datetime import datetime
 from collections import defaultdict
+from pathlib import Path
 import subprocess
 
 from nicegui import app, ui
@@ -112,6 +113,7 @@ class ExploreApp:
 
                     self.count_label = ui.label("Total matching sessions: 0")
                     with ui.card().tight().classes('w-full'):
+                        self.object_filter = ui.input(placeholder='🔍 Filter objects...', on_change=lambda e: self.load_objects_ui() ).classes('m-4').props('clearable')
                         self.object_list = ui.list().classes('h-150 overflow-y-auto')
 
                 with ui.column().classes('w-full'):
@@ -243,12 +245,8 @@ class ExploreApp:
       
     def load_objects(self):
         dwarf_id = self.get_selected_dwarf_id()
-        self.fullscreen_image.visible = False
-        self.preview_image.visible = False
-        self.file_list.set_options([])
-        self.details_files.clear()
-        self.details_preview.clear()
-        self.reset_preview_icons()
+        self.clear_selected_object()
+
         if self.mode == "backup":
             show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
@@ -273,11 +271,35 @@ class ExploreApp:
         self.selected_object_description = None
         self.load_objects_ui()
 
+    def get_name_object(self, name):
+        name_object = name #name.split(" (")[0]
+        # Get before " (" if present
+        main_part = name.split(" (")[0]
+
+        # Get the last part that begins with " ["
+        bracket_pos = name.rfind(" [")
+        suffix = name[bracket_pos:] if bracket_pos != -1 else ""
+
+        name_object = (f"{main_part} {suffix}").strip()
+
+        return name_object, main_part
+
     def load_objects_ui(self, init_view = True):
+
         self.object_list.clear()
+        print(f"filter_text: {self.object_filter.value}")
+        filter_dso = set()
+        visible_names = []
 
         dso_id_counts = defaultdict(int)
-        for _, _, dso_id in self.objects:
+        for _, name, dso_id in self.objects:
+            name_object, main_part = self.get_name_object(name)
+            # Apply filter
+            if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
+                if dso_id is not None:
+                    filter_dso.add(dso_id)
+                continue
+
             if dso_id is not None:
                 dso_id_counts[dso_id] += 1
 
@@ -288,19 +310,18 @@ class ExploreApp:
             ui.item_label('List Objects').props('header').classes('text-bold')
             ui.separator()
             for oid, name, dso_id in self.objects:
-                name_object = name #name.split(" (")[0]
-                # Get before " (" if present
-                main_part = name.split(" (")[0]
+                name_object, main_part = self.get_name_object(name)
 
-                # Get the last part that begins with " ["
-                bracket_pos = name.rfind(" [")
-                suffix = name[bracket_pos:] if bracket_pos != -1 else ""
+                # Apply filter
+                if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
+                    continue
 
-                name_object = (f"{main_part} {suffix}").strip()
- 
+                visible_names.append(name_object)
+
                 # Insert the [ALL] line if needed
-                if dso_id is not None and dso_id_counts[dso_id] > 1 and dso_id not in shown_all_for_dso:
+                if dso_id is not None and dso_id_counts[dso_id] > 1 and dso_id not in shown_all_for_dso and dso_id not in filter_dso :
                     all_name = f"{main_part} [ALL]"
+                    visible_names.append(all_name)  # 👈 ADD [ALL] entry to visible_names
                     item_all = ui.item(all_name, on_click=lambda dso_id=dso_id, name=all_name, desc=name : self._handle_object_click(None, name, desc, dso_id))
                     item_all.classes('font-bold text-blue-600')  # Optional styling
                     if all_name == self.selected_object:
@@ -318,6 +339,11 @@ class ExploreApp:
                 else:
                     item.classes('bg-transparent')  # Normal background
 
+        # ❗ Clear selection if it's no longer in the filtered results
+        if self.selected_object not in visible_names:
+            self.selected_object = None
+            self.clear_selected_object()
+ 
         # Force UI update after setting selected_object
         self.object_list.update()  # Refresh the list
         ui.update()  # Refresh the UI
@@ -328,15 +354,19 @@ class ExploreApp:
         self.select_object(oid, dso_id)
         self.load_objects_ui()
 
-    def select_object(self, object_id, dso_id):
-
+    def clear_selected_object(self):
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
-        dwarf_id = self.get_selected_dwarf_id()
+
         self.details_files.clear()
         self.details_preview.clear()
         self.reset_preview_icons()
+        self.file_list.set_options([])
+
+    def select_object(self, object_id, dso_id):
+        dwarf_id = self.get_selected_dwarf_id()
         details = []
+        self.clear_selected_object()
 
         if self.mode == "backup":
             show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
@@ -465,6 +495,49 @@ class ExploreApp:
 
     def is_Restacked(sel, session_name):
         return session_name.startswith("RESTACKED_")
+
+    def get_mosaic_panels(self, mosaic_dir: str) -> list[tuple[str, str]]:
+        """Return list of (panel_name, stacked.jpg full path) for a mosaic directory."""
+        panels = []
+        for subdir in sorted(os.listdir(mosaic_dir)):
+            panel_path = os.path.join(mosaic_dir, subdir)
+            stacked_img = os.path.join(panel_path, "stacked.jpg")
+            if os.path.isdir(panel_path) and os.path.isfile(stacked_img):
+                panels.append((subdir, stacked_img))
+        return panels
+
+    def open_gallery_dialog(self, mosaic_dir: str, panels):
+
+        with ui.dialog() as dialog:
+            with ui.card().classes("p-4").style("max-width: 1300px; margin: auto"):
+                ui.label('🧩 Mosaic Gallery').classes("text-center mt-2 text-lg font-semibold")
+
+                with ui.row().classes("justify-center"):
+                    if len(panels) == 2:
+                        with ui.column().classes("gap-4 items-center"):
+                            for i, (panel_name, image_path) in enumerate(panels, start=1):
+                                with ui.column().classes("items-center p-2 border rounded shadow-md"):
+                                    ui.image(image_path).classes('w-40 sm:w-48 md:w-64 lg:w-80 h-auto max-w-[600px] rounded').props('fit=contain')
+                                    ui.label(f"Panel {i}").classes("text-sm")
+                    
+                    elif len(panels) == 4:
+                        reordered = [panels[0], panels[1], panels[3], panels[2]]
+                        with ui.row().classes("gap-8"):
+                            with ui.column().classes("gap-4 items-center"):
+                                for i, (panel_name, image_path) in enumerate(reordered[:2], start=1):
+                                    with ui.column().classes("items-center p-2 border rounded shadow-md"):
+                                        ui.image(image_path).classes('w-40 sm:w-48 md:w-64 lg:w-80 h-auto max-w-[600px] rounded').props('fit=contain')
+                                        ui.label(f"Panel {i}").classes("text-sm")
+                            with ui.column().classes("gap-4 items-center"):
+                                for i, (panel_name, image_path) in enumerate(reordered[2:], start=3):
+                                    with ui.column().classes("items-center p-2 border rounded shadow-md"):
+                                        ui.image(image_path).classes('w-40 sm:w-48 md:w-64 lg:w-80 h-auto max-w-[600px] rounded').props('fit=contain')
+                                        ui.label(f"Panel {i}").classes("text-sm")
+
+                ui.label(Path(mosaic_dir).name).classes("text-center mt-4 text-md font-medium")
+                ui.button("Close", on_click=dialog.close).classes("mt-4")
+
+        dialog.open()
 
     def on_file_selected(self):
         selection_index = None
@@ -600,6 +673,8 @@ class ExploreApp:
                         exposure_time = self.format_seconds_hms(get_total_exposure(fits_path))
 
                 ui.item(f"{stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
+
+                # add Mosaic Panel Info
                 #for data_detail in details:
                 #   ui.item(data_detail)
 
@@ -646,9 +721,7 @@ class ExploreApp:
         restacked_session = False
         try:
             directory = os.path.dirname(self.preview_image_path)
-            print(f"directory: {os.path.basename(directory)}")
             restacked_session = self.is_Restacked(os.path.basename(directory))
-            print(restacked_session)
             size_dir_kb = get_directory_size(directory) / 1024
             size_dir_mb = size_dir_kb / 1024
             size_kb = os.path.getsize(self.preview_image_path) / 1024
@@ -725,9 +798,16 @@ class ExploreApp:
             if not self.mode == "backup" and is_path_local_dwarf_dir(preview_image_path):
                 ui.item(f"DWARF device not connected. Using offline session archive").props('header').classes('text-bold').classes('text-red-600')
 
-            toggle = ui.toggle({True:'Show Details', False:'Hide Details'}, value=True)
+            toggle = ui.toggle({True:'Show Details', False:'Hide Details'}, value=True).classes("m-4")
 
             with ui.column().classes('gap-1').bind_visibility_from(toggle, 'value'):
+
+                if "_MOSAIC_" in file_path:
+                    panels = self.get_mosaic_panels(os.path.dirname(self.preview_image_path))
+                    if len(panels) > 0:
+                        ui.label(f'📦 {len(panels)} panel(s) found').classes('text-lg m-4')
+                        ui.button("🖼️ Show Mosaic Gallery", on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
+
                 for data_detail in details_preview:
                     ui.item(data_detail).classes('text-sm')
 
