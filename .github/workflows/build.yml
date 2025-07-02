@@ -29,6 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: List pages folder contents
+        run: ls -l pages/
+        
       - name: 📦 Install Windows-specific requirements
         if: runner.os == 'Windows'
         run: |
