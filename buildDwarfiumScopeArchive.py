@@ -12,6 +12,9 @@ IMAGE_DIR = Path("image")
 DIST_IMAGE_DIR = DIST_DIR / "image"
 DIST_DB_DIR = DIST_DIR / "db"
 
+import os
+print("Current working directory:", os.getcwd())
+
 # Step 1 – Clean old build folders
 for folder in [DIST_DIR, BUILD_DIR]:
     if folder.exists():
