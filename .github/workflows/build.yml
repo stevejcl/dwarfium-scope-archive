@@ -24,6 +24,8 @@ jobs:
 
       - name: 📦 Install base requirements
         run: |
+          python -m venv venv
+          source venv/bin/activate
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -33,10 +35,12 @@ jobs:
       - name: 📦 Install Windows-specific requirements
         if: runner.os == 'Windows'
         run: |
+          source venv/bin/activate
           pip install -r requirements-windows.txt
 
       - name: ⚙️ Run build script
         run: |
+          source venv/bin/activate
           python buildDwarfiumScopeArchive.py
 
       - name: 📤 Upload dist ZIP files
