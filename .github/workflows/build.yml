@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zip-${{ runner.os }}
-          path: dist/*.zip
+          path: DwarfiumScopeArchive.zip
 
   release:
     name: 🚀 Create GitHub Release
@@ -68,7 +68,7 @@ jobs:
       - name: 🚀 Release with ncipollo/release-action
         uses: ncipollo/release-action@v1
         with:
-          artifacts: downloads/**/dist/*.zip
+          artifacts: downloads/**/*.zip
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
           skipIfReleaseExists: true
