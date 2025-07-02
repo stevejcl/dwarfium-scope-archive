@@ -46,7 +46,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zip-${{ runner.os }}
-          path: DwarfiumScopeArchive.zip
+          path: DwarfiumScopeArchive-${{ runner.os }}.zip
 
   release:
     name: 🚀 Create GitHub Release

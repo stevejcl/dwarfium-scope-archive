@@ -57,7 +57,7 @@ else:
 
 # Step 4 – Zip everything in dist
 import platform
-suffix = platform.system().lower()  # 'windows', 'linux', 'darwin'
+suffix = os.environ.get("RUNNER_OS", "unknown")  # Windows, Linux, macOS
 zip_path = Path(f"{APP_NAME}-{suffix}.zip")
 print(f"Creating archive {zip_path}...")
 
