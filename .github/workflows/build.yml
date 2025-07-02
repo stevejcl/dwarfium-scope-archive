@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -38,27 +38,39 @@ jobs:
         run: |
           python buildDwarfiumScopeArchive.py
 
-      - name: 📤 Upload dist/ folder
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-${{ runner.os }}
-          path: dist/
-
-      - name: 📤 Upload ZIP archive
+      - name: 📤 Upload dist ZIP files
         uses: actions/upload-artifact@v4
         with:
           name: zip-${{ runner.os }}
-          path: |
-            *.zip
+          path: dist/*.zip
 
-      - name: 🚀 Create GitHub Release and upload ZIP
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+  release:
+    name: 🚀 Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Get version from CHANGELOG.md
+        id: get_version
+        run: |
+          VERSION=$(grep -m 1 -o '\[.*\]' CHANGELOG.md | sed 's/\[\(.*\)\]/\1/')
+          echo "RVERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: 📥 Download all ZIP artifacts
+        uses: actions/download-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }} (${{ runner.os }})
-          body_path: ./release-notes.md
-          files: |
-            *.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: downloads
+
+      - name: 🚀 Release with ncipollo/release-action
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: downloads/**/dist/*.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
+          skipIfReleaseExists: true
+          tag: v${{ env.RVERSION }}
+          name: Release v${{ env.RVERSION }}
