@@ -506,7 +506,7 @@ class ExploreApp:
                 if os.path.isdir(panel_path) and os.path.isfile(stacked_img):
                     panels.append((subdir, stacked_img))
 
-        except FileNotFoundError as e::
+        except FileNotFoundError as e:
             print(f"Mosaic Directory not found: {e}")
         except Exception as e:
             print(f"Unexpected error: {e}")

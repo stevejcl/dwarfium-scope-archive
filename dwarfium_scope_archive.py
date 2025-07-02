@@ -1,6 +1,8 @@
 # macOS packaging support
 from multiprocessing import freeze_support  # noqa
-freeze_support()  # noqafrom nicegui import native, app, ui
+freeze_support()  # noqa
+
+from nicegui import native, app, ui
 
 # Import page content (each file registers its own route)
 import pages.home
