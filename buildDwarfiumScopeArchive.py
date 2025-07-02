@@ -56,7 +56,9 @@ else:
     print(f"Warning: {src_json} does not exist, skipping.")
 
 # Step 4 – Zip everything in dist
-zip_path = Path(f"{APP_NAME}.zip")
+import platform
+suffix = platform.system().lower()  # 'windows', 'linux', 'darwin'
+zip_path = Path(f"{APP_NAME}-{suffix}.zip")
 print(f"Creating archive {zip_path}...")
 
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
