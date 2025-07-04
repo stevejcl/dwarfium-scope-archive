@@ -4,6 +4,7 @@ freeze_support()  # noqa
 
 from nicegui import native, app, ui
 
+# Encoding changed to UTF-8
 # Import page content (each file registers its own route)
 import pages.home
 import pages.dwarf_backup_ui_dwarf

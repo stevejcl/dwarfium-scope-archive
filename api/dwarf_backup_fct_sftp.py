@@ -3,7 +3,7 @@ import socket
 import logging
 from contextlib import asynccontextmanager
 import asyncssh
-
+# Encoding changed to UTF-8
 log = logging.getLogger(__name__)
 
 @asynccontextmanager

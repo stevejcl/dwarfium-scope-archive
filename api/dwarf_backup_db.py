@@ -1,6 +1,6 @@
 import sqlite3
 import os
-
+# Encoding changed to UTF-8
 DB_NAME = "db\\dwarf_backup.db"
 
 def connect_db(database:DB_NAME):

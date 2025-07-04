@@ -5,6 +5,7 @@ import os
 import shutil
 import logging as log
 
+# Encoding changed to UTF-8
 MTP_NAMESPACE_ID = 17
 
 class MTPManager:

@@ -4,7 +4,7 @@ import os
 from urllib.parse import quote
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-
+# Encoding changed to UTF-8
 BASE_FOLDER = None  # This should be set in your app
 
 def set_base_folder(path: str):
