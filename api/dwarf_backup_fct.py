@@ -489,7 +489,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 
     for astro_dir in os.listdir(data_root):
         if astro_dir == "Archive":
-            print(f"🔍 Skip: {astro_dir}")
+            print(f"Skip: {astro_dir}")
             continue
 
         astro_path = os.path.join(data_root, astro_dir)
@@ -502,7 +502,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         if session_dir_main_dir:
             if is_session_dir:
                 print_log(f"🔍 Processing Session Dir: {session_dir}",log)
-                print(f"🔍 Processing Session Dir: {session_dir}")
+                print(f"Processing Session Dir: {session_dir}")
 
         else:
             print_log(f"🔍 Processing Dir:",log)

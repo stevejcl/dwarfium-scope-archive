@@ -368,7 +368,7 @@ def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup
         if session_dir_main_dir:
             if is_session_dir:
                 print_log(f"🔍 Processing Session Dir: {session_dir}",log)
-                print(f"🔍 Processing Session Dir: {session_dir}",log)
+                print(f"Processing Session Dir: {session_dir}",log)
 
         else:
             print_log(f"🔍 Processing Dir:",log)
