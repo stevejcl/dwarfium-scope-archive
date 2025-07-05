@@ -7,7 +7,6 @@ from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sy
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
 
-
 from api.dwarf_backup_mtp_handler import MTPManager 
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
