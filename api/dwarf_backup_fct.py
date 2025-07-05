@@ -1030,24 +1030,34 @@ def get_directory_size(directory_path: str) -> int:
 
     return total_size
 
+def has_subdirectories(directory):
+    return any(
+        os.path.isdir(os.path.join(directory, entry)) and not entry.startswith('.')  and not entry.startswith('Thumbnail')
+        for entry in os.listdir(directory)
+)
+
 def count_fits_files(directory):
-    if "_MOSAIC_" in directory:
-        # Look in subdirectories
-        count = 0
-        for sub in os.listdir(directory):
-            sub_path = os.path.join(directory, sub)
-            if os.path.isdir(sub_path):
-                count += sum(
-                    1 for f in os.listdir(sub_path)
-                    if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
-                )
-        return count
-    else:
-        # Normal case: check directly in the directory
-        return sum(
-            1 for f in os.listdir(directory)
-            if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
-        )
+    try:
+        if "_MOSAIC_" in directory and has_subdirectories(directory):
+            # Look in subdirectories
+            count = 0
+            for sub in os.listdir(directory):
+                sub_path = os.path.join(directory, sub)
+                if os.path.isdir(sub_path):
+                    count += sum(
+                        1 for f in os.listdir(sub_path)
+                        if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
+                    )
+            return count
+        else:
+            # Normal case: check directly in the directory
+            return sum(
+                1 for f in os.listdir(directory)
+                if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
+            )
+
+    except Exception as e:
+        print(f"Could not access {directory}: {e}")
 
 def count_failed_fits_files(directory):
     return sum(

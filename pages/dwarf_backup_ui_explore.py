@@ -287,7 +287,6 @@ class ExploreApp:
     def load_objects_ui(self, init_view = True):
 
         self.object_list.clear()
-        print(f"filter_text: {self.object_filter.value}")
         filter_dso = set()
         visible_names = []
 
@@ -513,36 +512,43 @@ class ExploreApp:
         
         return panels
 
+    def show_full_image(self, path):
+        with ui.dialog().props('maximized') as full_dialog:
+            with ui.card().classes("w-full h-full justify-center items-center bg-black"):
+                ui.image(path).classes('w-full max-h-full object-contain')
+        full_dialog.open()
+        ui.notify("Press ESC to close the image", position="top", type="info")
+
     def open_gallery_dialog(self, mosaic_dir: str, panels):
 
         with ui.dialog() as dialog:
-            with ui.card().classes("p-4").style("max-width: 1300px; margin: auto"):
-                ui.label('🧩 Mosaic Gallery').classes("text-center mt-2 text-lg font-semibold")
+            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
+                with ui.row().classes('w-full justify-center'):
+                    ui.label('🧩 Mosaic Gallery').classes("text-center mt-2 text-lg font-semibold mr-auto")
+                    ui.label(Path(mosaic_dir).name).classes("text-center mt-4 text-md font-medium")
+                    ui.button("Close", on_click=dialog.close).classes("mt-4 ml-auto")
 
-                with ui.row().classes("justify-center"):
+                with ui.row().classes("justify-center mx-auto"):
                     if len(panels) == 2:
-                        with ui.column().classes("gap-4 items-center"):
+                        with ui.column().classes("gap-2 items-center mx-auto"):
                             for i, (panel_name, image_path) in enumerate(panels, start=1):
-                                with ui.column().classes("items-center p-2 border rounded shadow-md"):
-                                    ui.image(image_path).classes('w-40 sm:w-48 md:w-64 lg:w-80 h-auto max-w-[600px] rounded').props('fit=contain')
+                                with ui.column().classes("items-center p-1 border rounded shadow-md"):
+                                    ui.image(image_path).classes('w-[90vw] max-w-[2460px] h-auto rounded mx-auto').props('fit=contain').on('click', lambda path=image_path: self.show_full_image(path))
                                     ui.label(f"Panel {i}").classes("text-sm")
                     
                     elif len(panels) == 4:
                         reordered = [panels[0], panels[1], panels[3], panels[2]]
-                        with ui.row().classes("gap-8"):
-                            with ui.column().classes("gap-4 items-center"):
+                        with ui.grid(columns = 2):
+                            with ui.column().classes("gap-2 items-center mx-auto"):
                                 for i, (panel_name, image_path) in enumerate(reordered[:2], start=1):
-                                    with ui.column().classes("items-center p-2 border rounded shadow-md"):
-                                        ui.image(image_path).classes('w-40 sm:w-48 md:w-64 lg:w-80 h-auto max-w-[600px] rounded').props('fit=contain')
+                                    with ui.column().classes("items-center p-1 border rounded shadow-md"):
+                                        ui.image(image_path).classes('w-[45vw] max-w-[1280px] h-auto rounded mx-auto').props('fit=contain').on('click', lambda path=image_path: self.show_full_image(path))
                                         ui.label(f"Panel {i}").classes("text-sm")
-                            with ui.column().classes("gap-4 items-center"):
+                            with ui.column().classes("gap-2 items-center mx-auto"):
                                 for i, (panel_name, image_path) in enumerate(reordered[2:], start=3):
-                                    with ui.column().classes("items-center p-2 border rounded shadow-md"):
-                                        ui.image(image_path).classes('w-40 sm:w-48 md:w-64 lg:w-80 h-auto max-w-[600px] rounded').props('fit=contain')
+                                    with ui.column().classes("items-center p-1 border rounded shadow-md"):
+                                        ui.image(image_path).classes('w-[45vw] max-w-[1280px] h-auto rounded mx-auto').props('fit=contain').on('click', lambda path=image_path: self.show_full_image(path))
                                         ui.label(f"Panel {i}").classes("text-sm")
-
-                ui.label(Path(mosaic_dir).name).classes("text-center mt-4 text-md font-medium")
-                ui.button("Close", on_click=dialog.close).classes("mt-4")
 
         dialog.open()
 
@@ -811,13 +817,12 @@ class ExploreApp:
 
                 if "_MOSAIC_" in file_path:
                     panels = self.get_mosaic_panels(os.path.dirname(self.preview_image_path))
-                    if len(panels) > 0:
+                    if len(panels) > 1:
                         ui.label(f'📦 {len(panels)} panel(s) found').classes('text-lg m-4')
                         ui.button("🖼️ Show Mosaic Gallery", on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
 
                 for data_detail in details_preview:
                     ui.item(data_detail).classes('text-sm')
-
 
             if not restacked_session and (nb_fits_files is None or nb_fits_files == 0):
                 ui.item_label(f"No sub-exposure fits files were found on the disk").classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
@@ -907,7 +912,7 @@ class ExploreApp:
                 #self.icon_row.add(icon)  # Add icon to the row
 
             if not self.backup_session_icon:
-                self.backup_session_icon =  ui.button("Backup Session", on_click=self.image_dialog.open).classes('h-16')
+                self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
             elif self.mode != "backup" and self.only_on_dwarf.value and self.selected_path:
                 self.backup_session_icon.visible = True
                 self.backup_session_icon.enable()
