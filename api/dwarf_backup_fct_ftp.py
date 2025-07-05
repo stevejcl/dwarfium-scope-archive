@@ -2,6 +2,7 @@ import os
 import ftplib
 from ftplib import FTP
 
+# Encoding changed to UTF-8
 from contextlib import contextmanager
 
 from api.dwarf_backup_fct import print_log
