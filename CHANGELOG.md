@@ -1,5 +1,10 @@
 # Changelog
 
+## [V2.2.1] - 2025-07-20
+
+### BugFix
+- Import Requests
+
 ## [V2.2] - 2025-07-20
 
 ### Setup Database Patch
