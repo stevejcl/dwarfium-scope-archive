@@ -2,7 +2,21 @@ import shutil
 import subprocess
 import zipfile
 from pathlib import Path
+import os
 
+# correction for Pyinstaller Error
+import astroquery
+from pathlib import Path
+astroquery_dir = Path(astroquery.__file__).parent
+citation_path = astroquery_dir / "CITATION"
+
+sep = os.pathsep  # Cross-platform separator: ; on Windows, : on Unix/macOS
+
+extra_data = [
+    f"{citation_path}{sep}astroquery",
+    f"astroquery/simbad/data/query_criteria_fields.json{sep}astroquery/simbad/data"
+]
+   
 APP_NAME = "DwarfiumScopeArchive"
 ICON_NAME = "DwarfiumScopeArchive.ico"
 SOURCE_FILE = "dwarfium_scope_archive.py"
@@ -12,7 +26,6 @@ IMAGE_DIR = Path("image")
 DIST_IMAGE_DIR = DIST_DIR / "image"
 DIST_DB_DIR = DIST_DIR / "db"
 
-import os
 print("Current working directory:", os.getcwd())
 
 # Step 1 – Clean old build folders
@@ -29,6 +42,7 @@ subprocess.run([
     "--windowed",
     "--icon", ICON_NAME,
     "--name", APP_NAME,
+    *[arg for data in extra_data for arg in ["--add-data", data]],
     SOURCE_FILE
 ], check=True)
 

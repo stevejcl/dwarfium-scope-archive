@@ -4,6 +4,7 @@
 
 ### BugFix
 - Import Requests
+- Change for PyInstaller errors in Runtime
 
 ## [V2.2] - 2025-07-20
 
