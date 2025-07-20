@@ -19,12 +19,23 @@ import cv2
 from nicegui import ui, run
 
 from api.dwarf_backup_db import connect_db, close_db, commit_db
-from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry
-from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data, set_dwarf_scan_date, set_backup_scan_date
+from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord
+from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
+from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId
+
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+CATALOG_FILE = './db/dso_catalog.json'
+SKY_CATALOG_FILE = './db/dso_sky_search_catalog.json'
+UNKNOWN = "unknown"
+MOSAIC_UNKNOWN = "mosaic_unknown"
+MANUAL = "manual"
 
 def hours_to_hms(ra_hours_str):
-    if any(x in ra_hours_str for x in ["h", "m", "s"]):
-        return ra_hours_str  # Already formatted
+    if not isinstance(ra_hours_str, (float, int)):
+        if any(x in ra_hours_str for x in ["h", "m", "s"]):
+             return ra_hours_str  # Already formatted
     hours = float(ra_hours_str)
     h = int(hours)
     m = int((hours - h) * 60)
@@ -32,8 +43,9 @@ def hours_to_hms(ra_hours_str):
     return f"{h:02d}h {m:02d}m {s:05.2f}s"
 
 def deg_to_dms(dec_deg_str):
-    if any(x in dec_deg_str for x in ["°", "′", "″"]):
-        return dec_deg_str  # Already formatted
+    if not isinstance(dec_deg_str, (float, int)):
+        if any(x in dec_deg_str for x in ["°", "′", "″"]):
+            return dec_deg_str  # Already formatted
     dec_deg = float(dec_deg_str)
     sign = "+" if dec_deg >= 0 else "-"
     dec_deg = abs(dec_deg)
@@ -41,6 +53,67 @@ def deg_to_dms(dec_deg_str):
     m = int((dec_deg - d) * 60)
     s = (dec_deg - d - m / 60) * 3600
     return f"{sign}{d:02d}° {m:02d}′ {s:05.2f}″"
+
+def hms_to_hours(hms_str: str) -> float:
+    """Convert 'HHh MMm SS.Ss' to decimal hours (float)."""
+    if isinstance(hms_str, (float, int)):
+        return float(hms_str)  # Already numeric
+
+    try:
+        hms_str = hms_str.lower().replace('h', ' ').replace('m', ' ').replace('s', '')
+        parts = hms_str.strip().split()
+        h = float(parts[0]) if len(parts) > 0 else 0
+        m = float(parts[1]) if len(parts) > 1 else 0
+        s = float(parts[2]) if len(parts) > 2 else 0
+        return h + m / 60 + s / 3600
+    except Exception as e:
+        print(f"[ERROR] Invalid HMS input: {hms_str} → {e}")
+        return 0.0
+
+def dms_to_degrees(dms_str: str) -> float:
+    """Convert '+DD° MM′ SS.S″' to decimal degrees (float)."""
+    if isinstance(dms_str, (float, int)):
+        return float(dms_str)  # Already numeric
+
+    try:
+        dms_str = dms_str.replace('°', ' ').replace('′', ' ').replace('″', '').replace('’', ' ')
+        sign = -1 if dms_str.strip().startswith('-') else 1
+        parts = dms_str.strip().lstrip('+-').split()
+        d = float(parts[0]) if len(parts) > 0 else 0
+        m = float(parts[1]) if len(parts) > 1 else 0
+        s = float(parts[2]) if len(parts) > 2 else 0
+        return sign * (d + m / 60 + s / 3600)
+    except Exception as e:
+        print(f"[ERROR] Invalid DMS input: {dms_str} → {e}")
+        return 0.0
+
+def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_path = SKY_CATALOG_FILE):
+    if os.path.exists(output_json_path):
+        print(f"[INFO] Using cached DSO catalog: {output_json_path}")
+        return  # Already exists
+
+    print("[INFO] Preprocessing original DSO catalog...")
+
+    with open(original_json_path, 'r', encoding='utf-8') as f:
+        raw_catalog = json.load(f)
+
+    processed_catalog = []
+
+    for entry in raw_catalog:
+        try:
+            ra_str = entry.get("ra")
+            dec_str = entry.get("dec")
+            coord = SkyCoord(ra=ra_str, dec=dec_str, unit=(u.hourangle, u.deg), frame='icrs')
+            entry["ra_deg"] = coord.ra.degree
+            entry["dec_deg"] = coord.dec.degree
+            processed_catalog.append(entry)
+        except Exception as e:
+            print(f"[WARN] Skipping {entry.get('name')} due to error: {e}")
+
+    with open(output_json_path, 'w', encoding='utf-8') as f:
+        json.dump(processed_catalog, f, indent=2)
+
+    print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
 
 def parse_shots_info(json_path, ftp=None):
     try:
@@ -146,10 +219,13 @@ def compute_md5(filepath):
 
 def files_are_different(src, dst, check_md5):
     if not os.path.exists(dst):
+        print("files_are_different 1")
         return True
     if os.path.getsize(src) != os.path.getsize(dst):
+        print("files_are_different 2")
         return True
     if int(os.path.getmtime(src)) != int(os.path.getmtime(dst)):
+        print("files_are_different 3")
         return True
     if check_md5 and compute_md5(src) != compute_md5(dst): return True
     return False
@@ -231,7 +307,7 @@ def insert_or_get_backup_drive(conn, location, dwarf_id=None):
         backupDrive_id = add_backupDrive_detail(conn, name, description, location, astroDir, dwarf_id)
         return backupDrive_id, dwarf_id
 
-def insert_dwarf_data(conn, root, filepath):
+def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_object = False):
     relative_path = os.path.relpath(filepath, root)
     print(f"insert_dwarf_data : path : {filepath}")
     print(f"insert_dwarf_data : rel-path : {relative_path}")
@@ -257,6 +333,10 @@ def insert_dwarf_data(conn, root, filepath):
 
     meta = parse_shots_info(json_path) if os.path.exists(json_path) else {}
     thumbnail = os.path.relpath(thumbnail_path, root) if os.path.exists(thumbnail_path) else None
+
+    # add RA, Dec to Astro_object if just created
+    #if astro_object_id and new_astro_object :
+    #    update_astro_object_coord(conn, astro_object_id, meta.get('dec'), meta.get('ra'))
 
     new_value , data_id = insert_DwarfData (conn, relative_path, mtime, thumbnail, size,
         meta.get('dec'), meta.get('ra'), meta.get('target'),
@@ -305,11 +385,19 @@ def extract_target_json(astro_path):
     else:
         meta = {}
 
-    return meta.get('target') if meta else None
+    if meta:
+        return meta.get('target'), str(meta['DEC']) if 'DEC' in meta else None, str(meta['RA']) if 'RA' in meta else None
+    else:
+        return None, None, None
 
 def show_date_session(date_db):
     dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
     date_session = dt.strftime("%B %d, %Y at %I:%M:%S %p")
+    return date_session
+
+def show_short_date_session(date_db):
+    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
+    date_session = dt.strftime("%b %d, %Y %I:%M %p")
     return date_session
 
 def print_log(message, log):
@@ -317,6 +405,13 @@ def print_log(message, log):
         log.push(message)
     else:
         print(message)
+
+def get_effective_parent(path):
+    parent = os.path.basename(os.path.dirname(path))
+    if parent == "RESTACKED":
+        # Return grandparent if parent is RESTACKED
+        return os.path.basename(os.path.dirname(os.path.dirname(path)))
+    return parent
 
 def create_local_dwarf_dir():
     result = False
@@ -340,14 +435,16 @@ def get_local_dwarf_dir(dwarf_id = None):
 def is_path_local_dwarf_dir(full_path):
     return "Dwarf_Local" in str(full_path)
 
-def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local",log=None):
+def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", session_name=None, log=None):
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
     archive_dir = os.path.join(dwarf_dir, "Archive")
     os.makedirs(archive_dir, exist_ok=True)
+    print(f"source_root: {source_root}")
 
+    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED"}
     session_dirs = [
-        d for d in os.listdir(source_root)
-        if os.path.isdir(os.path.join(source_root, d))
+        d for d in os.listdir(source_root) 
+        if os.path.isdir(os.path.join(source_root, d)) and d not in excluded_dirs
     ]
     # Look for RESTACKED subdirectory inside source_root
     source_restacked = os.path.join(source_root, "RESTACKED")
@@ -362,20 +459,47 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local",log=No
 
     # Combine both lists
     all_sessions = session_dirs + session_dirs_RESTACKED
+    print(all_sessions)
 
+    # If a specific session is provided, filter it
+    if session_name:
+        all_sessions = [
+            s for s in all_sessions
+            if s == session_name or s == os.path.join("RESTACKED", session_name)
+        ]
+    print(f"final all_sessions {all_sessions}")
+
+    # Sessions present in dwarf_dir, excepted in "Archive" and "RESTACKED"
     local_sessions = [
         d for d in os.listdir(dwarf_dir)
-        if os.path.isdir(os.path.join(dwarf_dir, d)) and d != "Archive"
+        if os.path.isdir(os.path.join(dwarf_dir, d)) and d not in excluded_dirs
     ]
 
+    # add those in RESTACKED subdirectory
+    restacked_path = os.path.join(dwarf_dir, "RESTACKED")
+    if os.path.isdir(restacked_path):
+        restacked_sessions = [
+            os.path.join("RESTACKED", d)
+            for d in os.listdir(restacked_path)
+            if os.path.isdir(os.path.join(restacked_path, d))
+        ]
+        local_sessions += restacked_sessions
+    print(local_sessions)
     print_log(f"\n🔄 Syncing {len(all_sessions)} sessions from source...\n", log)
 
     for session in all_sessions:
         print_log(f"✅ Checking local session {session}.", log)
         src_session = os.path.join(source_root, session)
-        dst_session = os.path.join(dwarf_dir, session)
+        dst_session = (
+            os.path.join(dwarf_dir, "RESTACKED", session)
+            if session_name and session_name.startswith("RESTACKED_")
+            else os.path.join(dwarf_dir, session)
+        )
         os.makedirs(dst_session, exist_ok=True)
-
+        print(f"src_session {src_session}")
+        print(f"dst_session {dst_session}")
+        dst_session = os.path.abspath(dst_session)
+        print(dst_session)
         for file_name in os.listdir(src_session):
             if file_name.startswith("stacked") or file_name == "shotsInfo.json":
                 src_file = win_long_path(os.path.join(src_session, file_name))
@@ -390,13 +514,14 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local",log=No
 
     print("\n✅ Copy complete.")
 
-    # Archive removed sessions
-    removed_sessions = set(local_sessions) - set(all_sessions)
-    for session in removed_sessions:
-        src_path = os.path.join(dwarf_dir, session)
-        dst_path = os.path.join(archive_dir, session)
-        print_log(f"📦 Archiving removed session: {session}", log)
-        shutil.move(src_path, dst_path)
+    # Archive removed sessions only full backup
+    if not session_name:
+        removed_sessions = set(local_sessions) - set(all_sessions)
+        for session in removed_sessions:
+            src_path = os.path.join(dwarf_dir, session)
+            dst_path = os.path.join(archive_dir, session)
+            print_log(f"📦 Archiving removed session: {session}", log)
+            shutil.move(src_path, dst_path)
 
     print_log("\n✅ Sync complete.", log)
     print("\n✅ Sync complete.")
@@ -469,7 +594,10 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 
     if not data_root or not os.path.exists(data_root):
         if data_root:
-            print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
+            if astronomy_dir:
+                print_log(f"❌ {astronomy_dir} folder not found in {backup_root} or not available",log)
+            else:
+                print_log(f"❌ {backup_root} folder not found or not available",log)
         return 0,0
 
     # Scan only one session dir
@@ -511,28 +639,47 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             print(f"Processing Dir: {astro_dir}")
     
         found_data = False
+        astro_group_id = None
         total_previous = total_added
     
         astro_name = extract_astro_name_from_folder(astro_dir)
+        dec_astro = None
+        ra_astro = None
         print(f"Processing extract_astro_name_from_folder: {astro_name}")
+        find_unknown = False
         if not astro_name:
             check_target_file = astro_path
             print(f"check_target_file Dir: {astro_path}")
-            astro_name = extract_target_json(astro_path)
+            astro_name, dec_astro, ra_astro = extract_target_json(astro_path)
             print(f"Processing extract_target_json: {astro_name}")
+        elif astro_name and (astro_name.lower() == UNKNOWN or astro_name.lower() == MOSAIC_UNKNOWN or astro_name.lower() == MANUAL):
+            find_unknown = True
+            check_target_file = astro_path
+            print(f"check_target_file Dir: {astro_path}")
+            astro_name_notused, dec_astro, ra_astro = extract_target_json(astro_path)
+            # Get Group_id for UNKNOWN, MOSAIC_UNKNOWN or MANUAL
+            print(f"Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
+            astro_group_id = get_astro_object_groupId(conn, astro_name)
+            print(f"astro_group_id (Unknown) {astro_name}")
         if astro_name:
             found_data = True
-            astro_object_id, new = insert_astro_object(conn, astro_name)
+            print(f"Found data: {astro_name} {find_unknown}")
+            if find_unknown:
+                astro_object_id, new = insert_astro_object(conn, astro_name, True, dec_astro, ra_astro)
+            else:
+                astro_object_id, new = insert_astro_object(conn, astro_name)
             if not astro_object_id:
                 break
             if new:
+                print(f"add astro object : {astro_name}",log)
                 print_log(f"add astro object : {astro_name}",log)
             else:
+                print(f"use astro object : {astro_name}",log)
                 print_log(f"use astro object : {astro_name}",log)
             print_log(f"📂 Processing direct Dwarf data:\n {astro_dir}",log)
             new_added, data_ids = process_dwarf_folder(
                 conn, backup_root, astro_path,
-                astro_object_id, dwarf_id, backup_drive_id
+                astro_object_id, dwarf_id, backup_drive_id, new, astro_group_id
             )
             total_added += new_added
             if data_ids:
@@ -550,6 +697,9 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             print(f"astro_name: {astro_name}")
             # Traverse all folders below astro_path
             for root, dirs, files in os.walk(astro_path):
+                dec_astro = None
+                ra_astro = None
+                astro_group_id = None
                 if check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
                     current_dir = os.path.basename(os.path.normpath(root))
                     print(f"current_dir Dir: {current_dir}")
@@ -563,38 +713,75 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                     check_target = extract_astro_name_from_folder(last_dir)
                     if not check_target:
                         print(f"check_target_file Dir: {last_dir_path}")
-                        check_target = extract_target_json(last_dir_path)
+                        check_target, dec_astro, ra_astro = extract_target_json(last_dir_path)
 
                     print(f"check_target: {check_target}")
                     if check_target:
+                        # case parent directory is a simple dir
+                        # so it will be a astro_group except for RESTACKED dir
                         if not found_data:
+                            new = False
                             print(f"not found_data")
                             if astro_name == "RESTACKED":
-                                astro_object_id, new = insert_astro_object(conn, check_target)
+                                if check_target.lower() == UNKNOWN or check_target.lower() == MOSAIC_UNKNOWN or check_target.lower() == MANUAL:
+                                    check_target_file = last_dir_path
+                                    print(f"check_target_file Dir: {last_dir_path}")
+                                    astro_name_notused, dec_astro, ra_astro = extract_target_json(last_dir_path)
+                                    print(f"RESTACKED Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
+                                    # Get Group_id for UNKNOWN, MOSAIC_UNKNOWN or MANUAL
+                                    astro_group_id = get_astro_object_groupId(conn, check_target)
+                                    print(f"astro_group_id (Unknown) {check_target}")
+                                    astro_object_id, new = insert_astro_object(conn, check_target, True, dec_astro, ra_astro)
+                                else:
+                                    astro_object_id, new = insert_astro_object(conn, check_target)
                                 if not astro_object_id:
                                     break
                                 if new:
+                                    print(f"add astro object : {check_target}",log)
                                     print_log(f"add astro object : {check_target}",log)
                                 else:
-                                    print_log(f"use astro object : {check_target}",log)
+                                    print(f"add astro object : {check_target}",log)
+                                    print_log(f"add astro object : {check_target}",log)
                                 #found_data = True
-                            else: # use Main AstroDir Name
-                                print(f"astro_object_id {astro_name}")
-                                astro_object_id, new = insert_astro_object(conn, astro_name)
+                            else: # use Main AstroDir Name as astro_group
+                                print(f"astro_object_id {check_target}")
+                                if check_target.lower() == UNKNOWN or check_target.lower() == MOSAIC_UNKNOWN or check_target.lower() == MANUAL:
+                                    check_target_file = last_dir_path
+                                    print(f"check_target_file Dir: {last_dir_path}")
+                                    astro_name_notused, dec_astro, ra_astro = extract_target_json(last_dir_path)
+                                    print(f"DIR Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
+                                    astro_object_id, new = insert_astro_object(conn, check_target, True, dec_astro, ra_astro)
+                                else:
+                                    astro_object_id, new = insert_astro_object(conn, check_target)
                                 if not astro_object_id:
                                     print(f"not astro_object_id")
                                     break
                                 if new:
+                                    print(f"add astro object : {astro_name}",log)
                                     print_log(f"add astro object : {astro_name}",log)
                                 else:
+                                    print(f"use astro object : {astro_name}",log)
                                     print_log(f"use astro object : {astro_name}",log)
-                                found_data = True
+                                # case parent directory is a simple dir
+                                # so it will be a astro_group except for RESTACKED dir
+                                # add astro group
+                                print(f"astro_group_id {astro_name}")
+                                astro_group_id, new_group = insert_astro_group(conn, astro_name)
+                                if not astro_group_id:
+                                    print(f"not astro_group_id")
+                                    break
+                                if new_group:
+                                    print_log(f"add astro group : {astro_name}",log)
+                                else:
+                                    print_log(f"use astro group : {astro_name}",log)
+                                #found_data = True
                         print_log(f"📂 Processing session folder (deep):\n {os.path.dirname(last_dir_path)}",log)
                         print_log(f"📂 Session: {os.path.basename(last_dir_path)}",log)
                         print(f"Processing session folder (deep): {last_dir_path}")
+                        print(f"Using astro_group_id / astro_object_id : {astro_group_id}/{astro_object_id}")
                         new_added, data_ids = process_dwarf_folder(
                             conn, backup_root, last_dir_path,
-                            astro_object_id, dwarf_id, backup_drive_id
+                            astro_object_id, dwarf_id, backup_drive_id, new, astro_group_id
                         )
                         total_added += new_added
                         print(f"Added : {new_added}")
@@ -611,8 +798,9 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             else:
                 print_log(f"📂 No new Session found in {astro_dir}",log)
 
-        if not found_data:
-            print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
+        # not used anymore
+        #if not found_data:
+        #    print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
 
     if session_dir_main_dir :
         # update scan date if modifications presents
@@ -644,275 +832,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     close_db(conn)
     return total_added, deleted
 
-def scan_backup_folder_ftp(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, log=None, ip_adress="", ftp_mode=False):
-    if not db_name:
-        print_log(f"❌ database name can not be empty!",log)
-        return 0,0
-    conn = connect_db(db_name)
-    if not conn:
-        print_log(f"❌ {db_name} database couldn't be opened!",log)
-        return 0,0
-
-    if astronomy_dir:
-        data_root = os.path.join(backup_root, astronomy_dir)
-    else:
-        data_root = backup_root
-    if not os.path.exists(data_root):
-        print_log(f"❌ {astronomy_dir} folder not found in {backup_root}",log)
-        return 0,0
-
-    valid_ids = set()
-    total_added = 0
-    deleted = 0
-
-    for astro_dir in os.listdir(data_root):
-        astro_path = os.path.join(data_root, astro_dir)
-        if not os.path.isdir(astro_path):
-            continue
-
-        print_log(f"🔍 Processing Dir: {astro_dir}",log)
-        print(f"astro_path Dir: {astro_path}")
-        print(f"Processing Dir: {astro_dir}")
-
-        found_data = False
-        total_previous = total_added
-        astro_name = extract_astro_name_from_folder(astro_dir)
-        print(f"Processing extract_astro_name_from_folder: {astro_name}")
-        if not astro_name:
-            check_target_file = astro_path
-            print(f"check_target_file Dir: {astro_path}")
-            astro_name = extract_target_json(astro_path)
-            print(f"Processing extract_target_json: {astro_name}")
-        if astro_name:
-            found_data = True
-            astro_object_id, new = insert_astro_object(conn, astro_name)
-            if not astro_object_id:
-                break
-            if new:
-                print_log(f"add astro object : {astro_name}",log)
-            else:
-                print_log(f"use astro object : {astro_name}",log)
-            print_log(f"📂 Processing direct Dwarf data: {astro_dir}",log)
-            new_added, data_ids = process_dwarf_folder(
-                conn, backup_root, astro_path,
-                astro_object_id, dwarf_id, backup_drive_id
-            )
-            total_added += new_added
-            if data_ids:
-                if isinstance(data_ids, (list, tuple, set)):
-                    valid_ids.update(data_ids)
-                else:
-                    valid_ids.add(data_ids)
-            if total_added - total_previous == 1:
-                print_log(f"📂 Found 1 new Session in {astro_dir}",log)
-            elif total_added != total_previous:
-                print_log(f"📂 Found {total_added - total_previous} new Sessions in {astro_dir}",log)
-
-        else:
-            astro_name = astro_dir
-            # Traverse all folders below astro_path
-            for root, dirs, files in os.walk(astro_path):
-                if not dirs and files:
-                    current_dir = os.path.basename(os.path.normpath(root))
-                    print(f"current_dir Dir: {current_dir}")
-                    if current_dir == 'Thumbnail':
-                        last_dir = os.path.basename(os.path.dirname(root))  # name
-                        last_dir_path = os.path.dirname(root)               # full path
-                    else:
-                        last_dir = current_dir
-                        last_dir_path = root
-                    print(f"check_target_file Dir: {last_dir}")
-                    check_target = extract_astro_name_from_folder(last_dir)
-                    if not check_target:
-                        print(f"check_target_file Dir: {last_dir_path}")
-                        check_target = extract_target_json(last_dir_path)
-
-                    print(f"check_target: {check_target}")
-                    if check_target:
-                        if not found_data:
-                            print(f"not found_data")
-                            if astro_name == "RESTACKED":
-                                astro_object_id, new = insert_astro_object(conn, check_target)
-                                if not astro_object_id:
-                                    break
-                                if new:
-                                    print_log(f"add astro object : {check_target}",log)
-                                else:
-                                    print_log(f"use astro object : {check_target}",log)
-                                #found_data = True
-                            else: # use Main AstroDir Name
-                                print(f"astro_object_id {astro_name}")
-                                astro_object_id, new = insert_astro_object(conn, astro_name)
-                                if not astro_object_id:
-                                    print(f"not astro_object_id")
-                                    break
-                                if new:
-                                    print_log(f"add astro object : {astro_name}",log)
-                                else:
-                                    print_log(f"use astro object : {astro_name}",log)
-                                found_data = True
-                        print_log(f"📂 Processing session folder (deep): {last_dir_path}",log)
-                        print(f"Processing session folder (deep): {last_dir_path}")
-                        new_added, data_ids = process_dwarf_folder(
-                            conn, backup_root, last_dir_path,
-                            astro_object_id, dwarf_id, backup_drive_id
-                        )
-                        total_added += new_added
-                        print(f"Added : {new_added}")
-                        if data_ids:
-                            if isinstance(data_ids, (list, tuple, set)):
-                                valid_ids.update(data_ids)
-                            else:
-                                valid_ids.add(data_ids)
-
-            if total_added - total_previous == 1:
-                print_log(f"📂 Found 1 new Session in {astro_dir}",log)
-            elif total_added != total_previous:
-                print_log(f"📂 Found {total_added - total_previous} new Sessions in {astro_dir}",log)
-
-        if not found_data and astro_name != "RESTACKED":
-            print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
-
-    # delete data that are not more present
-    if not backup_drive_id:
-        deleted = delete_notpresent_dwarf_entries_and_dwarf_data(conn, dwarf_id, valid_ids)
-        if deleted == 1:
-            print_log(f"📂 Deleted 1 entry in DB not more present",log)
-        elif deleted and deleted > 1:
-            print_log(f"📂 deleted {deleted} entries in DB not more present",log)
-        # update scan date if modifications presents
-        if deleted or total_added:
-            set_dwarf_scan_date(conn, dwarf_id)
-    else:
-        deleted = delete_notpresent_backup_entries_and_dwarf_data(conn, backup_drive_id, valid_ids)
-        if deleted == 1:
-            print_log(f"📂 Deleted 1 entry in DB not more present",log)
-        elif deleted and deleted > 1:
-            print_log(f"📂 deleted {deleted} entries in DB not more present",log)
-        # update scan date if modifications presents
-        if deleted or total_added:
-            set_backup_scan_date(conn, backup_drive_id)
-
-    commit_db(conn)
-    close_db(conn)
-    return total_added, deleted
-
-def scan_sub_folder(conn, backup_root, astro_path, astro_dir, total_added, valid_ids, dwarf_id, backup_drive_id = None, log=None):
-
-    if not conn:
-        print_log(f"❌ database couldn't be opened!",log)
-        return 0,0
-
-    found_data = False
-    total_previous = total_added
-    astro_name = extract_astro_name_from_folder(astro_dir)
-    if not astro_name:
-        check_target_file = os.path.join(astro_path, astro_dir)
-        astro_name = extract_target_json(check_target_file)
-    if astro_name:
-        found_data = True
-        astro_object_id, new = insert_astro_object(conn, astro_name)
-        if not astro_object_id:
-            return 0, 0
-        if new:
-            print_log(f"add astro object : {astro_name}",log)
-        else:
-            print_log(f"use astro object : {astro_name}",log)
-        print_log(f"📂 Processing direct Dwarf data: {astro_dir}",log)
-        new_added, data_ids = process_dwarf_folder(
-            conn, backup_root, astro_path,
-            astro_object_id, dwarf_id, backup_drive_id
-        )
-        total_added += new_added
-        if data_ids:
-            if isinstance(data_ids, (list, tuple, set)):
-                valid_ids.update(data_ids)
-            else:
-                valid_ids.add(data_ids)
-        if total_added - total_previous == 1:
-            print_log(f"📂 Found 1 new Session in {astro_dir}",log)
-        elif total_added != total_previous:
-            print_log(f"📂 Found {total_added - total_previous} new Sessions in {astro_dir}",log)
-
-    else:
-        astro_name = astro_dir
-        # Traverse all folders below astro_path
-        for root, dirs, files in os.walk(astro_path):
-            if not dirs and files:
-                current_dir = os.path.basename(os.path.normpath(root))
-                if current_dir == 'Thumbnail':
-                    last_dir = os.path.basename(os.path.dirname(root))  # Use parent dir
-                else:
-                    last_dir = current_dir
-                check_target = extract_astro_name_from_folder(last_dir)
-                if not check_target:
-                    check_target = extract_target_json(root)
-
-                if check_target:
-                    if not found_data:
-                        if astro_name == "RESTACKED":
-                            astro_object_id, new = insert_astro_object(conn, check_target)
-                            if not astro_object_id:
-                                return 0, 0
-                            if new:
-                                print_log(f"add astro object : {check_target}",log)
-                            else:
-                                print_log(f"use astro object : {check_target}",log)
-                            found_data = True
-                        else: # use Main AstroDir Name
-                            astro_object_id, new = insert_astro_object(conn, astro_name)
-                            if not astro_object_id:
-                                break
-                            if new:
-                                print_log(f"add astro object : {check_target}",log)
-                            else:
-                                print_log(f"use astro object : {check_target}",log)
-                            found_data = True
-                    print_log(f"📂 Processing session folder (deep): {root}",log)
-                    new_added, data_ids = process_dwarf_folder(
-                        conn, backup_root, root,
-                        astro_object_id, dwarf_id, backup_drive_id
-                    )
-                    total_added += new_added
-                    if data_ids:
-                        if isinstance(data_ids, (list, tuple, set)):
-                            valid_ids.update(data_ids)
-                        else:
-                            valid_ids.add(data_ids)
-
-        if total_added - total_previous == 1:
-            print_log(f"📂 Found 1 new Session in {astro_dir}",log)
-        elif total_added != total_previous:
-            print_log(f"📂 Found {total_added - total_previous} new Sessions in {astro_dir}",log)
-
-    if not found_data:
-        print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
-
-    # delete data that are not more present
-    if not backup_drive_id:
-        deleted = delete_notpresent_dwarf_entries_and_dwarf_data(conn, dwarf_id, valid_ids)
-        if deleted == 1:
-            print_log(f"📂 Deleted 1 entry in DB not more present",log)
-        elif deleted and deleted > 1:
-            print_log(f"📂 deleted {deleted} entries in DB not more present",log)
-        # update scan date if modifications presents
-        if deleted or total_added:
-            set_dwarf_scan_date(conn, dwarf_id)
-    else:
-        deleted = delete_notpresent_backup_entries_and_dwarf_data(conn, backup_drive_id, valid_ids)
-        if deleted == 1:
-            print_log(f"📂 Deleted 1 entry in DB not more present",log)
-        elif deleted and deleted > 1:
-            print_log(f"📂 deleted {deleted} entries in DB not more present",log)
-        # update scan date if modifications presents
-        if deleted or total_added:
-            set_backup_scan_date(conn, backup_drive_id)
-
-    commit_db(conn)
-    close_db(conn)
-    return total_added, deleted
-
-def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id=None): 
+def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id=None, new_data = False, astro_group_id = None): 
     added = 0
     data_ids = set()
     session_date = extract_session_datetime(dwarf_path)
@@ -927,19 +847,19 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
             continue
         print(f"process_dwarf_folder - filename  {filename}")
         full_file_path = os.path.join(dwarf_path, filename)
-        dwarf_data_id, data_id = insert_dwarf_data(conn, backup_root, full_file_path)
+        dwarf_data_id, data_id = insert_dwarf_data(conn, backup_root, full_file_path, astro_object_id, new_data)
         session_dt_str = session_date.strftime("%Y-%m-%d %H:%M:%S.%f")
         session_dir = os.path.basename(os.path.normpath(dwarf_path))
 
         if dwarf_data_id:
             if backup_drive_id:
                 # Insert entry in BackupEntry
-                new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir)
+                new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
                 added += 1 if new_id != 0 else 0
                 print(f"insert_BackupEntry : id : {new_id}")
             else:
                 # Insert entry in DwarfEntry
-                new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir)
+                new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
                 added += 1 if new_id != 0 else 0
         if data_id:
             data_ids.add(data_id)

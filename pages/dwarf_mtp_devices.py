@@ -3,7 +3,7 @@ from nicegui import ui, run, app
 
 import os
 
-from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
+from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import device_exists_in_db, get_mtp_devices, add_mtp_device_to_db, get_dwarf_mtp_drive
 
 from api.dwarf_backup_mtp_handler import MTPManager 

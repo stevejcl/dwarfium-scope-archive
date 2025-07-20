@@ -7,6 +7,17 @@ import csv
 
 from api.dwarf_backup_db import commit_db
 
+# Global list and dictionary
+DEFAULT_GROUP_NAMES = ["Unknown", "MOSAIC_Unknown", "Manual"]
+DEFAULT_GROUP_IDS = {}
+
+def generate_order_case(field: str, names: list[str], priority=0, else_val=1) -> str:
+    lower_names = "', '".join(name.lower() for name in names)
+    return f"""CASE
+    WHEN LOWER({field}) IN ('{lower_names}') THEN {priority}
+    ELSE {else_val}
+END"""
+
 def is_dwarf_exists(conn: sqlite3.Connection, dwarf_id=None):
     try:
         if dwarf_id:
@@ -251,6 +262,65 @@ def del_backupDrive(conn: sqlite3.Connection, backupDrive_id=None):
         print(f"[DB ERROR] Failed to delete backupDrive {backupDrive_id}: {e}")
         return False
 
+def delete_unused_astro_objects(conn: sqlite3.Connection) -> bool:
+    try:
+        conn.execute("""
+            DELETE FROM AstroObject
+            WHERE id NOT IN (
+                SELECT astro_object_id FROM BackupEntry WHERE astro_object_id IS NOT NULL
+                UNION
+                SELECT astro_object_id FROM DwarfEntry WHERE astro_object_id IS NOT NULL
+                UNION
+                SELECT astro_group_id FROM BackupEntry WHERE astro_group_id IS NOT NULL
+                UNION
+                SELECT astro_group_id FROM DwarfEntry WHERE astro_group_id IS NOT NULL
+            )
+        """)
+        commit_db(conn)
+        print("✅ Unused AstroObject entries deleted.")
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete unused astro objects: {e}")
+        return False
+
+def can_delete_astro_object(conn: sqlite3.Connection, astro_id: int) -> bool:
+    for table, column in [
+        ('BackupEntry', 'astro_object_id'),
+        ('DwarfEntry', 'astro_object_id'),
+        ('BackupEntry', 'astro_group_id'),
+        ('DwarfEntry', 'astro_group_id'),
+    ]:
+        query = f"SELECT 1 FROM {table} WHERE {column} = ? LIMIT 1"
+        if conn.execute(query, (astro_id,)).fetchone():
+            return False
+    return True
+
+def del_astroObjectId(conn: sqlite3.Connection, astro_id: int ) -> bool:
+    try:
+        if can_delete_astro_object(conn, astro_id):
+            conn.execute("DELETE FROM AstroObject WHERE id = ?", (astro_id,))
+            commit_db(conn)
+            return True
+        else:
+            print("❌ Cannot delete: AstroObject is still in use.")
+            return False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete astro_object {astro_id}: {e}")
+        return False
+
+def del_astroObjects(conn: sqlite3.Connection):
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM AstroObject")
+        commit_db(conn)
+        return True
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete astro_object: {e}")
+        return False
+
 def get_backupDrive_dwarfId(conn: sqlite3.Connection, backup_drive_id=None):
     try:
         if backup_drive_id:
@@ -296,9 +366,17 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
                 END AS display_name,
-                AstroObject.dso_id
+                AstroObject.dso_id,
+                AstroObject.is_group
             FROM AstroObject
-            JOIN BackupEntry ON BackupEntry.astro_object_id = AstroObject.id
+            JOIN BackupEntry
+                ON (
+                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NULL)
+                    OR
+                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NOT NULL AND AstroObject.description != '' )
+                    OR
+                    (AstroObject.id = BackupEntry.astro_group_id AND BackupEntry.astro_object_id IS NOT NULL AND AstroObject.description = '')
+                )
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
         """
@@ -334,7 +412,12 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += " ORDER BY display_name"
+        order_case_sql = generate_order_case("display_name", DEFAULT_GROUP_NAMES)
+        query += f"""
+            ORDER BY 
+                {order_case_sql},
+                display_name
+        """
 
         cursor.execute(query, params)
 
@@ -356,9 +439,17 @@ def get_Objects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=None,
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
                 END AS display_name,
-                AstroObject.dso_id
+                AstroObject.dso_id,
+                AstroObject.is_group
             FROM AstroObject
-            JOIN BackupEntry ON BackupEntry.astro_object_id = AstroObject.id
+            JOIN BackupEntry
+                ON (
+                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NULL)
+                    OR
+                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NOT NULL AND AstroObject.description != '' )
+                    OR
+                    (AstroObject.id = BackupEntry.astro_group_id AND BackupEntry.astro_object_id IS NOT NULL)
+                )
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
         """
@@ -404,7 +495,12 @@ def get_Objects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=None,
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += " ORDER BY display_name"
+        order_case_sql = generate_order_case("display_name", DEFAULT_GROUP_NAMES)
+        query += f"""
+            ORDER BY 
+                {order_case_sql},
+                display_name
+        """
 
         cursor.execute(query, params)
 
@@ -426,9 +522,17 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
                 END AS display_name,
-                AstroObject.dso_id
+                AstroObject.dso_id,
+                AstroObject.is_group
             FROM AstroObject
-            JOIN DwarfEntry ON DwarfEntry.astro_object_id = AstroObject.id
+            JOIN DwarfEntry
+                ON (
+                    (AstroObject.id = DwarfEntry.astro_object_id AND DwarfEntry.astro_group_id IS NULL)
+                    OR
+                    (AstroObject.id = DwarfEntry.astro_object_id AND DwarfEntry.astro_group_id IS NOT NULL AND AstroObject.description != '' )
+                    OR
+                    (AstroObject.id = DwarfEntry.astro_group_id AND DwarfEntry.astro_object_id IS NOT NULL)
+                )
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
         """
         conditions = []
@@ -459,7 +563,12 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += " ORDER BY display_name"
+        order_case_sql = generate_order_case("display_name", DEFAULT_GROUP_NAMES)
+        query += f"""
+            ORDER BY 
+                {order_case_sql},
+                display_name
+        """
 
         cursor.execute(query, params)
 
@@ -624,7 +733,7 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwar
         print(f"[DB ERROR] Failed to fetch get_countObjects_dwarf: {e}")
         return []
 
-def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, is_group = False):
     try:
         cursor = conn.cursor()
 
@@ -645,26 +754,44 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id =
                 BackupEntry.favorite,
                 DwarfData.target,
                 DwarfData.dec,
-                DwarfData.ra
+                DwarfData.ra,
+                BackupEntry.astro_object_id,
+                BackupEntry.astro_group_id,
+                CASE 
+                    WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
+                    THEN AstroObject.description || ' [' || AstroObject.name || ']' 
+                    ELSE AstroObject.name 
+                END AS object_display_name
             FROM BackupEntry
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN Dwarf ON BackupDrive.dwarf_id = Dwarf.id
+            JOIN AstroObject ON BackupEntry.astro_object_id = AstroObject.id
         """
 
         where_clauses = []
         params = []
 
         if object_id is not None:
-            where_clauses.append("BackupEntry.astro_object_id = ?")
+            if not is_group :
+                where_clauses.append("BackupEntry.astro_object_id = ?")
+            else:
+                where_clauses.append("BackupEntry.astro_group_id = ?")
             params.append(object_id)
 
         elif dso_id is not None:
-            where_clauses.append("""
-                BackupEntry.astro_object_id IN (
-                    SELECT id FROM AstroObject WHERE dso_id = ?
-                )
-            """)
+            if not is_group :
+                where_clauses.append("""
+                    BackupEntry.astro_object_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
+            else:
+                where_clauses.append("""
+                    BackupEntry.astro_group_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
             params.append(dso_id)
 
         if backup_drive_id:
@@ -706,7 +833,7 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id =
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_backup: {e}")
         return []
 
-def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None, dso_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None, dso_id = None, backup_drive_id=None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, is_group = False):
     try:
         cursor = conn.cursor()
 
@@ -727,11 +854,19 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
                 BackupEntry.favorite,
                 DwarfData.target,
                 DwarfData.dec,
-                DwarfData.ra
+                DwarfData.ra,
+                BackupEntry.astro_object_id,
+                BackupEntry.astro_group_id,
+                CASE 
+                    WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
+                    THEN AstroObject.description || ' [' || AstroObject.name || ']' 
+                    ELSE AstroObject.name 
+                END AS object_display_name
             FROM BackupEntry
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN Dwarf ON BackupDrive.dwarf_id = Dwarf.id
+            JOIN AstroObject ON BackupEntry.astro_object_id = AstroObject.id
         """
 
         where_clauses = []
@@ -748,15 +883,25 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
         """)
 
         if object_id is not None:
-            where_clauses.append("BackupEntry.astro_object_id = ?")
+            if not is_group :
+                where_clauses.append("BackupEntry.astro_object_id = ?")
+            else:
+                where_clauses.append("BackupEntry.astro_group_id = ?")
             params.append(object_id)
 
         elif dso_id is not None:
-            where_clauses.append("""
-                BackupEntry.astro_object_id IN (
-                    SELECT id FROM AstroObject WHERE dso_id = ?
-                )
-            """)
+            if not is_group :
+                where_clauses.append("""
+                    BackupEntry.astro_object_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
+            else:
+                where_clauses.append("""
+                    BackupEntry.astro_group_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
             params.append(dso_id)
 
         if backup_drive_id:
@@ -798,27 +943,7 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_duplicate_backup: {e}")
         return []
 
-def toggle_favorite(conn: sqlite3.Connection, entry_id, label_element, mode):
-    try:
-        cursor = conn.cursor()
-        if mode=="backup":
-            cursor.execute("UPDATE BackupEntry SET favorite = NOT favorite WHERE BackupEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
-        else:
-            cursor.execute("UPDATE DwarfEntry SET favorite = NOT favorite WHERE DwarfEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
-        commit_db(conn)
-
-        if mode=="backup":
-            cursor.execute("SELECT favorite FROM BackupEntry WHERE BackupEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
-        else:
-            cursor.execute("SELECT favorite FROM DwarfEntry WHERE DwarfEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
-
-        return cursor.fetchone()[0]
-
-    except Exception as e:
-        print(f"[DB ERROR] Failed to toggle_favorite: {e}")
-        return 0
-
-def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None):
+def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, is_group = False):
     try:
         cursor = conn.cursor()
 
@@ -839,25 +964,43 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
                 DwarfEntry.favorite,
                 DwarfData.target,
                 DwarfData.dec,
-                DwarfData.ra
+                DwarfData.ra,
+                DwarfEntry.astro_object_id,
+                DwarfEntry.astro_group_id,
+                CASE 
+                    WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
+                    THEN AstroObject.description || ' [' || AstroObject.name || ']' 
+                    ELSE AstroObject.name 
+                END AS object_display_name
             FROM DwarfEntry
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
             JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
+            JOIN AstroObject ON DwarfEntry.astro_object_id = AstroObject.id
         """
 
         where_clauses = []
         params = []
 
         if object_id is not None:
-            where_clauses.append("DwarfEntry.astro_object_id = ?")
+            if not is_group :
+                where_clauses.append("DwarfEntry.astro_object_id = ?")
+            else:
+                where_clauses.append("DwarfEntry.astro_group_id = ?")
             params.append(object_id)
 
         elif dso_id is not None:
-            where_clauses.append("""
-                DwarfEntry.astro_object_id IN (
-                    SELECT id FROM AstroObject WHERE dso_id = ?
-                )
-            """)
+            if not is_group :
+                where_clauses.append("""
+                    DwarfEntry.astro_object_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
+            else:
+                where_clauses.append("""
+                    DwarfEntry.astro_group_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
             params.append(dso_id)
 
         if dwarf_id:  # not "(All Dwarfs)"
@@ -885,6 +1028,8 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
 
+        query += " ORDER BY DwarfEntry.session_date DESC"
+
         cursor.execute(query, params)
 
         return cursor.fetchall()
@@ -892,6 +1037,26 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_dwarf: {e}")
         return []
+
+def toggle_favorite(conn: sqlite3.Connection, entry_id, label_element, mode):
+    try:
+        cursor = conn.cursor()
+        if mode=="backup":
+            cursor.execute("UPDATE BackupEntry SET favorite = NOT favorite WHERE BackupEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+        else:
+            cursor.execute("UPDATE DwarfEntry SET favorite = NOT favorite WHERE DwarfEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+        commit_db(conn)
+
+        if mode=="backup":
+            cursor.execute("SELECT favorite FROM BackupEntry WHERE BackupEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+        else:
+            cursor.execute("SELECT favorite FROM DwarfEntry WHERE DwarfEntry.dwarf_data_id = (SELECT id FROM DwarfData WHERE id = ?)", (entry_id,))
+
+        return cursor.fetchone()[0]
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to toggle_favorite: {e}")
+        return 0
 
 def get_backup_entries(conn: sqlite3.Connection):
     try:
@@ -1031,7 +1196,7 @@ def delete_backup_entries_and_dwarf_data(conn: sqlite3.Connection, backup_drive_
                 cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
                 cursor.execute("UPDATE BackupDrive SET last_backup_scan_date=NULL WHERE id=?", (backup_drive_id,))
 
-        conn.commit()
+        commit_db(conn)
         print(f"Deleted {len(dwarf_data_ids)} DwarfData entries (if not reused) and all related BackupEntry rows.")
 
     except Exception as e:
@@ -1064,7 +1229,7 @@ def delete_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwarf_id=None)
                 cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
                 cursor.execute("UPDATE Dwarf SET last_scan_date=NULL WHERE id=?", (dwarf_id,))
 
-        conn.commit()
+        commit_db(conn)
         print(f"Deleted {len(dwarf_data_ids)} DwarfData entries (if not reused) and all related DwarfEntry rows.")
 
     except Exception as e:
@@ -1102,7 +1267,7 @@ def delete_notpresent_backup_entries_and_dwarf_data(conn: sqlite3.Connection, ba
                 if count == 0:
                     cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
 
-            conn.commit()
+            commit_db(conn)
             print(f"Deleted {len(dwarf_data_ids)} unused DwarfData entries and obsolete BackupEntry rows.")
             return len(dwarf_data_ids)
 
@@ -1145,7 +1310,7 @@ def delete_notpresent_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwa
                 if count == 0:
                     cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
 
-            conn.commit()
+            commit_db(conn)
             print(f"Deleted {len(dwarf_data_ids)} unused DwarfData entries and obsolete DwarfEntry rows.")
             return len(dwarf_data_ids)
 
@@ -1214,28 +1379,6 @@ def get_session_present_in_backupDrive(conn: sqlite3.Connection, session_dir=Non
         print(f"[DB ERROR] Failed to get session present in backupDrive for {session_dir}: {e}")
         return []
 
-def insert_astro_object(conn: sqlite3.Connection, name=None):
-    try:
-        if name:
-            cursor = conn.execute("SELECT id FROM AstroObject WHERE name = ?", (name,))
-            row = cursor.fetchone()
-            if row:
-                 return row[0] , False
-            else:
-                cursor = conn.execute("INSERT INTO AstroObject (name, description) VALUES (?, ?)", (name, ""))
-                if cursor.rowcount > 0:
-                    conn.commit()
-                    return cursor.lastrowid , True
-                else:
-                    print("Error Insert ignored : insert_astro_object")
-                    return None, False
-        else: 
-            return None, False
-
-    except Exception as e:
-        print(f"[DB ERROR] Failed to insert astro object {name}: {e}")
-        return []
-
 def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path, file_size,
         dec, ra, target, binning, format, exp_time, gain, shotsToTake, shotsTaken,
         shotsStacked, ircut, maxTemp, minTemp, width, height, media_type, stacked_path, stacked_md5):
@@ -1284,7 +1427,7 @@ def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path,
         ))
 
         if cursor.rowcount > 0:
-            conn.commit()
+            commit_db(conn)
             if exist_id is None:
                 last_id = cursor.lastrowid
                 print(f" DwarData : Adding new Id :{last_id}")
@@ -1303,19 +1446,20 @@ def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path,
         print(f"[DB ERROR] Failed to insert or fetch DwarfData: {e}")
         return None, None
 
-def insert_BackupEntry(conn: sqlite3.Connection, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir):
+def insert_BackupEntry(conn: sqlite3.Connection, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id):
     try:
         # Insert entry in BackupEntry
         cursor = conn.execute("""
             INSERT OR IGNORE INTO BackupEntry (
-                backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_date, session_dir
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_date, session_dir, astro_group_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(backup_drive_id, dwarf_id, dwarf_data_id)
             DO UPDATE SET
                 astro_object_id=excluded.astro_object_id,
                 session_date=excluded.session_date,
-                session_dir=excluded.session_dir
-        """, (backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir))
+                session_dir=excluded.session_dir,
+                astro_group_id=excluded.astro_group_id
+        """, (backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id))
 
         if cursor.rowcount > 0:
             backupEntry_id = cursor.lastrowid
@@ -1331,20 +1475,20 @@ def insert_BackupEntry(conn: sqlite3.Connection, backup_drive_id, dwarf_id, astr
         print(f"[DB ERROR] Failed to insert BackupEntry: {e}")
         return []
 
-
-def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir):
+def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id):
     try:
         cursor = conn.execute("""
             INSERT INTO DwarfEntry (
-                dwarf_id, astro_object_id, dwarf_data_id, session_date, session_dir
+                dwarf_id, astro_object_id, dwarf_data_id, session_date, session_dir, astro_group_id
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(dwarf_id, dwarf_data_id)
             DO UPDATE SET
                 astro_object_id=excluded.astro_object_id,
                 session_date=excluded.session_date,
-                session_dir=excluded.session_dir
-        """, (dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir))
+                session_dir=excluded.session_dir,
+                astro_group_id=excluded.astro_group_id
+        """, (dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id))
 
         if cursor.rowcount > 0:
             dwarfEntry_id = cursor.lastrowid
@@ -1361,8 +1505,168 @@ def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf
         return []
 
 def get_astro_objects(conn: sqlite3.Connection):
+    placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))  # → "?, ?, ?"
+    query = f'''
+        SELECT id, name, description, dso_id 
+        FROM AstroObject 
+        WHERE name NOT IN ({placeholders})
+    '''
     with conn:
-        return conn.execute('SELECT id, name, description, dso_id FROM AstroObject').fetchall()
+        return conn.execute(query, DEFAULT_GROUP_NAMES).fetchall()
+
+def get_astro_object_description(conn: sqlite3.Connection, object_id=None):
+    with conn:
+        result = conn.execute('SELECT description FROM AstroObject Where id = ? ', (object_id,)).fetchone()
+        return result[0] if result else None
+
+def get_astro_object_groupId(conn: sqlite3.Connection, name):
+    with conn:
+        result = conn.execute('SELECT id FROM AstroObject Where name = ? and is_group = True', (name,)).fetchone()
+        return result[0] if result else None
+
+def update_astro_object_name(conn: sqlite3.Connection, object_id=None, newName=None):
+    try:
+        with conn:
+            if newName:
+                cursor = conn.execute("SELECT id FROM AstroObject WHERE id = ?", (object_id,))
+                row = cursor.fetchone()
+                if row:
+                    conn.execute('UPDATE AstroObject SET name=? WHERE id=?', (newName, object_id))
+                    return True
+                else:
+                    print("Error Update no Data : update_astro_object_name")
+                    return False
+            else: 
+                return False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to update astro object {name}: {e}")
+        return False
+
+def update_astro_object_description(conn: sqlite3.Connection, object_id=None, description=None):
+    try:
+        with conn:
+            if description:
+                cursor = conn.execute("SELECT id FROM AstroObject WHERE id = ?", (object_id,))
+                row = cursor.fetchone()
+                if row:
+                    conn.execute('UPDATE AstroObject SET description=? WHERE id=?', (description, object_id))
+                    return True
+                else:
+                    print("Error Update no Data : update_astro_object_description")
+                    return False
+            else: 
+                return False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to update astro object {name}: {e}")
+        return False
+
+def update_astro_object_coord(conn: sqlite3.Connection, astro_id, dec, ra):
+    try:
+        if astro_id:
+            # Check if the object exists
+            cursor = conn.execute("SELECT id FROM AstroObject WHERE id = ?", (astro_id,))
+            row = cursor.fetchone()
+            if row:
+                # Now perform the update
+                update_cursor = conn.execute(
+                    'UPDATE AstroObject SET dec = ?, ra = ? WHERE id = ?',
+                    (dec, ra, astro_id)
+                )
+                if update_cursor.rowcount > 0:
+                    commit_db(conn)
+                    return astro_id, True  # return the ID updated
+                else:
+                    print("⚠️ Update skipped: no change or row not found.")
+                    return astro_id, False
+        return None, False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to update astro object ID {astro_id}: {e}")
+        return None, False
+
+def values_differ(a, b):
+    return (a is None) != (b is None) or (a != b and a is not None and b is not None)
+
+def insert_astro_object(conn: sqlite3.Connection, name=None, unknown=False, dec=None, ra=None):
+    try:
+        if name:
+            query = "SELECT id, dec, ra FROM AstroObject WHERE is_group = False AND name = ?"
+            params = [name]
+
+            if unknown:
+                if dec is None:
+                    query += " AND dec IS NULL"
+                else:
+                    query += " AND dec = ?"
+                    params.append(dec)
+
+                if ra is None:
+                    query += " AND ra IS NULL"
+                else:
+                    query += " AND ra = ?"
+                    params.append(ra)
+
+            cursor = conn.execute(query, tuple(params))
+            row = cursor.fetchone()
+            if row:
+                astro_id, existing_dec, existing_ra = row
+
+                # Convert for comparison
+                if values_differ(dec, existing_dec) or values_differ(ra, existing_ra):
+                    update_astro_object_coord(conn, astro_id, dec, ra)
+
+                return astro_id , False
+            else:
+                cursor = conn.execute("INSERT INTO AstroObject (name, dec, ra, description, is_group) VALUES (?, ?, ?, ?, ?)", (name, dec, ra, "", False))
+                if cursor.rowcount > 0:
+                    commit_db(conn)
+                    return cursor.lastrowid , True
+                else:
+                    print("Error Insert ignored : insert_astro_object")
+                    return None, False
+        else: 
+            return None, False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to insert astro object {name}: {e}")
+        return None, False
+
+def insert_default_groups(conn: sqlite3.Connection):
+    """Ensure default groups are in DB and store their IDs in DEFAULT_GROUP_IDS."""
+    for name in DEFAULT_GROUP_NAMES:
+        group_id, _ = insert_astro_group(conn, name)
+        if group_id:
+            DEFAULT_GROUP_IDS[name] = group_id
+        else:
+            print(f"⚠️ Could not insert or fetch group: {name}")
+
+def get_default_group_id(name: str):
+    """Get the ID of a default group by name."""
+    return DEFAULT_GROUP_IDS.get(name)
+
+def insert_astro_group(conn: sqlite3.Connection, name=None):
+    try:
+        if name:
+            cursor = conn.execute("SELECT id FROM AstroObject WHERE is_group = True and name = ?", (name,))
+            row = cursor.fetchone()
+            if row:
+                 return row[0] , False
+            else:
+                cursor = conn.execute("INSERT INTO AstroObject (name, description, is_group) VALUES (?, ?, ?)", (name, "", True))
+                if cursor.rowcount > 0:
+                    commit_db(conn)
+                    return cursor.lastrowid , True
+                else:
+                    print("Error Insert ignored : insert_astro_group")
+                    return None, False
+        else: 
+            return None, False
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to insert astro group {name}: {e}")
+        return []
 
 def get_dso_name(conn: sqlite3.Connection, dso_id):
     with conn:
@@ -1373,6 +1677,11 @@ def get_dso_registered(conn: sqlite3.Connection, dso_id):
     with conn:
         result = conn.execute('SELECT id, designation, displayName, constellation, type, size, magnitude FROM DsoCatalog WHERE id = ?', (dso_id,)).fetchone()
         return result if result else None
+
+def get_dso_registered_by_designation(conn: sqlite3.Connection, designation):
+    with conn:
+        result = conn.execute('SELECT id FROM DsoCatalog WHERE designation = ?', (designation,)).fetchone()
+        return result[0] if result else None
 
 def get_dso_filtered(conn: sqlite3.Connection, search='', constellation=None, dso_type=None):
     query = 'SELECT id, designation, displayName, constellation, type FROM DsoCatalog WHERE 1=1'
@@ -1391,7 +1700,7 @@ def get_dso_filtered(conn: sqlite3.Connection, search='', constellation=None, ds
     with conn:
         return conn.execute(query, params).fetchall()
 
-def update_astro_object(conn: sqlite3.Connection, astro_id, dso_id, description):
+def update_astro_object_dso(conn: sqlite3.Connection, astro_id, dso_id, description):
     with conn:
         dso = conn.execute('SELECT displayName, constellation, type, size, magnitude FROM DsoCatalog WHERE id = ?', (dso_id,)).fetchone()
         if dso:
@@ -1453,7 +1762,7 @@ def add_mtp_device_to_db(conn: sqlite3.Connection, device_name, mtp_drive_id):
                  return True
             else:
                 cursor.execute("INSERT INTO MtpDevices (device_name, mtp_drive_id) VALUES (?, ?)", (device_name, mtp_drive_id))
-                conn.commit()
+                commit_db(conn)
                 return True
     except Exception as e:
         print(f"[DB ERROR] Failed to insert add_mtp_device_to_db: {e}")

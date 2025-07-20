@@ -1,11 +1,12 @@
 import os
 import ftplib
-from ftplib import FTP
+import shutil
+from ftplib import FTP, error_perm
 
 # Encoding changed to UTF-8
 from contextlib import contextmanager
 
-from api.dwarf_backup_fct import print_log
+from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5
 
 DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
 DWARF3_FTP_PATH = "/Astronomy"
@@ -41,20 +42,29 @@ def get_ftp_astroDir(ip_address):
 
     return None
 
-def list_ftp_subdirectories(ip_address):
+def list_ftp_subdirectories(ip_address, subdir = None):
     if not ip_address:
-        return None
+        return []
 
     try:
-        with ftp_conn(ip_address) as ftp:
-            if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
-                return ftp.nlst(DWARF2_FTP_PATH)
-            elif DWARF3_FTP_PATH in ftp.nlst("/"):
-                return ftp.nlst(DWARF3_FTP_PATH)
-    except ftplib.all_errors:
-        pass
 
-    return []
+        with ftp_conn(ip_address) as ftp:
+
+            # Check which Dwarf path is present
+            if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
+                if subdir:
+                    return ftp.nlst(f"{DWARF2_FTP_PATH}/{subdir}")
+                else:
+                    return ftp.nlst(DWARF2_FTP_PATH)
+            elif DWARF3_FTP_PATH in ftp.nlst("/"):
+                if subdir:
+                    return ftp.nlst(f"{DWARF3_FTP_PATH}/{subdir}")
+                else:
+                    return ftp.nlst(DWARF3_FTP_PATH)
+
+    except ftplib.all_errors as e:
+        print(f"[FTP ERROR] Failed to list subdirectories on {ip_address}: {e}")
+        return []
 
 def ftp_path_exists(ip_address, path):
     try:
@@ -167,18 +177,59 @@ def safe_path(path):
         return f"\\\\?\\{abspath}"
     return abspath
 
-def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_root="./Dwarf_Local", log=None):
+def list_ftp_dirs_only(ftp, root, excluded_dirs):
+    dirs = []
+    ftp.cwd(root)
+    for name in ftp.nlst():
+        try:
+            if name not in excluded_dirs:
+                ftp.cwd(name)  # Try to enter: if it's a dir, it will succeed
+                ftp.cwd("..")  # Go back
+                dirs.append(name)
+        except error_perm:
+            # Not a directory (ftp.cwd(name) failed)
+            continue
+    return dirs
+
+def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_root="./Dwarf_Local", session_name=None, log=None):
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
     archive_dir = os.path.join(dwarf_dir, "Archive")
     os.makedirs(archive_dir, exist_ok=True)
 
-    ftp.cwd(source_root)
-    sessions = ftp.nlst()
+    sessions = []
+
+    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED"}
+    # List sessions directly under source_root
+    sessions += list_ftp_dirs_only(ftp, source_root, excluded_dirs)
+
+    # Also check RESTACKED if it exists
+    restacked_path = f"{source_root}/RESTACKED"
+    try:
+        ftp.cwd(restacked_path)
+        restacked_sessions = ftp.nlst()
+        sessions += [f"RESTACKED/{s}" for s in restacked_sessions]
+    except Exception as e:
+        print_log("No RESTACKED folder or access error", log)
+    print(sessions)
+
+    # If a specific session is provided, filter it
+    if session_name:
+        sessions = [s for s in sessions if s == session_name or s.endswith("/" + session_name)]
 
     local_sessions = [
         d for d in os.listdir(dwarf_dir)
-        if os.path.isdir(os.path.join(dwarf_dir, d)) and d != "Archive"
+        if os.path.isdir(os.path.join(dwarf_dir, d)) and d not in excluded_dirs
     ]
+    # add those in RESTACKED subdirectory
+    restacked_path = os.path.join(dwarf_dir, "RESTACKED")
+    if os.path.isdir(restacked_path):
+        restacked_sessions = [
+            os.path.join("RESTACKED", d)
+            for d in os.listdir(restacked_path)
+            if os.path.isdir(os.path.join(restacked_path, d))
+        ]
+        local_sessions += restacked_sessions
+    print(f"local_sessions: {local_sessions}")
 
     print_log(f"🔄 Syncing {len(sessions)} sessions from FTP...", log)
 
@@ -203,26 +254,16 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
                 else:
                     print_log(f"✅ Skipping {file_name} (unchanged)", log)
 
-    # Archive removed sessions
-    removed_sessions = set(local_sessions) - set(sessions)
-    for session in removed_sessions:
-        src_path = os.path.join(dwarf_dir, session)
-        dst_path = os.path.join(archive_dir, session)
-        print_log(f"📦 Archiving removed session: {session}", log)
-        shutil.move(src_path, dst_path)
+    # Archive removed sessions only full backup
+    if not session_name:
+        removed_sessions = set(local_sessions) - set(sessions)
+        for session in removed_sessions:
+            src_path = os.path.join(dwarf_dir, session)
+            dst_path = os.path.join(archive_dir, session)
+            print_log(f"📦 Archiving removed session: {session}", log)
+            shutil.move(src_path, dst_path)
 
     print_log("✅ FTP sync complete.", log)
-
-
-
-
-
-
-
-
-
-
-
 
 
 # --- Ensure remote FTP path exists (optional) ---
@@ -243,68 +284,6 @@ def ftp_ensure_dirs(ftp, remote_path, created_dirs_cache):
             if not str(e).startswith("550"):
                 raise  # Re-raise unexpected errors
         created_dirs_cache.add(current_path)
-
-def parse_shots_info(json_path, ftp=None):
-    try:
-        if json_path.startswith("ftp://"):
-            # Handle FTP case
-            if not ftp:
-                print(f"❌ FTP connection is required for {json_path}.")
-                return {}
-
-            # Extracting the path on FTP server
-            ftp_path = json_path.replace("ftp://", "")
-            with open("temp_shotsInfo.json", "wb") as temp_file:
-                ftp.retrbinary(f"RETR {ftp_path}", temp_file.write)
-
-            with open("temp_shotsInfo.json", 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-
-        else:
-            # Local file handling
-            with open(json_path, 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-
-        return {
-            "dec": str(raw.get("DEC")),
-            "ra": str(raw.get("RA")),
-            "target": raw.get("target"),
-            "binning": raw.get("binning"),
-            "format": raw.get("format"),
-            "exp_time": str(raw.get("exp")) if raw.get('exp') is not None else None,
-            "gain": raw.get("gain"),
-            "shotsToTake": raw.get("shotsToTake"),
-            "shotsTaken": raw.get("shotsTaken"),
-            "shotsStacked": raw.get("shotsStacked"),
-            "ircut": raw.get("ir"),
-            "maxTemp": raw.get("maxTemp"),
-            "minTemp": raw.get("minTemp"),
-        }
-
-    except Exception as e:
-        print(f"Error reading {json_path}: {e}")
-        return {}
-
-def compute_md5(filepath):
-    hash_md5 = hashlib.md5()
-    filepath_str = str(filepath)
-    if filepath_str.startswith("ftp://"):
-        # For FTP, read the file in chunks
-        url_parts = filepath[6:].split('/', 1)
-        ftp_host = url_parts[0]
-        ftp_path = url_parts[1]
-        with ftplib.FTP(ftp_host) as ftp:
-            ftp.login()  # Anonymous by default
-            with ftp.transfercmd(f'RETR {ftp_path}') as conn:
-                while chunk := conn.recv(4096):
-                    hash_md5.update(chunk)
-    else:
-        long_path = f"\\\\?\\{os.path.abspath(filepath)}"
-        with open(long_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-
-    return hash_md5.hexdigest()
 
 # Function to parse shotsInfo.json
 def extract_target_json_ftp(ip_address, astro_path):

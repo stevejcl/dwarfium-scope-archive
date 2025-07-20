@@ -2,10 +2,12 @@ from nicegui import native,ui,app,events
 import sqlite3
 from typing import Dict
 
-from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db, commit_db
-from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object, export_associations
+from api.dwarf_backup_db import DB_NAME, connect_db, close_db, commit_db
+from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, insert_default_groups
 
 from components.menu import menu
+from components.astro_object_associate import show_assign_dialog
+from components.win_log import WinLog
 
 @ui.page('/Catalog/')
 def dwarf_catalog():
@@ -30,6 +32,7 @@ class CatalogApp:
         with ui.row().classes('w-full h-screen items-center justify-center'):
             ui.label('🔭 AstroObject to DSO Association').classes('text-2xl')
             ui.button('Export Associations to CSV', on_click=self.on_export_click).classes('my-4')
+            ui.button('Delete Astro Objects not used anymore', on_click=self.on_delete_click).classes('my-4')
 
             columns=[
                 {'name': 'id', 'label': 'ID', 'field': 'id', 'sortable': True},
@@ -51,6 +54,26 @@ class CatalogApp:
     def on_export_click(self):
         csv_data = export_associations(self.conn)
         ui.download.content(csv_data, 'astroobject_dso_associations.csv')
+
+    # Delete Button
+    async def on_delete_click(self):
+
+        await WinLog().show(
+            "Confirm Deletion",
+            "Are you sure you want to delete all the data?",
+            self.ok_confirm_and_delete
+        )
+
+    def ok_confirm_and_delete(self):
+        if delete_unused_astro_objects(self.conn):
+            ui.notify('AstroObject data have been purged!')
+        else:
+            ui.notify('Error occurs during AstroObject purge!')
+        # recreate default if need
+        insert_default_groups(self.conn)
+
+        self.reload()
+        ui.update()  # refresh page/table
 
     def get_row_by_id(self, ao_id):
         for ao in self.data:
@@ -74,56 +97,57 @@ class CatalogApp:
             }
             for ao in self.data
         ]
+        self.table.update()
 
         # Use full row slot
-        self.table.add_slot('body', r'''
-          <q-tr :props="props">
-            <q-td key="id" :props="props">
-              {{ props.row.id }}
-            </q-td>
-            <q-td key="name" :props="props">
-              {{ props.row.name }}
-            </q-td>
-            <q-td key="description" :props="props">
-              {{ props.row.description }}
-            </q-td>
-            <q-td key="dso" :props="props">
-              {{ props.row.dso }}
-            </q-td>
-            <q-td key="actions" :props="props">
-              <q-btn
-                dense
-                size="sm"
-                label="Assign/Change DSO"
-                @click="$parent.$emit('assign_dso', props.row.id)"
-              />
-            </q-td>
-          </q-tr>
-        ''')
+        if not self.table.slots.get('body'):
+            self.table.add_slot('body', r'''
+              <q-tr :props="props">
+                <q-td key="id" :props="props">
+                  {{ props.row.id }}
+                </q-td>
+                <q-td key="name" :props="props">
+                  {{ props.row.name }}
+                </q-td>
+                <q-td key="description" :props="props">
+                  {{ props.row.description }}
+                </q-td>
+                <q-td key="dso" :props="props">
+                  {{ props.row.dso }}
+                </q-td>
+                <q-td key="actions" :props="props">
+                  <q-btn
+                    dense
+                    size="sm"
+                    label="Assign/Change DSO"
+                    @click="$parent.$emit('assign_dso', props.row.id)"
+                  />
+                </q-td>
+              </q-tr>
+            ''')
 
         ui.update() 
-
 
     def on_assign_dso(self, msg: Dict):
         ao_id = msg.args
         ao = self.get_row_by_id(ao_id)
         print(ao)
         if ao:
-            self.show_assign_dialog(ao)
+            show_assign_dialog(self.conn, ao, on_done=lambda: (self.reload(),ui.update()))
 
-    def show_assign_dialog(self, astro_id):
+    def show_assign_dialog_local(self, astro_object_row):
         with ui.dialog() as dialog, ui.card().style('width: 600px; max-width: none'):
-            ui.label(f"Assign DSO to AstroObject ID {astro_id[1]}")
+            ui.label(f"Assign DSO to AstroObject ID {astro_object_row[1]}")
 
             # Filters & Search Inputs
-            self.current_dso_assign = str(astro_id[3])
+            self.current_dso_assign = str(astro_object_row[3])
             search_input = ui.input(label='Search (designation, name, constellation, type)', on_change=lambda e: update_dso_list()).classes('w-full')
             constellation_filter = ui.input(label='Constellation (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
             type_filter = ui.input(label='Type (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
 
             dso_select = ui.select({}, label='Select DSO', on_change=lambda e: update_dso_value()).classes('w-full')
             # Allow user to enter custom DSO
-            custom_dso_input = ui.input(label='Edit or enter custom description', value=astro_id[2]).classes('w-full')
+            custom_dso_input = ui.input(label='Edit or enter custom description', value=astro_object_row[2]).classes('w-full')
 
             def update_dso_value():
                 if dso_select.value and dso_select.value != self.current_dso_assign:
@@ -144,7 +168,7 @@ class CatalogApp:
             def update_dso_data():
                 registered = get_dso_registered(
                     self.conn,
-                    astro_id[3],
+                    astro_object_row[3],
                 )
                 if registered:
                     options = {str(registered[0]): f"{registered[2]} ({registered[3]}, {registered[4]})"}
@@ -171,12 +195,11 @@ class CatalogApp:
                     if final_description == auto_description:
                         final_description = auto_description  # pas changé
 
-                    update_astro_object(self.conn, astro_id[0], int(dso_select.value))
+                    update_astro_object_dso(self.conn, astro_object_row[0], int(dso_select.value), final_description)
 
                     ui.notify('DSO assigned/updated!')
                     dialog.close()
                     self.reload()
-                    ui.update()  # refresh page/table
 
                 else:
                     ui.notify('Please select a DSO first.', color='red')
@@ -184,11 +207,10 @@ class CatalogApp:
 
             def confirm():
                 if dso_select.value:
-                    update_astro_object(self.conn, astro_id[0], int(dso_select.value), custom_dso_input.value)
+                    update_astro_object_dso(self.conn, astro_object_row[0], int(dso_select.value), custom_dso_input.value)
                     ui.notify('DSO assigned/updated!')
                     dialog.close()
                     self.reload()
-                    ui.update()  # refresh page/table
 
                 else:
                     ui.notify('Please select a DSO first.', color='red')

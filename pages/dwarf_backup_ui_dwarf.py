@@ -2,7 +2,7 @@ import webview
 from nicegui import native, app, run, ui
 import os
 import re
-from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
+from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
@@ -419,6 +419,8 @@ class ConfigApp:
 
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
+            error_label = ui.label().style('color: red')  # Empty label for future error messages
+            close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label("🔍 Scanning Dwarf drive, please wait...")
             ui.spinner(size="lg")
             log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
@@ -430,9 +432,9 @@ class ConfigApp:
             if local_Main_Dwarf_dir:
                 ui.notify("Starting Local Sync ...")
                 if self.dwarf_status == "USB":
-                    await run.io_bound (sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir,log)
+                    await run.io_bound (sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
                 if self.dwarf_status == "FTP":
-                    await run.io_bound (ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir,log)
+                    await run.io_bound (ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
                 local_Dwarf_dir = get_local_dwarf_dir(self.dwarf_id)
                 print(local_Dwarf_dir)
                 ui.notify("Starting Analysis ...")
@@ -442,10 +444,12 @@ class ConfigApp:
                ui.notify(f"❌ Error: can't create Local Dwarf Directory", type="negative")
 
         except Exception as e:
-            ui.notify(f"❌ Error: {str(e)}", type="negative")
-
-        finally:
-            dialog.close()  # close dialog even if error occurs
+            msg = f"❌ Error: {str(e)}"
+            ui.notify(msg, type="negative")
+            error_label.text = msg 
+            close_button.visible = True
+        else:
+            dialog.close()  # close dialog 
             await self.load_selected_dwarf(None)
 
     async def confirm_and_delete_Dwarf(self):
@@ -491,8 +495,6 @@ class ConfigApp:
         ui.notify("DwarfData entries deleted.", type="positive")
  
     def get_explore_url(self):
-        ui.notify("Showing Dwarf Data...")  # Simulate showing data
-
         if self.dwarf_id:
             back_url = f"/Dwarf?DwarfId="
             explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode=dwarf&back_url={back_url}"

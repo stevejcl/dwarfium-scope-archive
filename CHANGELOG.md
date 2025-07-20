@@ -1,5 +1,26 @@
 # Changelog
 
+## [V2.2] - 2025-07-20
+
+### Setup Database Patch
+- Better database upgrade 
+
+### Add First Database Patch to differentiate Unknown Targets
+
+### Add Target identification Function
+- Add Dso Identification from Catalog in Explore Page
+- Add multiple entries for Unknow Target so each can be identified
+
+### Using a Local Dwarf Copy
+- Show Dwarf Session Image without connection
+- Better Synchonization
+
+### Add Backup button available in Explore Page
+    when the filter not yet Backed up is active
+
+### Add Restore button available in Explore Page
+    when the filter deleted on Dwarf is active
+
 ## [V2.1.1] - 2025-07-05
 
 ### Better management of Mosaic session

@@ -1,5 +1,6 @@
 Pillow
 astropy
+astroquery
 matplotlib
 pywebview
 PyInstaller

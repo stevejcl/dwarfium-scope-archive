@@ -1,8 +1,10 @@
 import json
 
+CATALOG_FILE = './db/dso_catalog.json'
+
 # Encoding changed to UTF-8
 # Load JSON file
-with open('./db/dso_catalog.json', 'r', encoding='utf-8') as f:
+with open(CATALOG_FILE, 'r', encoding='utf-8') as f:
     data = json.load(f)
 
 # Basic checks

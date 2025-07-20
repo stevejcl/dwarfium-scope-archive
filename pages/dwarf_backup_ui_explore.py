@@ -5,28 +5,36 @@ from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 import subprocess
+import json
 
 from nicegui import app, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
 from api.dwarf_backup_db_api import (
     get_dwarf_Names, get_dwarf_detail, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf,
-    get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames,
+    get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_astro_object_description,
     get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup,
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, toggle_favorite
 )
 from api.dwarf_backup_fct import (
-    get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session,
+    get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
     get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files,
-    hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure
+    hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure,
+    preprocess_dso_catalog_json
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.menu import menu
+from components.astro_object_associate import show_unknown_target_dialog
 
 ALL_BACKUPS = "(All Backups)"
 ALL_DWARFS = "(All Dwarfs)"
+ALL_SESSIONS = "[ALL SESSIONS]"
 TAKEN = "Taken"
 RESTACK = "Restack"
+UNKNOWN = "Unknown"
+CATALOG_FILE = './db/dso_catalog.json'
+SKY_CATALOG_FILE = './db/dso_sky_search_catalog.json'
+
 @ui.page('/Explore/')
 def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None):
 
@@ -56,6 +64,7 @@ class ExploreApp:
         self.base_folder = None
         self.selected_object = None
         self.selected_object_description = None
+        self.selected_object_is_group = False
         self.preview_image_type = "jpg"
         self.astro_files = {}
         self.open_folder_icon = {}
@@ -64,10 +73,19 @@ class ExploreApp:
         self.backup_session_icon = {}
         self.image_dialog = {}
         self.selected_path = ""
+        self.classified_label = None
+        self.expanded_nodes = set()
+        self.dso_catalog = False
         self.build_ui()
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        # Load the preprocessed catalog once at app start
+        preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE)
+
+        if os.path.exists(SKY_CATALOG_FILE): 
+            with open(SKY_CATALOG_FILE  , "r", encoding="utf-8") as f:
+                self.dso_catalog = json.load(f)
 
         with ui.row().classes('w-full h-screen items-center justify-center'):
             with ui.grid(columns='1fr 2fr'):
@@ -266,32 +284,37 @@ class ExploreApp:
         self.count_label.text = f"Total matching sessions: {count}"
         print (f"Total matching sessions: {count}")
         print (f"Total objects: {len(self.objects)}")
-        print (f"Total objects: {[f"{oid} - {name} {dso_id}" for oid, name, dso_id in self.objects]}")
+        print (f"Total objects: {[f'{oid} - {name} {dso_id} {"G" if is_group else ""}' for oid, name, dso_id, is_group in self.objects]}")
         self.selected_object = None
         self.selected_object_description = None
+        self.selected_object_is_group = False
         self.load_objects_ui()
 
     def get_name_object(self, name):
         name_object = name #name.split(" (")[0]
-        # Get before " (" if present
-        main_part = name.split(" (")[0]
+        # Start by removing anything after the last ' [' (suffix)
+        main_part = name.split(" [")[0]
 
-        # Get the last part that begins with " ["
+        # Then optionally remove anything after ' (' inside main_part
+        main_part = main_part.split(" (")[0]
+
+        # Now detect the suffix from the original name
         bracket_pos = name.rfind(" [")
         suffix = name[bracket_pos:] if bracket_pos != -1 else ""
 
-        name_object = (f"{main_part} {suffix}").strip()
+        # Only re-add suffix if it's not already included
+        name_object = (f"{main_part} {suffix}").strip() if suffix and suffix not in main_part else main_part.strip()
 
         return name_object, main_part
 
-    def load_objects_ui(self, init_view = True):
+    def load_objects_ui_old(self, init_view = True):
 
         self.object_list.clear()
         filter_dso = set()
         visible_names = []
 
         dso_id_counts = defaultdict(int)
-        for _, name, dso_id in self.objects:
+        for _, name, dso_id,_ in self.objects:
             name_object, main_part = self.get_name_object(name)
             # Apply filter
             if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
@@ -308,7 +331,7 @@ class ExploreApp:
         with self.object_list:
             ui.item_label('List Objects').props('header').classes('text-bold')
             ui.separator()
-            for oid, name, dso_id in self.objects:
+            for oid, name, dso_id, is_group in self.objects:
                 name_object, main_part = self.get_name_object(name)
 
                 # Apply filter
@@ -321,7 +344,7 @@ class ExploreApp:
                 if dso_id is not None and dso_id_counts[dso_id] > 1 and dso_id not in shown_all_for_dso and dso_id not in filter_dso :
                     all_name = f"{main_part} [ALL]"
                     visible_names.append(all_name)  # 👈 ADD [ALL] entry to visible_names
-                    item_all = ui.item(all_name, on_click=lambda dso_id=dso_id, name=all_name, desc=name : self._handle_object_click(None, name, desc, dso_id))
+                    item_all = ui.item(all_name, on_click=lambda dso_id=dso_id, name=all_name, desc=name, is_group=is_group : self._handle_object_click(None, name, desc, dso_id, is_group))
                     item_all.classes('font-bold text-blue-600')  # Optional styling
                     if all_name == self.selected_object:
                         item_all.classes('bg-primary text-white')
@@ -330,7 +353,7 @@ class ExploreApp:
                     shown_all_for_dso.add(dso_id)
 
                 # Add the actual object
-                item = ui.item(name_object, on_click=lambda oid=oid, name=name_object, desc=name : self._handle_object_click(oid, name, desc, None))
+                item = ui.item(f"{'🌌 ' if is_group else ''}{name_object}", on_click=lambda oid=oid, name=name_object, desc=name, is_group=is_group : self._handle_object_click(oid, name, desc, None, is_group))
 
                 # Highlight if selected
                 if name_object == self.selected_object:
@@ -347,10 +370,256 @@ class ExploreApp:
         self.object_list.update()  # Refresh the list
         ui.update()  # Refresh the UI
 
-    def _handle_object_click(self, oid, name, desc, dso_id):
+    def _update_expanded_nodes(self, expanded_keys: list[str]):
+        self.expanded_nodes = set(expanded_keys)
+
+    def load_objects_ui(self, init_view=True):
+        from collections import defaultdict
+
+        self.object_list.clear()
+        filter_dso = set()
+        visible_names = []
+        dso_id_counts = defaultdict(int)
+        self.tree_data_lookup = {}
+        node_selected = None
+
+        # Step 1: Count how many times each dso_id appears after filtering
+        for _, name, dso_id, _ in self.objects:
+            name_object, _ = self.get_name_object(name)
+            if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
+                if dso_id is not None:
+                    filter_dso.add(dso_id)
+                continue
+            if dso_id is not None:
+                dso_id_counts[dso_id] += 1
+
+        shown_all_for_dso = set()
+        grouped_objects = defaultdict(list)
+        priority_order = {
+            "[ALL SESSIONS]": 0,
+            "Manual": 1,
+            "MOSAIC_Unknown": 2,
+            "Unknown": 3,
+        }
+
+        def sort_key(name_object):
+            return (priority_order.get(name_object, 4), name_object.casefold())
+
+        def base_name_equals(name1: str, name2: str) -> bool:
+            def get_base(name):
+                if name:
+                    return name.rsplit(" _ ", 1)[0].strip()
+                else:
+                    return None
+
+            return get_base(name1) == get_base(name2)
+
+        # Step 2: Group objects by display name
+        for oid, name, dso_id, is_group in self.objects:
+            name_object, _ = self.get_name_object(name)
+            if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
+                continue
+            grouped_objects[name_object].append((oid, name, dso_id, is_group))
+
+        display_items = []
+
+        all_sessions_name = ALL_SESSIONS
+        grouped_objects[all_sessions_name].append((None, all_sessions_name, None, True))
+
+        for name_object in sorted(grouped_objects.keys(), key=sort_key):
+            entries = grouped_objects[name_object]
+            visible_names.append(name_object)
+
+            if len(entries) == 1:
+                oid, full_name, dso_id, is_group = entries[0]
+
+                # Add [ALL] if applicable
+                if (
+                    dso_id is not None and
+                    dso_id_counts[dso_id] > 1 and
+                    dso_id not in shown_all_for_dso and
+                    dso_id not in filter_dso
+                ):
+                    all_name = f"{name_object.split(" [")[0]} [ALL]"
+                    visible_names.append(all_name)
+                    label = f"{'✨ ' if is_group else ''}{all_name}"
+                    data = {
+                        "oid": None,
+                        "name": all_name,
+                        "desc": full_name,
+                        "dso_id": dso_id,
+                        "is_group": is_group,
+                    }
+                    display_items.append({
+                        "type": "item",
+                        "label": all_name,
+                        "label_full": label,
+                        "data": data,
+                    })
+                    shown_all_for_dso.add(dso_id)
+
+                # Single object -> flat item
+                oid, full_name, dso_id, is_group = entries[0]
+                label = f"{'✨ ' if is_group else ''}{name_object}"
+                data = {
+                    "oid": oid,
+                    "name": name_object,
+                    "desc": full_name,
+                    "dso_id": dso_id,
+                    "is_group": is_group,
+                }
+                display_items.append({
+                    "type": "item",
+                    "label": name_object,
+                    "label_full": label,
+                    "data": data,
+                })
+
+            else:
+                # Multiple entries -> tree node
+                children = []
+                for index, (oid, full_name, dso_id, is_group) in enumerate(entries, start=1):
+                    name_item = f"{name_object} .{index}"
+                    label = f"{'✨ ' if is_group else ''}{name_item}"
+                    node_id = f"obj_{oid}"
+                    data = {
+                        "oid": oid,
+                        "name": name_item,
+                        "desc": full_name,
+                        "dso_id": dso_id,
+                        "is_group": is_group,
+                    }
+                    is_selected = self.selected_object == name_item
+                    if is_selected:
+                        node_selected = node_id
+                    visible_names.append(name_item)
+                    children.append({
+                        "id": node_id,
+                        "label": label,
+                        "data": data,
+#                        "style": "background-color: var(--q-primary); color: white;" if is_selected else "",
+                        "icon": "check" if is_selected else None,  # optional icon
+                    })
+                    self.tree_data_lookup[node_id] = data
+
+                # Add [ALL] if applicable
+                dso_id = entries[0][2]  # dso_id from first item
+                full_name = entries[0][1]
+                is_group = entries[0][3]
+                if (
+                    dso_id is not None and
+                    dso_id_counts[dso_id] > 1 and
+                    dso_id not in shown_all_for_dso and
+                    dso_id not in filter_dso
+                ):
+                    all_name = f"{name_object} [ALL]"
+                    all_node_id = f"all_{dso_id}"
+                    visible_names.append(all_name)
+                    is_selected = self.selected_object == all_name
+                    if is_selected:
+                        node_selected = all_node_id
+                    children.insert(0, {
+                        "id": all_node_id,
+                        "label": all_name,
+                        "data": {
+                            "oid": None,
+                            "name": all_name,
+                            "desc": full_name,
+                            "dso_id": None,
+                            "is_group": is_group,
+                        },
+                        "icon": "check" if is_selected else None,  # optional icon
+#                        "style": "background-color: var(--q-primary); color: white;" if is_selected else "",                        "icon": "check" if is_selected else None,  # optional icon
+                    })
+                    self.tree_data_lookup[all_node_id] = {
+                        "oid": None,
+                        "name": all_name,
+                        "desc": full_name,
+                        "dso_id": dso_id,
+                        "is_group": is_group,
+                    }
+                    shown_all_for_dso.add(dso_id)
+
+                children.sort(key=lambda c: c["label"].lower())
+                display_items.append({
+                    "type": "tree",
+                    "label": name_object,
+                    "node": {
+                        "id": name_object,
+                        "label": f"{name_object} ({len(entries)})",
+                        "children": children,
+                    }
+                })
+
+        # Step 3: Render UI
+        with self.object_list:
+            ui.item_label('List Objects').props('header').classes('text-bold')
+            ui.separator()
+
+            def handle_click(data):
+                self.selected_object = data["name"]
+                self._handle_object_click(data["oid"], data["name"], data["desc"], data["dso_id"], data["is_group"])
+
+            def handle_select(event):
+                node_id = event.value
+                if not node_id:
+                    return
+                data = self.tree_data_lookup.get(node_id)
+                if data:
+                    handle_click(data)
+
+            # Highlight selected in nodes
+            def customize_tree_nodes(nodes, selected_name):
+                for node in nodes:
+                    if node.get("data", {}).get("name") == selected_name:
+#                        node["style"] = "background-color: var(--q-primary); color: white;" if is_selected else "",
+                        node["icon"] = "check"
+                    else:
+                        node["style"] = ""
+                    # Recursively apply to children if needed
+                    if "children" in node:
+                        customize_tree_nodes(node["children"], selected_name)
+
+            for entry in display_items:
+                treeview = None
+                if entry["type"] == "item":
+                    data = entry["data"]
+                    item = ui.item(
+                        entry["label_full"],
+                        on_click=lambda d=data: handle_click(d),
+                    )
+                    if data["name"] == self.selected_object:
+                        item.classes('bg-primary text-white')
+                    else:
+                        item.classes('bg-transparent')
+
+                elif entry["type"] == "tree":
+                    node = entry["node"]
+                    #customize_tree_nodes([node], self.selected_object)
+                    treeview = ui.tree(
+                        nodes=[node],
+                        node_key='id',
+                        label_key='label',
+                        children_key='children',
+                        on_select=handle_select,
+                        on_expand=lambda e: self._update_expanded_nodes(e.value),
+                    ).expand()
+
+                if node_selected and treeview:
+                    treeview.props(add=f"selected={node_selected}")
+
+        if self.selected_object not in visible_names:
+            self.selected_object = None
+            self.clear_selected_object()
+
+        self.object_list.update()
+        ui.update()
+
+    def _handle_object_click(self, oid, name, desc, dso_id, is_group):
         self.selected_object = name 
         self.selected_object_description = desc 
-        self.select_object(oid, dso_id)
+        self.selected_object_is_group = is_group
+        self.select_object(oid, dso_id, is_group)
         self.load_objects_ui()
 
     def clear_selected_object(self):
@@ -362,7 +631,7 @@ class ExploreApp:
         self.reset_preview_icons()
         self.file_list.set_options([])
 
-    def select_object(self, object_id, dso_id):
+    def select_object(self, object_id, dso_id, is_group):
         dwarf_id = self.get_selected_dwarf_id()
         details = []
         self.clear_selected_object()
@@ -370,11 +639,11 @@ class ExploreApp:
         if self.mode == "backup":
             show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
             if show_only_duplicates:
-                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value)
+                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
             else:
-                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value)
+                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
         else:
-            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value)
+            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
 
         # Store all rows globally so we can access them later
         self.all_files_rows = files
@@ -406,11 +675,11 @@ class ExploreApp:
             for row in files:
                 # Extracting values for clarity
                 device = row[9]
-                session_date = show_date_session(row[7])
+                session_date = show_short_date_session(row[7])
                 lens = "(W) " if ("_WIDE_") in row[8] else ""
                 exp = f"{row[2]}s" if row[2] is not None else "N/A"
                 gain = row[3] if row[3] is not None else "N/A"
-                astro_filter = row[4]
+                astro_filter = f"{row[4]}" if row[4] else "No Filter"
                 stacks = row[5]
                 is_favorite = row[12]  # The favorite column (0 or 1)
                 stackeds += stacks
@@ -420,13 +689,15 @@ class ExploreApp:
                 # Displaying star icon based on favorite status only in backup mode
                 star_icon = '⭐ ' if is_favorite else '☆ '
                 info_stack = RESTACK if self.is_Restacked(row[8]) else TAKEN
+                target = row[13][:10]
+                description,_ =  self.get_name_object(row[18])
                 # Building the details string with the star icon
                 details.append(
-                    f"{star_icon}{info_stack} with {device} {lens}| {session_date}, exp {exp}, gain {gain}, filter {astro_filter}, stacks {stacks}"
+                    f"{star_icon}{info_stack} with {device} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
                 )
 
                 select_file.append(
-                    f"{info_stack} with {device} {lens}| {session_date}, exp {exp}, gain {gain}, filter {astro_filter}, stacks {stacks}"
+                    f"{info_stack} with {device} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
                 )
 
             self.file_list.set_options(select_file, value=f'Select a session for {self.selected_object}')
@@ -577,14 +848,17 @@ class ExploreApp:
                 # Map the selected value back to the corresponding row
                 for idx, row in enumerate(self.all_files_rows):
                     # Build the label that matches the options shown
-                    #label = f"{row[1]} (Taken with {row[9]} | {show_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]})"
+                    #label = f"{row[1]} (Taken with {row[9]} | {show_short_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]})"
                     lens = "(W) " if ("_WIDE_") in row[8] else ""
                     exp = f"{row[2]}s" if row[2] is not None else "N/A"
                     gain = row[3] if row[3] is not None else "N/A"
+                    astro_filter = f"{row[4]}" if row[4] else "No Filter"
+                    target = row[13][:10]
+                    description,_ =  self.get_name_object(row[18])
                     is_favorite = row[12]  # The favorite column (0 or 1)
                     star_icon = '⭐ ' if is_favorite else '☆ '
                     info_stack = RESTACK if self.is_Restacked(row[8]) else TAKEN
-                    label = f"{info_stack} with {row[9]} {lens}| {show_date_session(row[7])}, exp {exp}, gain {gain}, filter {row[4]}, stacks {row[5]}"
+                    label = f"{info_stack} with {row[9]} {lens}| {show_short_date_session(row[7])}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {row[5]} | {description}"
                     # Strip out the star icon to compare only the text portion
                     comparison_label = label.lstrip('⭐').lstrip('☆').strip()
                     # Strip the star icon from the selected value for comparison
@@ -627,8 +901,10 @@ class ExploreApp:
             #details.append(f"Session: {session_dir}")
             init_target = row[13]
             details.append(f"Dwarf Target: {init_target}")
-            if self.selected_object_description != init_target:
-                details.append(f"Classified as: {self.selected_object_description.rsplit(" [")[0]}")
+
+            classified_text, descriptiondb = self.update_classified_label(row[16], init_target, "", True)
+            if classified_text:
+                details.append(classified_text)
             declination = row[14]
             right_ascencion = row[15]
             details.append(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}")
@@ -657,11 +933,13 @@ class ExploreApp:
 
                 # Add colored details
                 ui.item(f"Session: {session_dir}").classes('text-blue-800')
-                ui.item(f"Dwarf Target: {init_target}").classes('text-green-600')
+                with ui.row().classes('w-full gap-8 items-start'):
+                    ui.item(f"Dwarf Target: {init_target}").classes('text-green-600')
+                    if self.dso_catalog:
+                        ui.button("🖼️ Identify Target", on_click=lambda: self.on_identify_target_click(row, descriptiondb))
 
-                if self.selected_object_description != init_target:
-                    classified = self.selected_object_description.rsplit(" [")[0]
-                    ui.item(f"Classified as: {classified}").classes('text-gray-500')
+                self.classified_label = ui.label().classes('text-gray-500').classes("m-4")
+                self.update_classified_label(row[16], init_target, descriptiondb)
 
                 ui.item(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}").classes('text-purple-600')
 
@@ -693,6 +971,31 @@ class ExploreApp:
 
             self.preview_image_path = full_path
             self.update_preview(full_path)
+
+    def on_identify_target_click(self, row, descriptiondb):
+        on_done = lambda: self.update_classified_label(row[16], row[13], "")
+        show_unknown_target_dialog(self.conn, row, self.dso_catalog, False, on_done)
+
+    # Function to update classified label
+    def update_classified_label(self, object_id, target, descriptiondb = "", text_only = False):
+        classified = ""
+        classified_text = ""
+        print(f"object_id: {object_id} target: {target} descriptiondb: {descriptiondb}")
+        if not descriptiondb:
+            descriptiondb = get_astro_object_description(self.conn, object_id)
+        if descriptiondb and descriptiondb != self.selected_object_description and descriptiondb != target:
+            classified = descriptiondb
+        elif self.selected_object_description != target and self.selected_object_description != ALL_SESSIONS:
+            classified = self.selected_object_description.rsplit(" [")[0]
+
+        # Update the label text or text
+        if classified:
+            classified_text = f"Classified as: {classified}"
+
+        if not text_only and self.classified_label:
+            self.classified_label.set_text(classified_text)
+
+        return classified_text, descriptiondb
 
     def get_hover_class(self):
         return 'hover:bg-gray-700' if app.storage.user.get('ui_mode', 0) == 'dark' else 'hover:bg-gray-300'
@@ -914,6 +1217,11 @@ class ExploreApp:
             if not self.backup_session_icon:
                 self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
             elif self.mode != "backup" and self.only_on_dwarf.value and self.selected_path:
+                self.backup_session_icon.set_text("Backup Session")
+                self.backup_session_icon.visible = True
+                self.backup_session_icon.enable()
+            elif self.mode == "backup" and self.only_on_backup.value and self.selected_path:
+                self.backup_session_icon.set_text("Restore Session")
                 self.backup_session_icon.visible = True
                 self.backup_session_icon.enable()
             else:
@@ -927,13 +1235,25 @@ class ExploreApp:
 
     def get_backup_url(self):
         ui.notify("Launch Backup Dwarf Data...")  # Simulate showing data
-        Dwarf_id = self.get_selected_dwarf_id()
-        if Dwarf_id != ALL_DWARFS:
-            if self.selected_path:
-                session = os.path.basename(self.selected_path)
-                explore_url = f"/Transfer?DwarfId={Dwarf_id}&session={session}&mode=Archive"
-            else:
-                explore_url = f"/Transfer?DwarfId={Dwarf_id}&mode=Archive"
+        explore_url = None
+        if self.mode != "backup":
+            Dwarf_id = self.get_selected_dwarf_id()
+            if Dwarf_id != ALL_DWARFS:
+                if self.selected_path:
+                    session = os.path.basename(self.selected_path)
+                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&session={session}&mode=Archive&back_url=1"
+                else:
+                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&mode=Archive&back_url=1"
+        elif self.mode == "backup" and self.BackupDriveId:
+            print(f"session:{self.selected_path}")
+            print(f"session folder:{self.base_folder}")
+            Dwarf_id = self.get_selected_dwarf_id()
+            if Dwarf_id != ALL_DWARFS:
+                if self.selected_path:
+                    session = self.selected_path
+                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+                else:
+                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
         else:
             explore_url = None
         print(explore_url)

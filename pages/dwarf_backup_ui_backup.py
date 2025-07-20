@@ -4,7 +4,7 @@ import os
 
 from nicegui import native, app, run, ui
 
-from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
+from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive 
 
 from api.dwarf_backup_db_api import get_dwarf_Names
@@ -297,6 +297,8 @@ class ConfigApp:
 
             # Dialog to block interaction and show progress
             with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
+                error_label = ui.label().style('color: red')  # Empty label for future error messages
+                close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
                 ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
                 ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
@@ -308,10 +310,12 @@ class ConfigApp:
             ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
 
         except Exception as e:
-            ui.notify(f"❌ Error: {str(e)}", type="negative")
-
-        finally:
-            dialog.close()  # close dialog even if error occurs
+            msg = f"❌ Error: {str(e)}"
+            ui.notify(msg, type="negative")
+            error_label.text = msg 
+            close_button.visible = True
+        else:
+            dialog.close()  # close dialog 
             self.load_selected_backupDrive(None)
 
     async def confirm_and_delete_BackupDrive(self):

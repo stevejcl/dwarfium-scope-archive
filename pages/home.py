@@ -3,7 +3,7 @@ from nicegui import ui, app
 import os
 import subprocess
 
-from api.dwarf_backup_db import DB_NAME, connect_db, close_db, init_db
+from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_favorites, get_backup_favorites
 
 from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session
