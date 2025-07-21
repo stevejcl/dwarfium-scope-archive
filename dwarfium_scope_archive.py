@@ -28,7 +28,7 @@ def preview_image(file_path: str):
 try:
     conn = start_db(DB_NAME)
     if not conn:
-        print("❌ Application halted, fatal error Database.")
+        print("[FAIL] Application halted, fatal error Database.")
         exit
     else:
         #verify default data
@@ -43,4 +43,4 @@ try:
             reload=False)
 
 except (KeyboardInterrupt, SystemExit):
-    print("🛑 Application closed by user.")
+    print("Application closed by user.")

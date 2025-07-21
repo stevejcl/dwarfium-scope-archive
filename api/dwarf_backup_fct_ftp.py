@@ -297,7 +297,7 @@ def extract_target_json_ftp(ip_address, astro_path):
             buffer.seek(0)
             meta = json.load(buffer)
     except Exception as e:
-        # Optional: print(f"❌ Could not load {json_path} from FTP: {e}")
+        # Optional: print(f"[FAIL] Could not load {json_path} from FTP: {e}")
         meta = {}
 
     return meta.get("target") if meta else None

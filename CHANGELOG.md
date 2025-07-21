@@ -1,5 +1,10 @@
 # Changelog
 
+## [V2.2.2] - 2025-07-21
+
+### BugFix
+- Remove UTF 8 char in print function for PyInstaller errors in Runtime
+
 ## [V2.2.1] - 2025-07-20
 
 ### BugFix

@@ -40,7 +40,7 @@ async def ensure_remote_dir(sftp, local_file_path):
                 print(f"SFTP Creating remote dir: {current}")
                 await sftp.mkdir(current)
             except Exception as e:
-                print(f"❌ Failed to create {current}: {e}")
+                print(f"[FAIL] Failed to create {current}: {e}")
                 raise
 
 async def async_sftp_upload(ip_address, remote_file_path, local_file_path, created_dirs_cache):

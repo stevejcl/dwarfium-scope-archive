@@ -32,6 +32,12 @@ UNKNOWN = "unknown"
 MOSAIC_UNKNOWN = "mosaic_unknown"
 MANUAL = "manual"
 
+def safe_print(text):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode(sys.stdout.encoding, errors='replace').decode())
+
 def hours_to_hms(ra_hours_str):
     if not isinstance(ra_hours_str, (float, int)):
         if any(x in ra_hours_str for x in ["h", "m", "s"]):
@@ -67,7 +73,7 @@ def hms_to_hours(hms_str: str) -> float:
         s = float(parts[2]) if len(parts) > 2 else 0
         return h + m / 60 + s / 3600
     except Exception as e:
-        print(f"[ERROR] Invalid HMS input: {hms_str} → {e}")
+        safe_print(f"[ERROR] Invalid HMS input: {hms_str} → {e}")
         return 0.0
 
 def dms_to_degrees(dms_str: str) -> float:
@@ -84,15 +90,15 @@ def dms_to_degrees(dms_str: str) -> float:
         s = float(parts[2]) if len(parts) > 2 else 0
         return sign * (d + m / 60 + s / 3600)
     except Exception as e:
-        print(f"[ERROR] Invalid DMS input: {dms_str} → {e}")
+        safe_print(f"[ERROR] Invalid DMS input: {dms_str} → {e}")
         return 0.0
 
 def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_path = SKY_CATALOG_FILE):
     if os.path.exists(output_json_path):
-        print(f"[INFO] Using cached DSO catalog: {output_json_path}")
+        safe_print(f"[INFO] Using cached DSO catalog: {output_json_path}")
         return  # Already exists
 
-    print("[INFO] Preprocessing original DSO catalog...")
+    safe_print("[INFO] Preprocessing original DSO catalog...")
 
     with open(original_json_path, 'r', encoding='utf-8') as f:
         raw_catalog = json.load(f)
@@ -108,19 +114,19 @@ def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_p
             entry["dec_deg"] = coord.dec.degree
             processed_catalog.append(entry)
         except Exception as e:
-            print(f"[WARN] Skipping {entry.get('name')} due to error: {e}")
+            safe_print(f"[WARN] Skipping {entry.get('name')} due to error: {e}")
 
     with open(output_json_path, 'w', encoding='utf-8') as f:
         json.dump(processed_catalog, f, indent=2)
 
-    print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
+    safe_print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
 
 def parse_shots_info(json_path, ftp=None):
     try:
         if json_path.startswith("ftp://"):
             # Handle FTP case
             if not ftp:
-                print(f"❌ FTP connection is required for {json_path}.")
+                safe_print(f"[FAIL] FTP connection is required for {json_path}.")
                 return {}
 
             # Extracting the path on FTP server
@@ -161,7 +167,7 @@ def parse_shots_info(json_path, ftp=None):
         }
 
     except Exception as e:
-        print(f"Error reading {json_path}: {e}")
+        safe_print(f"Error reading {json_path}: {e}")
         return {}
 
 def open_folder(path_var):
@@ -174,7 +180,7 @@ def open_folder(path_var):
         else:
             subprocess.Popen(["xdg-open", path])
     else:
-        print(f"❌ Path does not exist: {path}")
+        safe_print(f"[FAIL] Path does not exist: {path}")
 
 def extract_session_datetime(filename: str) -> datetime | None:
     try:
@@ -193,7 +199,7 @@ def extract_session_datetime(filename: str) -> datetime | None:
             return datetime.strptime(match_new.group(1), "%Y%m%d-%H%M%S%f")
 
     except Exception as e:
-        print(f"Error parsing datetime from filename: {e}")
+        safe_print(f"Error parsing datetime from filename: {e}")
     
     return None
 
@@ -219,13 +225,13 @@ def compute_md5(filepath):
 
 def files_are_different(src, dst, check_md5):
     if not os.path.exists(dst):
-        print("files_are_different 1")
+        safe_print("files_are_different 1")
         return True
     if os.path.getsize(src) != os.path.getsize(dst):
-        print("files_are_different 2")
+        safe_print("files_are_different 2")
         return True
     if int(os.path.getmtime(src)) != int(os.path.getmtime(dst)):
-        print("files_are_different 3")
+        safe_print("files_are_different 3")
         return True
     if check_md5 and compute_md5(src) != compute_md5(dst): return True
     return False
@@ -261,9 +267,9 @@ def get_or_create_dwarf_id(conn, dwarf_id=None, batch_mode=False, default_name="
             # Retourne le premier Dwarf disponible
             return dwarfs[0][0]
         else:
-            print("Dwarfs existants :")
+            safe_print("Dwarfs existants :")
             for d_id, d_name in dwarfs:
-                print(f"  [{d_id}] {d_name}")
+                safe_print(f"  [{d_id}] {d_name}")
             try:
                 dwarf_id = int(input("Enter the ID of the Dwarf to associate:"))
             except ValueError:
@@ -296,8 +302,8 @@ def insert_or_get_backup_drive(conn, location, dwarf_id=None):
         try:
             dwarf_id = get_or_create_dwarf_id(conn)
         except ValueError as e:
-            print(f"Erreur : {e}")
-            print("No action taken. Please create a Dwarf first.")
+            safe_print(f"Erreur : {e}")
+            safe_print("No action taken. Please create a Dwarf first.")
             sys.exit(1)  
 
         name = os.path.basename(location.rstrip("\\/"))
@@ -309,8 +315,8 @@ def insert_or_get_backup_drive(conn, location, dwarf_id=None):
 
 def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_object = False):
     relative_path = os.path.relpath(filepath, root)
-    print(f"insert_dwarf_data : path : {filepath}")
-    print(f"insert_dwarf_data : rel-path : {relative_path}")
+    safe_print(f"insert_dwarf_data : path : {filepath}")
+    safe_print(f"insert_dwarf_data : rel-path : {relative_path}")
     filetype = Path(filepath).suffix[1:].lower()
     size = os.path.getsize(filepath)
     mtime = int(os.path.getmtime(filepath))
@@ -327,7 +333,7 @@ def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_ob
     stacked_md5 = None
     for f in parent_dir.glob("stacked*.fits"):
         stacked_path = f.relative_to(root).as_posix()
-        print(f"test_dwarf_data : stacked_path : {stacked_path}")
+        safe_print(f"test_dwarf_data : stacked_path : {stacked_path}")
         stacked_md5 = compute_md5(f)
         break  # On prend le premier trouvé
 
@@ -404,7 +410,7 @@ def print_log(message, log):
     if log:
         log.push(message)
     else:
-        print(message)
+        safe_print(message)
 
 def get_effective_parent(path):
     parent = os.path.basename(os.path.dirname(path))
@@ -421,7 +427,7 @@ def create_local_dwarf_dir():
         os.makedirs(DwarfLocal_dir, exist_ok=True)
         return DwarfLocal_dir
     except Exception as e:
-        print(f"❌ Failed to create directory: {e}")
+        safe_print(f"[FAIL] Failed to create directory: {e}")
         return False
 
 def get_local_dwarf_dir(dwarf_id = None):
@@ -439,7 +445,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
     archive_dir = os.path.join(dwarf_dir, "Archive")
     os.makedirs(archive_dir, exist_ok=True)
-    print(f"source_root: {source_root}")
+    safe_print(f"source_root: {source_root}")
 
     excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED"}
     session_dirs = [
@@ -459,7 +465,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
 
     # Combine both lists
     all_sessions = session_dirs + session_dirs_RESTACKED
-    print(all_sessions)
+    safe_print(all_sessions)
 
     # If a specific session is provided, filter it
     if session_name:
@@ -467,7 +473,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
             s for s in all_sessions
             if s == session_name or s == os.path.join("RESTACKED", session_name)
         ]
-    print(f"final all_sessions {all_sessions}")
+    safe_print(f"final all_sessions {all_sessions}")
 
     # Sessions present in dwarf_dir, excepted in "Archive" and "RESTACKED"
     local_sessions = [
@@ -484,7 +490,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
             if os.path.isdir(os.path.join(restacked_path, d))
         ]
         local_sessions += restacked_sessions
-    print(local_sessions)
+    safe_print(local_sessions)
     print_log(f"\n🔄 Syncing {len(all_sessions)} sessions from source...\n", log)
 
     for session in all_sessions:
@@ -496,23 +502,23 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
             else os.path.join(dwarf_dir, session)
         )
         os.makedirs(dst_session, exist_ok=True)
-        print(f"src_session {src_session}")
-        print(f"dst_session {dst_session}")
+        safe_print(f"src_session {src_session}")
+        safe_print(f"dst_session {dst_session}")
         dst_session = os.path.abspath(dst_session)
-        print(dst_session)
+        safe_print(dst_session)
         for file_name in os.listdir(src_session):
             if file_name.startswith("stacked") or file_name == "shotsInfo.json":
                 src_file = win_long_path(os.path.join(src_session, file_name))
                 dst_file = win_long_path(os.path.join(dst_session, file_name))
                 if files_are_different(src_file, dst_file, file_name == "shotsInfo.json"):
-                    print(f"📥 Copying {file_name} to {session}...")
+                    safe_print(f"Copying {file_name} to {session}...")
                     print_log(f"📥 Copying {file_name} to {session}...", log)
                     shutil.copy2(src_file, dst_file)
                 else:
-                    print(f"✅ Skipping {file_name} (unchanged)")
+                    safe_print(f"Skipping {file_name} (unchanged)")
                     print_log(f"✅ Skipping {file_name} (unchanged)", log)
 
-    print("\n✅ Copy complete.")
+    safe_print("\nCopy complete.")
 
     # Archive removed sessions only full backup
     if not session_name:
@@ -524,7 +530,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
             shutil.move(src_path, dst_path)
 
     print_log("\n✅ Sync complete.", log)
-    print("\n✅ Sync complete.")
+    safe_print("\nSync complete.")
 
 def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
     # session_dir_path must be inside data_root"
@@ -617,7 +623,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 
     for astro_dir in os.listdir(data_root):
         if astro_dir == "Archive":
-            print(f"Skip: {astro_dir}")
+            safe_print(f"Skip: {astro_dir}")
             continue
 
         astro_path = os.path.join(data_root, astro_dir)
@@ -630,13 +636,13 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         if session_dir_main_dir:
             if is_session_dir:
                 print_log(f"🔍 Processing Session Dir: {session_dir}",log)
-                print(f"Processing Session Dir: {session_dir}")
+                safe_print(f"Processing Session Dir: {session_dir}")
 
         else:
             print_log(f"🔍 Processing Dir:",log)
             print_log(f"🔍 {astro_dir}",log)
-            print(f"astro_path Dir: {astro_path}")
-            print(f"Processing Dir: {astro_dir}")
+            safe_print(f"astro_path Dir: {astro_path}")
+            safe_print(f"Processing Dir: {astro_dir}")
     
         found_data = False
         astro_group_id = None
@@ -645,25 +651,25 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         astro_name = extract_astro_name_from_folder(astro_dir)
         dec_astro = None
         ra_astro = None
-        print(f"Processing extract_astro_name_from_folder: {astro_name}")
+        safe_print(f"Processing extract_astro_name_from_folder: {astro_name}")
         find_unknown = False
         if not astro_name:
             check_target_file = astro_path
-            print(f"check_target_file Dir: {astro_path}")
+            safe_print(f"check_target_file Dir: {astro_path}")
             astro_name, dec_astro, ra_astro = extract_target_json(astro_path)
-            print(f"Processing extract_target_json: {astro_name}")
+            safe_print(f"Processing extract_target_json: {astro_name}")
         elif astro_name and (astro_name.lower() == UNKNOWN or astro_name.lower() == MOSAIC_UNKNOWN or astro_name.lower() == MANUAL):
             find_unknown = True
             check_target_file = astro_path
-            print(f"check_target_file Dir: {astro_path}")
+            safe_print(f"check_target_file Dir: {astro_path}")
             astro_name_notused, dec_astro, ra_astro = extract_target_json(astro_path)
             # Get Group_id for UNKNOWN, MOSAIC_UNKNOWN or MANUAL
-            print(f"Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
+            safe_print(f"Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
             astro_group_id = get_astro_object_groupId(conn, astro_name)
-            print(f"astro_group_id (Unknown) {astro_name}")
+            safe_print(f"astro_group_id (Unknown) {astro_name}")
         if astro_name:
             found_data = True
-            print(f"Found data: {astro_name} {find_unknown}")
+            safe_print(f"Found data: {astro_name} {find_unknown}")
             if find_unknown:
                 astro_object_id, new = insert_astro_object(conn, astro_name, True, dec_astro, ra_astro)
             else:
@@ -671,10 +677,10 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             if not astro_object_id:
                 break
             if new:
-                print(f"add astro object : {astro_name}",log)
+                safe_print(f"add astro object : {astro_name}")
                 print_log(f"add astro object : {astro_name}",log)
             else:
-                print(f"use astro object : {astro_name}",log)
+                safe_print(f"use astro object : {astro_name}")
                 print_log(f"use astro object : {astro_name}",log)
             print_log(f"📂 Processing direct Dwarf data:\n {astro_dir}",log)
             new_added, data_ids = process_dwarf_folder(
@@ -694,7 +700,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 
         else:
             astro_name = astro_dir
-            print(f"astro_name: {astro_name}")
+            safe_print(f"astro_name: {astro_name}")
             # Traverse all folders below astro_path
             for root, dirs, files in os.walk(astro_path):
                 dec_astro = None
@@ -702,73 +708,73 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                 astro_group_id = None
                 if check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
                     current_dir = os.path.basename(os.path.normpath(root))
-                    print(f"current_dir Dir: {current_dir}")
+                    safe_print(f"current_dir Dir: {current_dir}")
                     if current_dir == 'Thumbnail':
                         last_dir = os.path.basename(os.path.dirname(root))  # name
                         last_dir_path = os.path.dirname(root)               # full path
                     else:
                         last_dir = current_dir
                         last_dir_path = root
-                    print(f"check_target_file Dir: {last_dir}")
+                    safe_print(f"check_target_file Dir: {last_dir}")
                     check_target = extract_astro_name_from_folder(last_dir)
                     if not check_target:
-                        print(f"check_target_file Dir: {last_dir_path}")
+                        safe_print(f"check_target_file Dir: {last_dir_path}")
                         check_target, dec_astro, ra_astro = extract_target_json(last_dir_path)
 
-                    print(f"check_target: {check_target}")
+                    safe_print(f"check_target: {check_target}")
                     if check_target:
                         # case parent directory is a simple dir
                         # so it will be a astro_group except for RESTACKED dir
                         if not found_data:
                             new = False
-                            print(f"not found_data")
+                            safe_print(f"not found_data")
                             if astro_name == "RESTACKED":
                                 if check_target.lower() == UNKNOWN or check_target.lower() == MOSAIC_UNKNOWN or check_target.lower() == MANUAL:
                                     check_target_file = last_dir_path
-                                    print(f"check_target_file Dir: {last_dir_path}")
+                                    safe_print(f"check_target_file Dir: {last_dir_path}")
                                     astro_name_notused, dec_astro, ra_astro = extract_target_json(last_dir_path)
-                                    print(f"RESTACKED Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
+                                    safe_print(f"RESTACKED Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
                                     # Get Group_id for UNKNOWN, MOSAIC_UNKNOWN or MANUAL
                                     astro_group_id = get_astro_object_groupId(conn, check_target)
-                                    print(f"astro_group_id (Unknown) {check_target}")
+                                    safe_print(f"astro_group_id (Unknown) {check_target}")
                                     astro_object_id, new = insert_astro_object(conn, check_target, True, dec_astro, ra_astro)
                                 else:
                                     astro_object_id, new = insert_astro_object(conn, check_target)
                                 if not astro_object_id:
                                     break
                                 if new:
-                                    print(f"add astro object : {check_target}",log)
+                                    safe_print(f"add astro object : {check_target}")
                                     print_log(f"add astro object : {check_target}",log)
                                 else:
-                                    print(f"add astro object : {check_target}",log)
+                                    safe_print(f"add astro object : {check_target}")
                                     print_log(f"add astro object : {check_target}",log)
                                 #found_data = True
                             else: # use Main AstroDir Name as astro_group
-                                print(f"astro_object_id {check_target}")
+                                safe_print(f"astro_object_id {check_target}")
                                 if check_target.lower() == UNKNOWN or check_target.lower() == MOSAIC_UNKNOWN or check_target.lower() == MANUAL:
                                     check_target_file = last_dir_path
-                                    print(f"check_target_file Dir: {last_dir_path}")
+                                    safe_print(f"check_target_file Dir: {last_dir_path}")
                                     astro_name_notused, dec_astro, ra_astro = extract_target_json(last_dir_path)
-                                    print(f"DIR Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
+                                    safe_print(f"DIR Unknown extract Ra: {ra_astro} Dec: {dec_astro}")
                                     astro_object_id, new = insert_astro_object(conn, check_target, True, dec_astro, ra_astro)
                                 else:
                                     astro_object_id, new = insert_astro_object(conn, check_target)
                                 if not astro_object_id:
-                                    print(f"not astro_object_id")
+                                    safe_print(f"not astro_object_id")
                                     break
                                 if new:
-                                    print(f"add astro object : {astro_name}",log)
+                                    safe_print(f"add astro object : {astro_name}")
                                     print_log(f"add astro object : {astro_name}",log)
                                 else:
-                                    print(f"use astro object : {astro_name}",log)
+                                    safe_print(f"use astro object : {astro_name}")
                                     print_log(f"use astro object : {astro_name}",log)
                                 # case parent directory is a simple dir
                                 # so it will be a astro_group except for RESTACKED dir
                                 # add astro group
-                                print(f"astro_group_id {astro_name}")
+                                safe_print(f"astro_group_id {astro_name}")
                                 astro_group_id, new_group = insert_astro_group(conn, astro_name)
                                 if not astro_group_id:
-                                    print(f"not astro_group_id")
+                                    safe_print(f"not astro_group_id")
                                     break
                                 if new_group:
                                     print_log(f"add astro group : {astro_name}",log)
@@ -777,14 +783,14 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                                 #found_data = True
                         print_log(f"📂 Processing session folder (deep):\n {os.path.dirname(last_dir_path)}",log)
                         print_log(f"📂 Session: {os.path.basename(last_dir_path)}",log)
-                        print(f"Processing session folder (deep): {last_dir_path}")
-                        print(f"Using astro_group_id / astro_object_id : {astro_group_id}/{astro_object_id}")
+                        safe_print(f"Processing session folder (deep): {last_dir_path}")
+                        safe_print(f"Using astro_group_id / astro_object_id : {astro_group_id}/{astro_object_id}")
                         new_added, data_ids = process_dwarf_folder(
                             conn, backup_root, last_dir_path,
                             astro_object_id, dwarf_id, backup_drive_id, new, astro_group_id
                         )
                         total_added += new_added
-                        print(f"Added : {new_added}")
+                        safe_print(f"Added : {new_added}")
                         if data_ids:
                             if isinstance(data_ids, (list, tuple, set)):
                                 valid_ids.update(data_ids)
@@ -797,10 +803,6 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                 print_log(f"📂 Found {total_added - total_previous} new Sessions in {astro_dir}",log)
             else:
                 print_log(f"📂 No new Session found in {astro_dir}",log)
-
-        # not used anymore
-        #if not found_data:
-        #    print_log(f"⚠️ Ignored unrecognized folder: {astro_dir}",log)
 
     if session_dir_main_dir :
         # update scan date if modifications presents
@@ -837,15 +839,15 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
     data_ids = set()
     session_date = extract_session_datetime(dwarf_path)
     if not session_date:
-        print("Error : No session_date")
+        safe_print("Error : No session_date")
         return added, data_ids
 
-    print(f"process_dwarf_folder - dwarf_path {dwarf_path} ")
+    safe_print(f"process_dwarf_folder - dwarf_path {dwarf_path} ")
 
     for filename in os.listdir(dwarf_path):
         if not filename.lower().endswith(("stacked.jpg", "stacked.png")):
             continue
-        print(f"process_dwarf_folder - filename  {filename}")
+        safe_print(f"process_dwarf_folder - filename  {filename}")
         full_file_path = os.path.join(dwarf_path, filename)
         dwarf_data_id, data_id = insert_dwarf_data(conn, backup_root, full_file_path, astro_object_id, new_data)
         session_dt_str = session_date.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -856,7 +858,7 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
                 # Insert entry in BackupEntry
                 new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
                 added += 1 if new_id != 0 else 0
-                print(f"insert_BackupEntry : id : {new_id}")
+                safe_print(f"insert_BackupEntry : id : {new_id}")
             else:
                 # Insert entry in DwarfEntry
                 new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
@@ -977,7 +979,7 @@ def count_fits_files(directory):
             )
 
     except Exception as e:
-        print(f"Could not access {directory}: {e}")
+        safe_print(f"Could not access {directory}: {e}")
 
 def count_failed_fits_files(directory):
     return sum(
@@ -1002,7 +1004,7 @@ def get_total_exposure(fits_file):
         with fits.open(fits_file) as hdul:
             return float(hdul[0].header.get("EXPTIME", 0))
     except Exception as e:
-        print(f"Error reading EXPTIME from {fits_file}: {e}")
+        safe_print(f"Error reading EXPTIME from {fits_file}: {e}")
         return 0
 
 def generate_fits_preview1(fits_path: str) -> str:
@@ -1060,7 +1062,7 @@ def generate_fits_preview1(fits_path: str) -> str:
         return preview_path
 
     except Exception as e:
-        print(f"Error generating preview: {e}")
+        safe_print(f"Error generating preview: {e}")
         return "image/image-error.png"
 
 
@@ -1069,7 +1071,7 @@ def generate_fits_preview(fits_path: str) -> str:
         from astropy.io import fits
         import numpy as np
         import matplotlib.pyplot as plt
-        print(cv2.__version__)
+        safe_print(cv2.__version__)
         def increase_contrast(image, gain=10):
             return 1 / (1 + np.exp(-gain * (image - 0.5)))
 
@@ -1084,11 +1086,11 @@ def generate_fits_preview(fits_path: str) -> str:
             # If the image is already 3D (RGB), ensure it's in float32 (0-1)
             image_rgb = np.transpose(data, (1, 2, 0)).astype(np.float32)
             image_rgb = np.clip(image_rgb / np.max(image_rgb), 0, 1)
-            print(f"Using 3D RGB image: {image_rgb.shape}")
+            safe_print(f"Using 3D RGB image: {image_rgb.shape}")
 
         elif data.ndim == 2:
             # If it's 2D (Bayer pattern), apply demosaicing
-            print("Detected 2D Bayer image, applying demosaicing...")
+            safe_print("Detected 2D Bayer image, applying demosaicing...")
 
             # Convert to float32 and normalize (0-1)
             data = data.astype(np.float32)
@@ -1098,7 +1100,7 @@ def generate_fits_preview(fits_path: str) -> str:
             # Convert to uint8 (0-255) for OpenCV
             data_8bit = (data * 255).astype(np.uint8)
             image_rgb = cv2.demosaicing(data_8bit, cv2.COLOR_BayerRG2RGB)
-            print(f"Demosaiced image shape: {image_rgb.shape}")
+            safe_print(f"Demosaiced image shape: {image_rgb.shape}")
 
             # Convert to float32 (0-1) for further processing
             image_rgb = image_rgb.astype(np.float32) / 255.0
@@ -1127,7 +1129,7 @@ def generate_fits_preview(fits_path: str) -> str:
 
         # Convert back to uint8 for final output
         final_image = (image * 255).astype(np.uint8)
-        print("Processed image shape:", final_image.shape)
+        safe_print("Processed image shape:", final_image.shape)
 
         preview_path = fits_path.replace(".fits", "_preview.png")
         plt.imsave(preview_path, final_image, format='png')
@@ -1135,5 +1137,5 @@ def generate_fits_preview(fits_path: str) -> str:
         return preview_path
 
     except Exception as e:
-        print(f"Error generating preview: {e}")
+        safe_print(f"Error generating preview: {e}")
         return "image/image-error.png"

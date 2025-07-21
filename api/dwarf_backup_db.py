@@ -285,7 +285,7 @@ def migrate_v1(conn):
         """)
 
         commit_db(conn)
-        print("✅ Migration v1 applied.")
+        print("Migration v1 applied.")
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB: {e}")
         return []
@@ -299,11 +299,11 @@ MIGRATIONS = {
 def run_migrations(conn):
     cursor = conn.cursor()
     current_version = cursor.execute("PRAGMA user_version").fetchone()[0]
-    print(f"🔍 Current DB version: {current_version}")
+    print(f"Current DB version: {current_version}")
 
     for version in sorted(MIGRATIONS):
         if version > current_version:
-            print(f"⚙️ Applying migration v{version}...")
+            print(f" Applying migration v{version}...")
             MIGRATIONS[version](conn)
             cursor.execute(f"PRAGMA user_version = {version}")
             conn.commit()
@@ -392,10 +392,10 @@ def add_missing_foreign_keys(conn, table_name, foreign_keys):
     ]
 
     if not missing_fks:
-        print(f"✅ All foreign keys already exist in {table_name}")
+        print(f"All foreign keys already exist in {table_name}")
         return
 
-    print(f"⚠️ Missing FKs in {table_name}, rebuilding table...")
+    print(f"[WARN] Missing FKs in {table_name}, rebuilding table...")
 
     # 3. Get existing column definitions
     cursor.execute(f"PRAGMA table_info({table_name})")
@@ -440,7 +440,7 @@ def add_missing_foreign_keys(conn, table_name, foreign_keys):
 
     # 7. Recreate table
     create_stmt = f'CREATE TABLE "{table_name}" (\n    ' + ',\n    '.join(column_defs) + '\n);'
-    print("🔧 Executing:\n", create_stmt)
+    print("Executing:\n", create_stmt)
     cursor.execute(create_stmt)
 
     # 8. Copy data back
@@ -451,7 +451,7 @@ def add_missing_foreign_keys(conn, table_name, foreign_keys):
     cursor.execute(f'DROP TABLE "{old_table}";')
     conn.commit()
 
-    print(f"✅ Table '{table_name}' rebuilt with all declared foreign keys.")
+    print(f"Table '{table_name}' rebuilt with all declared foreign keys.")
 
 ## Other functions
 

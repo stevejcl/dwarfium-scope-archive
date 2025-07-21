@@ -277,7 +277,7 @@ def delete_unused_astro_objects(conn: sqlite3.Connection) -> bool:
             )
         """)
         commit_db(conn)
-        print("✅ Unused AstroObject entries deleted.")
+        print("Unused AstroObject entries deleted.")
         return True
     except Exception as e:
         print(f"[DB ERROR] Failed to delete unused astro objects: {e}")
@@ -302,7 +302,7 @@ def del_astroObjectId(conn: sqlite3.Connection, astro_id: int ) -> bool:
             commit_db(conn)
             return True
         else:
-            print("❌ Cannot delete: AstroObject is still in use.")
+            print("[FAIL] Cannot delete: AstroObject is still in use.")
             return False
 
     except Exception as e:
@@ -1578,7 +1578,7 @@ def update_astro_object_coord(conn: sqlite3.Connection, astro_id, dec, ra):
                     commit_db(conn)
                     return astro_id, True  # return the ID updated
                 else:
-                    print("⚠️ Update skipped: no change or row not found.")
+                    print("[WARN] Update skipped: no change or row not found.")
                     return astro_id, False
         return None, False
 
@@ -1640,7 +1640,7 @@ def insert_default_groups(conn: sqlite3.Connection):
         if group_id:
             DEFAULT_GROUP_IDS[name] = group_id
         else:
-            print(f"⚠️ Could not insert or fetch group: {name}")
+            print(f"[WARN] Could not insert or fetch group: {name}")
 
 def get_default_group_id(name: str):
     """Get the ID of a default group by name."""
@@ -1666,7 +1666,7 @@ def insert_astro_group(conn: sqlite3.Connection, name=None):
 
     except Exception as e:
         print(f"[DB ERROR] Failed to insert astro group {name}: {e}")
-        return []
+        return None, None
 
 def get_dso_name(conn: sqlite3.Connection, dso_id):
     with conn:

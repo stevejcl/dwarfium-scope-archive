@@ -32,11 +32,11 @@ for obj in data:
             designations.add(obj['designation'])
 
 if missing_keys:
-    print("⚠️  Some objects are missing the 'designation' field.")
+    print("[WARN] Some objects are missing the 'designation' field.")
 else:
-    print("✅ All objects have a 'designation' field.")
+    print("All objects have a 'designation' field.")
 
 if duplicates:
-    print(f"⚠️  Duplicate designations found: {duplicates}")
+    print(f"[WARN] Duplicate designations found: {duplicates}")
 else:
-    print("✅ No duplicate designations found.")
+    print("No duplicate designations found.")
