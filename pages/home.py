@@ -26,6 +26,27 @@ class HomeApp:
         self.image_detail_click_set = False
         self.build_ui()
 
+    def get_name_object(self, name, desc):
+        name_object = name 
+
+        if desc is not None and desc.strip() != '':
+            name_object = f"{desc.strip()} [{name}]"
+
+        # Start by removing anything after the last ' [' (suffix)
+        main_part = name_object.split(" [")[0]
+
+        # Then optionally remove anything after ' (' inside main_part
+        main_part = main_part.split(" (")[0]
+
+        # Now detect the suffix from the original name
+        bracket_pos = name_object.rfind(" [")
+        suffix = name_object[bracket_pos:] if bracket_pos != -1 else ""
+
+        # Only re-add suffix if it's not already included
+        name_object = (f"{main_part} {suffix}").strip() if suffix and suffix not in main_part else main_part.strip()
+
+        return main_part
+
     def build_ui(self):
         self.conn = connect_db(self.database)
 
@@ -39,16 +60,18 @@ class HomeApp:
 
             # Generate the full path and URL for the image
             full_path = get_Backup_fullpath(backup_path, "", file_path)
-            set_base_folder(full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0])
+            base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
+            object_name = self.get_name_object(row[2], row[7])
 
             url_path = build_preview_url(file_path)
             if os.path.exists(full_path):
                 image_data.append({
                     "url": url_path,
-                    "object_name": row[2] if row[2] else "Unknown Object",
+                    "object_name": object_name if object_name else "Unknown Object",
                     "dwarf_name": row[4] if row[4] else "Unknown Device",
                     "session_date": show_date_session(row[1]),
-                    "file_path": full_path
+                    "file_path": full_path,
+                    "base_folder": base_folder
                 })
         close_db(self.conn)
 
@@ -68,6 +91,7 @@ class HomeApp:
                     ui.timer(0.2, lambda: update_image())
 
                 def update_image():
+                    set_base_folder(image_data[self.current_index]['base_folder'])
                     slideshow_image.source = image_data[self.current_index]['url']
                     slideshow_image.classes('opacity-95').update()
 

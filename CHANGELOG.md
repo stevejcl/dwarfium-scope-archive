@@ -1,5 +1,11 @@
 # Changelog
 
+## [V2.2.3] - 2025-07-22
+
+### BugFix
+- Home Page correction for URL folder preview
+- Use Name build from description if exists
+
 ## [V2.2.2] - 2025-07-21
 
 ### BugFix

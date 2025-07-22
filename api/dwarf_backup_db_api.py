@@ -1095,7 +1095,8 @@ def get_backup_favorites(conn: sqlite3.Connection):
                 DwarfData.file_path,
                 Dwarf.name AS dwarf_name,
                 BackupDrive.name AS backup_drive_name,
-                BackupDrive.location
+                BackupDrive.location,
+                AstroObject.description AS description
             FROM BackupEntry
             LEFT JOIN AstroObject ON BackupEntry.astro_object_id = AstroObject.id
             LEFT JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
