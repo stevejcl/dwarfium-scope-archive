@@ -1,5 +1,11 @@
 # Changelog
 
+## [V2.2.4] - 2025-08-28
+
+### Add Delete Session Function
+
+### Test new fits viewer
+
 ## [V2.2.3] - 2025-07-22
 
 ### BugFix

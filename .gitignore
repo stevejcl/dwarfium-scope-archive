@@ -15,3 +15,12 @@ dwarf_backup.db
 /MTP_Downloads
 /.nicegui
 *.pyc
+/Dwarf_Local
+/test_script
+/dist
+/test-api
+image/image-fits.psd
+/DwarfiumScopeArchive
+/test
+/db/test
+/dist

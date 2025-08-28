@@ -761,7 +761,9 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id =
                     WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
-                END AS object_display_name
+                END AS object_display_name,
+                BackupEntry.backup_drive_id,
+                BackupEntry.dwarf_id
             FROM BackupEntry
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
@@ -861,7 +863,9 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
                     WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
-                END AS object_display_name
+                END AS object_display_name,
+                BackupEntry.backup_drive_id,
+                BackupEntry.dwarf_id
             FROM BackupEntry
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
@@ -971,7 +975,9 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
                     WHEN AstroObject.description IS NOT NULL AND TRIM(AstroObject.description) != '' 
                     THEN AstroObject.description || ' [' || AstroObject.name || ']' 
                     ELSE AstroObject.name 
-                END AS object_display_name
+                END AS object_display_name,
+                Null,
+                DwarfEntry.dwarf_id
             FROM DwarfEntry
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
             JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
@@ -1038,7 +1044,7 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_dwarf: {e}")
         return []
 
-def toggle_favorite(conn: sqlite3.Connection, entry_id, label_element, mode):
+def toggle_favorite(conn: sqlite3.Connection, entry_id, mode):
     try:
         cursor = conn.cursor()
         if mode=="backup":
@@ -1277,6 +1283,38 @@ def delete_notpresent_backup_entries_and_dwarf_data(conn: sqlite3.Connection, ba
             return False
 
     except Exception as e:
+        print(f"[DB ERROR] Failed to delete entries for backup_drive_id={backup_drive_id}: {e}")
+        return False
+
+def delete_backup_entry_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id: int,  dwarf_id: int, dwarf_data_id: int) -> bool:
+    try:
+        cursor = conn.cursor()
+
+        if dwarf_data_id:
+            # Delete the backup entry directly
+            cursor.execute("""
+                DELETE FROM BackupEntry
+                WHERE backup_drive_id = ?
+                  AND dwarf_id = ?
+                  AND dwarf_data_id = ?
+            """, (backup_drive_id, dwarf_id, dwarf_data_id))
+
+            if cursor.rowcount > 0:
+                # Check if dwarf_data_id is still referenced
+                cursor.execute("SELECT COUNT(*) FROM BackupEntry WHERE dwarf_data_id = ?", (dwarf_data_id,))
+                count = cursor.fetchone()[0]
+                print(f"[DEBUG] Remaining references to dwarf_data_id={dwarf_data_id}: {count}")
+
+                if count == 0:
+                    cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
+
+                conn.commit()
+                return True
+
+        return False
+
+    except Exception as e:
+        conn.rollback()
         print(f"[DB ERROR] Failed to delete entries for backup_drive_id={backup_drive_id}: {e}")
         return False
 

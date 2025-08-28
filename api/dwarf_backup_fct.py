@@ -1007,7 +1007,7 @@ def get_total_exposure(fits_file):
         safe_print(f"Error reading EXPTIME from {fits_file}: {e}")
         return 0
 
-def generate_fits_preview1(fits_path: str) -> str:
+def generate_fits_preview_test(fits_path: str) -> str:
     try:
         from astropy.io import fits
         import numpy as np
@@ -1065,6 +1065,82 @@ def generate_fits_preview1(fits_path: str) -> str:
         safe_print(f"Error generating preview: {e}")
         return "image/image-error.png"
 
+def siril_log_stretch(image, black_point=None, white_point=None, scale=1000.0):
+    """
+    Logarithmic stretch similar to Siril.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Input image in float32, assumed normalized in [0,1].
+    black_point : float
+        Minimum value mapped to 0. If None, use min(image).
+    white_point : float
+        Maximum value mapped to 1. If None, use max(image).
+    scale : float
+        Controls the strength of the stretch.
+
+    Returns
+    -------
+    np.ndarray
+        Logarithmically stretched image in [0,1].
+    """
+    img = np.clip(image, 0, 1)
+
+    if black_point is None:
+        black_point = np.min(img)
+    if white_point is None:
+        white_point = np.max(img)
+
+    # Normalize to [0,1] based on black/white points
+    norm = (img - black_point) / (white_point - black_point + 1e-8)
+    norm = np.clip(norm, 0, 1)
+
+    # Apply logarithmic stretch
+    stretched = np.log1p(scale * norm) / np.log1p(scale)
+
+    return stretched.astype(np.float32)
+
+def arcsinh_stretch(image, factor=10):
+    stretched = np.arcsinh(factor * image) / np.arcsinh(factor)
+    return stretched.astype(np.float32)
+
+def background_neutralization(image):
+    r, g, b = image[...,0], image[...,1], image[...,2]
+    r_med, g_med, b_med = np.median(r), np.median(g), np.median(b)
+
+    avg = (r_med + g_med + b_med) / 3.0
+
+    r = np.clip(r * (avg / (r_med + 1e-6)), 0, 1)
+    g = np.clip(g * (avg / (g_med + 1e-6)), 0, 1)
+    b = np.clip(b * (avg / (b_med + 1e-6)), 0, 1)
+
+    return np.stack([r, g, b], axis=-1)
+
+def apply_black_point(image, black=0.05, white=0.99):
+    """
+    Adjust black/white levels after stretching.
+    """
+    img = np.clip((image - black) / (white - black), 0, 1)
+    return img
+
+def boost_saturation(image, factor=1.3):
+    hsv = cv2.cvtColor((image*255).astype(np.uint8), cv2.COLOR_RGB2HSV).astype(np.float32)
+    hsv[...,1] *= factor
+    hsv[...,1] = np.clip(hsv[...,1], 0, 255)
+    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB).astype(np.float32) / 255.0
+
+def simple_color_balance(image):
+    r, g, b = image[..., 0], image[..., 1], image[..., 2]
+    r_mean, g_mean, b_mean = r.mean(), g.mean(), b.mean()
+
+    avg = (r_mean + g_mean + b_mean) / 3.0
+
+    r = np.clip(r * (avg / (r_mean + 1e-6)), 0, 1)
+    g = np.clip(g * (avg / (g_mean + 1e-6)), 0, 1)
+    b = np.clip(b * (avg / (b_mean + 1e-6)), 0, 1)
+
+    return np.stack([r, g, b], axis=-1)
 
 def generate_fits_preview(fits_path: str) -> str:
     try:
@@ -1111,25 +1187,34 @@ def generate_fits_preview(fits_path: str) -> str:
         # Ensure image is in 0-1 range
         image = np.clip(image_rgb, 0, 1)
 
-        image = apply_stretch(image)
+        #image = apply_stretch(image)
+        # logarithm stretch
+        image = siril_log_stretch(image, scale=5000.0)
+        image = background_neutralization(image)
+        #image = arcsinh_stretch(image, factor=15)   # or sigmoid if you prefer
+        image = simple_color_balance(image)
+        image = apply_black_point(image, black=0.08, white=0.98)
+        image = boost_saturation(image)
 
         # Apply contrast boost (optional)
-        image = increase_contrast(image)
+        #image = increase_contrast(image)
 
         # Color balance
-        r, g, b = image[..., 0], image[..., 1], image[..., 2]
-        green_mean = g.mean()
+        #r, g, b = image[..., 0], image[..., 1], image[..., 2]
+        #green_mean = g.mean()
 
         # Remove green bias proportionally
-        g = np.clip(g - 0.45 * green_mean, 0, 1)
+        #g = np.clip(g - 0.45 * green_mean, 0, 1)
 
         # Recombine channels
-        image = np.stack([r, g, b], axis=-1)
-        image = np.clip(image, 0, 1)  # Ensure values are in range
+        #image = np.stack([r, g, b], axis=-1)
+
+        # Ensure values are in range
+        image = np.clip(image, 0, 1)
 
         # Convert back to uint8 for final output
         final_image = (image * 255).astype(np.uint8)
-        safe_print("Processed image shape:", final_image.shape)
+        safe_print(f"Processed image shape: {final_image.shape}")
 
         preview_path = fits_path.replace(".fits", "_preview.png")
         plt.imsave(preview_path, final_image, format='png')

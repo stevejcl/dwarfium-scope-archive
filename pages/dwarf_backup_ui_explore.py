@@ -3,16 +3,18 @@ import mimetypes
 from astropy.io import fits
 from datetime import datetime
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 import json
-
+import shutil
+import re
 from nicegui import app, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
 from api.dwarf_backup_db_api import (
     get_dwarf_Names, get_dwarf_detail, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf,
     get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_astro_object_description,
-    get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup,
+    get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup, delete_backup_entry_and_dwarf_data,
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, toggle_favorite
 )
@@ -23,6 +25,7 @@ from api.dwarf_backup_fct import (
     preprocess_dso_catalog_json
 )
 from api.image_preview import set_base_folder, build_preview_url
+from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import show_unknown_target_dialog
 
@@ -34,6 +37,18 @@ RESTACK = "Restack"
 UNKNOWN = "Unknown"
 CATALOG_FILE = './db/dso_catalog.json'
 SKY_CATALOG_FILE = './db/dso_sky_search_catalog.json'
+
+@dataclass
+class BackupEntryData:
+    backup_drive_id: int
+    dwarf_id: int
+    dwarf_data_id: int
+
+def safe_print(text):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode(sys.stdout.encoding, errors='replace').decode())
 
 @ui.page('/Explore/')
 def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None):
@@ -71,11 +86,15 @@ class ExploreApp:
         self.preview_icons = {}
         self.fullscreen_icon = {}
         self.backup_session_icon = {}
+        self.delete_session_icon = {}
         self.image_dialog = {}
         self.selected_path = ""
+        self.selected_DeleteEntryInfo = None
         self.classified_label = None
         self.expanded_nodes = set()
         self.dso_catalog = False
+        self.label_to_index = {}
+        self.WinLog = WinLog()
         self.build_ui()
 
     def build_ui(self):
@@ -150,6 +169,8 @@ class ExploreApp:
                             self.fullscreen_icon = ui.button("Show Fullscreen Image", on_click=self.show_fullscreen_image).classes('h-16')
                             self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
                             self.backup_session_icon.visible = False
+                            self.delete_session_icon = ui.button("🗑️ Delete Session", on_click=lambda: self.delete_directory()).classes('h-16')
+                            self.delete_session_icon.visible = False
                             self.update_preview_icons()  # populate icons
 
                             #self.preview_icons['jpg'] = ui.image('image/image-jpg.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('JPG File')
@@ -646,15 +667,22 @@ class ExploreApp:
             files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
 
         # Store all rows globally so we can access them later
-        self.all_files_rows = files
+        self.all_files_rows = [list(row) for row in files]
+        self.selected_DeleteEntryInfo = None
     
         if len(files) == 0:
      
+            self.label_to_index = {}
             self.file_list.set_options([])
             with self.details_files:
                 ui.item_label('No Session found.').props('header').classes('text-bold')
 
         if len(files) == 1:
+            self.selected_DeleteEntryInfo = BackupEntryData(
+                backup_drive_id=files[0][19],
+                dwarf_id=files[0][20],
+                dwarf_data_id=files[0][0]
+            )
             # If only one file, put it in the ComboBox and display it directly
             file_path = files[0][1]
             backup_path = files[0][6]  # location from BackupDrive or USB Dwarf
@@ -662,18 +690,24 @@ class ExploreApp:
             full_path = get_Backup_fullpath (backup_path, "", file_path)
             
             select_file = [file_path]
+            self.label_to_index[file_path] = 0
             self.file_list.set_options(select_file, value=select_file[0])
 
         else:
             # Populate combobox with readable file names
-            self.all_files_rows = files
             details = []
             select_file = [f'Select a session for {self.selected_object}']
             stackeds = 0
             total_time_exp = 0
+            self.label_to_index = {}
 
-            for row in files:
+            for idx, row in enumerate(files):
                 # Extracting values for clarity
+                self.selected_DeleteEntryInfo = BackupEntryData(
+                    backup_drive_id=row[19],
+                    dwarf_id=row[20],
+                    dwarf_data_id=row[0]
+                )
                 device = row[9]
                 session_date = show_short_date_session(row[7])
                 lens = "(W) " if ("_WIDE_") in row[8] else ""
@@ -688,16 +722,27 @@ class ExploreApp:
 
                 # Displaying star icon based on favorite status only in backup mode
                 star_icon = '⭐ ' if is_favorite else '☆ '
+                bad_icon = '❗ ' if int(stacks) < 50 else ''
                 info_stack = RESTACK if self.is_Restacked(row[8]) else TAKEN
                 target = row[13][:10]
                 description,_ =  self.get_name_object(row[18])
                 # Building the details string with the star icon
-                details.append(
-                    f"{star_icon}{info_stack} with {device} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
-                )
+                label_text = f"{info_stack} with {device} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
 
+                # If label already exists (duplicate), append a small invisible suffix
+                count = 0
+                base_label = f"{star_icon}{bad_icon}{label_text}"
+                details_text = base_label
+                while details_text in self.label_to_index:
+                    # Add zero-width character to make it unique
+                    count += 1
+                    details_text = details_text + ("\u200b" * count)
+                details.append(
+                    details_text
+                )
+                self.label_to_index[details_text] = idx
                 select_file.append(
-                    f"{info_stack} with {device} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
+                    details_text
                 )
 
             self.file_list.set_options(select_file, value=f'Select a session for {self.selected_object}')
@@ -706,8 +751,13 @@ class ExploreApp:
                 ui.item_label(f"{len(files)} sessions were found, totaling {stackeds} stacks and a total exposure time of {self.format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
                 ui.separator()
 
+                def clean_label(text: str) -> str:
+                    # remove star and bad icons
+                    return re.sub(r"[⭐☆❗]", "", text).strip()
+
                 for data_detail in details:
-                   ui.item(data_detail, on_click=lambda i=data_detail.lstrip('⭐').lstrip('☆').strip(): self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+                   #ui.item(data_detail, on_click=lambda i=clean_label(data_detail).strip(): self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+                   ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
 
     def open_folder(self, directory = None):
         if not self.selected_path and not directory:
@@ -727,6 +777,41 @@ class ExploreApp:
                 # or 'xdg-open' for Linux
         else:
             print("Folder does not exist!")
+
+    async def delete_directory(self, directory=None):
+        folder_path = directory or self.selected_path
+        if not folder_path:
+            ui.notify("No folder selected!", color="negative")
+            return
+
+        folder_path = os.path.normpath(folder_path)
+
+        if not os.path.exists(folder_path):
+            ui.notify(f"Folder does not exist:\n{folder_path}", color="negative")
+            return
+
+        def ok_confirm_delete_session():
+            try:
+                shutil.rmtree(folder_path)
+                ui.notify(f"Folder deleted:\n{folder_path}", color="positive")
+                # delete data
+                if self.selected_DeleteEntryInfo:
+                    delete_backup_entry_and_dwarf_data( self.conn, 
+                                                        self.selected_DeleteEntryInfo.backup_drive_id,
+                                                        self.selected_DeleteEntryInfo.dwarf_id,
+                                                        self.selected_DeleteEntryInfo.dwarf_data_id)
+
+            except Exception as e:
+                ui.notify(f"Error deleting folder:\n{e}", color="negative")
+            finally:
+                self.load_objects()
+
+        # Ask for confirmation
+        await self.WinLog.show(
+            "Confirm Deletion",
+            f"⚠️ Are you sure you want to delete this session?\n\nThe following folder will be completely removed!\n\n{folder_path}",
+            ok_confirm_delete_session
+        )
 
     def parse_exposure(self, exp_str):
         """
@@ -826,7 +911,7 @@ class ExploreApp:
     def on_file_selected(self):
         selection_index = None
         selected_value = self.file_list.value
-        print(f"Selected value: {selected_value}")
+        safe_print(f"Selected value: {selected_value}")
         details = []
 
         if not selected_value or selected_value.startswith('Select a session'):
@@ -835,6 +920,7 @@ class ExploreApp:
         self.details_files.clear()
         self.details_preview.clear()
         self.reset_preview_icons()
+        self.selected_DeleteEntryInfo = None
 
         details_files_text = ""
         if selected_value and len(self.all_files_rows) == 1:
@@ -843,34 +929,9 @@ class ExploreApp:
         # Try to find the selected value in the options and get the corresponding index
         try:
 
-            if  selection_index is None:
-
-                # Map the selected value back to the corresponding row
-                for idx, row in enumerate(self.all_files_rows):
-                    # Build the label that matches the options shown
-                    #label = f"{row[1]} (Taken with {row[9]} | {show_short_date_session(row[7])}, exp {row[2]}s, gain {row[3]}, filter {row[4]}, stacks {row[5]})"
-                    lens = "(W) " if ("_WIDE_") in row[8] else ""
-                    exp = f"{row[2]}s" if row[2] is not None else "N/A"
-                    gain = row[3] if row[3] is not None else "N/A"
-                    astro_filter = f"{row[4]}" if row[4] else "No Filter"
-                    target = row[13][:10]
-                    description,_ =  self.get_name_object(row[18])
-                    is_favorite = row[12]  # The favorite column (0 or 1)
-                    star_icon = '⭐ ' if is_favorite else '☆ '
-                    info_stack = RESTACK if self.is_Restacked(row[8]) else TAKEN
-                    label = f"{info_stack} with {row[9]} {lens}| {show_short_date_session(row[7])}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {row[5]} | {description}"
-                    # Strip out the star icon to compare only the text portion
-                    comparison_label = label.lstrip('⭐').lstrip('☆').strip()
-                    # Strip the star icon from the selected value for comparison
-                    selected_value_stripped = selected_value.lstrip('⭐').lstrip('☆').strip()
-                
-                    # Check if this label matches the selected value
-                    if selected_value_stripped == label:
-                        selection_index = idx
-                        lens = "(Wide)" if ("_WIDE_") in row[8] else "(Tele)"
-
-                        details_files_text = f"{star_icon}{info_stack} with {row[9]} {lens} on {show_date_session(row[7])}"
-                        break
+            # Map the selected label back to the correct row index
+            # remove icons
+            selection_index = self.label_to_index.get(selected_value)
 
         except ValueError:
             print("Selected value not found")
@@ -879,6 +940,11 @@ class ExploreApp:
 
             row = self.all_files_rows[selection_index]
 
+            self.selected_DeleteEntryInfo = BackupEntryData(
+                backup_drive_id=row[19],
+                dwarf_id=row[20],
+                dwarf_data_id=row[0]
+            )
             file_path = row[1]
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
             is_favorite = row[12]  # The favorite column (0 or 1)
@@ -916,7 +982,9 @@ class ExploreApp:
             details.append(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {row[4]}")
             if row[10] and row[11]:
                 details.append(f"MinTemp: {row[10]} | MaxTemp: {row[11]}")
-            details.append(f"Stacks: {row[5]}")
+            stacks = row[5]
+            bad_icon = '❗ ' if int(stacks) < 50 else ''
+            details.append(f"Stacks: {bad_icon}{stacks}")
 
             self.astro_files = check_files(full_path)
             self.update_preview_icons()
@@ -1000,10 +1068,13 @@ class ExploreApp:
     def get_hover_class(self):
         return 'hover:bg-gray-700' if app.storage.user.get('ui_mode', 0) == 'dark' else 'hover:bg-gray-300'
 
-    def toggle_favorite_ui(self, entry_id, label_element, mode):
+    def toggle_favorite_ui_label(self, entry_id, label_element, mode, select_index, update = False):
+
         # Call the API function directly
-        new_favorite = toggle_favorite(self.conn, entry_id, label_element, mode)
-    
+        new_favorite = toggle_favorite(self.conn, entry_id, mode)
+        
+        # Update the favorite data row_file UI based on the new state
+        self.all_files_rows[select_index][12] = new_favorite
         # Update the UI based on the new state
         star_icon = '⭐ ' if new_favorite else '☆ '
         label_text = label_element.text.split(' ', 1)[1]  # Remove existing star
@@ -1013,7 +1084,50 @@ class ExploreApp:
         # Add tooltip
         label_element.props(f'title="{tooltip_text}"')
         #label_element.classes('text-yellow-500' if new_favorite else 'text-gray-400')
-        label_element.update()
+        if update:
+            label_element.update()
+
+        return new_favorite
+
+    def toggle_favorite_ui(self, entry_id, label_element, mode):
+        selected_value = self.file_list.value
+
+        if not selected_value:
+            return
+
+        # Do update only the label if only one option
+        if len(self.file_list.options) <= 1:
+            self.toggle_favorite_ui_label(entry_id, label_element, mode, 0, True)
+            return
+
+        # Get the selected Index on the list
+        # the index begin at 0, but "Select a session" use it 
+        selection_index = self.label_to_index.get(selected_value)
+
+        # Call the API function directly
+        new_favorite = self.toggle_favorite_ui_label(entry_id, label_element, mode, selection_index, True)
+
+        # Build new label with star icon
+        star_icon = '⭐ ' if new_favorite else '☆ '
+        select_text = selected_value.split(' ', 1)[-1]  # Remove old star if any
+        new_select_text = f"{star_icon}{select_text}"
+
+        # Update mapping
+        options = list(self.file_list.options)
+        if selection_index is not None:
+            # Add zero-width suffix if needed
+            count = 0
+            while new_select_text in self.label_to_index:
+                count += 1
+                new_select_text = new_select_text + ("\u200b" * count)
+
+            self.label_to_index[new_select_text] = selection_index
+
+            # Update the options list
+            # need to add +1 to the selected Index
+            # the index begin at 0, but not included "Select a session"
+            options[selection_index+1] = new_select_text
+            self.file_list.set_options(options, value=new_select_text)
 
     def update_preview(self, preview_image_path ):
         details_preview = []
@@ -1180,6 +1294,7 @@ class ExploreApp:
         self.open_folder_icon.disable()
         self.fullscreen_icon.disable()
         self.backup_session_icon.disable()
+        self.delete_session_icon.disable()
 
         # Delete old icons from UI
         for icon in self.preview_icons.values():
@@ -1227,6 +1342,15 @@ class ExploreApp:
             else:
                 self.backup_session_icon.visible = False
                 self.backup_session_icon.disable()
+
+            if not self.delete_session_icon:
+                self.delete_session_icon = ui.button("🗑️ Delete Session", on_click=lambda: self.delete_directory()).classes('h-16')
+            elif self.mode == "backup" and self.selected_path and os.path.isdir(self.selected_path):
+                self.delete_session_icon.visible = True
+                self.delete_session_icon.enable()
+            else:
+                self.delete_session_icon.visible = False
+                self.delete_session_icon.disable()
 
     def set_preview(self, path: str):
         if path.lower().endswith('.fits'):
