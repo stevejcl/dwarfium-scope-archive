@@ -411,10 +411,9 @@ class TransferAppUSB:
         result = False
         try:
             total_files = len(all_files)
-            print (total_files)
+            # print (total_files)
             for i, (src_file, dest_file) in enumerate(all_files):
                 dest_file = win_long_path(dest_file)
-                print( "==>", src_file, dest_file )
                 if self.cancel_backup:
                     self.notify_me.refresh("Backup cancelled.")
                     break

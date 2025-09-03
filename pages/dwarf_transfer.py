@@ -723,7 +723,6 @@ class TransferApp:
 
             for i, (src_file, dest_file) in enumerate(all_files):
                 dest_file = win_long_path(dest_file)
-                print( f"dwarf_transfer.py:722\n{src_file}\n==>\n{dest_file}" )
                 if self.cancel_backup:
                     self.notify_me.refresh("Backup cancelled.")
                     result = False
