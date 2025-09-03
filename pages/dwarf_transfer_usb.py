@@ -268,7 +268,9 @@ class TransferAppUSB:
 
         self.cancel_btn.visible = True
         self.StartBackup.visible = False
-        dest_path = os.path.join(dest_dir, os.path.basename(src_dir))
+		dest_path = dest_dir
+		if not dest_path.endswith(os.path.basename(src_dir)):
+			dest_path = os.path.join(dest_dir, os.path.basename(src_dir))
 
         # Check if destination path exists
         if os.path.exists(dest_path):
@@ -390,7 +392,9 @@ class TransferAppUSB:
                 src_path = os.path.join(root, file)
                 rel_path = os.path.relpath(src_path, src_dir)
                 dest_path = os.path.join(dest_dir, rel_path)
-                all_files.append((src_path, dest_path))
+				if not os.path.isfile(dest_path):
+					# only copy files, that are not in destination
+					all_files.append((src_path, dest_path))
         return all_files
 
     # Optional: compute a SHA256 hash for data integrity
@@ -410,6 +414,7 @@ class TransferAppUSB:
             print (total_files)
             for i, (src_file, dest_file) in enumerate(all_files):
                 dest_file = win_long_path(dest_file)
+                print( "==>", src_file, dest_file )
                 if self.cancel_backup:
                     self.notify_me.refresh("Backup cancelled.")
                     break

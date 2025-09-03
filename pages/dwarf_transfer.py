@@ -532,7 +532,9 @@ class TransferApp:
             self.StartBackup.visible = False
 
             # Local USB path
-            dest_path = os.path.join(dest_dir, os.path.basename(src_dir))
+            dest_path = dest_dir
+            if not dest_path.endswith(os.path.basename(src_dir)):
+	            dest_path = os.path.join(dest_dir, os.path.basename(src_dir))
 
             # Check if destination path exists
             if os.path.exists(dest_path):
@@ -577,7 +579,7 @@ class TransferApp:
             self.progress_label.set_text(f"Starting copying {total_files} files...")
         ui.notify("Starting...")
 
-        print ( list_files)
+        # print ( list_files)
         #result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
         result = await self.copy_with_progress_async(list_files, self.progress, self.cancel_btn)
 
@@ -685,7 +687,9 @@ class TransferApp:
                     src_path = os.path.join(root, file)
                     rel_path = os.path.relpath(src_path, src_dir)
                     dest_path = os.path.join(dest_dir, rel_path)
-                    all_files.append((src_path, dest_path))
+                    if not os.path.isfile(dest_path):
+                    	# only copy files, that are not in destination
+	                    all_files.append((src_path, dest_path))
 
         return all_files
 
@@ -703,7 +707,7 @@ class TransferApp:
         result = False
         try:
             total_files = len(all_files)
-            print (total_files)
+            # print (total_files)
             transfer_mode = self.transfert_mode_select.value
             is_archive = self.mode == "Archive"
             is_restore = self.mode == "Restore"
@@ -719,6 +723,7 @@ class TransferApp:
 
             for i, (src_file, dest_file) in enumerate(all_files):
                 dest_file = win_long_path(dest_file)
+                print( f"dwarf_transfer.py:722\n{src_file}\n==>\n{dest_file}" )
                 if self.cancel_backup:
                     self.notify_me.refresh("Backup cancelled.")
                     result = False
