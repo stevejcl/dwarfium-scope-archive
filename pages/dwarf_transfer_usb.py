@@ -230,9 +230,9 @@ class TransferAppUSB:
         """Open folder selection dialog."""
         if self.input_src_dir.value:
             full_path = os.path.abspath(self.input_src_dir.value)
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=full_path)
+            folder = await app.native.main_window.create_file_dialog(webview.FileDialog.FOLDER, allow_multiple=False,directory=full_path)
         else:
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+            folder = await app.native.main_window.create_file_dialog(webview.FileDialog.FOLDER, allow_multiple=False)
         if folder and not folder[0].startswith(self.src_main_dir):
             ui.notify(f"❌ Access denied: You cannot navigate outside {self.SourceMainDir}")
         elif folder:
@@ -244,9 +244,9 @@ class TransferAppUSB:
         """Open folder selection dialog."""
         if self.input_dest_dir.value:
             full_path = os.path.abspath(self.input_dest_dir.value)
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=full_path)
+            folder = await app.native.main_window.create_file_dialog(webview.FileDialog.FOLDER, allow_multiple=False,directory=full_path)
         else:
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+            folder = await app.native.main_window.create_file_dialog(webview.FileDialog.FOLDER, allow_multiple=False)
         
         if folder and not folder[0].startswith(self.dest_main_dir):
             ui.notify(f"❌ Access denied: You cannot navigate outside {self.DestinationMainDir}")
