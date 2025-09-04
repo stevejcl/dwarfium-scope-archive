@@ -89,16 +89,16 @@ def check_ftp_connection(ip_address):
     except ftplib.all_errors:
         return "❌ FTP Error: not connected"
 
-def download_ftp_tree(ip_address, ftp_root_path, local_dest_root):
+def download_ftp_tree(ip_address, ftp_root_path, local_dest_root, isFullBackup):
     all_files = []
     try:
         with ftp_conn(ip_address) as ftp:
-            _recursive_ftp_walk(ftp, ftp_root_path, local_dest_root, all_files)
+            _recursive_ftp_walk(ftp, ftp_root_path, local_dest_root, all_files, isFullBackup)
     except ftplib.all_errors as e:
         print(f"FTP error: {e}")
     return all_files
 
-def _recursive_ftp_walk(ftp, ftp_path, local_dest_root, all_files):
+def _recursive_ftp_walk(ftp, ftp_path, local_dest_root, all_files, isFullBackup):
     try:
         entries = ftp.nlst(ftp_path)
         for entry in entries:
@@ -113,7 +113,9 @@ def _recursive_ftp_walk(ftp, ftp_path, local_dest_root, all_files):
                 # It's a file
                 rel_path = os.path.relpath(entry, ftp_path)
                 local_path = os.path.join(local_dest_root, rel_path)
-                all_files.append((entry, local_path))
+                # In case of Full Backup, don't overwrite files
+                if not isFullBackup or not os.path.isfile(local_path):
+                    all_files.append((entry, local_path))
     except ftplib.all_errors as e:
         print(f"FTP error listing {ftp_path}: {e}")
 
@@ -260,6 +262,10 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
         for session in removed_sessions:
             src_path = os.path.join(dwarf_dir, session)
             dst_path = os.path.join(archive_dir, session)
+
+            if os.path.exists(dst_path):
+                shutil.rmtree(dst_path)   # careful: deletes everything in that folder!
+
             print_log(f"📦 Archiving removed session: {session}", log)
             shutil.move(src_path, dst_path)
 

@@ -500,6 +500,9 @@ class TransferApp:
         self.progress.value = 0
         src_dir = self.input_src_dir.value
         print(f" Backup src_dir:  {src_dir}")
+        # Check is Full Backup : the Astro Directory is used only
+        isFullBackup = (src_dir == self.src_main_dir)
+        print(f" is Full Backup task:  {isFullBackup}")
         dest_dir = self.input_dest_dir.value
         print(f" Backup dest_dir:  {dest_dir}")
         if not src_dir:
@@ -519,31 +522,36 @@ class TransferApp:
                 self.StartBackup.visible = False
                 # FTP paths: simple string manipulation
                 src_basename = os.path.basename(os.path.normpath(src_dir))
-                dest_path = f"{dest_dir.rstrip('/')}/{src_basename}"
-
+                if not isFullBackup:
+                    dest_path = f"{dest_dir.rstrip('/')}/{src_basename}"
+                else:
+                    dest_path = dest_dir.rstrip('/')
                 # You would need to check existence via FTP
                 if ftp_path_exists(self.dwarf_ip_sta_mode, dest_path):  # Implement this check
                     base_path = "/mnt/sdcard" # use ssh
-                    await self.confirm_overwrite(dest_path)
+                    await self.confirm_overwrite(dest_path, isFullBackup)
                 else:
-                    await self.execute_backup(src_dir, dest_path)
+                    await self.execute_backup(src_dir, dest_path, isFullBackup)
         else:
             self.cancel_btn.visible = True
             self.StartBackup.visible = False
 
             # Local USB path
-            dest_path = os.path.join(dest_dir, os.path.basename(src_dir))
+            if not isFullBackup:
+                dest_path = os.path.join(dest_dir, os.path.basename(src_dir))
+            else:
+                dest_path = dest_dir
 
             # Check if destination path exists
             if os.path.exists(dest_path):
-                await self.confirm_overwrite(dest_path)
+                await self.confirm_overwrite(dest_path, isFullBackup)
             else:
-                await self.execute_backup(src_dir, dest_path)
+                await self.execute_backup(src_dir, dest_path, isFullBackup)
 
         self.cancel_btn.visible = False
         self.StartBackup.visible = True
 
-    async def confirm_overwrite(self, dest_path):
+    async def confirm_overwrite(self, dest_path, isFullBackup):
 
         print("confirm_overwrite")
         ui.notify(f"The destination '{dest_path}' already exists.!", type='warning')
@@ -557,15 +565,15 @@ class TransferApp:
 
         result = await dialog
         if result == 'Yes':
-            await self.execute_backup(self.input_src_dir.value, dest_path)
+            await self.execute_backup(self.input_src_dir.value, dest_path, isFullBackup)
         else:
             self.progress_label.set_text("Backup canceled.")
             self.cancel_btn.visible = False
             self.StartBackup.visible = True
 
-    async def execute_backup(self, src_dir, dest_path):
+    async def execute_backup(self, src_dir, dest_path, isFullBackup):
 
-        list_files = await self.get_files(src_dir, dest_path)
+        list_files = await self.get_files(src_dir, dest_path, isFullBackup)
         total_files = 0
         if list_files:
             total_files = len(list_files)
@@ -574,10 +582,10 @@ class TransferApp:
             self.progress_label.set_text("No files to copy.")
             return
         else:
-            self.progress_label.set_text(f"Starting copying {total_files} files...")
+            self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files...")
         ui.notify("Starting...")
 
-        print ( list_files)
+        #print ( list_files)
         #result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
         result = await self.copy_with_progress_async(list_files, self.progress, self.cancel_btn)
 
@@ -604,13 +612,19 @@ class TransferApp:
                     dir_parent_session = ""
                     dir_backup_session = ""
                     if self.mode == "Archive":
-                        session_name = os.path.basename(dest_path)
-                        dir_parent_session = os.path.dirname(dest_path)
-                        dir_backup_session = dest_path
+                        if isFullBackup:
+                            dir_parent_session = dest_path
+                        else: 
+                            session_name = os.path.basename(dest_path)
+                            dir_parent_session = os.path.dirname(dest_path)
+                            dir_backup_session = dest_path
                     else:
-                        session_name = os.path.basename(src_dir)
-                        dir_parent_session = os.path.dirname(src_dir)
-                        dir_backup_session = src_dir
+                        if isFullBackup:
+                            dir_parent_session = src_dir
+                        else: 
+                            session_name = os.path.basename(src_dir)
+                            dir_parent_session = os.path.dirname(src_dir)
+                            dir_backup_session = src_dir
 
                     print(f"session_name: {session_name}")
                     print(f"dir_parent_session: {dir_parent_session}")
@@ -621,7 +635,9 @@ class TransferApp:
                     ui.notify("Starting Analysis ...")
 
                     local_Dwarf_dir = get_local_dwarf_dir(self.DwarfId)
-                    local_Dwarf_session = os.path.join(local_Dwarf_dir, session_name) 
+                    local_Dwarf_session = ""
+                    if session_name:
+                       local_Dwarf_session = os.path.join(local_Dwarf_dir, session_name) 
                     if session_name.startswith("RESTACKED"):
                         restacked_session = os.path.join("RESTACKED", session_name)
                         local_Dwarf_session = os.path.join(local_Dwarf_dir, restacked_session)
@@ -648,22 +664,25 @@ class TransferApp:
     def cancel(self):
         self.cancel_backup = True
 
-    async def get_files_old(self, src_dir, dest_dir):
+    async def get_files_old(self, src_dir, dest_dir, isFullBackup):
         all_files = []
         for root, _, files in os.walk(src_dir):
             for file in files:
                 src_path = os.path.join(root, file)
                 rel_path = os.path.relpath(src_path, src_dir)
                 dest_path = os.path.join(dest_dir, rel_path)
-                all_files.append((src_path, dest_path))
+                # in case of Full Backup don't overwrite files
+                if not isFullBackup or not os.path.isfile(dest_path):
+                    all_files.append((src_path, dest_path))
+
         return all_files
 
-    async def get_files(self, src_dir, dest_dir):
+    async def get_files(self, src_dir, dest_dir, isFullBackup):
         all_files = []
 
         if self.transfert_mode_select.value == "FTP" and self.mode == "Archive":
             # FTP → USB
-            all_files = await run.io_bound(download_ftp_tree, self.dwarf_ip_sta_mode,src_dir, dest_dir)
+            all_files = await run.io_bound(download_ftp_tree, self.dwarf_ip_sta_mode,src_dir, dest_dir, isFullBackupv)
 
         elif self.transfert_mode_select.value == "FTP" and self.mode == "Restore":
             # USB → FTP : Not Possible Read Only system for D3
@@ -685,7 +704,9 @@ class TransferApp:
                     src_path = os.path.join(root, file)
                     rel_path = os.path.relpath(src_path, src_dir)
                     dest_path = os.path.join(dest_dir, rel_path)
-                    all_files.append((src_path, dest_path))
+                    # in case of Full Backup don't overwrite files
+                    if not isFullBackup or not os.path.isfile(dest_path):
+                        all_files.append((src_path, dest_path))
 
         return all_files
 
@@ -703,7 +724,7 @@ class TransferApp:
         result = False
         try:
             total_files = len(all_files)
-            print (total_files)
+            #print (total_files)
             transfer_mode = self.transfert_mode_select.value
             is_archive = self.mode == "Archive"
             is_restore = self.mode == "Restore"

@@ -526,6 +526,10 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
         for session in removed_sessions:
             src_path = os.path.join(dwarf_dir, session)
             dst_path = os.path.join(archive_dir, session)
+
+            if os.path.exists(dst_path):
+                shutil.rmtree(dst_path)   # careful: deletes everything in that folder!
+
             print_log(f"📦 Archiving removed session: {session}", log)
             shutil.move(src_path, dst_path)
 
