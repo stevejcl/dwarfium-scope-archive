@@ -172,10 +172,15 @@ class ConfigApp:
     async def select_folder(self):
         ui.notify("Please choose the main backup directory for your Dwarf astrophotography images or dark files.", type="info")
         location = self.backupDrive_location.value
-        if location:
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=location)
+        if hasattr(webview, 'FileDialog'):
+            folder_mode = webview.FileDialog.FOLDER
         else:
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+            folder_mode = webview.FOLDER_DIALOG
+
+        if location:
+            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=location)
+        else:
+            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         if folder:
             ui.notify(folder[0])
             folder = os.path.normpath(folder[0])
@@ -187,9 +192,13 @@ class ConfigApp:
         if not location:
             ui.notify("Fill Location first.", type="negative")
             return
+        if hasattr(webview, 'FileDialog'):
+            folder_mode = webview.FileDialog.FOLDER
+        else:
+            folder_mode = webview.FOLDER_DIALOG
 
         base_path = os.path.normpath(location)
-        subfolder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=base_path)
+        subfolder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=base_path)
 
         if subfolder:
             ui.notify(subfolder[0])

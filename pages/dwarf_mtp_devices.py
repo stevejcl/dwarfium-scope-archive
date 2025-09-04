@@ -97,11 +97,16 @@ class TransferApp:
 
     async def select_local_folder(self):
         """Open folder selection dialog."""
+        if hasattr(webview, 'FileDialog'):
+            folder_mode = webview.FileDialog.FOLDER
+        else:
+            folder_mode = webview.FOLDER_DIALOG
+
         if self.destination_input.value:
             full_path = os.path.abspath(self.destination_input.value)
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=full_path)
+            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=full_path)
         else:
-            folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         if folder:
             ui.notify(folder[0])
             folder = os.path.normpath(folder[0])

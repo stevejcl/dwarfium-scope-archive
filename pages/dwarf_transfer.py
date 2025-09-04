@@ -451,11 +451,16 @@ class TransferApp:
         else:
 
             """Open folder selection dialog."""
+            if hasattr(webview, 'FileDialog'):
+                folder_mode = webview.FileDialog.FOLDER
+            else:
+                folder_mode = webview.FOLDER_DIALOG
+
             if self.input_src_dir.value:
                 full_path = os.path.abspath(self.input_src_dir.value)
-                folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=full_path)
+                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=full_path)
             else:
-                folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
 
             if folder and not folder[0].startswith(self.src_main_dir):
                 ui.notify(f"❌ Access denied: You cannot navigate outside {self.SourceMainDir}")
@@ -483,11 +488,16 @@ class TransferApp:
         else:
 
             """Open folder selection dialog."""
+            if hasattr(webview, 'FileDialog'):
+                folder_mode = webview.FileDialog.FOLDER
+            else:
+                folder_mode = webview.FOLDER_DIALOG
+
             if self.input_dest_dir.value:
                 full_path = os.path.abspath(self.dest_main_dir) # self.input_dest_dir.value
-                folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False,directory=full_path)
+                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=full_path)
             else:
-                folder = await app.native.main_window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         
             if folder and not folder[0].startswith(self.dest_main_dir):
                 ui.notify(f"❌ Access denied: You cannot navigate outside {self.DestinationMainDir}")
