@@ -41,8 +41,10 @@ def dark_mode():
     dark = ui.dark_mode()
     dark.enable()
     app.storage.user['ui_mode'] = 'dark'
+    ui.navigate.reload()
 
 def light_mode():
     dark = ui.dark_mode()
     dark.disable()
     app.storage.user['ui_mode'] = 'light'
+    ui.navigate.reload()
