@@ -1,5 +1,12 @@
 # Changelog
 
+## [V2.2.5] - 2025-09-09
+
+### Add Init Python Script for Mac, Linux
+
+### BugFix# 
+ Path separator comparible for Linux, Mac
+
 ## [V2.2.4] - 2025-08-28
 
 ### Add Delete Session Function
