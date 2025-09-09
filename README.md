@@ -118,7 +118,7 @@ Session details (exposure, gain, number of images).
 
 Whether the session is backed up or not.
 
-You can then directly bacedup with the Backup button
+You can then directly backedup with the Backup button
 
 ![explore backeup](https://github.com/user-attachments/assets/e097e8f0-8b3e-4377-a9b5-87d018019524)
 
@@ -135,12 +135,24 @@ You can create multiple levels of directories. For example, you could create a s
 
 A catalog is now included, Go to the Catalog page to manage your object list, allowing you to change the object of a session.
 
+Launch the Explore path to view what's currently on your Backup (see next session for more details), including:
+
+Image previews.
+
+Session details (exposure, gain, number of images).
+
+Whether the session is stored on the Dwarf or not, or if you have multiple versions of the same session..
+
+You can also directly restore it with the Restore button
+
+<img width="1651" height="1007" alt="image" src="https://github.com/user-attachments/assets/969eeb0c-51ab-4bdf-b566-da5b949c5588" />
+
 Additionally, there will be a section to add Darks sessions, which you can associate with your sessions for processing.
 
 ### Explore Page:
 This is the main view where you can see your sessions, organized by object, backup, or Dwarf.
 
-![explore](https://github.com/user-attachments/assets/e5209aa7-4029-4059-b932-233d6bd196cc)
+<img width="525" height="812" alt="image" src="https://github.com/user-attachments/assets/eb3858c6-a241-4418-b27f-d900134a5543" />
 
 You will be able to:
 
@@ -155,12 +167,29 @@ Open the image's directory.
 You will also have access to all the session details, such as the number of images, exposure, gain, and more.
 You'll also know if the session is stored on your Dwarf or not.
 
+You can update the target name by matching the coordinates with nearby objects from the catalog
+
+click on Identify Target button
+
+<img width="810" height="330" alt="image" src="https://github.com/user-attachments/assets/d760ea70-1e80-430a-b963-950daa5afaae" />
+
+Select the target you prefer and click the corresponding button on the right.
+You can also edit the description to suit your needs.
+
+If you have trouble finding the correct target, you can open the Aladin view, which will display a sky map centered on the coordinates of your session target.
+
+<img width="417" height="231" alt="image" src="https://github.com/user-attachments/assets/8497283d-7cd5-4896-b270-5a6e760d6c4c" />
+
+In this way, your session will be classified under this name, and you can group different sessions of the same target, even if they were not originally linked. The initial target will be displayed in brackets [ ].
+
 If you have taken a Mosaic you will have access to the different panels.
 
 ![mosaic](https://github.com/user-attachments/assets/2e83d8a8-8a1a-432d-85f0-2f13997d1159)
 
 ![pannels](https://github.com/user-attachments/assets/8ee96ed0-018f-41bd-898c-803b9afcea91)
 
+You can also archive, restore, or even delete the session using the corresponding buttons, which will take you to the appropriate page
+<img width="678" height="84" alt="image" src="https://github.com/user-attachments/assets/f7faa726-659a-4bdd-a6fc-5e3025b23a66" />
 
 ### Catalog Page
 In this page, you can associate a target detecting during the scan process to an object of the build in DSO Catalog from Dwarfium
@@ -192,9 +221,6 @@ Feature to move files between different backups or object directories, enabling 
 
 Add Darks Backup and Association with Dwarf:
 Support for managing Darks sessions, including adding and associating them with Dwarf sessions for processing.
-
-Regroup Object Sessions for Mosaic:
-The ability to group sessions based on objects, enabling easier management and creation of mosaics.
 
 ### Chapter 6: Contributing
 
