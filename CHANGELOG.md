@@ -1,5 +1,9 @@
 # Changelog
 
+## [V2.2.6] - 2025-09-12
+
+### Compatibility with MacOs 13+
+
 ## [V2.2.5] - 2025-09-09
 
 ### Add Init Python Script for Mac, Linux
