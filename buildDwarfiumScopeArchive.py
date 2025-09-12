@@ -38,12 +38,9 @@ for folder in [DIST_DIR, BUILD_DIR]:
 # Step 2 – Run nicegui-pack
 print("Building executable...")
 
-# Use onedir for macOS, onefile for others
-mode = "--onedir" if platform.system() == "Darwin" else "--onefile"
-
 subprocess.run([
     "nicegui-pack",
-    mode,
+    "--onefile",
     "--windowed",
     "--icon", ICON_NAME,
     "--name", APP_NAME,
