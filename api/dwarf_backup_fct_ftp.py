@@ -107,7 +107,8 @@ def _recursive_ftp_walk(ftp, ftp_path, local_dest_root, all_files, isFullBackup)
                 _recursive_ftp_walk(
                     ftp, entry,
                     os.path.join(local_dest_root, os.path.relpath(entry, ftp_path)),
-                    all_files
+                    all_files,
+                    isFullBackup
                 )
             except ftplib.error_perm:
                 # It's a file

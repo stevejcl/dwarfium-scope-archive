@@ -512,6 +512,8 @@ class TransferApp:
         print(f" Backup src_dir:  {src_dir}")
         # Check is Full Backup : the Astro Directory is used only
         isFullBackup = (src_dir == self.src_main_dir)
+        if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode: 
+            isFullBackup = (src_dir == get_ftp_astroDir(self.dwarf_ip_sta_mode))
         print(f" is Full Backup task:  {isFullBackup}")
         dest_dir = self.input_dest_dir.value
         print(f" Backup dest_dir:  {dest_dir}")
@@ -692,7 +694,7 @@ class TransferApp:
 
         if self.transfert_mode_select.value == "FTP" and self.mode == "Archive":
             # FTP → USB
-            all_files = await run.io_bound(download_ftp_tree, self.dwarf_ip_sta_mode,src_dir, dest_dir, isFullBackupv)
+            all_files = await run.io_bound(download_ftp_tree, self.dwarf_ip_sta_mode,src_dir, dest_dir, isFullBackup)
 
         elif self.transfert_mode_select.value == "FTP" and self.mode == "Restore":
             # USB → FTP : Not Possible Read Only system for D3
