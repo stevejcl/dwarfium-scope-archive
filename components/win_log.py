@@ -6,9 +6,9 @@ class WinLog:
         self.popup_text = ""
         self.on_yes = None
 
-        with ui.dialog() as self.popup_dialog, ui.card():
+        with ui.dialog() as self.popup_dialog, ui.card().style('width: 800px; max-width: none'):
             ui.label().bind_text_from(self, "popup_title").classes("text-lg font-bold")
-            ui.label().bind_text_from(self, "popup_text").classes("text-md")
+            ui.label().bind_text_from(self, "popup_text").classes("text-md").style('white-space: pre-wrap') 
             with ui.row():
                 ui.button("Yes", on_click=self._on_yes_clicked)
                 ui.button("No", on_click=lambda: self.popup_dialog.submit("No"))

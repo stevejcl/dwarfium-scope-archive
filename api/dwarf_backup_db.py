@@ -1,10 +1,10 @@
 import sqlite3
 import os
 # Encoding changed to UTF-8
-DB_NAME = "db\\dwarf_backup.db"
-CATALOG_FILE = './db/dso_catalog.json'
+DB_NAME = os.path.join("db", "dwarf_backup.db")
+CATALOG_FILE = os.path.join("db", "dso_catalog.json")
 
-def start_db(database:DB_NAME):
+def start_db(database: str = DB_NAME):
     try:
         db_dir = os.path.dirname(database)
         if not os.path.exists(db_dir):
@@ -20,7 +20,7 @@ def start_db(database:DB_NAME):
         print(f"[DB ERROR] Failed to connect DB {database}: {e}")
         return None
 
-def connect_db(database:DB_NAME):
+def connect_db(database: str = DB_NAME):
     try:
         db_dir = os.path.dirname(database)
         if not os.path.exists(db_dir):

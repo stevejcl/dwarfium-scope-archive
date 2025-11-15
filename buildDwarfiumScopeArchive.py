@@ -3,6 +3,7 @@ import subprocess
 import zipfile
 from pathlib import Path
 import os
+import platform
 
 # correction for Pyinstaller Error
 import astroquery
@@ -36,6 +37,7 @@ for folder in [DIST_DIR, BUILD_DIR]:
 
 # Step 2 – Run nicegui-pack
 print("Building executable...")
+
 subprocess.run([
     "nicegui-pack",
     "--onefile",
