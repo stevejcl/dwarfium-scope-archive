@@ -24,6 +24,38 @@ def ftp_conn(ip_address):
         except Exception:
             ftp.close()
 
+def check_ftp_connection(ip_address):
+    if not ip_address:
+        return "❌ Please enter an IP address."
+
+    try:
+        with ftp_conn(ip_address) as ftp:
+            if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
+                return "✅ Connected to Dwarf2 FTP"
+            elif DWARF3_FTP_PATH in ftp.nlst("/"):
+                return "✅ Connected to Dwarf3 FTP"
+            else:
+                return "❌ Connected to FTP (not Dwarf)."
+    except ftplib.all_errors:
+        return "❌ FTP Error: not connected"
+
+# Function to connect to Dwarf via FTP
+def connect_to_dwarf(ip_address, status_label):
+    status_message = check_ftp_connection(ip_address)
+    if status_label:
+        status_label.text = status_message
+
+
+######################
+# FTP dir functions
+######################
+
+def safe_path(path):
+    abspath = os.path.abspath(path)
+    if os.name == 'nt':
+        return f"\\\\?\\{abspath}"
+    return abspath
+
 def get_ftp_astroDir(ip_address):
     if not ip_address:
         return None
@@ -74,20 +106,24 @@ def ftp_path_exists(ip_address, path):
     except:
         return False
 
-def check_ftp_connection(ip_address):
-    if not ip_address:
-        return "❌ Please enter an IP address."
-
-    try:
-        with ftp_conn(ip_address) as ftp:
-            if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
-                return "✅ Connected to Dwarf2 FTP"
-            elif DWARF3_FTP_PATH in ftp.nlst("/"):
-                return "✅ Connected to Dwarf3 FTP"
-            else:
-                return "❌ Connected to FTP (not Dwarf)."
-    except ftplib.all_errors:
-        return "❌ FTP Error: not connected"
+# --- Ensure remote FTP path exists (optional) ---
+def ftp_ensure_dirs(ftp, remote_path, created_dirs_cache):
+    """
+    Ensure directories exist for a given remote_path.
+    Uses a set cache to avoid re-checking/making same folders.
+    """
+    dirs = remote_path.strip("/").split("/")[:-1]
+    current_path = ""
+    for d in dirs:
+        current_path += f"/{d}"
+        if current_path in created_dirs_cache:
+            continue
+        try:
+            ftp.mkd(current_path)
+        except ftplib.error_perm as e:
+            if not str(e).startswith("550"):
+                raise  # Re-raise unexpected errors
+        created_dirs_cache.add(current_path)
 
 def download_ftp_tree(ip_address, ftp_root_path, local_dest_root, isFullBackup):
     all_files = []
@@ -149,12 +185,6 @@ def ftp_walk(ftp, path):
     except ftplib.error_perm:
         pass  # Path doesn't exist or no permission
 
-# Function to connect to Dwarf via FTP
-def connect_to_dwarf(ip_address, status_label):
-    status_message = check_ftp_connection(ip_address)
-    if status_label:
-        status_label.text = status_message
-
 # --- Download file from FTP to local ---
 def ftp_download_file(ftp, remote_path, local_path):
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
@@ -166,19 +196,6 @@ def ftp_download_file(ftp, remote_path, local_path):
 def ftp_upload_file(ftp, local_path, remote_path):
     with open(local_path, 'rb') as f:
         ftp.storbinary(f"STOR {remote_path}", f)
-
-def files_are_different(dst, size):
-    if not os.path.exists(dst):
-        return True
-    if os.path.getsize(dst) != size:
-        return True
-    return False
-
-def safe_path(path):
-    abspath = os.path.abspath(path)
-    if os.name == 'nt':
-        return f"\\\\?\\{abspath}"
-    return abspath
 
 def list_ftp_dirs_only(ftp, root, excluded_dirs):
     dirs = []
@@ -193,6 +210,39 @@ def list_ftp_dirs_only(ftp, root, excluded_dirs):
             # Not a directory (ftp.cwd(name) failed)
             continue
     return dirs
+
+def files_are_different(dst, size):
+    if not os.path.exists(dst):
+        return True
+    if os.path.getsize(dst) != size:
+        return True
+    return False
+
+
+#################################
+# parse shotsInfo.json functions
+#################################
+
+def extract_target_json_ftp(ip_address, astro_path):
+    json_path = f"{astro_path}/shotsInfo.json"
+    meta = {}
+
+    try:
+        with ftp_conn(ip_address) as ftp:
+            buffer = io.BytesIO()
+            ftp.retrbinary(f"RETR {json_path}", buffer.write)
+            buffer.seek(0)
+            meta = json.load(buffer)
+    except Exception as e:
+        # Optional: print(f"[FAIL] Could not load {json_path} from FTP: {e}")
+        meta = {}
+
+    return meta.get("target") if meta else None
+
+
+######################
+# SYNC Main functions
+######################
 
 def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_root="./Dwarf_Local", session_name=None, log=None):
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
@@ -271,43 +321,6 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
             shutil.move(src_path, dst_path)
 
     print_log("✅ FTP sync complete.", log)
-
-
-# --- Ensure remote FTP path exists (optional) ---
-def ftp_ensure_dirs(ftp, remote_path, created_dirs_cache):
-    """
-    Ensure directories exist for a given remote_path.
-    Uses a set cache to avoid re-checking/making same folders.
-    """
-    dirs = remote_path.strip("/").split("/")[:-1]
-    current_path = ""
-    for d in dirs:
-        current_path += f"/{d}"
-        if current_path in created_dirs_cache:
-            continue
-        try:
-            ftp.mkd(current_path)
-        except ftplib.error_perm as e:
-            if not str(e).startswith("550"):
-                raise  # Re-raise unexpected errors
-        created_dirs_cache.add(current_path)
-
-# Function to parse shotsInfo.json
-def extract_target_json_ftp(ip_address, astro_path):
-    json_path = f"{astro_path}/shotsInfo.json"
-    meta = {}
-
-    try:
-        with ftp_conn(ip_address) as ftp:
-            buffer = io.BytesIO()
-            ftp.retrbinary(f"RETR {json_path}", buffer.write)
-            buffer.seek(0)
-            meta = json.load(buffer)
-    except Exception as e:
-        # Optional: print(f"[FAIL] Could not load {json_path} from FTP: {e}")
-        meta = {}
-
-    return meta.get("target") if meta else None
 
 
 ## TO DO ##

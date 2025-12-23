@@ -4,7 +4,7 @@ import os
 import subprocess
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_favorites, get_backup_favorites
+from api.dwarf_backup_db_api import ensure_dwarf_local_path, get_dwarf_favorites, get_backup_favorites
 
 from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session
 
@@ -15,15 +15,28 @@ from components.menu import menu
 @ui.page('/')
 def home_page():
 
-    menu("Dwarfium Scope Archive")
+    ON_AIR = app.storage.general.get('ON_AIR', False)
+    title = "Dwarfium Scope Archive"
+
+    if not ON_AIR:
+        menu(title)
+    else:
+        with ui.row().classes('w-full items-center'):
+            ui.label(title).classes("text-2xl font-bold my-2 mr-auto")
 
     # Launch the GUI
-    HomeApp(DB_NAME)
+    HomeApp(DB_NAME, ON_AIR)
 
 class HomeApp:
-    def __init__(self, database):
+    def __init__(self, database, ON_AIR):
         self.database = database
+        self.ON_AIR = ON_AIR
         self.image_detail_click_set = False
+        self.conn = connect_db(self.database)
+        # Check settings and handle directory setup
+        if not ensure_dwarf_local_path(self.conn):
+            ui.navigate.to(f"/Settings?InitDwarfLocal={False}")
+            return
         self.build_ui()
 
     def get_name_object(self, name, desc):
@@ -48,28 +61,30 @@ class HomeApp:
         return main_part
 
     def build_ui(self):
-        self.conn = connect_db(self.database)
-
         # Fetch favorite images
         files = get_backup_favorites(self.conn)
         image_data = []
 
         for row in files:
-            file_path = row[3]
+            session_date = row[1]  # session_date
+            astro_object_name = row[2]  # astro_object_name
+            file_path = row[3] # image path
+            dwarf_name = row[4]  # Dwarf Name
             backup_path = row[6]  # Backup location
+            astro_object_description = row[7]  # astro_object_description
 
             # Generate the full path and URL for the image
-            full_path = get_Backup_fullpath(backup_path, "", file_path)
+            full_path = get_Backup_fullpath(self.conn, backup_path, "", file_path)
             base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
-            object_name = self.get_name_object(row[2], row[7])
+            object_name = self.get_name_object(astro_object_name, astro_object_description)
 
             url_path = build_preview_url(file_path)
             if os.path.exists(full_path):
                 image_data.append({
                     "url": url_path,
                     "object_name": object_name if object_name else "Unknown Object",
-                    "dwarf_name": row[4] if row[4] else "Unknown Device",
-                    "session_date": show_date_session(row[1]),
+                    "dwarf_name": dwarf_name if dwarf_name else "Unknown Device",
+                    "session_date": show_date_session(session_date),
                     "file_path": full_path,
                     "base_folder": base_folder
                 })
@@ -102,13 +117,14 @@ class HomeApp:
                         f"Date: {image_data[self.current_index]['session_date']}"
                     )
                     image_info.text = info_text
-                    image_detail.text = f"{image_data[self.current_index]['file_path']}"
-                    if not self.image_detail_click_set:
-                        image_detail.on(
-                            'click', 
-                            lambda: self.open_folder(os.path.dirname(image_data[self.current_index]['file_path']))
-                        ).classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
-                        self.image_detail_click_set = True
+                    if not self.ON_AIR:
+                        image_detail.text = f"{image_data[self.current_index]['file_path']}"
+                        if not self.image_detail_click_set:
+                            image_detail.on(
+                                'click', 
+                                lambda: self.open_folder(os.path.dirname(image_data[self.current_index]['file_path']))
+                            ).classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
+                            self.image_detail_click_set = True
                 def next_image():
                     self.current_index = (self.current_index + 1) % len(image_data)
                     show_image()
@@ -118,7 +134,7 @@ class HomeApp:
                     show_image()
 
                 # Automatic slideshow with 5s interval
-                ui.timer(interval=5, callback=next_image)
+                ui.timer(interval=10, callback=next_image)
 
                 with ui.row().classes("gap-4 mt-4"):
                     ui.button("Previous", on_click=prev_image)

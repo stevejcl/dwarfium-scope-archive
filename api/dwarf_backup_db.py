@@ -205,6 +205,17 @@ def init_db(conn):
         if row_count == 0 or row_count != count_catalog_elements():
             import_dso_catalog(conn)
 
+        # Create table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                parameter TEXT UNIQUE,
+                type TEXT,
+                valueText TEXT,
+                valueInt INTEGER
+            )
+        """)
+
         # insert defaut group
 
         conn.commit()
@@ -290,9 +301,95 @@ def migrate_v1(conn):
         print(f"[DB ERROR] Failed to migrate DB: {e}")
         return []
 
+def migrate_v2(conn):
+    try:
+        print("Migrating Database to V2...")
+        cursor = conn.cursor()
+
+        # Create table Settings
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                parameter TEXT UNIQUE,
+                type TEXT,
+                valueText TEXT,
+                valueInt INTEGER
+            )
+        """)
+
+        # Check if the table is empty
+        #cursor.execute("SELECT COUNT(*) FROM Settings")
+        #row_count = cursor.fetchone()[0]
+
+        #if row_count == 0:
+        #    cursor.execute("INSERT INTO Settings (parameter, type, valueText, valueInt) VALUES (?, ?, ?, ?)", ("DWARF_LOCAL_PATH", "TEXT", "." , 0))
+        #    commit_db(conn)
+        #    return True
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ManualSession (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_name TEXT NOT NULL
+                session_type TEXT,
+                jpeg_path TEXT,
+                modification_time INTEGER,
+                thumbnail_path TEXT,
+                file_size INTEGER,
+                description TEXT,
+                dec TEXT,
+                ra TEXT,
+                exp_time TEXT,
+                filter TEXT,
+                temp INTEGER,
+                stacked_png_path TEXT,
+                stacked_fits_path TEXT,
+                stacked_fits_md5 TEXT
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ManualSessionEntry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                manual_session_id INTEGER,
+                backup_drive_id INTEGER,
+                dwarf_id INTEGER,
+                astro_object_id INTEGER,
+                backup_entry_id INTEGER,
+                session_date DATETIME,
+                session_dir TEXT,
+                favorite BOOLEAN DEFAULT 0,
+                astro_group_id INTEGER,
+                FOREIGN KEY (manual_session_id) REFERENCES ManualSession(id),
+                FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
+                FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
+                FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
+                FOREIGN KEY (backup_entry_id) REFERENCES BackupEntry(id),
+                FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
+                UNIQUE("manual_session_id","backup_drive_id", "dwarf_id", "backup_entry_id")
+            )
+        """)
+
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS LinkSession (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                dso_id INTEGER REFERENCES DsoCatalog(id),
+                dec TEXT,
+                ra TEXT,
+                is_group BOOLEAN DEFAULT 0
+            )
+        """)
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB: {e}")
+        return []
+
 
 MIGRATIONS = {
     1: migrate_v1,
+    2: migrate_v2
     # Add more later...
 }
 

@@ -614,7 +614,7 @@ class TransferApp:
 
             try:
                 # use sync_dwarf_sessions
-                local_Main_Dwarf_dir = create_local_dwarf_dir()
+                local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
                 if not local_Main_Dwarf_dir:
                     spinner.visible = False
                     ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
@@ -646,7 +646,7 @@ class TransferApp:
 
                     ui.notify("Starting Analysis ...")
 
-                    local_Dwarf_dir = get_local_dwarf_dir(self.DwarfId)
+                    local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.DwarfId)
                     local_Dwarf_session = ""
                     if session_name:
                        local_Dwarf_session = os.path.join(local_Dwarf_dir, session_name) 

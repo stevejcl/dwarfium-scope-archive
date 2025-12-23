@@ -4,16 +4,24 @@ freeze_support()  # noqa
 
 from nicegui import native, app, ui
 
+# Global flag for app mode
+ON_AIR = False
+
+# Make it accessible everywhere
+app.storage.general['ON_AIR'] = ON_AIR
+
 # Encoding changed to UTF-8
 # Import page content (each file registers its own route)
-import pages.home
 import pages.dwarf_backup_ui_dwarf
+import pages.home
 import pages.dwarf_backup_ui_backup
 import pages.dwarf_backup_ui_explore
 import pages.dwarf_mtp_devices
 import pages.dwarf_transfer
 import pages.dwarf_transfer_usb
+import pages.dwarf_add_manual_session
 import pages.dwarf_dso_catalog
+import pages.astro_settings
 
 from api.image_preview import serve_preview
 from api.dwarf_backup_db import DB_NAME, start_db, close_db

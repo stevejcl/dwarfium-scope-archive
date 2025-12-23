@@ -3,7 +3,7 @@ from nicegui import native, app, run, ui
 import os
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive
+from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive,  get_directory_size_format, empty_local_archive_dwarf_dir
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
 
@@ -33,7 +33,8 @@ class ConfigApp:
         self.dwarf_id = DwarfId
         self.dwarf_type_map = {
             1: "Dwarf2",
-            2: "Dwarf3"
+            2: "Dwarf3",
+            4: "Dwarf Mini"
         }
         self.dwarf_status = None
         self.show_info_ftp = True
@@ -44,6 +45,8 @@ class ConfigApp:
         self.device_path = None
         self.dwarf_scan_date = None
         self.mtp_status_label = None
+        self.dwarf_data_size = None
+        self.dwarf_archive_size = None
         self.WinLog = WinLog()
         self.build_ui()
 
@@ -115,11 +118,32 @@ class ConfigApp:
                         self.dwarf_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
 
                     with ui.row().classes("gap-4 mt-4"):
-                         ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
-                         ui.button("🗑️ Delete Dwarf Entries", on_click=self.confirm_and_delete_dwarf_entries).props("color=red")
+                        ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
+                        ui.button("🗑️ Delete Dwarf Entries", on_click=self.confirm_and_delete_dwarf_entries).props("color=red")
+
+            ui.separator()
+
+            with ui.row().classes('w-full gap-8 items-start') as self.local_info: 
+                with ui.column():
+                    ui.button("🗑️ Empty Local Archive", on_click=self.confirm_and_delete_dwarf_archive).props("color=red")
+
+                with ui.column():
+                    with ui.card().tight():
+                        ui.colors(brand='#A1A0A1')
+                        with ui.grid(columns=2):
+                            with ui.row().classes("gap-4 mt-2"):
+                                ui.item_label('Local Data size:').props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
+                                self.dwarf_data_size = ui.label("").classes("pl-1 pr-2 pt-0 pb-1")
+
+
+                            with ui.row().classes("gap-4 mt-2"):
+                                ui.item_label('Local Archive size:').props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
+                                self.dwarf_archive_size = ui.label("").classes("pl-1 pr-2 pt-0 pb-1")
+
 
         # need this button don't change if not
         setStyle()
+        self.local_info.visible = False
         self.refresh_dwarf_list()
 
     def is_valid_ip(self, value):
@@ -219,6 +243,7 @@ class ConfigApp:
             self.dwarf_ip_sta_mode.value = row[5]
             self.dwarf_mtp_id = row[6]
             self.modif_dwarf_type()
+            await self.show_local_data()
             await self.check_status_dwarf()
 
 
@@ -410,6 +435,8 @@ class ConfigApp:
                 dwarf_location = DWARF2_FTP_PATH
             elif str(self.dwarf_type_var.value) == "Dwarf3":
                 dwarf_location = DWARF3_FTP_PATH
+            elif str(self.dwarf_type_var.value) == "Dwarf Mini":
+                dwarf_location = DWARF3_FTP_PATH
             else:
                 ui.notify("Unsupported Device", type="negative")
                 return
@@ -433,14 +460,14 @@ class ConfigApp:
         dialog.open()  # show the dialog
 
         try:
-            local_Main_Dwarf_dir = create_local_dwarf_dir()
+            local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
             if local_Main_Dwarf_dir:
                 ui.notify("Starting Local Sync ...")
                 if self.dwarf_status == "USB":
                     await run.io_bound (sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
                 if self.dwarf_status == "FTP":
                     await run.io_bound (ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
-                local_Dwarf_dir = get_local_dwarf_dir(self.dwarf_id)
+                local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
                 print(local_Dwarf_dir)
                 ui.notify("Starting Analysis ...")
                 total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None,  None, log)
@@ -507,3 +534,36 @@ class ConfigApp:
             explore_url = f"/Explore?mode=dwarf"
         print(explore_url)
         return explore_url
+
+    async def show_local_data(self):
+        if self.dwarf_id:
+            self.local_info.visible = True
+
+            local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
+            self.dwarf_data_size.text = get_directory_size_format(local_Dwarf_dir)
+
+            local_Dwarf_dir_archive = os.path.join(local_Dwarf_dir, "Archive")
+            self.dwarf_archive_size.text = get_directory_size_format(local_Dwarf_dir_archive)
+        else:
+            self.local_info.visible = False
+
+    async def confirm_and_delete_dwarf_archive(self):
+
+        if self.dwarf_id is None:
+            ui.notify("No Dwarf selected", type="negative")
+            return
+
+        await self.WinLog.show(
+            "Confirm Deletion",
+            "Are you sure you want to delete the old Dwarf archive data from your local drive?\n(These files are no longer present on your Dwarf device.)",
+            self.ok_confirm_and_delete_dwarf_archive
+        )
+
+    def ok_confirm_and_delete_dwarf_archive(self):
+        # Delete the Archive
+        empty_local_archive_dwarf_dir(self.dwarf_id)
+
+        print(f"Deleted Dwarf {self.dwarf_id}.")
+        self.refresh_dwarf_list()
+        self.set_new_dwarf()
+        ui.notify("Dwarf deleted.", type="positive")

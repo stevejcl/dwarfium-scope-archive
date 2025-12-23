@@ -9,6 +9,7 @@ import subprocess
 import json
 import shutil
 import re
+from glob import glob
 from nicegui import app, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
 from api.dwarf_backup_db_api import (
@@ -21,22 +22,19 @@ from api.dwarf_backup_db_api import (
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
     get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files,
-    hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure,
-    preprocess_dso_catalog_json
+    hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure, get_total_mosaic_exposure, format_seconds_hms, 
+    preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
 from components.menu import menu
-from components.astro_object_associate import show_unknown_target_dialog
+from components.astro_object_associate import DwarfData, show_unknown_target_dialog
+
+from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 
 ALL_BACKUPS = "(All Backups)"
 ALL_DWARFS = "(All Dwarfs)"
 ALL_SESSIONS = "[ALL SESSIONS]"
-TAKEN = "Taken"
-RESTACK = "Restack"
-UNKNOWN = "Unknown"
-CATALOG_FILE = './db/dso_catalog.json'
-SKY_CATALOG_FILE = './db/dso_sky_search_catalog.json'
 
 @dataclass
 class BackupEntryData:
@@ -311,23 +309,6 @@ class ExploreApp:
         self.selected_object_is_group = False
         self.load_objects_ui()
 
-    def get_name_object(self, name):
-        name_object = name #name.split(" (")[0]
-        # Start by removing anything after the last ' [' (suffix)
-        main_part = name.split(" [")[0]
-
-        # Then optionally remove anything after ' (' inside main_part
-        main_part = main_part.split(" (")[0]
-
-        # Now detect the suffix from the original name
-        bracket_pos = name.rfind(" [")
-        suffix = name[bracket_pos:] if bracket_pos != -1 else ""
-
-        # Only re-add suffix if it's not already included
-        name_object = (f"{main_part} {suffix}").strip() if suffix and suffix not in main_part else main_part.strip()
-
-        return name_object, main_part
-
     def load_objects_ui_old(self, init_view = True):
 
         self.object_list.clear()
@@ -336,7 +317,7 @@ class ExploreApp:
 
         dso_id_counts = defaultdict(int)
         for _, name, dso_id,_ in self.objects:
-            name_object, main_part = self.get_name_object(name)
+            name_object, main_part = get_name_object(name)
             # Apply filter
             if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
                 if dso_id is not None:
@@ -353,7 +334,7 @@ class ExploreApp:
             ui.item_label('List Objects').props('header').classes('text-bold')
             ui.separator()
             for oid, name, dso_id, is_group in self.objects:
-                name_object, main_part = self.get_name_object(name)
+                name_object, main_part = get_name_object(name)
 
                 # Apply filter
                 if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
@@ -406,7 +387,7 @@ class ExploreApp:
 
         # Step 1: Count how many times each dso_id appears after filtering
         for _, name, dso_id, _ in self.objects:
-            name_object, _ = self.get_name_object(name)
+            name_object, _ = get_name_object(name)
             if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
                 if dso_id is not None:
                     filter_dso.add(dso_id)
@@ -437,7 +418,7 @@ class ExploreApp:
 
         # Step 2: Group objects by display name
         for oid, name, dso_id, is_group in self.objects:
-            name_object, _ = self.get_name_object(name)
+            name_object, _ = get_name_object(name)
             if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
                 continue
             grouped_objects[name_object].append((oid, name, dso_id, is_group))
@@ -687,7 +668,7 @@ class ExploreApp:
             file_path = files[0][1]
             backup_path = files[0][6]  # location from BackupDrive or USB Dwarf
 
-            full_path = get_Backup_fullpath (backup_path, "", file_path)
+            full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path)
             
             select_file = [file_path]
             self.label_to_index[file_path] = 0
@@ -708,26 +689,45 @@ class ExploreApp:
                     dwarf_id=row[20],
                     dwarf_data_id=row[0]
                 )
-                device = row[9]
-                session_date = show_short_date_session(row[7])
-                lens = "(W) " if ("_WIDE_") in row[8] else ""
-                exp = f"{row[2]}s" if row[2] is not None else "N/A"
-                gain = row[3] if row[3] is not None else "N/A"
-                astro_filter = f"{row[4]}" if row[4] else "No Filter"
+                # extract DB Values
+                dwarf_data_id = row[0]
+                file_path = row[1]
+                exp_time = row[2]
+                gainDB = row[3]
+                filter  = row[4]
                 stacks = row[5]
+                backup_path = row[6]  # location from BackupDrive or USB Dwarf
+                session_date = row[7]
+                session_dir = row[8]
+                dwarf_name = row[9]
+                minTemp = row[10]
+                maxTemp = row[11]
                 is_favorite = row[12]  # The favorite column (0 or 1)
+                init_target = row[13]
+                declination = row[14]
+                right_ascencion = row[15]
+                astro_object_id = row[16]
+                astro_group_id = row[17]
+                descriptionDB = row[18]
+
+                # display Values
+                session_date = show_short_date_session(session_date)
+                lens = "(W) " if ("_WIDE_") in session_dir else ""
+                exp = f"{exp_time}s" if exp_time is not None else "N/A"
+                gain = gainDB if gainDB is not None else "N/A"
+                astro_filter = f"{filter}" if filter else "No Filter"
                 stackeds += stacks
-                if row[2]:
-                    total_time_exp += stacks * self.parse_exposure(f"{row[2]}s")
+                if exp_time:
+                    total_time_exp += stacks * parse_exposure(f"{exp_time}s")
 
                 # Displaying star icon based on favorite status only in backup mode
                 star_icon = '⭐ ' if is_favorite else '☆ '
                 bad_icon = '❗ ' if int(stacks) < 50 else ''
-                info_stack = RESTACK if self.is_Restacked(row[8]) else TAKEN
-                target = row[13][:10]
-                description,_ =  self.get_name_object(row[18])
+                info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+                target = init_target[:10]
+                description,_ =  get_name_object(descriptionDB)
                 # Building the details string with the star icon
-                label_text = f"{info_stack} with {device} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
+                label_text = f"{info_stack} with {dwarf_name} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
 
                 # If label already exists (duplicate), append a small invisible suffix
                 count = 0
@@ -748,16 +748,61 @@ class ExploreApp:
             self.file_list.set_options(select_file, value=f'Select a session for {self.selected_object}')
 
             with self.details_files:
-                ui.item_label(f"{len(files)} sessions were found, totaling {stackeds} stacks and a total exposure time of {self.format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
+                ui.item_label(f"{len(files)} sessions were found, totaling {stackeds} stacks and a total exposure time of {format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
                 ui.separator()
 
-                def clean_label(text: str) -> str:
-                    # remove star and bad icons
-                    return re.sub(r"[⭐☆❗]", "", text).strip()
+                selected_sessions = set()  # will store selected labels
 
-                for data_detail in details:
-                   #ui.item(data_detail, on_click=lambda i=clean_label(data_detail).strip(): self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
-                   ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+                def update_buttons():
+                    # Enable/disable buttons depending on selection
+                    has_selection = len(selected_sessions) > 0
+                    restore_button.enabled = has_selection
+                    archive_button.enabled = has_selection
+                    delete_button.enabled = has_selection
+
+                def toggle_select_all(state: bool):
+                    for cb in checkboxes:
+                        cb.value = state
+                    selected_sessions.clear()
+                    if state:
+                        for lbl in details:
+                            selected_sessions.add(lbl)
+                    update_buttons()
+
+                # "Select all / Deselect all" toggle
+                checkboxes = []
+                # future improvement : use checkboxes to Archive / Restore multi sessions
+                use_checkboxes = False
+                if use_checkboxes:
+                    with ui.row():
+                        select_all_cb = ui.checkbox('Select All', on_change=lambda e: toggle_select_all(e.value))
+                        ui.button('Deselect All', on_click=lambda: toggle_select_all(False))
+
+                    # Checkboxes for each detail
+                    for data_detail in details:
+                        def on_check_change(e, label=data_detail):
+                            if e.value:
+                                selected_sessions.add(label)
+                            else:
+                                selected_sessions.discard(label)
+                            update_buttons()
+
+                        with ui.row().classes('items-center gap-2'):
+                            cb = ui.checkbox(on_change=on_check_change)
+                            checkboxes.append(cb)
+
+                            # clickable label to still select single session for detail view
+                            ui.label(data_detail).on('click', lambda e, i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+
+                else:
+
+                    def clean_label(text: str) -> str:
+                        # remove star and bad icons
+                        return re.sub(r"[⭐☆❗]", "", text).strip()
+
+                    for data_detail in details:
+                        #ui.item(data_detail, on_click=lambda i=clean_label(data_detail).strip(): self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+                        ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
 
     def open_folder(self, directory = None):
         if not self.selected_path and not directory:
@@ -812,44 +857,6 @@ class ExploreApp:
             f"⚠️ Are you sure you want to delete this session?\n\nThe following folder will be completely removed!\n\n{folder_path}",
             ok_confirm_delete_session
         )
-
-    def parse_exposure(self, exp_str):
-        """
-        Convert exposure string like '30s' or '1/250s' to seconds as float.
-        """
-        if not exp_str or not exp_str.endswith('s'):
-            return 0.0
-        value = exp_str[:-1]  # Remove trailing 's'
-        if '/' in value:
-            # Handle fractional exposure: e.g., '1/250'
-            try:
-                numerator, denominator = value.split('/')
-                return float(numerator) / float(denominator)
-            except:
-                return 0.0
-        else:
-            try:
-                return float(value)
-            except:
-                return 0.0
-
-    def format_seconds_hms(self, total_seconds):
-        total_seconds = int(total_seconds)
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-
-        parts = []
-        if hours:
-            parts.append(f"{hours}h")
-        if minutes:
-            parts.append(f"{minutes}m")
-        if seconds or not parts:
-            parts.append(f"{seconds}s")
-        return ' '.join(parts)
-
-    def is_Restacked(sel, session_name):
-        return session_name.startswith("RESTACKED_")
 
     def get_mosaic_panels(self, mosaic_dir: str) -> list[tuple[str, str]]:
         """Return list of (panel_name, stacked.jpg full path) for a mosaic directory."""
@@ -945,44 +952,57 @@ class ExploreApp:
                 dwarf_id=row[20],
                 dwarf_data_id=row[0]
             )
+            # extract DB Values
+            dwarf_data_id = row[0]
             file_path = row[1]
+            exp_time = row[2]
+            gainDB = row[3]
+            filter  = row[4]
+            stacks = row[5]
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
+            session_date = row[7]
+            session_dir = row[8]
+            dwarf_name = row[9]
+            minTemp = row[10]
+            maxTemp = row[11]
             is_favorite = row[12]  # The favorite column (0 or 1)
-            info_stack = RESTACK if self.is_Restacked(row[8]) else TAKEN
+            init_target = row[13]
+            declination = row[14]
+            right_ascencion = row[15]
+            astro_object_id = row[16]
+            astro_group_id = row[17]
+            descriptionDB = row[18]
+
+            # display Values
+            info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
             star_icon = '⭐ ' if is_favorite else '☆ '
-            full_path = get_Backup_fullpath (backup_path, "", file_path, self.get_selected_dwarf_id())
+            full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
             self.selected_path = os.path.dirname(full_path)
 
             # Store the base folder once
             self.base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
             set_base_folder(full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0])
-            lens = "(Wide)" if ("_WIDE_") in row[8] else "(Tele)"
+            lens = "(Wide)" if ("_WIDE_") in session_dir else "(Tele)"
 
-            details_files_text = f"{star_icon}{info_stack} with {row[9]} {lens} on {show_date_session(row[7])}"
+            details_files_text = f"{star_icon}{info_stack} with {dwarf_name} {lens} on {show_date_session(session_date)}"
 
             # details
 
-            #details.append(f"{show_date_session(row[7])}")
-            session_dir = row[8]
             #details.append(f"Session: {session_dir}")
-            init_target = row[13]
             details.append(f"Dwarf Target: {init_target}")
 
-            classified_text, descriptiondb = self.update_classified_label(row[16], init_target, "", True)
+            classified_text, descriptiondb = self.update_classified_label(astro_object_id, init_target, "", True)
             if classified_text:
                 details.append(classified_text)
-            declination = row[14]
-            right_ascencion = row[15]
             details.append(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}")
 
-            lens = "Wide" if ("_WIDE_") in row[8] else "Tele"
-            exp = f"{row[2]}s" if row[2] is not None else "N/A"
-            gain = row[3] if row[3] is not None else "N/A"
+            lens = "Wide" if ("_WIDE_") in session_dir else "Tele"
+            exp = f"{exp_time}s" if exp_time is not None else "N/A"
+            gain = gainDB if gainDB is not None else "N/A"
 
-            details.append(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {row[4]}")
-            if row[10] and row[11]:
-                details.append(f"MinTemp: {row[10]} | MaxTemp: {row[11]}")
-            stacks = row[5]
+            details.append(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}")
+            if minTemp and maxTemp:
+                details.append(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}")
             bad_icon = '❗ ' if int(stacks) < 50 else ''
             details.append(f"Stacks: {bad_icon}{stacks}")
 
@@ -996,7 +1016,7 @@ class ExploreApp:
                 # Add tooltip
                 label.props(f'title="{tooltip_text}"')
                 # Make the label clickable to toggle favorite
-                label.on('click', lambda _, eid=row[0], lbl=label, mode=self.mode: self.toggle_favorite_ui(eid, lbl, mode))
+                label.on('click', lambda _, eid=dwarf_data_id, lbl=label, mode=self.mode: self.toggle_favorite_ui(eid, lbl, mode))
                 ui.separator()
 
                 # Add colored details
@@ -1004,32 +1024,34 @@ class ExploreApp:
                 with ui.row().classes('w-full gap-8 items-start'):
                     ui.item(f"Dwarf Target: {init_target}").classes('text-green-600')
                     if self.dso_catalog:
-                        ui.button("🖼️ Identify Target", on_click=lambda: self.on_identify_target_click(row, descriptiondb))
+                        ui.button("🖼️ Identify Target", on_click=lambda: self.on_identify_target_click(DwarfData.from_row(row), descriptiondb))
 
                 self.classified_label = ui.label().classes('text-gray-500').classes("m-4")
-                self.update_classified_label(row[16], init_target, descriptiondb)
+                self.update_classified_label(astro_object_id, init_target, descriptiondb)
 
                 ui.item(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}").classes('text-purple-600')
 
-                lens = "Wide" if ("_WIDE_") in row[8] else "Tele"
-                exp = f"{row[2]}s" if row[2] is not None else "N/A"
-                exp_value = self.parse_exposure(exp) if exp != "N/A" else 0
-                gain = row[3] if row[3] is not None else "N/A"
+                lens = "Wide" if ("_WIDE_") in session_dir else "Tele"
+                exp = f"{exp_time}s" if exp_time is not None else "N/A"
+                exp_value = parse_exposure(exp) if exp != "N/A" else 0
+                gain = gainDB if gainDB is not None else "N/A"
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {row[4]}").classes('text-yellow-700')
+                    ui.item(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}").classes('text-yellow-700')
 
-                    if row[10] and row[11]:
-                        ui.item(f"MinTemp: {row[10]} | MaxTemp: {row[11]}").classes('text-sky-700')
+                    if minTemp and maxTemp:
+                        ui.item(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}").classes('text-sky-700')
 
-                stacks = row[5]
                 color = 'text-red-600' if stacks < 100 else 'text-indigo-600'
                 
                 # get exposure for Restacked session
-                exposure_time = self.format_seconds_hms(exp_value * stacks)
-                if self.is_Restacked(row[8]):
-                    fits_path = self.astro_files.get('fits')
-                    if fits_path and os.path.isfile(fits_path):
-                        exposure_time = self.format_seconds_hms(get_total_exposure(fits_path))
+                exposure_time = format_seconds_hms(exp_value * stacks)
+                if is_Restacked(session_dir):
+                    if "_MOSAIC_" in full_path:
+                        exposure_time = format_seconds_hms(get_total_mosaic_exposure(os.path.dirname(full_path)))
+                    else:
+                        fits_path = self.astro_files.get('fits')
+                        if fits_path and os.path.isfile(fits_path):
+                            exposure_time = format_seconds_hms(get_total_exposure(fits_path))
 
                 ui.item(f"{stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
 
@@ -1040,9 +1062,17 @@ class ExploreApp:
             self.preview_image_path = full_path
             self.update_preview(full_path)
 
-    def on_identify_target_click(self, row, descriptiondb):
-        on_done = lambda: self.update_classified_label(row[16], row[13], "")
-        show_unknown_target_dialog(self.conn, row, self.dso_catalog, False, on_done)
+    def on_identify_target_click(self, dwarf_data: DwarfData, descriptiondb):
+        #dwarf_data = DwarfData.from_row(row)
+        #dwarf_data_id = row[0]
+        #target = row[13]
+        #dec = row[14]
+        #ra = row[15]
+        #astro_object_id = row[16]
+        #astro_group_id = row[17]
+
+        on_done = lambda: self.update_classified_label(dwarf_data.astro_object_id, dwarf_data.target, "")
+        show_unknown_target_dialog(self.conn, dwarf_data, self.dso_catalog, False, on_done)
 
     # Function to update classified label
     def update_classified_label(self, object_id, target, descriptiondb = "", text_only = False):
@@ -1053,7 +1083,7 @@ class ExploreApp:
             descriptiondb = get_astro_object_description(self.conn, object_id)
         if descriptiondb and descriptiondb != self.selected_object_description and descriptiondb != target:
             classified = descriptiondb
-        elif self.selected_object_description != target and self.selected_object_description != ALL_SESSIONS:
+        elif self.selected_object_description and self.selected_object_description != target and self.selected_object_description != ALL_SESSIONS:
             classified = self.selected_object_description.rsplit(" [")[0]
 
         # Update the label text or text
@@ -1151,7 +1181,7 @@ class ExploreApp:
         restacked_session = False
         try:
             directory = os.path.dirname(self.preview_image_path)
-            restacked_session = self.is_Restacked(os.path.basename(directory))
+            restacked_session = is_Restacked(os.path.basename(directory))
             size_dir_kb = get_directory_size(directory) / 1024
             size_dir_mb = size_dir_kb / 1024
             size_kb = os.path.getsize(self.preview_image_path) / 1024
@@ -1253,7 +1283,7 @@ class ExploreApp:
                 result_on_Dwarf = get_session_present_in_Dwarf(self.conn, session_dir)
                 print(f"result_on_Dwarf: {result_on_Dwarf}")
                 if result_on_Dwarf:
-                    dwarf_full_path = get_Backup_fullpath (result_on_Dwarf[2], "", result_on_Dwarf[3], self.get_selected_dwarf_id())
+                    dwarf_full_path = get_Backup_fullpath (self.conn, result_on_Dwarf[2], "", result_on_Dwarf[3], self.get_selected_dwarf_id())
                     print(f"dwarf_full_path: {dwarf_full_path}")
                     if is_path_local_dwarf_dir(dwarf_full_path):
                         return {
@@ -1278,6 +1308,7 @@ class ExploreApp:
 
                 if result_on_backupDrive:
                     backup_full_path = get_Backup_fullpath(
+                        self.conn, 
                         result_on_backupDrive[2],
                         "",
                         result_on_backupDrive[4]
@@ -1318,15 +1349,22 @@ class ExploreApp:
                 self.fullscreen_icon.disable()
 
             for fmt, path in self.astro_files.items():
-                exists = path and os.path.isfile(path)
-                icon = ui.image(f'image/image-{fmt}.png').classes(
-                    'w-16 h-16 cursor-pointer hover:opacity-80' if exists else 'w-16 h-16 opacity-30'
-                ).tooltip(f"{fmt.upper()} {'available' if exists else 'missing'}")
+                using = (
+                    fmt not in {"thumbnail", "zip"} 
+                )
+                exists = (
+                    path is not None 
+                    and os.path.isfile(path)
+                )
+                if using:
+                    icon = ui.image(f'image/image-{fmt}.png').classes(
+                        'w-16 h-16 cursor-pointer hover:opacity-80' if exists else 'w-16 h-16 opacity-30'
+                    ).tooltip(f"{fmt.upper()} {'available' if exists else 'missing'}")
 
-                if exists:
-                    icon.on('click', lambda e, p=path: self.update_preview(p))
+                    if exists:
+                        icon.on('click', lambda e, p=path: self.update_preview(p))
+                    self.preview_icons[fmt] = icon
 
-                self.preview_icons[fmt] = icon
                 #self.icon_row.add(icon)  # Add icon to the row
 
             if not self.backup_session_icon:

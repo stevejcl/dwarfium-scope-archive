@@ -128,7 +128,7 @@ class ConfigApp:
             if self.backupDrive_id and not self.backupDrive_selector.value:
                 selected_value = next((name for id, name, *_  in self.backupDrives if id == self.backupDrive_id), None)
                 print(selected_value)
-                selected_display = f"{self.backupDrive_id} - {selected_value}" if selected_value else display_names[0]
+                selected_display = f"{self.backupDrive_id} - {selected_value}" if selected_value else options[0]
                 self.backupDrive_selector.set_options(options, value=selected_display)
             elif self.backupDrive_id and selected_id != self.backupDrive_id:
                 selected_value = next((name for id, name, *_ in self.backupDrives if id == self.backupDrive_id), None)
@@ -300,19 +300,21 @@ class ConfigApp:
         if not location:
             ui.notify("No location selected.", type="negative")
             return
+
+        astroDir = self.backupDrive_astroDir.value or ""
+
+        # Dialog to block interaction and show progress
+        with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
+            error_label = ui.label().style('color: red')  # Empty label for future error messages
+            close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+            ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
+            ui.spinner(size="lg")
+            log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
+
+        dialog.open()  # show the dialog
+
         try:
-            astroDir = self.backupDrive_astroDir.value or ""
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
-
-            # Dialog to block interaction and show progress
-            with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
-                error_label = ui.label().style('color: red')  # Empty label for future error messages
-                close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
-                ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
-                ui.spinner(size="lg")
-                log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
-
-            dialog.open()  # show the dialog
 
             ui.notify(f"🔍 Scanning: {location}-{astroDir}")
             total, deleted = await run.io_bound (scan_backup_folder,DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)

@@ -19,156 +19,41 @@ import cv2
 from nicegui import ui, run
 
 from api.dwarf_backup_db import connect_db, close_db, commit_db
-from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord
+from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord, get_db_local_dwarf_dir
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
 from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId
 
 from astropy.coordinates import SkyCoord
+from astropy.io.fits import VerifyError
 import astropy.units as u
 
-CATALOG_FILE = './db/dso_catalog.json'
-SKY_CATALOG_FILE = './db/dso_sky_search_catalog.json'
+CATALOG_FILE = os.path.join("db", "dso_catalog.json")
+SKY_CATALOG_FILE = os.path.join("db","dso_sky_search_catalog.json")
 UNKNOWN = "unknown"
 MOSAIC_UNKNOWN = "mosaic_unknown"
 MANUAL = "manual"
+TAKEN = "Taken"
+RESTACK = "Restack"
 
+##################
+# Print functions
+##################
 def safe_print(text):
     try:
         print(text)
     except UnicodeEncodeError:
         print(text.encode(sys.stdout.encoding, errors='replace').decode())
 
-def hours_to_hms(ra_hours_str):
-    if not isinstance(ra_hours_str, (float, int)):
-        if any(x in ra_hours_str for x in ["h", "m", "s"]):
-             return ra_hours_str  # Already formatted
-    hours = float(ra_hours_str)
-    h = int(hours)
-    m = int((hours - h) * 60)
-    s = (hours - h - m / 60) * 3600
-    return f"{h:02d}h {m:02d}m {s:05.2f}s"
+def print_log(message, log):
+    if log:
+        log.push(message)
+    else:
+        safe_print(message)
 
-def deg_to_dms(dec_deg_str):
-    if not isinstance(dec_deg_str, (float, int)):
-        if any(x in dec_deg_str for x in ["°", "′", "″"]):
-            return dec_deg_str  # Already formatted
-    dec_deg = float(dec_deg_str)
-    sign = "+" if dec_deg >= 0 else "-"
-    dec_deg = abs(dec_deg)
-    d = int(dec_deg)
-    m = int((dec_deg - d) * 60)
-    s = (dec_deg - d - m / 60) * 3600
-    return f"{sign}{d:02d}° {m:02d}′ {s:05.2f}″"
 
-def hms_to_hours(hms_str: str) -> float:
-    """Convert 'HHh MMm SS.Ss' to decimal hours (float)."""
-    if isinstance(hms_str, (float, int)):
-        return float(hms_str)  # Already numeric
-
-    try:
-        hms_str = hms_str.lower().replace('h', ' ').replace('m', ' ').replace('s', '')
-        parts = hms_str.strip().split()
-        h = float(parts[0]) if len(parts) > 0 else 0
-        m = float(parts[1]) if len(parts) > 1 else 0
-        s = float(parts[2]) if len(parts) > 2 else 0
-        return h + m / 60 + s / 3600
-    except Exception as e:
-        safe_print(f"[ERROR] Invalid HMS input: {hms_str} → {e}")
-        return 0.0
-
-def dms_to_degrees(dms_str: str) -> float:
-    """Convert '+DD° MM′ SS.S″' to decimal degrees (float)."""
-    if isinstance(dms_str, (float, int)):
-        return float(dms_str)  # Already numeric
-
-    try:
-        dms_str = dms_str.replace('°', ' ').replace('′', ' ').replace('″', '').replace('’', ' ')
-        sign = -1 if dms_str.strip().startswith('-') else 1
-        parts = dms_str.strip().lstrip('+-').split()
-        d = float(parts[0]) if len(parts) > 0 else 0
-        m = float(parts[1]) if len(parts) > 1 else 0
-        s = float(parts[2]) if len(parts) > 2 else 0
-        return sign * (d + m / 60 + s / 3600)
-    except Exception as e:
-        safe_print(f"[ERROR] Invalid DMS input: {dms_str} → {e}")
-        return 0.0
-
-def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_path = SKY_CATALOG_FILE):
-    if os.path.exists(output_json_path):
-        safe_print(f"[INFO] Using cached DSO catalog: {output_json_path}")
-        return  # Already exists
-
-    safe_print("[INFO] Preprocessing original DSO catalog...")
-
-    with open(original_json_path, 'r', encoding='utf-8') as f:
-        raw_catalog = json.load(f)
-
-    processed_catalog = []
-
-    for entry in raw_catalog:
-        try:
-            ra_str = entry.get("ra")
-            dec_str = entry.get("dec")
-            coord = SkyCoord(ra=ra_str, dec=dec_str, unit=(u.hourangle, u.deg), frame='icrs')
-            entry["ra_deg"] = coord.ra.degree
-            entry["dec_deg"] = coord.dec.degree
-            processed_catalog.append(entry)
-        except Exception as e:
-            safe_print(f"[WARN] Skipping {entry.get('name')} due to error: {e}")
-
-    with open(output_json_path, 'w', encoding='utf-8') as f:
-        json.dump(processed_catalog, f, indent=2)
-
-    safe_print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
-
-def parse_shots_info(json_path, ftp=None):
-    try:
-        if json_path.startswith("ftp://"):
-            # Handle FTP case
-            if not ftp:
-                safe_print(f"[FAIL] FTP connection is required for {json_path}.")
-                return {}
-
-            # Extracting the path on FTP server
-            ftp_path = json_path.replace("ftp://", "")
-            with open("temp_shotsInfo.json", "wb") as temp_file:
-                ftp.retrbinary(f"RETR {ftp_path}", temp_file.write)
-
-            with open("temp_shotsInfo.json", 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-
-        else:
-            # Local file handling
-            with open(json_path, 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-
-        shotsToTake = raw.get("shotsToTake")
-        shotsTaken = raw.get("shotsTaken")
-        # case RESTACKED
-        if raw.get("shotsToStack"):
-            shotsToTake = raw.get("shotsToStack")
-            if raw.get("shotsDiscard"):
-                shotsTaken = shotsToTake - raw.get("shotsDiscard")
-
-        return {
-            "dec": str(raw.get("DEC")),
-            "ra": str(raw.get("RA")),
-            "target": raw.get("target"),
-            "binning": raw.get("binning"),
-            "format": raw.get("format"),
-            "exp_time": str(raw.get("exp")) if raw.get('exp') is not None else None,
-            "gain": raw.get("gain"),
-            "shotsToTake": shotsToTake,
-            "shotsTaken": shotsTaken,
-            "shotsStacked": raw.get("shotsStacked"),
-            "ircut": raw.get("ir"),
-            "maxTemp": raw.get("maxTemp"),
-            "minTemp": raw.get("minTemp"),
-        }
-
-    except Exception as e:
-        safe_print(f"Error reading {json_path}: {e}")
-        return {}
+###################
+# Files functions
+###################
 
 def open_folder(path_var):
     path = path_var.get()
@@ -181,27 +66,6 @@ def open_folder(path_var):
             subprocess.Popen(["xdg-open", path])
     else:
         safe_print(f"[FAIL] Path does not exist: {path}")
-
-def extract_session_datetime(filename: str) -> datetime | None:
-    try:
-        # Try format with dashes: YYYY-MM-DD-HH-MM-SS-fff
-        match_dash = re.search(r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d{3,6})", filename)
-        if match_dash:
-            return datetime.strptime(match_dash.group(1), "%Y-%m-%d-%H-%M-%S-%f")
-
-        # Try compact format: YYYYMMDDHHMMSSfff
-        match_compact = re.search(r"(\d{17})", filename)
-        if match_compact:
-            return datetime.strptime(match_compact.group(1), "%Y%m%d%H%M%S%f")
-
-        match_new = re.search(r"(\d{8}-\d{9})", filename)
-        if match_new:
-            return datetime.strptime(match_new.group(1), "%Y%m%d-%H%M%S%f")
-
-    except Exception as e:
-        safe_print(f"Error parsing datetime from filename: {e}")
-    
-    return None
 
 def compute_md5(filepath):
     hash_md5 = hashlib.md5()
@@ -246,112 +110,557 @@ def win_long_path(filepath):
     else:
         return str(filepath)
 
-def get_or_create_dwarf_id(conn, dwarf_id=None, batch_mode=False, default_name="Default Dwarf", default_description="Auto-created"):
+def get_directory_size(directory_path: str) -> int:
+    total_size = 0
 
-    if dwarf_id is not None:
-        # Vérifie si l'ID existe
-        if is_dwarf_exists(conn, dwarf_id):
-            return dwarf_id
-        elif batch_mode:
-            # Crée automatiquement si inexistant
-            dwarf_id = add_dwarf_detail(conn, default_name, default_description, "", "2", "", None)
-            return dwarf_id
-        else:
-            raise ValueError(f"Dwarf ID {dwarf_id} non trouvé.")
+    for dirpath, dirnames, filenames in os.walk(directory_path):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if os.path.isfile(file_path):
+                total_size += os.path.getsize(file_path)
 
-    # Aucun dwarf_id fourni
-    dwarfs = get_dwarf_Names(conn)
+    return total_size
 
-    if dwarfs:
-        if batch_mode:
-            # Retourne le premier Dwarf disponible
-            return dwarfs[0][0]
-        else:
-            safe_print("Dwarfs existants :")
-            for d_id, d_name in dwarfs:
-                safe_print(f"  [{d_id}] {d_name}")
-            try:
-                dwarf_id = int(input("Enter the ID of the Dwarf to associate:"))
-            except ValueError:
-                raise ValueError("Invalid ID.")
-            return dwarf_id
+def get_directory_size_format(directory: str) -> str:
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if os.path.isfile(fp):
+                total_size += os.path.getsize(fp)
+    # Format size nicely
+    return format_size(total_size)
+
+def format_size(size_bytes: int) -> str:
+    if size_bytes == 0:
+        return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(min(len(size_name) - 1, (size_bytes.bit_length() - 1) // 10))
+    p = 1 << (i * 10)
+    s = round(size_bytes / p, 2)
+    return f"{s} {size_name[i]}"
+
+def get_file_path(full_path, base_folder):
+    # Normalize both paths to use forward slashes and strip trailing slashes
+    full_path = os.path.normpath(full_path)
+    base_folder = os.path.normpath(base_folder)
+    
+    # Get the relative path
+    return os.path.relpath(full_path, base_folder)
+
+def get_extension(file_path):
+    return os.path.splitext(file_path)[1].lower().lstrip('.')
+
+def has_subdirectories(directory):
+    return any(
+        os.path.isdir(os.path.join(directory, entry)) and not entry.startswith('.')  and not entry.startswith('Thumbnail')
+        for entry in os.listdir(directory)
+)
+
+
+###########################
+# Specific Files functions
+###########################
+
+def get_effective_parent(path):
+    parent = os.path.basename(os.path.dirname(path))
+    if parent == "RESTACKED":
+        # Return grandparent if parent is RESTACKED
+        return os.path.basename(os.path.dirname(os.path.dirname(path)))
+    return parent
+
+def get_Backup_fullpath (conn, location, subdir, filename, dwarf_id = None):
+    full_path = ""
+    if location:
+        full_path = location
+    if full_path and subdir:
+        full_path = os.path.join(full_path, subdir)
+    elif subdir:
+        full_path = subdir
+    if full_path:
+        full_path = os.path.join(full_path, filename)
     else:
-        if batch_mode:
-            # Crée un Dwarf par défaut si aucun n'existe
-            dwarf_id = add_dwarf_detail(conn, default_name, default_description, "", "2", "", None)
-            return dwarf_id
-        else:
-            create = input("No Dwarf. Do you want to create one? (y/n):").strip().lower()
-            if create == 'o':
-                name = input("Name of the new Dwarf:").strip()
-                desc = input("Description: ").strip()
-                dwarf_id = add_dwarf_detail(conn, name, desc, "", "2", "", None)
-                return dwarf_id
-            else:
-                raise ValueError("No Dwarf, cancellation.")
+        full_path = filename
 
-def insert_or_get_backup_drive(conn, location, dwarf_id=None):
-    row = get_backupDrive_id_from_location(conn, location)
-    if row:
-        found_id, found_dwarf_id = row
-        if dwarf_id is None:
-            return found_id, found_dwarf_id
+    # use local_copy if not connected
+    if not os.path.isdir(os.path.dirname(full_path)) and dwarf_id:
+        local_Dwarf_dir = get_local_dwarf_dir(conn, dwarf_id)
+        test_path = os.path.join(local_Dwarf_dir, filename)
+        full_path = test_path if os.path.isdir(os.path.dirname(test_path)) else full_path
+
+    return full_path
+
+def check_files(full_path: str) -> dict:
+    # Get directory from full path
+    directory = os.path.dirname(full_path)
+
+    # Look for matching files
+    jpg_match = glob.glob(os.path.join(directory, 'stacked.jpg'))
+    png_match = glob.glob(os.path.join(directory, 'stacked*.png'))
+    tiff_match = glob.glob(os.path.join(directory, 'stacked*.tiff'))
+    fits_match = glob.glob(os.path.join(directory, 'stacked*.fits'))
+    zip_match = glob.glob(os.path.join(directory, 'stacked*.zip'))
+    thumbnail_match = glob.glob(os.path.join(directory, 'stacked_thumbnail.jpg'))
+
+    if tiff_match:
+        return {
+            'jpg': jpg_match[0] if jpg_match else None,
+            'png': png_match[0] if png_match else None,
+            'tiff': tiff_match[0] if tiff_match else None,
+            'thumbnail': thumbnail_match[0] if thumbnail_match else None
+        }
+    elif zip_match:
+        return {
+            'jpg': jpg_match[0] if jpg_match else None,
+            'png': png_match[0] if png_match else None,
+            'zip': zip_match[0] if zip_match else None,
+            'thumbnail': thumbnail_match[0] if thumbnail_match else None
+        }
+    else :
+        return {
+            'jpg': jpg_match[0] if jpg_match else None,
+            'png': png_match[0] if png_match else None,
+            'fits': fits_match[0] if fits_match else None,
+            'thumbnail': thumbnail_match[0] if thumbnail_match else None
+        }
+
+def count_fits_files(directory):
+    try:
+        if "_MOSAIC_" in directory and has_subdirectories(directory):
+            # Look in subdirectories
+            count = 0
+            for sub in os.listdir(directory):
+                sub_path = os.path.join(directory, sub)
+                if os.path.isdir(sub_path):
+                    count += sum(
+                        1 for f in os.listdir(sub_path)
+                        if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
+                    )
+            return count
         else:
-            return found_id, dwarf_id  # dwarf_id fourni remplace potentiellement
+            # Normal case: check directly in the directory
+            return sum(
+                1 for f in os.listdir(directory)
+                if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
+            )
+
+    except Exception as e:
+        safe_print(f"Could not access {directory}: {e}")
+
+def count_failed_fits_files(directory):
+    return sum(
+        1 for f in os.listdir(directory)
+        if f.endswith('.fits') and f.startswith('failed_')
+    )
+
+def count_tiff_files(directory):
+    return sum(
+        1 for f in os.listdir(directory)
+        if f.endswith('.tiff') and not (f.startswith('stacked-') or f.startswith('failed_'))
+    )
+
+def count_failed_tiff_files(directory):
+    return sum(
+        1 for f in os.listdir(directory)
+        if f.endswith('.tiff') and f.startswith('failed_')
+    )
+
+#################
+# FITS Functions
+#################
+
+def get_total_exposure(fits_file):
+    try:
+        with fits.open(fits_file) as hdul:
+            return float(hdul[0].header.get("EXPTIME", 0))
+    except Exception as e:
+        safe_print(f"Error reading EXPTIME from {fits_file}: {e}")
+        return 0
+
+def get_total_mosaic_exposure(mosaic_dir: str) -> float:
+    """
+    Return total exposure time (in seconds) for a restacked mosaic directory
+    by summing exposures of all stacked_16*.fits files in subdirectories.
+    """
+    total_exposure = 0.0
+
+    try:
+        for subdir in sorted(os.listdir(mosaic_dir)):
+            panel_path = os.path.join(mosaic_dir, subdir)
+            if not os.path.isdir(panel_path):
+                continue
+
+            # Find stacked_16*.fits file
+            fits_files = glob(os.path.join(panel_path, "stacked-16*.fits"))
+            if not fits_files:
+                continue
+
+            fits_path = fits_files[0]
+            try:
+                # Add this panel’s exposure
+                total_exposure += get_total_exposure(fits_path)
+            except Exception as e:
+                print(f"Error reading exposure for {fits_path}: {e}")
+
+    except FileNotFoundError as e:
+        print(f"Mosaic directory not found: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+    return total_exposure
+
+def get_ra_in_hours(hdr):
+    ra_value = hdr.get('RA')
+ 
+    try:
+        return float(ra_value) / 15 if ra_value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+def read_fits_metadata(fits_file, convert_to_hour = False):
+    """Read RA, DEC, OBJECT, etc. from a local FITS file.
+    Returns a dict of metadata, or None if the file is invalid or missing data.
+    """
+    try:
+        with fits.open(fits_file) as hdul:
+            if len(hdul) == 0 or hdul[0].header is None:
+                # Empty FITS or no header
+                return None
+
+            hdr = hdul[0].header
+
+            binning = ''
+            if hdr.get('XBINNING') and hdr.get('YINNING'):
+                binning = f"{hdr.get('XBINNING', '')}x{hdr.get('YINNING', '')}"
+
+            metadata = {
+                'TELESCOP': hdr.get('TELESCOP', ''),
+                'OBJECT': hdr.get('OBJECT', ''),
+                'RA':  get_ra_in_hours(hdr) if convert_to_hour else hdr.get('RA', ''),
+                'DEC': hdr.get('DEC', ''),
+                'EXPTIME': hdr.get('EXPTIME', ''),
+                'DATE-OBS': hdr.get('DATE-OBS', ''),
+                'FILTER': hdr.get('FILTER', '').strip(),
+                'CAMERA': hdr.get('CAMERA', '').strip(),
+                'TEMP': hdr.get('DET-TEMP', ''),
+                'GAIN': hdr.get('GAIN', ''),
+                'BINNING': binning,
+            }
+            # If no useful data (RA, DEC, OBJECT, etc.), return None
+            if not any(metadata.values()):
+                return None
+
+            return metadata
+
+    except (OSError, VerifyError, FileNotFoundError, Exception):
+        # Not a FITS file, unreadable, or corrupted
+        return None
+
+#######################
+# Conversion functions
+#######################
+
+def parse_exposure(exp_str):
+    """
+    Convert exposure string like '30s' or '1/250s' to seconds as float.
+    """
+    if not exp_str or not exp_str.endswith('s'):
+        return 0.0
+    value = exp_str[:-1]  # Remove trailing 's'
+    if '/' in value:
+        # Handle fractional exposure: e.g., '1/250'
+        try:
+            numerator, denominator = value.split('/')
+            return float(numerator) / float(denominator)
+        except:
+            return 0.0
     else:
         try:
-            dwarf_id = get_or_create_dwarf_id(conn)
-        except ValueError as e:
-            safe_print(f"Erreur : {e}")
-            safe_print("No action taken. Please create a Dwarf first.")
-            sys.exit(1)  
+            return float(value)
+        except:
+            return 0.0
 
-        name = os.path.basename(location.rstrip("\\/"))
-        description = f"Auto-added for path {location}"
-        astroDir = "DATA_OBJECTS"
+def hours_to_hms(ra_hours_str):
+    if not ra_hours_str:
+        return "N/A"
+    if not isinstance(ra_hours_str, (float, int)):
+        if any(x in ra_hours_str for x in ["h", "m", "s"]):
+             return ra_hours_str  # Already formatted
+    hours = float(ra_hours_str)
+    h = int(hours)
+    m = int((hours - h) * 60)
+    s = (hours - h - m / 60) * 3600
+    return f"{h:02d}h {m:02d}m {s:05.2f}s"
 
-        backupDrive_id = add_backupDrive_detail(conn, name, description, location, astroDir, dwarf_id)
-        return backupDrive_id, dwarf_id
+def deg_to_dms(dec_deg_str):
+    if not dec_deg_str:
+        return "N/A"
+    if not isinstance(dec_deg_str, (float, int)):
+        if any(x in dec_deg_str for x in ["°", "′", "″"]):
+            return dec_deg_str  # Already formatted
+    dec_deg = float(dec_deg_str)
+    sign = "+" if dec_deg >= 0 else "-"
+    dec_deg = abs(dec_deg)
+    d = int(dec_deg)
+    m = int((dec_deg - d) * 60)
+    s = (dec_deg - d - m / 60) * 3600
+    return f"{sign}{d:02d}° {m:02d}′ {s:05.2f}″"
 
-def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_object = False):
-    relative_path = os.path.relpath(filepath, root)
-    safe_print(f"insert_dwarf_data : path : {filepath}")
-    safe_print(f"insert_dwarf_data : rel-path : {relative_path}")
-    filetype = Path(filepath).suffix[1:].lower()
-    size = os.path.getsize(filepath)
-    mtime = int(os.path.getmtime(filepath))
+def hms_to_hours(hms_str: str) -> float:
+    """Convert 'HHh MMm SS.Ss' to decimal hours (float)."""
+    if isinstance(hms_str, (float, int)):
+        return float(hms_str)  # Already numeric
 
-    file_path = Path(filepath)
-    parent_dir = file_path.parent
+    try:
+        hms_str = hms_str.lower().replace('h', ' ').replace('m', ' ').replace('s', '')
+        parts = hms_str.strip().split()
+        h = float(parts[0]) if len(parts) > 0 else 0
+        m = float(parts[1]) if len(parts) > 1 else 0
+        s = float(parts[2]) if len(parts) > 2 else 0
+        return h + m / 60 + s / 3600
+    except Exception as e:
+        safe_print(f"[ERROR] Invalid HMS input: {hms_str} → {e}")
+        return 0.0
 
-    base_dir = os.path.dirname(filepath)
-    json_path = os.path.join(base_dir, 'shotsInfo.json')
-    thumbnail_path = os.path.join(base_dir, 'stacked_thumbnail.jpg')
+def dms_to_degrees(dms_str: str) -> float:
+    """Convert '+DD° MM′ SS.S″' to decimal degrees (float)."""
+    if isinstance(dms_str, (float, int)):
+        return float(dms_str)  # Already numeric
 
-    # Chercher un fichier stacked*.fits dans le même dossier
-    stacked_path = None
-    stacked_md5 = None
-    for f in parent_dir.glob("stacked*.fits"):
-        stacked_path = f.relative_to(root).as_posix()
-        safe_print(f"test_dwarf_data : stacked_path : {stacked_path}")
-        stacked_md5 = compute_md5(f)
-        break  # On prend le premier trouvé
+    try:
+        dms_str = dms_str.replace('°', ' ').replace('′', ' ').replace('″', '').replace('’', ' ')
+        sign = -1 if dms_str.strip().startswith('-') else 1
+        parts = dms_str.strip().lstrip('+-').split()
+        d = float(parts[0]) if len(parts) > 0 else 0
+        m = float(parts[1]) if len(parts) > 1 else 0
+        s = float(parts[2]) if len(parts) > 2 else 0
+        return sign * (d + m / 60 + s / 3600)
+    except Exception as e:
+        safe_print(f"[ERROR] Invalid DMS input: {dms_str} → {e}")
+        return 0.0
 
-    meta = parse_shots_info(json_path) if os.path.exists(json_path) else {}
-    thumbnail = os.path.relpath(thumbnail_path, root) if os.path.exists(thumbnail_path) else None
+def format_seconds_hms( total_seconds):
+    if not total_seconds:
+        return "N/A"
+    total_seconds = int(total_seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
 
-    # add RA, Dec to Astro_object if just created
-    #if astro_object_id and new_astro_object :
-    #    update_astro_object_coord(conn, astro_object_id, meta.get('dec'), meta.get('ra'))
+    parts = []
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if seconds or not parts:
+        parts.append(f"{seconds}s")
+    return ' '.join(parts)
 
-    new_value , data_id = insert_DwarfData (conn, relative_path, mtime, thumbnail, size,
-        meta.get('dec'), meta.get('ra'), meta.get('target'),
-        meta.get('binning'), meta.get('format'), meta.get('exp_time'),
-        meta.get('gain'), meta.get('shotsToTake'), meta.get('shotsTaken'),
-        meta.get('shotsStacked'), meta.get('ircut'), meta.get('maxTemp'), meta.get('minTemp'),
-        "0","0", 4, stacked_path, stacked_md5)
+#########################
+# DSO Catalog functions
+#########################
 
-    return new_value, data_id
+def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_path = SKY_CATALOG_FILE):
+    if os.path.exists(output_json_path):
+        safe_print(f"[INFO] Using cached DSO catalog: {output_json_path}")
+        return  # Already exists
+
+    safe_print("[INFO] Preprocessing original DSO catalog...")
+
+    with open(original_json_path, 'r', encoding='utf-8') as f:
+        raw_catalog = json.load(f)
+
+    processed_catalog = []
+
+    for entry in raw_catalog:
+        try:
+            ra_str = entry.get("ra")
+            dec_str = entry.get("dec")
+            coord = SkyCoord(ra=ra_str, dec=dec_str, unit=(u.hourangle, u.deg), frame='icrs')
+            entry["ra_deg"] = coord.ra.degree
+            entry["dec_deg"] = coord.dec.degree
+            processed_catalog.append(entry)
+        except Exception as e:
+            safe_print(f"[WARN] Skipping {entry.get('name')} due to error: {e}")
+
+    with open(output_json_path, 'w', encoding='utf-8') as f:
+        json.dump(processed_catalog, f, indent=2)
+
+    safe_print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
+
+
+############################
+# DWARF LOCAL Dir functions
+############################
+
+def create_local_dwarf_dir(conn: sqlite3.Connection):
+    result = False
+
+
+    DwarfLocal_dir = get_local_dwarf_dir(conn)
+    try:
+        os.makedirs(DwarfLocal_dir, exist_ok=True)
+        return DwarfLocal_dir
+    except Exception as e:
+        safe_print(f"[FAIL] Failed to create directory: {e}")
+        return False
+
+def get_local_dwarf_dir(conn: sqlite3.Connection, dwarf_id = None):
+    local_DB_Dwarf_dir = get_db_local_dwarf_dir(conn)
+
+    if not local_DB_Dwarf_dir:
+        local_DB_Dwarf_dir = "."
+
+    local_Main_Dwarf_dir = os.path.join(local_DB_Dwarf_dir, "Dwarf_Local")
+    if dwarf_id:
+        local_Dwarf_dir = os.path.join(local_Main_Dwarf_dir, f"DWARF_{dwarf_id}")
+        return local_Dwarf_dir
+    else:
+        return local_Main_Dwarf_dir
+
+def empty_local_archive_dwarf_dir(dwarf_id = None):
+    local_Main_Dwarf_dir = os.path.join(".", "Dwarf_Local")
+    if dwarf_id:
+        local_Dwarf_dir = os.path.join(local_Main_Dwarf_dir, f"DWARF_{dwarf_id}")
+
+        if not os.path.exists(local_Dwarf_dir):
+            safe_print(f"Local Directory not found: {local_Dwarf_dir}")
+            return False
+
+        archive_Dwarf_dir = os.path.join(local_Dwarf_dir, "Archive")
+
+        # empty subdirs
+        if not os.path.exists(archive_Dwarf_dir):
+            safe_print(f"Archive Directory not found: {archive_Dwarf_dir}")
+            return False
+
+        # Loop through everything inside the DWARF_x directory
+        for item in os.listdir(archive_Dwarf_dir):
+            item_path = os.path.join(archive_Dwarf_dir, item)
+            # Prefix to handle long Windows paths
+            abs_path = os.path.abspath(item_path)
+            if os.name == "nt":
+                abs_path = "\\\\?\\" + abs_path
+
+            try:
+                if os.path.isfile(abs_path) or os.path.islink(abs_path):
+                    os.remove(abs_path)  # remove file or symlink
+                elif os.path.isdir(abs_path):
+                    shutil.rmtree(abs_path)  # remove directory recursively
+            except FileNotFoundError:
+                print(f"Already gone: {item_path}")
+            except Exception as e:
+                safe_print(f"Failed to delete {item_path}. Reason: {e}")
+
+        return True
+    else:
+        return False
+
+def is_path_local_dwarf_dir(full_path):
+    return "Dwarf_Local" in str(full_path)
+
+
+###############################
+# JSON extract parse functions
+###############################
+
+def parse_shots_info(json_path, ftp=None):
+    try:
+        if json_path.startswith("ftp://"):
+            # Handle FTP case
+            if not ftp:
+                safe_print(f"[FAIL] FTP connection is required for {json_path}.")
+                return {}
+
+            # Extracting the path on FTP server
+            ftp_path = json_path.replace("ftp://", "")
+            with open("temp_shotsInfo.json", "wb") as temp_file:
+                ftp.retrbinary(f"RETR {ftp_path}", temp_file.write)
+
+            with open("temp_shotsInfo.json", 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+
+        else:
+            # Local file handling
+            with open(json_path, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+
+        format = ""
+        shotsToTake = raw.get("shotsToTake")
+        shotsTaken = raw.get("shotsTaken")
+        # case RESTACKED
+        if raw.get("shotsToStack"):
+            # default format FITS
+            format= "FITS"
+            shotsToTake = raw.get("shotsToStack")
+            if raw.get("shotsDiscard"):
+                shotsTaken = shotsToTake - raw.get("shotsDiscard")
+
+        return {
+            "dec": str(raw.get("DEC")),
+            "ra": str(raw.get("RA")),
+            "target": raw.get("target"),
+            "binning": raw.get("binning"),
+            "format": raw.get("format") if raw.get('format') is not None else format,
+            "exp_time": str(raw.get("exp")) if raw.get('exp') is not None else None,
+            "gain": raw.get("gain"),
+            "shotsToTake": shotsToTake,
+            "shotsTaken": shotsTaken,
+            "shotsStacked": raw.get("shotsStacked"),
+            "ircut": raw.get("ir"),
+            "maxTemp": raw.get("maxTemp"),
+            "minTemp": raw.get("minTemp"),
+        }
+
+    except Exception as e:
+        safe_print(f"Error reading {json_path}: {e}")
+        return {}
+
+def extract_session_datetime(filename: str) -> datetime | None:
+    try:
+        # Try format with dashes: YYYY-MM-DD-HH-MM-SS-fff
+        match_dash = re.search(r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d{3,6})", filename)
+        if match_dash:
+            return datetime.strptime(match_dash.group(1), "%Y-%m-%d-%H-%M-%S-%f")
+
+        # Try compact format: YYYYMMDDHHMMSSfff
+        match_compact = re.search(r"(\d{17})", filename)
+        if match_compact:
+            return datetime.strptime(match_compact.group(1), "%Y%m%d%H%M%S%f")
+
+        match_new = re.search(r"(\d{8}-\d{9})", filename)
+        if match_new:
+            return datetime.strptime(match_new.group(1), "%Y%m%d-%H%M%S%f")
+
+    except Exception as e:
+        safe_print(f"Error parsing datetime from filename: {e}")
+    
+    return None
+
+# Function to parse shotsInfo.json
+def extract_target_json(astro_path):
+    json_path = os.path.join(astro_path, 'shotsInfo.json')
+
+    if os.path.exists(json_path):
+        with open(json_path, 'r') as file:
+            meta = json.load(file)
+    else:
+        meta = {}
+
+    if meta:
+        return meta.get('target'), str(meta['DEC']) if 'DEC' in meta else None, str(meta['RA']) if 'RA' in meta else None
+    else:
+        return None, None, None
+
+def show_date_session(date_db):
+    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
+    date_session = dt.strftime("%B %d, %Y at %I:%M:%S %p")
+    return date_session
+
+def show_short_date_session(date_db):
+    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
+    date_session = dt.strftime("%b %d, %Y %I:%M %p")
+    return date_session
 
 def extract_astro_name_from_folder(folder_name: str) -> str | None:
     """
@@ -381,65 +690,439 @@ def extract_astro_name_from_folder(folder_name: str) -> str | None:
 
     return None
 
-# Function to parse shotsInfo.json
-def extract_target_json(astro_path):
-    json_path = os.path.join(astro_path, 'shotsInfo.json')
+def save_shots_info(json_path, linked_data):
+    """
+    Save a shotsInfo.json file from the linked_data structure
+    (reverse of parse_shots_info).
 
-    if os.path.exists(json_path):
-        with open(json_path, 'r') as file:
-            meta = json.load(file)
-    else:
-        meta = {}
-
-    if meta:
-        return meta.get('target'), str(meta['DEC']) if 'DEC' in meta else None, str(meta['RA']) if 'RA' in meta else None
-    else:
-        return None, None, None
-
-def show_date_session(date_db):
-    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-    date_session = dt.strftime("%B %d, %Y at %I:%M:%S %p")
-    return date_session
-
-def show_short_date_session(date_db):
-    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-    date_session = dt.strftime("%b %d, %Y %I:%M %p")
-    return date_session
-
-def print_log(message, log):
-    if log:
-        log.push(message)
-    else:
-        safe_print(message)
-
-def get_effective_parent(path):
-    parent = os.path.basename(os.path.dirname(path))
-    if parent == "RESTACKED":
-        # Return grandparent if parent is RESTACKED
-        return os.path.basename(os.path.dirname(os.path.dirname(path)))
-    return parent
-
-def create_local_dwarf_dir():
-    result = False
-
-    DwarfLocal_dir = get_local_dwarf_dir()
+    linked_data should contain keys like:
+    'ra', 'dec', 'target', 'binning', 'format', 'exp_time',
+    'gain', 'shotsToTake', 'shotsTaken', 'shotsStacked',
+    'ircut', 'maxTemp', 'minTemp'
+    """
     try:
-        os.makedirs(DwarfLocal_dir, exist_ok=True)
-        return DwarfLocal_dir
+        # Build JSON structure similar to original input
+        raw = {
+            "RA": linked_data.get("ra"),
+            "DEC": linked_data.get("dec"),
+            "target": linked_data.get("target"),
+            "binning": linked_data.get("binning"),
+            "format": linked_data.get("format"),
+            "exp": float(linked_data["exp_time"]) if linked_data.get("exp_time") else None,
+            "gain": linked_data.get("gain"),
+            "shotsToTake": linked_data.get("shotsToTake"),
+            "shotsTaken": linked_data.get("shotsTaken"),
+            "shotsStacked": linked_data.get("shotsStacked"),
+            "ir": linked_data.get("ircut"),
+            "maxTemp": linked_data.get("maxTemp"),
+            "minTemp": linked_data.get("minTemp"),
+        }
+
+        # Remove None values for cleanliness
+        raw = {k: v for k, v in raw.items() if v is not None}
+
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(json_path), exist_ok=True)
+
+        # Write JSON file
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(raw, f, indent=4, ensure_ascii=False)
+
+        print(f"[OK] Saved {json_path}")
+
     except Exception as e:
-        safe_print(f"[FAIL] Failed to create directory: {e}")
+        print(f"[FAIL] Error writing {json_path}: {e}")
+
+#################################
+# Object Name functions
+#################################
+
+def get_name_object(name):
+    name_object = name #name.split(" (")[0]
+    # Start by removing anything after the last ' [' (suffix)
+    main_part = name.split(" [")[0]
+
+    # Then optionally remove anything after ' (' inside main_part
+    main_part = main_part.split(" (")[0]
+
+    # Now detect the suffix from the original name
+    bracket_pos = name.rfind(" [")
+    suffix = name[bracket_pos:] if bracket_pos != -1 else ""
+
+    # Only re-add suffix if it's not already included
+    name_object = (f"{main_part} {suffix}").strip() if suffix and suffix not in main_part else main_part.strip()
+
+    return name_object, main_part
+
+#################################
+# Sessions List functions
+#################################
+
+def is_Restacked(session_name):
+   return session_name.startswith("RESTACKED_")
+
+def transform_session_name_old(name: str) -> str:
+    original_name = name.strip()
+
+    # --- Ignore purely numeric DWARF_RAW sessions --- 
+    if re.fullmatch(r'DWARF_RAW_\d{17}(_\d+_\d+)?', original_name):
+        return None
+
+    # --- Clean known prefixes ---
+    name = re.sub(r'^(RESTACKED_)?DWARF_RAW_(TELE_|WIDE_)?', '', original_name)
+    name = re.sub(r'^MOSAIC_', '', name)
+    name = name.replace('Duo-Band_', '').strip()
+
+    # --- Ignore Sun / Moon sessions (robust underscore-safe match) ---
+    if re.search(r'(^|_)Sun(_|$)', name, re.IGNORECASE) or re.search(r'(^|_)Moon(_|$)', name, re.IGNORECASE):
+        return None
+
+    # --- Remove exposure/gain and similar metadata ---
+    name = re.sub(r'_EXP_[\d\.]+_GAIN_\d+_', '_', name)
+    name = re.sub(r'_Astro_|_Unknown_', '_', name)
+
+    # --- Detect and normalize datetime formats ---
+    m1 = re.search(r'(\d{8})-(\d{2})(\d{2})', name)
+    m2 = re.search(r'(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})', name)
+    m3 = re.search(r'(\d{8})_(\d{2}):(\d{2})-\d+', name)
+
+    if m1:
+        date, hour, minute = m1.group(1), m1.group(2), m1.group(3)
+        display = re.sub(r'\d{8}-\d{9}', f"{date}_{hour}:{minute}", name)
+    elif m2:
+        year, month, day, hour, minute = m2.groups()
+        display = re.sub(
+            r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}(-\d{2,})?',
+            f"{year}{month}{day}_{hour}:{minute}", name
+        )
+    elif m3:
+        date, hour, minute = m3.groups()
+        display = re.sub(r'(\d{8})_(\d{2}):(\d{2})-\d+', f"{date}_{hour}:{minute}", name)
+    else:
+        display = name.replace('-', '_')
+
+    # --- Remove trailing milliseconds like -471 ---
+    display = re.sub(r'-\d+$', '', display)
+
+    # --- Cleanup --- 
+    display = re.sub(r'_EXP_[\d\.]+_GAIN_\d+', '', display)
+    display = re.sub(r'__+', '_', display)
+    display = display.strip('_')
+    display = re.sub(r'_+(\d{8}_\d{2}:\d{2})', r'_\1', display)
+    display = display.strip()
+
+    if not re.search(r'[A-Za-z]', display):
+        return None
+
+    return display
+
+def transform_session_name(name: str) -> str:
+    original_name = name.strip()
+
+    # --- Ignore purely numeric DWARF_RAW sessions ---
+    if re.fullmatch(r'DWARF_RAW_\d{17}(_\d+_\d+)?', original_name):
+        return None
+
+    # --- Clean known prefixes ---
+    name = re.sub(r'^(RESTACKED_)?DWARF_RAW_(TELE_|WIDE_)?', '', original_name)
+    name = re.sub(r'^MOSAIC_', '', name)
+    name = name.replace('Duo-Band_', '').strip()
+
+    # --- Ignore Sun / Moon sessions (robust underscore-safe match) ---
+    if re.search(r'(^|_)Sun(_|$)', name, re.IGNORECASE) or re.search(r'(^|_)Moon(_|$)', name, re.IGNORECASE):
+        return None
+
+    # --- Remove exposure/gain and similar metadata ---
+    name = re.sub(r'_EXP_[\d\.]+_GAIN_\d+_', '_', name)
+    name = re.sub(r'_Astro_|_Unknown_', '_', name)
+
+    # --- Detect and normalize datetime formats ---
+    m1 = re.search(r'(\d{8})-(\d{2})(\d{2})', name)
+    m2 = re.search(r'(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})', name)
+    m3 = re.search(r'(\d{8})_(\d{2}):(\d{2})-\d+', name)
+
+    if m1:
+        date, hour, minute = m1.group(1), m1.group(2), m1.group(3)
+        display = re.sub(r'\d{8}-\d{9}', f"{date}_{hour}:{minute}", name)
+    elif m2:
+        year, month, day, hour, minute = m2.groups()
+        display = re.sub(
+            r'\d{4}-\d{2}-\d{2}-\d{2}-\d{2}(-\d{2,})?',
+            f"{year}{month}{day}_{hour}:{minute}",
+            name
+        )
+    elif m3:
+        date, hour, minute = m3.groups()
+        display = re.sub(r'(\d{8})_(\d{2}):(\d{2})-\d+', f"{date}_{hour}:{minute}", name)
+    else:
+        display = name.replace('-', '_')
+
+    # --- Remove trailing milliseconds like -471 ---
+    display = re.sub(r'-\d+$', '', display)
+
+    # --- Cleanup ---
+    display = re.sub(r'_EXP_[\d\.]+_GAIN_\d+', '', display)
+    display = re.sub(r'__+', '_', display)
+    display = display.strip('_')
+    display = re.sub(r'_+(\d{8}_\d{2}:\d{2})', r'_\1', display)
+    display = display.strip()
+
+    if not re.search(r'[A-Za-z]', display):
+        return None
+
+    return display
+
+def extract_core_name(path: str) -> str:
+    filename = Path(path).name  # stacked-16_NGC 2246_45s60_Duo-Band_20251120-013033269.fits
+
+    # 1) Extract RAW folder name (ending with EXP_gain_date...)
+    raw_folder = p.parent.name
+
+    # 2) Extract core part from filename
+    filename_no_ext = p.name.replace('.fits', '')
+
+    # Extract part after "stacked-XX_"
+    m = re.search(r'stacked-\d+_(.+)', filename_no_ext)
+    if m:
+        return m.group(1)
+
+    return filename_no_ext  # fallback
+
+def extract_core_name(path: str) -> str:
+    filename = Path(path).name  # stacked-16_NGC 2246_45s60_Duo-Band_20251120-013033269.fits
+
+    # Remove extension
+    filename_no_ext = filename.replace('.fits', '')
+
+    # Extract part after "stacked-XX_"
+    m = re.search(r'stacked-\d+_(.+)', filename_no_ext)
+    if m:
+        return m.group(1)
+
+    return filename_no_ext  # fallback
+
+def extract_datetime_from_session_name(session_name: str):
+    """
+    Extracts date/time information from a cleaned DWARF session name.
+
+    Returns a datetime_obj
+    where:
+      - datetime_obj is a Python datetime or None
+    """
+    if not session_name:
+        return None
+
+    # Match date with optional time (accepts '_' or '-' and ':' or '-')
+    m = re.search(r'(\d{8})(?:[_\-](\d{2})[:\-](\d{2}))?', session_name)
+    if not m:
+        return None
+
+    date_str = m.group(1)
+    hour = m.group(2)
+    minute = m.group(3)
+
+    # Build normalized date string
+    if hour and minute:
+        full_str = f"{date_str}_{hour}:{minute}"
+    else:
+        full_str = date_str
+
+    # Try to parse datetime
+    dt = None
+    try:
+        if hour and minute:
+            dt = datetime.strptime(full_str, "%Y%m%d_%H:%M")
+        else:
+            dt = datetime.strptime(full_str, "%Y%m%d")
+    except ValueError:
+        pass
+
+    return dt
+
+#################################
+# Dwarf ID / Backup Id functions
+#################################
+
+def get_or_create_dwarf_id(conn, dwarf_id=None, batch_mode=False, default_name="Default Dwarf", default_description="Auto-created"):
+
+    if dwarf_id is not None:
+        # Vérify D exists
+        if is_dwarf_exists(conn, dwarf_id):
+            return dwarf_id
+        elif batch_mode:
+            # Create if not found
+            dwarf_id = add_dwarf_detail(conn, default_name, default_description, "", "2", "", None)
+            return dwarf_id
+        else:
+            raise ValueError(f"Dwarf ID {dwarf_id} non trouvé.")
+
+    # No dwarf_id given
+    dwarfs = get_dwarf_Names(conn)
+
+    if dwarfs:
+        if batch_mode:
+            # Get the first one
+            return dwarfs[0][0]
+        else:
+            safe_print("Dwarfs existing: ")
+            for d_id, d_name in dwarfs:
+                safe_print(f"  [{d_id}] {d_name}")
+            try:
+                dwarf_id = int(input("Enter the ID of the Dwarf to associate:"))
+            except ValueError:
+                raise ValueError("Invalid ID.")
+            return dwarf_id
+    else:
+        if batch_mode:
+            # Create a Dwarf Id if none exists
+            dwarf_id = add_dwarf_detail(conn, default_name, default_description, "", "2", "", None)
+            return dwarf_id
+        else:
+            create = input("No Dwarf. Do you want to create one? (y/n):").strip().lower()
+            if create == 'o':
+                name = input("Name of the new Dwarf:").strip()
+                desc = input("Description: ").strip()
+                dwarf_id = add_dwarf_detail(conn, name, desc, "", "2", "", None)
+                return dwarf_id
+            else:
+                raise ValueError("No Dwarf, cancellation.")
+
+def insert_or_get_backup_drive(conn, location, dwarf_id=None):
+    row = get_backupDrive_id_from_location(conn, location)
+    if row:
+        found_id, found_dwarf_id = row
+        if dwarf_id is None:
+            return found_id, found_dwarf_id
+        else:
+            return found_id, dwarf_id  # dwarf_id given could be replaced
+    else:
+        try:
+            dwarf_id = get_or_create_dwarf_id(conn)
+        except ValueError as e:
+            safe_print(f"Erreur : {e}")
+            safe_print("No action taken. Please create a Dwarf first.")
+            sys.exit(1)  
+
+        name = os.path.basename(location.rstrip("\\/"))
+        description = f"Auto-added for path {location}"
+        astroDir = "DATA_OBJECTS"
+
+        backupDrive_id = add_backupDrive_detail(conn, name, description, location, astroDir, dwarf_id)
+        return backupDrive_id, dwarf_id
+
+##########################
+# Session Dir functions
+##########################
+
+def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
+    # session_dir_path must be inside data_root"
+    if not session_dir_path.startswith(data_root):
+        return None, None
+
+    # Normalize separators for FTP mode
+    if ftp_mode:
+        data_root = data_root.strip('/')
+        session_dir_path = session_dir_path.strip('/')
+        if not session_dir_path.startswith(data_root):
+            return None, False
+        relative_path = os.path.relpath('/' + session_dir_path, '/' + data_root)
+        sep = '/'
+    else:
+        if not session_dir_path.startswith(data_root):
+            return None, False
+        relative_path = os.path.relpath(session_dir_path, data_root)
+        sep = os.sep
+
+    session_dir_main_dir = relative_path.split(sep)[0]
+    session_dir = os.path.basename(session_dir_path)
+    is_session_dir = session_dir_main_dir == session_dir
+
+    return session_dir_main_dir, is_session_dir
+
+def check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
+    root_basename = os.path.basename(os.path.normpath(root))
+
+    if session_dir_main_dir:
+        return session_dir == root_basename
+
+    # ❌ Exclude 'Thumbnail' directory itself
+    if root_basename == 'Thumbnail':
         return False
 
-def get_local_dwarf_dir(dwarf_id = None):
-    local_Main_Dwarf_dir = os.path.join(".", "Dwarf_Local")
-    if dwarf_id:
-        local_Dwarf_dir = os.path.join(local_Main_Dwarf_dir, f"DWARF_{dwarf_id}")
-        return local_Dwarf_dir
-    else:
-        return local_Main_Dwarf_dir
+    # ✅ Accept Mosaic main dir, but reject its children
+    if "_MOSAIC_" in os.path.basename(os.path.dirname(root)):
+        return False  # Reject children of mosaic
+    if "_MOSAIC_" in root_basename:
+        return True  # Accept parent
 
-def is_path_local_dwarf_dir(full_path):
-    return "Dwarf_Local" in str(full_path)
+    # ✅ Accept normal session dir if:
+    #    - it's a leaf with files
+    #    - or only contains 'Thumbnail' folder and maybe files
+    if not dirs:
+        return bool(files)
+    elif dirs == ['Thumbnail']:  
+        return True
+
+    # ❌ Otherwise it's a container with other subdirs (multi-part or something else)
+    return False
+
+
+#################################
+# Dwarf / Backup Data functions
+#################################
+
+def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_object = False):
+    relative_path = os.path.relpath(filepath, root)
+    safe_print(f"insert_dwarf_data : path : {filepath}")
+    safe_print(f"insert_dwarf_data : rel-path : {relative_path}")
+    filetype = Path(filepath).suffix[1:].lower()
+    size = os.path.getsize(filepath)
+    mtime = int(os.path.getmtime(filepath))
+
+    file_path = Path(filepath)
+    parent_dir = file_path.parent
+
+    base_dir = os.path.dirname(filepath)
+    json_path = os.path.join(base_dir, 'shotsInfo.json')
+    thumbnail_path = os.path.join(base_dir, 'stacked_thumbnail.jpg')
+
+    # Search for a stacked*.fits file in same directory
+    # For Mosaic search for stacked*.zip
+    stacked_path = None
+    stacked_md5 = None
+    if "_MOSAIC_" in str(parent_dir):
+        for f in parent_dir.glob("stacked*.zip"):
+            stacked_path = f.relative_to(root).as_posix()
+            safe_print(f"test_dwarf_data : stacked_path : {stacked_path}")
+            stacked_md5 = compute_md5(f)
+            break  # first one found
+    else:
+        for f in parent_dir.glob("stacked*.fits"):
+            stacked_path = f.relative_to(root).as_posix()
+            safe_print(f"test_dwarf_data : stacked_path : {stacked_path}")
+            stacked_md5 = compute_md5(f)
+            break  # first one found
+
+    meta = parse_shots_info(json_path) if os.path.exists(json_path) else {}
+    thumbnail = os.path.relpath(thumbnail_path, root) if os.path.exists(thumbnail_path) else None
+
+    # add RA, Dec to Astro_object if just created
+    #if astro_object_id and new_astro_object :
+    #    update_astro_object_coord(conn, astro_object_id, meta.get('dec'), meta.get('ra'))
+
+    new_value , data_id = insert_DwarfData (conn, relative_path, mtime, thumbnail, size,
+        meta.get('dec'), meta.get('ra'), meta.get('target'),
+        meta.get('binning'), meta.get('format'), meta.get('exp_time'),
+        meta.get('gain'), meta.get('shotsToTake'), meta.get('shotsTaken'),
+        meta.get('shotsStacked'), meta.get('ircut'), meta.get('maxTemp'), meta.get('minTemp'),
+        "0","0", 4, stacked_path, stacked_md5)
+
+    return new_value, data_id
+
+
+######################
+# SYNC Main functions
+######################
 
 def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", session_name=None, log=None):
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
@@ -535,58 +1218,6 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
 
     print_log("\n✅ Sync complete.", log)
     safe_print("\nSync complete.")
-
-def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
-    # session_dir_path must be inside data_root"
-    if not session_dir_path.startswith(data_root):
-        return None, None
-
-    # Normalize separators for FTP mode
-    if ftp_mode:
-        data_root = data_root.strip('/')
-        session_dir_path = session_dir_path.strip('/')
-        if not session_dir_path.startswith(data_root):
-            return None, False
-        relative_path = os.path.relpath('/' + session_dir_path, '/' + data_root)
-        sep = '/'
-    else:
-        if not session_dir_path.startswith(data_root):
-            return None, False
-        relative_path = os.path.relpath(session_dir_path, data_root)
-        sep = os.sep
-
-    session_dir_main_dir = relative_path.split(sep)[0]
-    session_dir = os.path.basename(session_dir_path)
-    is_session_dir = session_dir_main_dir == session_dir
-
-    return session_dir_main_dir, is_session_dir
-
-def check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
-    root_basename = os.path.basename(os.path.normpath(root))
-
-    if session_dir_main_dir:
-        return session_dir == root_basename
-
-    # ❌ Exclude 'Thumbnail' directory itself
-    if root_basename == 'Thumbnail':
-        return False
-
-    # ✅ Accept Mosaic main dir, but reject its children
-    if "_MOSAIC_" in os.path.basename(os.path.dirname(root)):
-        return False  # Reject children of mosaic
-    if "_MOSAIC_" in root_basename:
-        return True  # Accept parent
-
-    # ✅ Accept normal session dir if:
-    #    - it's a leaf with files
-    #    - or only contains 'Thumbnail' folder and maybe files
-    if not dirs:
-        return bool(files)
-    elif dirs == ['Thumbnail']:  
-        return True
-
-    # ❌ Otherwise it's a container with other subdirs (multi-part or something else)
-    return False
 
 def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None):
     if not db_name:
@@ -810,9 +1441,12 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 
     if session_dir_main_dir :
         # update scan date if modifications presents
-        if deleted or total_added:
-            set_dwarf_scan_date(conn, dwarf_id)
-
+        if not backup_drive_id:
+            if deleted or total_added:
+                set_dwarf_scan_date(conn, dwarf_id)
+        else:
+            if deleted or total_added:
+                set_backup_scan_date(conn, backup_drive_id)
     else:
         # delete data that are not more present
         if not backup_drive_id:
@@ -871,145 +1505,46 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
             data_ids.add(data_id)
     return added, data_ids
 
-def get_Backup_fullpath (location, subdir, filename, dwarf_id = None):
-    full_path = ""
-    if location:
-        full_path = location
-    if full_path and subdir:
-        full_path = os.path.join(full_path, subdir)
-    elif subdir:
-        full_path = subdir
-    if full_path:
-        full_path = os.path.join(full_path, filename)
+
+#########################
+# Thumbnail function
+#########################
+
+from PIL import Image
+
+from PIL import Image
+
+def create_thumbnail(input_path: str, output_path: str, size=(356, 200)):
+    img = Image.open(input_path)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    target_ratio = size[0] / size[1]
+    img_ratio = img.width / img.height
+
+    # Crop to match target ratio
+    if img_ratio > target_ratio:
+        # Image is wider than target: crop width
+        new_width = int(img.height * target_ratio)
+        left = (img.width - new_width) // 2
+        right = left + new_width
+        top = 0
+        bottom = img.height
     else:
-        full_path = filename
+        # Image is taller than target: crop height
+        new_height = int(img.width / target_ratio)
+        top = (img.height - new_height) // 2
+        bottom = top + new_height
+        left = 0
+        right = img.width
 
-    # use local_copy if not connected
-    if not os.path.isdir(os.path.dirname(full_path)) and dwarf_id:
-        local_Dwarf_dir = get_local_dwarf_dir(dwarf_id)
-        test_path = os.path.join(local_Dwarf_dir, filename)
-        full_path = test_path if os.path.isdir(os.path.dirname(test_path)) else full_path
+    img_cropped = img.crop((left, top, right, bottom))
+    img_resized = img_cropped.resize(size, Image.LANCZOS)
+    img_resized.save(output_path, format="JPEG", quality=90)
 
-    return full_path
-
-def get_directory_size(directory: str) -> str:
-    total_size = 0
-    for dirpath, dirnames, filenames in os.walk(directory):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            if os.path.isfile(fp):
-                total_size += os.path.getsize(fp)
-    # Format size nicely
-    return format_size(total_size)
-
-def format_size(size_bytes: int) -> str:
-    if size_bytes == 0:
-        return "0B"
-    size_name = ("B", "KB", "MB", "GB", "TB")
-    i = int(min(len(size_name) - 1, (size_bytes.bit_length() - 1) // 10))
-    p = 1 << (i * 10)
-    s = round(size_bytes / p, 2)
-    return f"{s} {size_name[i]}"
-
-def get_file_path(full_path, base_folder):
-    # Normalize both paths to use forward slashes and strip trailing slashes
-    full_path = os.path.normpath(full_path)
-    base_folder = os.path.normpath(base_folder)
-    
-    # Get the relative path
-    return os.path.relpath(full_path, base_folder)
-
-def get_extension(file_path):
-    return os.path.splitext(file_path)[1].lower().lstrip('.')
-
-def check_files(full_path: str) -> dict:
-    # Get directory from full path
-    directory = os.path.dirname(full_path)
-
-    # Look for matching files
-    jpg_match = glob.glob(os.path.join(directory, 'stacked.jpg'))
-    png_match = glob.glob(os.path.join(directory, 'stacked*.png'))
-    tiff_match = glob.glob(os.path.join(directory, 'stacked*.tiff'))
-    fits_match = glob.glob(os.path.join(directory, 'stacked*.fits'))
-
-    if tiff_match:
-        return {
-            'jpg': jpg_match[0] if jpg_match else None,
-            'png': png_match[0] if png_match else None,
-            'tiff': tiff_match[0] if tiff_match else None,
-        }
-    else :
-        return {
-            'jpg': jpg_match[0] if jpg_match else None,
-            'png': png_match[0] if png_match else None,
-            'fits': fits_match[0] if fits_match else None
-        }
-
-def get_directory_size(directory_path: str) -> int:
-    total_size = 0
-
-    for dirpath, dirnames, filenames in os.walk(directory_path):
-        for filename in filenames:
-            file_path = os.path.join(dirpath, filename)
-            if os.path.isfile(file_path):
-                total_size += os.path.getsize(file_path)
-
-    return total_size
-
-def has_subdirectories(directory):
-    return any(
-        os.path.isdir(os.path.join(directory, entry)) and not entry.startswith('.')  and not entry.startswith('Thumbnail')
-        for entry in os.listdir(directory)
-)
-
-def count_fits_files(directory):
-    try:
-        if "_MOSAIC_" in directory and has_subdirectories(directory):
-            # Look in subdirectories
-            count = 0
-            for sub in os.listdir(directory):
-                sub_path = os.path.join(directory, sub)
-                if os.path.isdir(sub_path):
-                    count += sum(
-                        1 for f in os.listdir(sub_path)
-                        if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
-                    )
-            return count
-        else:
-            # Normal case: check directly in the directory
-            return sum(
-                1 for f in os.listdir(directory)
-                if f.endswith('.fits') and not (f.startswith('stacked-') or f.startswith('failed_'))
-            )
-
-    except Exception as e:
-        safe_print(f"Could not access {directory}: {e}")
-
-def count_failed_fits_files(directory):
-    return sum(
-        1 for f in os.listdir(directory)
-        if f.endswith('.fits') and f.startswith('failed_')
-    )
-
-def count_tiff_files(directory):
-    return sum(
-        1 for f in os.listdir(directory)
-        if f.endswith('.tiff') and not (f.startswith('stacked-') or f.startswith('failed_'))
-    )
-
-def count_failed_tiff_files(directory):
-    return sum(
-        1 for f in os.listdir(directory)
-        if f.endswith('.tiff') and f.startswith('failed_')
-    )
-
-def get_total_exposure(fits_file):
-    try:
-        with fits.open(fits_file) as hdul:
-            return float(hdul[0].header.get("EXPTIME", 0))
-    except Exception as e:
-        safe_print(f"Error reading EXPTIME from {fits_file}: {e}")
-        return 0
+#########################
+# FITS Preview Functions
+#########################
 
 def generate_fits_preview_test(fits_path: str) -> str:
     try:

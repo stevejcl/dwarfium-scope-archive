@@ -12,6 +12,37 @@ from api.dwarf_backup_fct import preprocess_dso_catalog_json, hms_to_hours, dms_
 import webbrowser
 from typing import Dict
 
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class DwarfData:
+    dwarf_data_id: Optional[int] = None
+    target: Optional[str] = None
+    dec: Optional[str] = None
+    ra: Optional[str] = None
+    astro_object_id: Optional[int] = None
+    astro_group_id: Optional[int] = None
+
+    @classmethod
+    def from_row(cls, row):
+        """Create from tuple, list, dict, or sqlite3.Row."""
+        if isinstance(row, dict):
+            return cls(**row)
+        elif isinstance(row, (tuple, list)):
+            # Map fields by position
+            return cls(
+                dwarf_data_id=row[0],
+                target=row[13],
+                dec=row[14],
+                ra=row[15],
+                astro_object_id=row[16],
+                astro_group_id=row[17],
+            )
+        else:
+            raise TypeError(f"Unsupported row type: {type(row)}")
+
+
 # used for sharing description field
 shared = {'custom_name': ''}
 
@@ -78,31 +109,31 @@ def find_nearby_dso_from_json(target_ra_deg, target_dec_deg, processed_catalog, 
     results.sort(key=lambda x: x["separation_deg"])
     return results[:max_results], None
 
-def show_unknown_target_dialog(conn: sqlite3.Connection, dwarf_data_row, dso_catalog, only_unknown=True, on_done = None):
-    ra = hms_to_hours(dwarf_data_row[15]) * 15  # convert hours to degrees
-    dec = dms_to_degrees(dwarf_data_row[14])
-    target = dwarf_data_row[13]
-    astro_id = dwarf_data_row[16]
-    astro_group_id = dwarf_data_row[17]
-    dwarf_data_id = dwarf_data_row[0]
+def show_unknown_target_dialog(conn: sqlite3.Connection, dwarf_data: DwarfData, dso_catalog, only_unknown=True, on_done = None):
+    ra = hms_to_hours(dwarf_data.ra) * 15  # convert hours to degrees
+    dec = dms_to_degrees(dwarf_data.dec)
+    target = dwarf_data.target
+    astro_object_id = dwarf_data.astro_object_id
+    astro_group_id = dwarf_data.astro_group_id
+    dwarf_data_id = dwarf_data.dwarf_data_id
 
-    if only_unknown and target.lower() != "unknown":
+    if only_unknown and target.lower() != "unknown" and target.lower() != "mosaic_unknown" and target.lower() != "manual":
         ui.notify("⚠️ Target is already known: {target}", type="warning")
         return None, f"Target is already known: {target}"
 
-    old_description = get_astro_object_description(conn, astro_id)
+    old_description = get_astro_object_description(conn, astro_object_id)
     shared['custom_name'] = old_description 
     # Use your local catalog
     objects, error = find_nearby_dso_from_json(ra, dec, dso_catalog)
 
-    def handle_add(conn, target: str, name: str, designation: str, astro_id, astro_group_id):
+    def handle_add(conn, target: str, name: str, designation: str, astro_object_id, astro_group_id):
         print(f"try update: {target} to {name}")
-        if astro_id:
+        if astro_object_id:
             # get DSO
             dso_id = get_dso_registered_by_designation(conn, designation)
             if dso_id:
-                update_astro_object_dso(conn, astro_id, int(dso_id), "")
-                new_description = get_astro_object_description(conn, astro_id)
+                update_astro_object_dso(conn, astro_object_id, int(dso_id), "")
+                new_description = get_astro_object_description(conn, astro_object_id)
                 shared['custom_name'] = new_description 
                 ui.notify('DSO assigned/updated!')
                 if on_done:
@@ -112,18 +143,18 @@ def show_unknown_target_dialog(conn: sqlite3.Connection, dwarf_data_row, dso_cat
 
     def on_add_dso( msg: Dict):
         print(msg.args)
-        target, name, designation, astro_id, astro_group_id = msg.args
-        handle_add(conn, target, name, designation, astro_id, astro_group_id)
+        target, name, designation, astro_object_id, astro_group_id = msg.args
+        handle_add(conn, target, name, designation, astro_object_id, astro_group_id)
 
     if error:
         ui.label(error).classes('text-red-600')
     elif not objects:
         ui.label("❌ No nearby DSO found in your catalog").classes('text-red-600')
-        show_dso_dialog(target, ra, dec, objects, conn, astro_id, astro_group_id, old_description, on_add_dso, on_done)
+        show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done)
     else:
-        show_dso_dialog(target, ra, dec, objects, conn, astro_id, astro_group_id, old_description, on_add_dso, on_done)
+        show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done)
 
-def show_dso_dialog(target, ra, dec, objects, conn, astro_id, astro_group_id, old_description, on_add_dso, on_done = None):
+def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done = None):
     with ui.dialog() as dialog:
         with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
             ui.label(f'🔭 Target: {target} - RA: {hours_to_hms(ra/15)}, DEC: {deg_to_dms(dec)}').classes('text-lg font-bold')
@@ -147,7 +178,7 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_id, astro_group_id, ol
             def save_custom_name():
                 description = custom_name.value.strip()
                 if description:
-                    update_astro_object_description(conn, astro_id, description)
+                    update_astro_object_description(conn, astro_object_id, description)
                     #shared['custom_name'] = description 
                     ui.notify(f"✅ Saved as: {description}", type="positive")
                     if on_done:
@@ -160,7 +191,7 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_id, astro_group_id, ol
                 ui.button('💾 Save', on_click=save_custom_name).props('color=primary').classes("mt-4")
 
             if objects:
-                reload( table, target, objects, astro_id, astro_group_id)
+                reload( table, target, objects, astro_object_id, astro_group_id)
                         
                 ui.update() 
 
@@ -173,7 +204,7 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_id, astro_group_id, ol
 
 # Load data into the table
 @ui.refreshable
-def reload(table, target, objects, astro_id, astro_group_id):
+def reload(table, target, objects, astro_object_id, astro_group_id):
     table.rows.clear()
 
     for obj in objects:
@@ -185,7 +216,7 @@ def reload(table, target, objects, astro_id, astro_group_id):
             'dec' : obj["dec"],
             'separation_deg' : obj["separation_deg"],
             'target': target,
-            'astro_id': astro_id,
+            'astro_object_id': astro_object_id,
             'astro_group_id': astro_group_id,
             'icon': 'edit' if target.lower() != "unknown" else 'add',
             'actions' : '',
@@ -209,7 +240,7 @@ def reload(table, target, objects, astro_id, astro_group_id):
                 color="primary"
                 round
                 dense
-                @click="$parent.$emit('add_dso', props.row.target, props.row.name, props.row.designation, props.row.astro_id, props.row.astro_group_id)"
+                @click="$parent.$emit('add_dso', props.row.target, props.row.name, props.row.designation, props.row.astro_object_id, props.row.astro_group_id)"
               />
             </q-td>
           </q-tr>
@@ -297,7 +328,7 @@ def show_assign_dialog(conn: sqlite3.Connection , astro_object_row, on_done=None
 
     dialog.open()
 
-def show_dso_dialog_old(target, ra, dec, objects, conn, astro_id, astro_group_id, old_description, on_add_dso, on_done = None):
+def show_dso_dialog_old(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done = None):
 
     if error:
         ui.label(error).classes('text-red-600')
@@ -315,7 +346,7 @@ def show_dso_dialog_old(target, ra, dec, objects, conn, astro_id, astro_group_id
                     description = custom_name.value.strip()
                     if description:
                         # Your logic to store/save the description
-                        update_astro_object_description(conn, astro_id, description)
+                        update_astro_object_description(conn, astro_object_id, description)
                         ui.notify(f"✅ Saved as: {description}", type="positive")
                     else:
                         ui.notify("⚠️ Please enter a description", type="warning")
@@ -348,7 +379,7 @@ def show_dso_dialog_old(target, ra, dec, objects, conn, astro_id, astro_group_id
                 custom_name = ui.input(label='🔤 Enter a custom description').classes("w-full mt-4")
 
                 if objects:
-                    reload( table, target, objects, astro_id, astro_group_id, custom_name)
+                    reload( table, target, objects, astro_object_id, astro_group_id, custom_name)
                         
                     ui.update() 
 
@@ -359,7 +390,7 @@ def show_dso_dialog_old(target, ra, dec, objects, conn, astro_id, astro_group_id
                     description = custom_name.value.strip()
                     if description:
                         # Your logic to store/save the description
-                        update_astro_object_description(conn, astro_id, description)
+                        update_astro_object_description(conn, astro_object_id, description)
                         ui.notify(f"✅ Saved as: {description}", type="positive")
                     else:
                         ui.notify("⚠️ Please enter a description", type="warning")
