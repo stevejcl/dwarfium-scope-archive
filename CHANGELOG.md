@@ -1,5 +1,14 @@
 # Changelog
 
+## [V2.2.8] - 2025-12-12
+
+### Compatibility with MacOs 14+
+
+## [V2.2.7] - 2025-30-10
+
+### BugFix# 
+ Correction for Full FTP transfer
+
 ## [V2.2.6] - 2025-09-12
 
 ### Compatibility with MacOs 13+
