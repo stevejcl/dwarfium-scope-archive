@@ -1,11 +1,11 @@
 # Changelog
 
-## [V3.0.1] - 2026-27-03
+## [V3.0.1] - 2026-03-27
 
 ### BugFix# 
    Copilot correction
 
-## [V3.0.0] - 2026-26-03
+## [V3.0.0] - 2026-03-26
 
 ### BugFix# 
  Many Corrections in DB function and Interface
@@ -24,7 +24,7 @@
 
 ### Compatibility with MacOs 14+
 
-## [V2.2.7] - 2025-30-10
+## [V2.2.7] - 2025-10-30
 
 ### BugFix# 
  Correction for Full FTP transfer
