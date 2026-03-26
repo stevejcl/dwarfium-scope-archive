@@ -1,6 +1,6 @@
 # Changelog
 
-## [V3.0.0 beta] - 2026-26-03
+## [V3.0.0] - 2026-26-03
 
 ### BugFix# 
  Many Corrections in DB function and Interface

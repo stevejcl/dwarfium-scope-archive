@@ -1043,7 +1043,6 @@ class ExploreApp:
     def on_file_selected(self):
         selection_index = None
         selected_value = self.file_list.value
-        safe_print(f"Selected value: {selected_value}")
         details = []
 
         if not selected_value or selected_value.startswith('Select a session'):

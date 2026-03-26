@@ -286,7 +286,7 @@ def get_backupDrive_list(conn: sqlite3.Connection):
 def get_backupDrive_list_dwarfId(conn: sqlite3.Connection, dwarf_id = None):
     try:
         cursor = conn.cursor()
-        cursor.execute(f"SELECT id, name, description, location, astronomy_dir, dwarf_id FROM BackupDrive Where dwarf_id ?", (dwarf_id,))
+        cursor.execute("SELECT id, name, description, location, astronomy_dir, dwarf_id FROM BackupDrive WHERE dwarf_id = ?", (dwarf_id,))
         return cursor.fetchall()
 
     except Exception as e:

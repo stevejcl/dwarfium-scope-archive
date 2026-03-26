@@ -633,10 +633,10 @@ class AddManualSession:
     async def handle_upload(self, e):
         import tempfile
         from pathlib import Path
+        file = e.file
+        suffix = Path(file.name).suffix.lower()        
 
-        suffix = Path(e.name).suffix.lower()
-        file_bytes = e.content.read()
-
+        file_bytes = await file.read()
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_bytes)
             tmp_path = tmp.name
@@ -658,20 +658,20 @@ class AddManualSession:
 
                     # Analyse File
                     print(f"Temp: {tmp_path}")
-                    print(f"Name: {e.name}")
-                    await self.analyse_fits(tmp_path, e.name, dialog_fits, False)
+                    print(f"Name: {file.name}")
+                    await self.analyse_fits(tmp_path, file.name, dialog_fits, False)
 
                 except Exception as ex:
                     ui.notify(f"Error reading FITS: {ex}", type='negative')
                     os.remove(tmp_path)
                     await asyncio.sleep(0.5)
-                    await self._reset_and_restore(rejected_name=e.name)
+                    await self._reset_and_restore(rejected_name=file.name)
                     return
 
         else :
             self.client.storage.uploaded_files.append({
                 "path": tmp_path,
-                "name": e.name,
+                "name": file.name,
                 "type": file_type,   # 👈 mark it
                 "is_temp": True,
                 "ra": None,
@@ -679,7 +679,7 @@ class AddManualSession:
             })
             self.update_remove_button()
 
-        ui.notify(f"✅ Uploaded {e.name}")
+        ui.notify(f"✅ Uploaded {file.name}")
 
     async def _reset_and_restore(self, rejected_name: str):
 
@@ -856,18 +856,18 @@ class AddManualSession:
 
         async def close_dialog_fits(result = False):
             if result == False:
-                print(f"🧹 Deleted temp file: {tmp_path}")
+                print(f"Deleted temp file: {tmp_path}")
                 os.remove(tmp_path)
                 # close dialog before call javascript in _reset_and_restore
                 dialog_fits.close()
                 if not mode_upload_link:
-                    print(f"🧹 Rejected file: {name}")
+                    print(f"Rejected file: {name}")
                     await asyncio.sleep(0.5)
                     await self._reset_and_restore(rejected_name=name)
                     
             else:
                 if not mode_upload_link:
-                    print(f"🧹 Accepted file: {name}")
+                    print(f"Accepted file: {name}")
                     self._accepted_files_data[name] = tmp_path 
                 dialog_fits.close()
             print(f"close_dialog_fits with result: {result}")
@@ -1305,8 +1305,8 @@ class AddManualSession:
                 result = True
                 ui.notify("✅ Backup completed successfully!", type="positive")
 
-                # add to database
-                insert_ManualSessionEntry(self.conn ,  BackupDriveId, DwarfId, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id)
+                # add to database - TO DO
+                #insert_ManualSessionEntry(self.conn ,  BackupDriveId, DwarfId, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id)
 
             elif not self.cancel_backup:
                 ui.notify("⚠️ Backup incomplete due to failures.", type="warning")
