@@ -32,12 +32,12 @@ from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC
 client_apps = {}
 
 @ui.page('/AddManualSession/')
-async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupId:int = None):
+async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupDriveId:int = None):
 
     menu("Add Manual Session")
     await ui.context.client.connected()
     # Launch the GUI
-    ui.context.manual_session_app =  AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupId=BackupId)
+    ui.context.manual_session_app =  AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupDriveId=BackupDriveId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
     def final_cleanup_temp_files():
@@ -64,7 +64,7 @@ async def manual_session_page(client: Client, DwarfId:int = None, session:str = 
 
 
 class AddManualSession:
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, BackupId=None):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, BackupDriveId=None):
         self.client = client
         self.mode_stellar = "Stellar Studio" # Default mode
         self.mode_manual = "Manual"
@@ -75,11 +75,11 @@ class AddManualSession:
 
         self.DwarfId = DwarfId
         self.dwarf_options = []
-        self.BackupId = BackupId
+        self.BackupDriveId = BackupDriveId
         self.backup_options = []
 
         self.DwarfId_Init = DwarfId
-        self.BackupId_Init = BackupId
+        self.BackupDriveId_Init = BackupDriveId
         self.session = Session
         self.backup_StellarStudio = "STELLAR_SESSION"
         self.dso_catalog = False
@@ -104,6 +104,9 @@ class AddManualSession:
         self.session_select_status_label = ""
         self.session_select_thumbnail = None
         self.session_select_image = None
+        
+        self.fits_file_list = None
+        self.details_fits_files = None
 
         self.selected_object_description = None
         self.selected_file = None
@@ -283,11 +286,11 @@ class AddManualSession:
                 with ui.card().tight().classes('w-full'):
                     # List on the side
                     ui.label("Added FITS files list").classes("ml-2 mt-2 font-medium")
-                    self.details_fits_files = ui.list().classes('h-50 overflow-y-auto')
+                    self.details_fits_files = ui.list().classes('w-full h-50 overflow-y-auto')
 
                 with ui.card().tight().classes('w-full'):
                     ui.label("Main File Session Information (From First Fits file uploaded)").classes("ml-2 mt-2 mb-2 font-medium")
-                    self.details_files = ui.list().classes('h-50 overflow-y-auto')
+                    self.details_files = ui.list().classes('w-full h-50 overflow-y-auto')
  
                 self.DestinationDirectory = ui.label("Destination: Backup Drive").classes("mt-2 font-medium")
                 with ui.row().classes("w-full items-center gap-2"):
@@ -357,7 +360,7 @@ class AddManualSession:
         # Find the name corresponding to the ID
         initial_value = None
         for name, (id_, _, _) in self.backup_data.items():
-            if id_ == self.BackupId_Init:
+            if id_ == self.BackupDriveId_Init:
                 initial_value = name
                 break
         print(initial_value)
@@ -372,7 +375,7 @@ class AddManualSession:
         if initial_value:
             self.update_backup_details(initial_value)
         else:
-            self.BackupId = None
+            self.BackupDriveId = None
             self.backup_location = ""
             self.backup_astrodir = ""
             self.backup_path = ""
@@ -400,12 +403,12 @@ class AddManualSession:
 
     def update_backup_details(self, selected_name):
         if selected_name in self.backup_data:
-            self.BackupId, self.backup_location, self.backup_astrodir = self.backup_data[selected_name]
+            self.BackupDriveId, self.backup_location, self.backup_astrodir = self.backup_data[selected_name]
             self.backup_path = os.path.join(self.backup_location, self.backup_StellarStudio)
-            print(f"Backup ID: {self.BackupId}, Backup Location: {self.backup_location}, Astro Directory: {self.backup_astrodir}")
+            print(f"Backup Entry ID: {self.BackupDriveId}, Backup Location: {self.backup_location}, Astro Directory: {self.backup_astrodir}")
             self.check_status_backup()
         else:
-            self.BackupId = None
+            self.BackupDriveId = None
             self.backup_location = ""
             self.backup_astrodir = ""
             self.backup_path = ""
@@ -425,7 +428,7 @@ class AddManualSession:
 
     def get_sessions_list(self):
         print("get_sessions_list")
-        sessions_list_db = get_sessions_backup(self.conn, self.BackupId, self.DwarfId)
+        sessions_list_db = get_sessions_backup(self.conn, self.BackupDriveId, self.DwarfId)
 
         self.sessions_list = {}
         self.session_lookup = {}  # reverse lookup: id -> name
@@ -712,7 +715,8 @@ class AddManualSession:
 
     def refresh_fits_file_list(self):
         """This is your source of truth display — not the Quasar widget"""
-        self.fits_file_list.clear()
+        if self.fits_file_list :
+            self.fits_file_list.clear()
         with self.fits_file_list:
             if not self.client.storage.uploaded_files:
                 ui.label("No files loaded").classes("text-gray-400 text-sm")
@@ -786,7 +790,7 @@ class AddManualSession:
 
         # Reset state
         self.selected_file = None
-        self.refresh_fits_file_list()
+        self.refresh_fits_file_list_uploaded()
         self.add_button.text = "Add"
 
     def download_fits(self, url):
@@ -842,8 +846,9 @@ class AddManualSession:
         self.selected_file = next((f for f in self.uploaded_fits_files if f["name"] == selected_name), None)
         self.add_button.text = "Remove"
 
-    def refresh_fits_file_list(self):
-        self.details_fits_files.clear()
+    def refresh_fits_file_list_uploaded(self):
+        if self.details_fits_files:
+            self.details_fits_files.clear()
         with self.details_fits_files:
             for data_detail in self.uploaded_fits_files:
                 ui.item(data_detail["name"], on_click=lambda i=data_detail["name"]: self.on_fits_file_selected(i)).props('clickable').classes('cursor-pointer')
@@ -896,7 +901,7 @@ class AddManualSession:
             if len(self.uploaded_fits_files) == 1:
                 self.refresh_info_session()
 
-            self.refresh_fits_file_list()
+            self.refresh_fits_file_list_uploaded()
             self.update_remove_button()
 
             if self.meta_info:
@@ -980,7 +985,7 @@ class AddManualSession:
         if self.meta_info:
             self.details_files.clear()
             if not self.meta_info.get('OBJECT'):
-                self.meta_info['OBJECT'] = UNKNOW
+                self.meta_info['OBJECT'] = UNKNOWN
 
             print(f"Dwarf Target: {self.meta_info.get('OBJECT')} RA: {hours_to_hms(self.meta_info.get('RA'))} | Dec: {deg_to_dms(self.meta_info.get('DEC'))}")
             astro_name = self.meta_info.get('OBJECT')
@@ -1064,7 +1069,7 @@ class AddManualSession:
         return classified_text, descriptiondb
 
 # ----------------- ACTIONS -----------------
-    async def resolve_files_action(self, tmp_file):
+    async def resolve_files_action(self):
         # --- Add files from links ---
         api_key = get_setting_text(self.conn, "NOVA_ASTRO_API")
         if not api_key:
@@ -1347,7 +1352,7 @@ class AddManualSession:
 
         self.client.storage.uploaded_files.clear();
         self.uploaded_fits_files = []
-        self.refresh_fits_file_list()
+        self.refresh_fits_file_list_uploaded()
         self.selected_file = None
         self.main_meta_info = None
         self.meta_info = None

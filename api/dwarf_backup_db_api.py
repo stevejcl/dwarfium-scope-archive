@@ -1241,7 +1241,7 @@ def get_sessions_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id
         print(f"[DB ERROR] Failed to fetch get_sessions_backup: {e}")
         return []
 
-def get_session_backup_details(conn: sqlite3.Connection, backupEntry = None):
+def get_session_backup_details(conn: sqlite3.Connection, backupEntryId = None):
     try:
         cursor = conn.cursor()
 
@@ -1282,9 +1282,9 @@ def get_session_backup_details(conn: sqlite3.Connection, backupEntry = None):
         where_clauses = []
         params = []
 
-        if backupEntry is not None:
+        if backupEntryId is not None:
             where_clauses.append("BackupEntry.id = ?")
-            params.append(backupEntry)
+            params.append(backupEntryId)
 
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)

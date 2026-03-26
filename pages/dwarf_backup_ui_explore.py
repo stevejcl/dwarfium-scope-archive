@@ -9,6 +9,7 @@ import subprocess
 import json
 import shutil
 import re
+import sys
 from glob import glob
 from nicegui import app, run, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
@@ -338,69 +339,6 @@ class ExploreApp:
         self.selected_object_is_group = False
         self.load_objects_ui()
 
-    def load_objects_ui_old(self, init_view = True):
-
-        self.object_list.clear()
-        filter_dso = set()
-        visible_names = []
-
-        dso_id_counts = defaultdict(int)
-        for _, name, dso_id,_ in self.objects:
-            name_object, main_part = get_name_object(name)
-            # Apply filter
-            if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
-                if dso_id is not None:
-                    filter_dso.add(dso_id)
-                continue
-
-            if dso_id is not None:
-                dso_id_counts[dso_id] += 1
-
-        # Step 2 – Track if [ALL] line was already shown
-        shown_all_for_dso = set()
-
-        with self.object_list:
-            ui.item_label('List Objects').props('header').classes('text-bold')
-            ui.separator()
-            for oid, name, dso_id, is_group in self.objects:
-                name_object, main_part = get_name_object(name)
-
-                # Apply filter
-                if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
-                    continue
-
-                visible_names.append(name_object)
-
-                # Insert the [ALL] line if needed
-                if dso_id is not None and dso_id_counts[dso_id] > 1 and dso_id not in shown_all_for_dso and dso_id not in filter_dso :
-                    all_name = f"{main_part} [ALL]"
-                    visible_names.append(all_name)  # 👈 ADD [ALL] entry to visible_names
-                    item_all = ui.item(all_name, on_click=lambda dso_id=dso_id, name=all_name, desc=name, is_group=is_group : self._handle_object_click(None, name, desc, dso_id, is_group))
-                    item_all.classes('font-bold text-blue-600')  # Optional styling
-                    if all_name == self.selected_object:
-                        item_all.classes('bg-primary text-white')
-                    else:
-                        item_all.classes('bg-transparent')
-                    shown_all_for_dso.add(dso_id)
-
-                # Add the actual object
-                item = ui.item(f"{'🌌 ' if is_group else ''}{name_object}", on_click=lambda oid=oid, name=name_object, desc=name, is_group=is_group : self._handle_object_click(oid, name, desc, None, is_group))
-
-                # Highlight if selected
-                if name_object == self.selected_object:
-                    item.classes('bg-primary text-white')  # Change background and text color
-                else:
-                    item.classes('bg-transparent')  # Normal background
-
-        # ❗ Clear selection if it's no longer in the filtered results
-        if self.selected_object not in visible_names:
-            self.selected_object = None
-            self.clear_selected_object()
- 
-        # Force UI update after setting selected_object
-        self.object_list.update()  # Refresh the list
-        ui.update()  # Refresh the UI
-
     def _update_expanded_nodes(self, expanded_keys: list[str]):
         self.expanded_nodes = set(expanded_keys)
 
@@ -471,7 +409,7 @@ class ExploreApp:
                     dso_id not in shown_all_for_dso and
                     dso_id not in filter_dso
                 ):
-                    all_name = f"{name_object.split(" [")[0]} [ALL]"
+                    all_name = f"{name_object.split(' [')[0]} [ALL]"
                     visible_names.append(all_name)
                     label = f"{'✨ ' if is_group else ''}{all_name}"
                     data = {
@@ -725,7 +663,7 @@ class ExploreApp:
                 file_path = row[1]
                 exp_time = row[2]
                 gainDB = row[3]
-                filter  = row[4]
+                IR_filter  = row[4]
                 stacks = row[5]
                 backup_path = row[6]  # location from BackupDrive or USB Dwarf
                 session_date = row[7]
@@ -746,7 +684,7 @@ class ExploreApp:
                 lens = "(W)" if ("_WIDE_") in session_dir else ""
                 exp = f"{exp_time}s" if exp_time is not None else "N/A"
                 gain = gainDB if gainDB is not None else "N/A"
-                astro_filter = f"{filter}" if filter else "No Filter"
+                astro_filter = f"{IR_filter}" if IR_filter else "No Filter"
                 stackeds += stacks
                 if exp_time:
                     total_time_exp += stacks * parse_exposure(f"{exp_time}s")
@@ -789,7 +727,6 @@ class ExploreApp:
                     has_selection = len(selected_sessions) > 0
                     restore_button.enabled = has_selection
                     archive_button.enabled = has_selection
-                    delete_button.enabled = has_selection
                     delete_button.enabled = has_selection
 
                 def toggle_select_all(state: bool):
@@ -1081,7 +1018,7 @@ class ExploreApp:
             file_path = row[1]
             exp_time = row[2]
             gainDB = row[3]
-            filter  = row[4]
+            IR_filter  = row[4]
             stacks = row[5]
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
             session_date = row[7]
@@ -1124,7 +1061,7 @@ class ExploreApp:
             exp = f"️{exp_time}s" if exp_time is not None else "N/A"
             gain = gainDB if gainDB is not None else "N/A"
 
-            details.append(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}")
+            details.append(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {IR_filter}")
             if minTemp and maxTemp:
                 details.append(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}")
             bad_icon = '❗ ' if int(stacks) < 50 else ''
@@ -1159,7 +1096,7 @@ class ExploreApp:
                 exp_value = parse_exposure(exp) if exp != "N/A" else 0
                 gain = gainDB if gainDB is not None else "N/A"
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}").classes('text-yellow-700')
+                    ui.item(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {IR_filter}").classes('text-yellow-700')
 
                     if minTemp and maxTemp:
                         ui.item(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}").classes('text-sky-700')
@@ -1576,7 +1513,7 @@ class ExploreApp:
             file_path = row[1]
             exp_time = row[2]
             gainDB = row[3]
-            filter  = row[4]
+            IR_filter  = row[4]
             stacks = row[5]
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
             session_date = row[7]
@@ -1588,7 +1525,7 @@ class ExploreApp:
             exp = f"{exp_time}s" if exp_time is not None else "N/A"
             exp_value = parse_exposure(exp) if exp != "N/A" else 0
             gain = gainDB if gainDB is not None else "N/A"
-            astro_filter = f"{filter}" if filter else "No Filter"
+            astro_filter = f"{IR_filter}" if IR_filter else "No Filter"
 
             info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
             details_session = f"⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}"

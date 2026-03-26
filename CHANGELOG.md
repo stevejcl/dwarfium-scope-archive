@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.0.1] - 2026-27-03
+
+### BugFix# 
+   Copilot correction
+
 ## [V3.0.0] - 2026-26-03
 
 ### BugFix# 
