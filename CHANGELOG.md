@@ -1,5 +1,20 @@
 # Changelog
 
+## [V3.0.0 beta] - 2026-26-03
+
+### BugFix# 
+ Many Corrections in DB function and Interface
+ Filter on Explorer has been improved
+ 
+### Add 
+ Help Sytem Page : To Be continued
+ Setting Pages
+ Add Gallery in explorer Page
+ MOSAIC Correction / Megastack pages
+ Stellar Studio Page:
+    File saving is working
+    Database not ready for the moment
+
 ## [V2.2.8] - 2025-12-12
 
 ### Compatibility with MacOs 14+

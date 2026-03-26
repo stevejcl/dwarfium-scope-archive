@@ -10,10 +10,10 @@ from components.astro_object_associate import show_assign_dialog
 from components.win_log import WinLog
 
 @ui.page('/Catalog/')
-def dwarf_catalog():
+async def dwarf_catalog():
 
     menu("Catalog Edition")
-
+    await ui.context.client.connected()
     # Launch the GUI with the parameters
     ui.context.catalog_app =  CatalogApp(DB_NAME)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

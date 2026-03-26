@@ -16,10 +16,10 @@ from components.win_log import WinLog
 from components.menu import menu, setStyle
 
 @ui.page('/Backup')
-def backup_settings(BackupId:int = None):
+async def backup_settings(BackupId:int = None):
 
     menu("Backup Backup Configuration")
-
+    await ui.context.client.connected()
     # Launch the GUI
     ConfigApp(DB_NAME, BackupId=BackupId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

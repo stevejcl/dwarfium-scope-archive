@@ -17,10 +17,10 @@ from components.menu import menu, setStyle
 
 
 @ui.page('/Dwarf')
-def dwarf_settings(DwarfId:int = None):
+async def dwarf_settings(DwarfId:int = None):
 
     menu("Dwarf Configuration")
-
+    await ui.context.client.connected()
     # Launch the GUI
     ConfigApp(DB_NAME, DwarfId=DwarfId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

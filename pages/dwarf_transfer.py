@@ -1,5 +1,5 @@
 import webview
-from nicegui import ui, app, run
+from nicegui import ui, app, run, Client
 
 import os
 import shutil
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from components.menu import menu
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
-from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload
+from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
 from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
@@ -18,17 +18,36 @@ from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backu
 from components.win_log import WinLog
 
 @ui.page('/Transfer')
-def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive', BackupId:int = None, back_url:str = None):
-
+async def transfer_page(
+    client: Client,
+    DwarfId: int = None,
+    session: str = None,
+    mode: str = 'Archive',
+    BackupId: int = None,
+    back_url: str = None,
+    src_override: str = None,   # pre-filled source dir (e.g. repaired Mosaic temp dir)
+    src_root: str = None,       # browsing constraint root (must be inside backup dir)
+):
     menu("Session Transfer")
-
+    await ui.context.client.connected()
     # Launch the GUI
-    ui.context.transfert_app =  TransferApp(DB_NAME, DwarfId=DwarfId, Session=session, Mode=mode, BackupId=BackupId, BackUrl=back_url)
+    ui.context.transfert_app = TransferApp(
+        client,
+        DB_NAME,
+        DwarfId=DwarfId,
+        Session=session,
+        Mode=mode,
+        BackupId=BackupId,
+        BackUrl=back_url,
+        SrcOverride=src_override,
+        SrcRoot=src_root,
+    )
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class TransferApp:
-    def __init__(self, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None):
-        self.mode = Mode  # "Archive" Default mode
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None):
+        self.client = client
+        self.mode = Mode  # "Archive" | "Restore" | "Repair" | "Merge"
         self.database = database
         self.dwarfs = []
 
@@ -41,6 +60,10 @@ class TransferApp:
         self.BackupId_Init = BackupId
         self.session = Session
         self.BackUrl = BackUrl
+
+        # Repair mode: pre-filled source and browsing constraint
+        self.src_override = SrcOverride  # e.g. "D:\Backup\temp_mosaic\SESSION_NAME"
+        self.src_root     = SrcRoot      # e.g. "D:\Backup" — folder picker stays inside here
 
         self.src_dir = '' # 'G:\\Astronomy\\DWARF_RAW_WIDE_C 20_EXP_15_GAIN_80_2025-04-28-04-21-24-416'
         self.dest_dir = '' # 'T:\\DWARFLAB_2\\DATA4\\DATA_OBJECTS\\NGC7000_North_American_Nebula'
@@ -70,7 +93,28 @@ class TransferApp:
             self.EndScanningMessage = "End of Scanning Backup drive"
             self.StartBackup.set_text("Start Backup")
             self.CancelBackup.set_text("Cancel Backup")
-        else:
+
+        elif self.mode == "Repair" or self.mode == "Merge":
+            # Repair: copy from temp/repaired dir → back to Dwarf (USB or FTP)
+            if self.mode == "Repair":
+                self.SourceDirectory.set_text("Source: Repaired Mosaic Temp Directory")
+            else:
+                self.SourceDirectory.set_text("Source: Merged Mosaic Temp Directory")
+            if self.transfert_mode_select.value == "FTP":
+                self.DestinationDirectory.set_text("Destination: Dwarf Drive (FTP)")
+            else:
+                self.DestinationDirectory.set_text("Destination: Dwarf Drive")
+            self.SourceMainDir = self.src_root or "the backup directory!"
+            self.DestinationMainDir = "the Dwarf directory!"
+            self.ScanningMessage = "🔍 Scanning Dwarf drive, please wait..."
+            self.EndScanningMessage = "End of Scanning Dwarf drive"
+            if self.mode == "Repair":
+                self.StartBackup.set_text("Start Repair Mosaic Transfer")
+            else:
+                self.StartBackup.set_text("Start Merge Mosaic Transfer")
+            self.CancelBackup.set_text("Cancel Transfer")
+
+        else:  # Restore
             if self.transfert_mode_select.value == "FTP":
                 self.SourceDirectory.set_text("Source: Backup Drive")
                 self.DestinationDirectory.set_text("Destination: Dwarf Drive (FTP)")
@@ -85,6 +129,8 @@ class TransferApp:
             self.CancelBackup.set_text("Cancel Restore")
 
     def switch_mode(self):
+        if self.mode == "Repair" or self.mode == "Merge":
+            return  # Repair / Merge mode direction is fixed, toggle is hidden
         self.mode = self.mode_toggle.value
         print(self.mode)
 
@@ -113,16 +159,27 @@ class TransferApp:
             with ui.grid(columns=nbcol).classes("items-center"):
                 if self.BackUrl:
                     ui.button("🔙 Back", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes("justify-self-start")
-                self.mode_toggle = ui.toggle(['Archive', 'Restore'], value=self.mode, on_change=self.switch_mode).classes("col-span-1 justify-self-center")
+                # In Repair / Merge mode the direction is fixed — hide the Archive/Restore toggle
+                if self.mode != "Repair" and self.mode != "Merge" :
+                    self.mode_toggle = ui.toggle(['Archive', 'Restore'], value=self.mode, on_change=self.switch_mode).classes("col-span-1 justify-self-center")
+                elif self.mode == "Repair":
+                    self.mode_toggle = None
+                    ui.label("🔧 Repair Transfer (Temp → Dwarf)").classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
+                else:
+                    self.mode_toggle = None
+                    ui.label("🔧 Merge Transfer (Temp → Dwarf)").classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
 
             with ui.grid(columns=2):
                 with ui.column():
                     ui.label("Select Dwarf:").classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
                     self.usb_status_label = ui.label("").classes('pb-2')
-                    self.ftp_spinner = ui.spinner(size="2em")
-                    self.ftp_status_label = ui.label("").classes('pb-6')
-
+                    with ui.element('div').classes('pt-0 pb-0 relative w-fit h-fit'):
+                        self.ftp_status_label = ui.label("").classes('pt-0 pb-2')
+                        self.ftp_spinner = (
+                            ui.spinner(size="2em")
+                            .style('position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10')
+                        )
                 with ui.column():
                     ui.label("Backup Drive:").classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
@@ -248,13 +305,52 @@ class TransferApp:
             if self.mode == "Archive":
                 self.input_src_dir.set_options([], value = "")
                 self.src_main_dir = ""
-            else:
+            elif self.mode == "Repair" or self.mode == "Merge":
+                # Keep source pre-filled; reset destination (Dwarf side)
+                self.input_dest_dir.set_options([], value="")
+                self.dest_main_dir = ""
+            else:  # Restore
                 self.input_dest_dir.set_options([], value = "")
                 self.dest_main_dir = ""
 
             await self.check_status_dwarf()
 
     def update_dwarf_directory(self):
+        if self.mode == "Repair" or self.mode == "Merge":
+            # Source: pre-filled with the repaired temp dir, constrained to src_root
+            src = self.src_override or ""
+            root = self.src_root or (os.path.dirname(src) if src else "")
+            options = [src] if src else []
+            self.input_src_dir.set_options(options, value=src)
+            self.src_main_dir = root  # folder picker stays inside backup dir
+
+            # Destination: same logic as Restore — point to Dwarf session dir
+            if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
+                initial_ftp_dir = None
+                self.ftp_dwarf_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
+                if self.ftp_dwarf_dir:
+                    if self.DwarfId_Init == self.DwarfId and self.session:
+                        session_name = os.path.basename(self.session)
+                        if session_name.startswith("RESTACKED"):
+                            initial_ftp_dir = "/".join([self.ftp_dwarf_dir, "RESTACKED"])
+                    if initial_ftp_dir:
+                        self.input_dest_dir.set_options([self.ftp_dwarf_dir, initial_ftp_dir], value=initial_ftp_dir)
+                    else:
+                        self.input_dest_dir.set_options([self.ftp_dwarf_dir], value=self.ftp_dwarf_dir)
+                    self.dest_main_dir = self.ftp_dwarf_dir
+            else:
+                initial_dir = None
+                if self.DwarfId_Init == self.DwarfId and self.session:
+                    session_name = os.path.basename(self.session)
+                    if session_name.startswith("RESTACKED"):
+                        initial_dir = os.path.join(self.dwarf_astroDir, "RESTACKED")
+                if initial_dir:
+                    self.input_dest_dir.set_options([self.dwarf_astroDir, initial_dir], value=initial_dir)
+                else:
+                    self.input_dest_dir.set_options([self.dwarf_astroDir], value=self.dwarf_astroDir)
+                self.dest_main_dir = self.dwarf_astroDir
+            return
+
         if self.mode == "Archive":
             if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
                 if self.DwarfId_Init == self.DwarfId and self.session:
@@ -411,13 +507,33 @@ class TransferApp:
            else:
                self.backup_status_label.text = "❌ Path not detected."
 
-    def open_source_select(self):
-        ui.run_javascript(f"document.querySelector('[aria-label=\"{self.input_src_dir.label}\"]').click();")
+    async def open_source_select(self):
+        await self.client.run_javascript(f"document.querySelector('[aria-label=\"{self.input_src_dir.label}\"]').click();")
 
-    def open_destination_select(self):
-        ui.run_javascript(f"document.querySelector('[aria-label=\"{self.input_dest_dir.label}\"]').click();")
+    async def open_destination_select(self):
+        await self.client.run_javascript(f"document.querySelector('[aria-label=\"{self.input_dest_dir.label}\"]').click();")
 
     async def select_source_folder(self):
+        # Repair mode: local folder picker constrained to src_root (backup directory)
+        if self.mode == "Repair" or self.mode == "Merge":
+            if hasattr(webview, 'FileDialog'):
+                folder_mode = webview.FileDialog.FOLDER
+            else:
+                folder_mode = webview.FOLDER_DIALOG
+
+            start_dir = os.path.abspath(self.input_src_dir.value or self.src_root or "")
+            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False, directory=start_dir)
+
+            if folder:
+                selected = folder[0]
+                constraint = self.src_root or ""
+                if constraint and not selected.startswith(constraint):
+                    ui.notify(f"❌ Access denied: source must be inside the backup directory ({constraint})", type="negative")
+                else:
+                    folder_norm = os.path.normpath(selected)
+                    self.input_src_dir.set_options([folder_norm], value=folder_norm)
+            return
+
         if self.mode == "Archive" and self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
             try:
                 if self.DwarfId_Init == self.DwarfId and self.session:
@@ -446,7 +562,7 @@ class TransferApp:
                 if self.ftp_dwarf_dir and self.ftp_dwarf_dir not in subdirs:
                     subdirs.append(self.ftp_dwarf_dir)
                 self.input_src_dir.set_options(subdirs, value = selected_value)
-                self.open_source_select()
+                await self.open_source_select()
 
         else:
 
@@ -469,8 +585,8 @@ class TransferApp:
                 folder = os.path.normpath(folder[0])
                 self.input_src_dir.set_options([folder], value = folder)
 
-    def resize_input(self):
-        ui.run_javascript(f'''
+    async def resize_input(self):
+        await self.client.run_javascript(f'''
         const input = document.querySelector('input');
         input.style.width = ((input.value.length + 1) * 8) + 'px';
         ''')
@@ -483,7 +599,7 @@ class TransferApp:
                 if self.ftp_dwarf_dir and self.ftp_dwarf_dir not in subdirs:
                     subdirs.append(self.ftp_dwarf_dir)
                 self.input_dest_dir.set_options(subdirs, value = self.ftp_dwarf_dir)
-                self.open_destination_select()
+                await self.open_destination_select()
 
         else:
 
@@ -524,7 +640,7 @@ class TransferApp:
             self.progress_label.set_text("Select a Destination Directory.")
             return
 
-        if self.mode == "Restore" and self.transfert_mode_select.value == "FTP":
+        if self.mode != "Archive" and self.transfert_mode_select.value == "FTP":
             if int(self.dwarf_type) != 1: #only D2 is not read-only
                 self.notify_me.refresh("FTP is read-only: Restore not allowed.")
                 self.progress_label.set_text("FTP is read-only.")
@@ -597,6 +713,16 @@ class TransferApp:
             self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files...")
         ui.notify("Starting...")
 
+        if self.mode == "Repair":
+            transfer_mode = self.transfert_mode_select.value
+            use_ftp = transfer_mode == "FTP"
+            mode_use_ssh = True if use_ftp else False
+
+            if mode_use_ssh:  
+                await sftp_clean_subdir_files(self.dwarf_ip, dest_path)
+            else:
+                await run.io_bound(self._clean_dwarf_dest_subdir_files, dest_path)
+
         #print ( list_files)
         #result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
         result = await self.copy_with_progress_async(list_files, self.progress, self.cancel_btn)
@@ -630,7 +756,17 @@ class TransferApp:
                             session_name = os.path.basename(dest_path)
                             dir_parent_session = os.path.dirname(dest_path)
                             dir_backup_session = dest_path
-                    else:
+                    elif self.mode == "Repair" or self.mode == "Merge":
+                        # Source is the repaired temp dir; dest is the Dwarf dir.
+                        # Sync only the Dwarf local dir (not a backup scan — repair
+                        # does not change the backup drive content).
+                        if isFullBackup:
+                            dir_parent_session = dest_path
+                        else:
+                            session_name = os.path.basename(dest_path)
+                            dir_parent_session = os.path.dirname(dest_path)
+                            dir_backup_session = ""   # no backup-side scan for Repair
+                    else:  # Restore
                         if isFullBackup:
                             dir_parent_session = src_dir
                         else: 
@@ -656,7 +792,13 @@ class TransferApp:
                     print(local_Dwarf_session)
 
                     total_dwarf, deleted_dwarf = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
-                    total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
+
+                    # In Repair mode the backup drive is unchanged — skip backup scan
+                    if self.mode != "Repair" and self.mode != "Merge" and dir_backup_session is not None:
+                        total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
+                        ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+                    else:
+                        total_backup, deleted_backup = 0, 0
 
                     spinner.visible = False
                     label.text = self.EndScanningMessage
@@ -730,6 +872,26 @@ class TransferApp:
                hash.update(chunk)
         return hash.hexdigest()
 
+    def _clean_dwarf_dest_subdir_files(self, dest_dir: str) -> None:
+        dest = Path(dest_dir)
+        if not dest.exists():
+            return
+        for subdir in dest.iterdir():
+            if subdir.is_dir():
+                for item in subdir.iterdir():
+                    try:
+                        if item.is_file():
+                            item.unlink()
+                        elif item.is_dir():
+                            for f in item.iterdir():
+                                if f.is_file():
+                                    try:
+                                        f.unlink()
+                                    except Exception as e:
+                                        print(f"Could not delete {f}: {e}")
+                    except Exception as e:
+                        print(f"Could not delete {item}: {e}")
+
     async def copy_with_progress_async(self, all_files, progress_bar, cancel_button):
         self.cancel_backup = False
         verified_files = 0
@@ -792,7 +954,10 @@ class TransferApp:
                 self.notify_me.refresh("⚠️ Backup incomplete due to verification failure.")
 
         except Exception as e:
-            error_msg = f"❌ Failed to copy {src_file} → {dest_file}: {e}"
+            if isinstance(e, OSError) and getattr(e, 'winerror', None) == 112:
+                error_msg = f"❌ Disk full, failed to copy {src_file} → {dest_file}: {e}"
+            else:
+                error_msg = f"❌ Failed to copy {src_file} → {dest_file}: {e}"
             self.notify_me.refresh(error_msg)
             traceback.print_exc()
             progress_bar.value = 0
@@ -811,7 +976,21 @@ class TransferApp:
         return result
 
     def get_explore_url(self):
-        if self.BackupId_Init:
+        if self.BackUrl == "/Mosaic":
+            explore_url = f"{self.BackUrl}?"
+            explore_url_data = ""
+            if self.DwarfId:
+                explore_url_data = f"DwarfId={self.DwarfId}"
+            if self.BackupDriveId:
+                if explore_url_data:
+                    explore_url_data = explore_url_data + "&"
+                
+                explore_url_data = explore_url_data + f"BackupId={self.BackupDriveId}"
+            if explore_url_data:
+                explore_url = explore_url + explore_url_data + f"&Mode={self.mode}"
+            else:
+                explore_url = explore_url + f"Mode={self.mode}"
+        elif self.BackupId_Init:
             back_url = f"/Backup?BackupId="
             if self.DwarfId:
                 explore_url = f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={self.DwarfId}&mode=backup&back_url={back_url}"

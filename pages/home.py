@@ -13,7 +13,9 @@ from api.image_preview import set_base_folder, build_preview_url
 from components.menu import menu
 
 @ui.page('/')
-def home_page():
+async def home_page():
+
+    await ui.context.client.connected()
 
     ON_AIR = app.storage.general.get('ON_AIR', False)
     title = "Dwarfium Scope Archive"
@@ -82,28 +84,29 @@ class HomeApp:
             if os.path.exists(full_path):
                 image_data.append({
                     "url": url_path,
-                    "object_name": object_name if object_name else "Unknown Object",
-                    "dwarf_name": dwarf_name if dwarf_name else "Unknown Device",
-                    "session_date": show_date_session(session_date),
+                    "object_name": f"🛰️ {object_name}" if object_name else "Unknown Object",
+                    "dwarf_name": f"🔭 {dwarf_name}" if dwarf_name else "Unknown Device",
+                    "session_date": f"📅 {show_date_session(session_date)}",
                     "file_path": full_path,
                     "base_folder": base_folder
                 })
         close_db(self.conn)
 
         # UI - Slideshow
+        self.first_image = True
         self.current_index = 0  # Index for slideshow
 
         with ui.column().classes("w-full").classes("items-center"):
-            ui.label("⭐ My Favorite images ⭐ ").classes("text-center mt-2 text-lg font-semibold")
+            ui.label("⭐ My Favorite images ⭐ ").classes("text-center mt-0 text-lg font-semibold")
             if image_data:
-                slideshow_image = ui.image(image_data[self.current_index]['url']).classes("w-full h-auto max-w-screen-lg rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
+                slideshow_image = ui.image("").classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
                 image_info = ui.label("").classes("text-center mt-2 text-lg font-semibold")
                 image_detail = ui.label("").classes("text-center mt-2 text-md")
 
                 def show_image():
                     # Crossfade effect
                     slideshow_image.classes('opacity-5').update()
-                    ui.timer(0.2, lambda: update_image())
+                    ui.timer(0.2, lambda: update_image(), once=True)
 
                 def update_image():
                     set_base_folder(image_data[self.current_index]['base_folder'])
@@ -112,9 +115,9 @@ class HomeApp:
 
                     # Update image info
                     info_text = (
-                        f"Object: {image_data[self.current_index]['object_name']} | "
-                        f"Taken on {image_data[self.current_index]['dwarf_name']} | "
-                        f"Date: {image_data[self.current_index]['session_date']}"
+                        f"{image_data[self.current_index]['object_name']} "
+                        f"{image_data[self.current_index]['dwarf_name']} "
+                        f"{image_data[self.current_index]['session_date']}"
                     )
                     image_info.text = info_text
                     if not self.ON_AIR:
@@ -123,10 +126,14 @@ class HomeApp:
                             image_detail.on(
                                 'click', 
                                 lambda: self.open_folder(os.path.dirname(image_data[self.current_index]['file_path']))
-                            ).classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
+                            ).classes("text-green-600 pl-4 pr-4 pb-2 cursor-pointer hover:underline")
                             self.image_detail_click_set = True
                 def next_image():
-                    self.current_index = (self.current_index + 1) % len(image_data)
+                    if self.first_image:
+                        self.current_index = (self.current_index) % len(image_data)
+                        self.first_image = False
+                    else:
+                        self.current_index = (self.current_index + 1) % len(image_data)
                     show_image()
 
                 def prev_image():
@@ -136,7 +143,7 @@ class HomeApp:
                 # Automatic slideshow with 5s interval
                 ui.timer(interval=10, callback=next_image)
 
-                with ui.row().classes("gap-4 mt-4"):
+                with ui.row().classes("gap-4 mb-2"):
                     ui.button("Previous", on_click=prev_image)
                     ui.button("Next", on_click=next_image)
             else:

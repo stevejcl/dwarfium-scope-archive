@@ -13,10 +13,10 @@ from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backu
 from components.win_log import WinLog
 
 @ui.page('/TransferUSB/')
-def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive'):
+async def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive'):
 
     menu("Session Transfer")
-
+    await ui.context.client.connected()
     # Launch the GUI
     ui.context.transfert_app =  TransferAppUSB(DB_NAME, DwarfId=DwarfId, Session=session, Mode=mode)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

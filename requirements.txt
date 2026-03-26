@@ -9,3 +9,4 @@ auto_stretch
 nicegui
 asyncssh
 requests
+portalocker

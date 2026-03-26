@@ -1,5 +1,5 @@
 import webview
-from nicegui import ui, run, app
+from nicegui import ui, run, app, Client
 
 import os
 
@@ -11,15 +11,16 @@ from api.dwarf_backup_mtp_handler import MTPManager
 from components.menu import menu
 
 @ui.page("/MtpDevice")
-def mtp_page():
+async def mtp_page(client: Client):
 
     menu("DWARF II MTP Device Manager")
-
+    await ui.context.client.connected()
     # Launch the GUI
-    TransferApp(DB_NAME)
+    TransferApp(client, DB_NAME)
 
 class TransferApp:
-    def __init__(self, database):
+    def __init__(self, client: Client, database):
+        self.client = client
         self.database = database
 
         self.destination_dir = "./MTP_Downloads"
@@ -89,12 +90,14 @@ class TransferApp:
                     else:
                         ui.label("No subdirectories found in Astronomy folder.")
 
-    def resize_input(self):
-        ui.run_javascript(f'''
-        const input = document.querySelector('input');
-        input.style.width = ((input.value.length + 1) * 8) + 'px';
-        ''')
-
+    async def resize_input(self):
+        await self.client.run_javascript('''
+            const input = document.querySelector('input');
+            if (input) {
+                input.style.width = ((input.value.length + 1) * 8) + 'px';
+           }
+    ''')
+    
     async def select_local_folder(self):
         """Open folder selection dialog."""
         if hasattr(webview, 'FileDialog'):

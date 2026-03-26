@@ -1,4 +1,4 @@
-# Dwarfium Scope Archive v2.1.0
+# Dwarfium Scope Archive v3.0.0
 
 This release contains pre-built zip archives for:
 

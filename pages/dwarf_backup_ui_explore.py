@@ -10,7 +10,7 @@ import json
 import shutil
 import re
 from glob import glob
-from nicegui import app, ui
+from nicegui import app, run, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
 from api.dwarf_backup_db_api import (
     get_dwarf_Names, get_dwarf_detail, get_Objects_dwarf, get_countObjects_dwarf, get_ObjectSelect_dwarf,
@@ -23,7 +23,7 @@ from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
     get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files,
     hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure, get_total_mosaic_exposure, format_seconds_hms, 
-    preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure
+    preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure, cleanup_fits_files, restore_fits_files 
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
@@ -49,9 +49,11 @@ def safe_print(text):
         print(text.encode(sys.stdout.encoding, errors='replace').decode())
 
 @ui.page('/Explore/')
-def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None):
+async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None):
 
     menu("Explore")
+    await ui.context.client.connected()
+
     print(f" BackupDriveId: {BackupDriveId}")
     print(f" DwarfId: {DwarfId}")
     print(f" mode: {mode}")
@@ -80,11 +82,24 @@ class ExploreApp:
         self.selected_object_is_group = False
         self.preview_image_type = "jpg"
         self.astro_files = {}
+        self.slideshow_image_data = []
+        self.slideshow_timer_anim = None
+        self.slideshow_timer = None
+        self.show_gallery_icon = {}
         self.open_folder_icon = {}
         self.preview_icons = {}
         self.fullscreen_icon = {}
         self.backup_session_icon = {}
         self.delete_session_icon = {}
+        self.action_fits_files_icon = {}
+        self.cleanup_fits_files_action  = True
+        self.nb_fits_files = None
+        self.nb_failed_fits_files = None
+        self.nb_tiff_files = None
+        self.nb_failed_tiff_files = None
+        self.cancel_restore = False
+        self.result_on_dwarf = None
+        self.result_on_backupDrive = None
         self.image_dialog = {}
         self.selected_path = ""
         self.selected_DeleteEntryInfo = None
@@ -148,8 +163,18 @@ class ExploreApp:
 
                     self.count_label = ui.label("Total matching sessions: 0")
                     with ui.card().tight().classes('w-full'):
-                        self.object_filter = ui.input(placeholder='🔍 Filter objects...', on_change=lambda e: self.load_objects_ui() ).classes('m-4').props('clearable')
-                        self.object_list = ui.list().classes('h-150 overflow-y-auto')
+                        with ui.row().classes('items-center m-4 gap-2'):
+                            self.object_filter = (
+                                ui.input(placeholder='🔍 Filter objects...', on_change=lambda e: self.load_objects_ui() if e.value else self.load_objects())
+                                .classes('flex-1')
+                                .props('clearable')
+                            )
+                            self.refresh_btn = (
+                                ui.button(icon='refresh', on_click=self.load_objects)
+                                .props('flat round dense')
+                                .bind_visibility_from(self.object_filter, 'value', lambda v: bool(v))
+                            )
+                        self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
 
                 with ui.column().classes('w-full'):
                     # Create the dialog that simulates fullscreen
@@ -163,12 +188,16 @@ class ExploreApp:
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
 
                         with ui.row().classes('items-center gap-4') as self.icon_row:
+                            self.show_gallery_icon = ui.button("🖼️ Show Gallery", on_click=lambda: self.show_gallery()).classes('h-16')
+                            self.show_gallery_icon.visible = False
                             self.open_folder_icon = ui.button("🗁 Open", on_click=lambda: self.open_folder()).classes('h-16')
                             self.fullscreen_icon = ui.button("Show Fullscreen Image", on_click=self.show_fullscreen_image).classes('h-16')
                             self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
                             self.backup_session_icon.visible = False
                             self.delete_session_icon = ui.button("🗑️ Delete Session", on_click=lambda: self.delete_directory()).classes('h-16')
                             self.delete_session_icon.visible = False
+                            self.action_fits_files_icon = ui.button("", on_click=lambda: self.action_cleanup_restore_fits()).classes('h-16')
+                            self.action_fits_files_icon.visible = False
                             self.update_preview_icons()  # populate icons
 
                             #self.preview_icons['jpg'] = ui.image('image/image-jpg.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('JPG File')
@@ -183,11 +212,11 @@ class ExploreApp:
                     with ui.row().classes('w-full'):
                         with ui.card().tight().classes('w-full'):
                             # List on the side
-                            self.details_files = ui.list().classes('h-50 overflow-y-auto')
-                            self.details_preview = ui.list().classes('h-50 overflow-y-auto')
+                            self.details_files = ui.list().classes('w-full overflow-y-auto')
+                            self.details_preview = ui.list().classes('w-full overflow-y-auto')
 
                     with ui.row().classes('w-full'):
-                        self.preview_image = ui.image().classes('w-full h-auto').props('fit=contain')
+                        self.preview_image = ui.image().classes('w-full h-auto mb-4').props('fit=contain').on('click', self.show_fullscreen_image)
 
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
@@ -289,16 +318,16 @@ class ExploreApp:
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
             show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
             if show_only_duplicates:
-                self.objects = get_Objects_duplicate_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup)
-                count = get_countObjects_duplicate_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup)
+                self.objects = get_Objects_duplicate_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
+                count = get_countObjects_duplicate_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
             else: 
-                self.objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup)
-                count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup)
+                self.objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
+                count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
         else:
             show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
-            self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup)
-            count = get_countObjects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup)
+            self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
+            count = get_countObjects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
 
         self.count_label.text = f"Total matching sessions: {count}"
         print (f"Total matching sessions: {count}")
@@ -632,6 +661,7 @@ class ExploreApp:
         self.details_preview.clear()
         self.reset_preview_icons()
         self.file_list.set_options([])
+        self.all_files_rows = []
 
     def select_object(self, object_id, dso_id, is_group):
         dwarf_id = self.get_selected_dwarf_id()
@@ -641,15 +671,16 @@ class ExploreApp:
         if self.mode == "backup":
             show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
             if show_only_duplicates:
-                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
+                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value)
             else:
-                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
+                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value)
         else:
-            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group)
+            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value)
 
         # Store all rows globally so we can access them later
         self.all_files_rows = [list(row) for row in files]
         self.selected_DeleteEntryInfo = None
+        self.update_gallery_icon()
     
         if len(files) == 0:
      
@@ -712,7 +743,7 @@ class ExploreApp:
 
                 # display Values
                 session_date = show_short_date_session(session_date)
-                lens = "(W) " if ("_WIDE_") in session_dir else ""
+                lens = "(W)" if ("_WIDE_") in session_dir else ""
                 exp = f"{exp_time}s" if exp_time is not None else "N/A"
                 gain = gainDB if gainDB is not None else "N/A"
                 astro_filter = f"{filter}" if filter else "No Filter"
@@ -727,7 +758,7 @@ class ExploreApp:
                 target = init_target[:10]
                 description,_ =  get_name_object(descriptionDB)
                 # Building the details string with the star icon
-                label_text = f"{info_stack} with {dwarf_name} {lens}| {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks} | {description}"
+                label_text = f"{info_stack} with 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks} 🛰️ {description}"
 
                 # If label already exists (duplicate), append a small invisible suffix
                 count = 0
@@ -758,6 +789,7 @@ class ExploreApp:
                     has_selection = len(selected_sessions) > 0
                     restore_button.enabled = has_selection
                     archive_button.enabled = has_selection
+                    delete_button.enabled = has_selection
                     delete_button.enabled = has_selection
 
                 def toggle_select_all(state: bool):
@@ -858,6 +890,99 @@ class ExploreApp:
             ok_confirm_delete_session
         )
 
+    async def action_cleanup_restore_fits(self, directory=None):
+        if self.cleanup_fits_files_action:
+            await self.cleanup_fits(directory=None)
+        else:
+            await self.restore_fits(directory=None)
+
+    async def cleanup_fits(self, directory=None):
+        folder_path = directory or self.selected_path
+        if not folder_path:
+            ui.notify("No folder selected!", color="negative")
+            return
+
+        folder_path = os.path.normpath(folder_path)
+
+        if not os.path.exists(folder_path):
+            ui.notify(f"Folder does not exist:\n{folder_path}", color="negative")
+            return
+
+        async def ok_confirm_cleanup_fits():
+            ui.notify("Clean Up FITS files...")
+            try:
+                ui.notify(f"Running cleanup on Dwarf Dir: '{folder_path}'", color="positive")
+                deleted_count = await run.io_bound(cleanup_fits_files, folder_path)
+                if deleted_count > 1:
+                    ui.notify(f"{deleted_count} Fits Files on Dwarf have been deleted.", color="positive")
+                elif deleted_count == 1:
+                    ui.notify(f"One Fits File on Dwarf has been deleted.", color="positive")
+                else:
+                    ui.notify(f"No Fits Files on Dwarf have been deleted.", color="positive")
+
+            except Exception as e:
+                ui.notify(f"Error cleanup folder:\n{e}", color="negative")
+            finally:
+                self.load_objects()
+
+        # Ask for confirmation
+        await self.WinLog.show(
+            "Confirm FITS Cleanup on Dwarf",
+            f"⚠️ Are you sure you want to clean up FITS files on the Dwarf for this session?\n\n"
+            "All raw FITS files will be permanently removed.\n"
+            "The final stacked FITS file will be kept.\n\n",
+            ok_confirm_cleanup_fits
+        )
+
+    async def restore_fits(self, directory=None):
+        dwarf_folder_path = directory or self.selected_path
+        print(f"dwarf_folder_path: {dwarf_folder_path}")
+        print(f"path_result_on_backupDrive: {self.path_result_on_backupDrive}")
+        if not dwarf_folder_path:
+            ui.notify("No folder selected!", color="negative")
+            return
+
+        dwarf_folder_path = os.path.normpath(dwarf_folder_path)
+
+        if not os.path.exists(dwarf_folder_path):
+            ui.notify(f"Folder does not exist:\n{dwarf_folder_path}", color="negative")
+            return
+
+        if not self.path_result_on_backupDrive or not os.path.exists(self.path_result_on_backupDrive):
+            ui.notify(f"Folder does not exist:\n{self.path_result_on_backupDrive}", color="negative")
+            return
+
+        async def ok_confirm_restore_fits():
+            self.cancel_restore = False  # reset cancel flag
+
+            with ui.dialog().props('persistent') as progress_dialog, ui.card():
+                ui.label("Restoring FITS files...")
+                self.progress = ui.circular_progress(max=100, show_value=True)
+                with ui.row():
+                    self.cancel_button = ui.button("Cancel", on_click=lambda: setattr(self, "cancel_restore", True))
+
+            progress_dialog.open()
+            ui.notify("Restoring FITS files...")
+            try:
+                restored_count, skipped_count, total_fits_files = await run.io_bound(restore_fits_files, self.path_result_on_backupDrive, dwarf_folder_path, self, None)
+                if self.cancel_restore:
+                    ui.notify(f"Restore cancelled at {restored_count} restored on {total_fits_files} total files, {skipped_count} skipped", color="warning")
+                else:
+                    ui.notify(f"Restore completed ✅ {restored_count} restored on {total_fits_files} total files, {skipped_count} skipped", color="positive")
+
+            except Exception as e:
+                ui.notify(f"Error restoring files:\n{e}", color="negative")
+            finally:
+                progress_dialog.close()
+                self.load_objects()
+
+        # Ask for confirmation
+        await self.WinLog.show(
+            "Confirm FITS Restore on Dwarf",
+            f"⚠️ Are you sure you want to restore FITS files on the Dwarf for this session?\n\n",
+            ok_confirm_restore_fits
+        )
+
     def get_mosaic_panels(self, mosaic_dir: str) -> list[tuple[str, str]]:
         """Return list of (panel_name, stacked.jpg full path) for a mosaic directory."""
         panels = []
@@ -918,7 +1043,7 @@ class ExploreApp:
     def on_file_selected(self):
         selection_index = None
         selected_value = self.file_list.value
-        #safe_print(f"Selected value: {selected_value}")
+        safe_print(f"Selected value: {selected_value}")
         details = []
 
         if not selected_value or selected_value.startswith('Select a session'):
@@ -984,12 +1109,12 @@ class ExploreApp:
             set_base_folder(full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0])
             lens = "(Wide)" if ("_WIDE_") in session_dir else "(Tele)"
 
-            details_files_text = f"{star_icon}{info_stack} with {dwarf_name} {lens} on {show_date_session(session_date)}"
+            details_files_text = f"{star_icon}{info_stack} with 🔭 {dwarf_name} {lens} on 📅 {show_date_session(session_date)}"
 
             # details
 
             #details.append(f"Session: {session_dir}")
-            details.append(f"Dwarf Target: {init_target}")
+            details.append(f"🛰️ Dwarf Target: {init_target}")
 
             classified_text, descriptiondb = self.update_classified_label(astro_object_id, init_target, "", True)
             if classified_text:
@@ -997,17 +1122,16 @@ class ExploreApp:
             details.append(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}")
 
             lens = "Wide" if ("_WIDE_") in session_dir else "Tele"
-            exp = f"{exp_time}s" if exp_time is not None else "N/A"
+            exp = f"️{exp_time}s" if exp_time is not None else "N/A"
             gain = gainDB if gainDB is not None else "N/A"
 
-            details.append(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}")
+            details.append(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}")
             if minTemp and maxTemp:
                 details.append(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}")
             bad_icon = '❗ ' if int(stacks) < 50 else ''
-            details.append(f"Stacks: {bad_icon}{stacks}")
+            details.append(f"📊 Stacks: {bad_icon}{stacks}")
 
             self.astro_files = check_files(full_path)
-            self.update_preview_icons()
 
             with self.details_files:
                 label = ui.item_label(f"{details_files_text}").props('header').classes('text-bold').props('clickable').classes(f'cursor-pointer {self.get_hover_class()} transition-colors duration-200 rounded')
@@ -1022,7 +1146,7 @@ class ExploreApp:
                 # Add colored details
                 ui.item(f"Session: {session_dir}").classes('text-blue-800')
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"Dwarf Target: {init_target}").classes('text-green-600')
+                    ui.item(f"🛰️ Dwarf Target: {init_target}").classes('text-green-600')
                     if self.dso_catalog:
                         ui.button("🖼️ Identify Target", on_click=lambda: self.on_identify_target_click(DwarfData.from_row(row), descriptiondb))
 
@@ -1036,7 +1160,7 @@ class ExploreApp:
                 exp_value = parse_exposure(exp) if exp != "N/A" else 0
                 gain = gainDB if gainDB is not None else "N/A"
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}").classes('text-yellow-700')
+                    ui.item(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {filter}").classes('text-yellow-700')
 
                     if minTemp and maxTemp:
                         ui.item(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}").classes('text-sky-700')
@@ -1053,7 +1177,7 @@ class ExploreApp:
                         if fits_path and os.path.isfile(fits_path):
                             exposure_time = format_seconds_hms(get_total_exposure(fits_path))
 
-                ui.item(f"{stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
+                ui.item(f"📊 {stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
 
                 # add Mosaic Panel Info
                 #for data_detail in details:
@@ -1061,6 +1185,7 @@ class ExploreApp:
 
             self.preview_image_path = full_path
             self.update_preview(full_path)
+            self.update_preview_icons()
 
     def on_identify_target_click(self, dwarf_data: DwarfData, descriptiondb):
         #dwarf_data = DwarfData.from_row(row)
@@ -1174,10 +1299,10 @@ class ExploreApp:
         size_dir_mb = None
         size_kb = None
         size_mb = None
-        nb_fits_files = None
-        nb_failed_fits_files = None
-        nb_tiff_files = None
-        nb_failed_tiff_files = None
+        self.nb_fits_files = None
+        self.nb_failed_fits_files = None
+        self.nb_tiff_files = None
+        self.nb_failed_tiff_files = None
         restacked_session = False
         try:
             directory = os.path.dirname(self.preview_image_path)
@@ -1186,10 +1311,10 @@ class ExploreApp:
             size_dir_mb = size_dir_kb / 1024
             size_kb = os.path.getsize(self.preview_image_path) / 1024
             size_mb = size_kb / 1024
-            nb_fits_files = count_fits_files(directory)
-            nb_failed_fits_files = count_failed_fits_files(directory)
-            nb_tiff_files = count_tiff_files(directory)
-            nb_failed_tiff_files = count_failed_tiff_files(directory)
+            self.nb_fits_files = count_fits_files(directory)
+            self.nb_failed_fits_files = count_failed_fits_files(directory)
+            self.nb_tiff_files = count_tiff_files(directory)
+            self.nb_failed_tiff_files = count_failed_tiff_files(directory)
 
         except FileNotFoundError:
             print("File not found")
@@ -1201,23 +1326,23 @@ class ExploreApp:
             size_kb = None
             size_mb = None
 
-        if nb_fits_files is not None and nb_fits_files == 1:
+        if self.nb_fits_files is not None and self.nb_fits_files == 1:
             details_preview.append(f"Found one fits image on the disk")
-        if nb_fits_files is not None and nb_fits_files > 1:
-            details_preview.append(f"Found {nb_fits_files} fits images on the disk")
-        if nb_failed_fits_files is not None and nb_failed_fits_files == 1:
+        if self.nb_fits_files is not None and self.nb_fits_files > 1:
+            details_preview.append(f"Found {self.nb_fits_files} fits images on the disk")
+        if self.nb_failed_fits_files is not None and self.nb_failed_fits_files == 1:
             details_preview.append(f"Found one failed image on the disk")
-        if nb_failed_fits_files is not None and nb_failed_fits_files > 1:
-            details_preview.append(f"Found {nb_failed_fits_files} failed images on the disk")
+        if self.nb_failed_fits_files is not None and self.nb_failed_fits_files > 1:
+            details_preview.append(f"Found {self.nb_failed_fits_files} failed images on the disk")
 
-        if nb_tiff_files is not None and nb_tiff_files == 1:
+        if self.nb_tiff_files is not None and self.nb_tiff_files == 1:
             details_preview.append(f"Found one tiff image on the disk")
-        if nb_tiff_files is not None and nb_tiff_files > 1:
-            details_preview.append(f"Found {nb_tiff_files} tiff images on the disk")
-        if nb_failed_tiff_files is not None and nb_failed_tiff_files == 1:
+        if self.nb_tiff_files is not None and self.nb_tiff_files > 1:
+            details_preview.append(f"Found {self.nb_tiff_files} tiff images on the disk")
+        if self.nb_failed_tiff_files is not None and self.nb_failed_tiff_files == 1:
             details_preview.append(f"Found one failed image on the disk")
-        if nb_failed_tiff_files is not None and nb_failed_tiff_files > 1:
-            details_preview.append(f"Found {nb_failed_tiff_files} failed images on the disk")
+        if self.nb_failed_tiff_files is not None and self.nb_failed_tiff_files > 1:
+            details_preview.append(f"Found {self.nb_failed_tiff_files} failed images on the disk")
 
         if size_dir_kb is not None and size_dir_mb < 2:
             details_preview.append(f"Directory Size: {size_dir_kb:.2f} KB")
@@ -1271,11 +1396,13 @@ class ExploreApp:
                 for data_detail in details_preview:
                     ui.item(data_detail).classes('text-sm')
 
-            if not restacked_session and (nb_fits_files is None or nb_fits_files == 0):
+            if not restacked_session and (self.nb_fits_files is None or self.nb_fits_files == 0):
                 ui.item_label(f"No sub-exposure fits files were found on the disk").classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
             self.get_details_presence_label(self.preview_image_path, file_path)
 
     def get_details_presence_label(self, preview_image_path: str, file_path):
+        self.path_result_on_dwarf = None
+        self.path_result_on_backupDrive = None
         if preview_image_path:
             session_dir = os.path.basename(os.path.dirname(preview_image_path))
 
@@ -1293,6 +1420,7 @@ class ExploreApp:
                             .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
                         }
                     elif os.path.isdir(os.path.dirname(dwarf_full_path)):
+                        self.path_result_on_dwarf = os.path.dirname(dwarf_full_path)
                         return {
                             ui.item_label(f"Actually available on {result_on_Dwarf[1]}").classes("text-green-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold'),
                             ui.label(f"{os.path.dirname(dwarf_full_path)}") \
@@ -1313,7 +1441,9 @@ class ExploreApp:
                         "",
                         result_on_backupDrive[4]
                     )
-                    return { 
+                    if os.path.isdir(os.path.dirname(backup_full_path)):
+                        self.path_result_on_backupDrive = os.path.dirname(backup_full_path)
+                    return {
                         ui.item_label(f"Backup Available on:").classes("text-green-600").classes("pl-4 pr-4").props('header').classes('text-bold'),
                         ui.label(f"{os.path.dirname(backup_full_path)}") \
                         .on('click', lambda: self.open_folder(os.path.dirname(backup_full_path))) \
@@ -1322,15 +1452,32 @@ class ExploreApp:
         return ui.item_label("")
 
     def reset_preview_icons(self):
+        self.show_gallery_icon.disable()
+        self.show_gallery_icon.visible = False
         self.open_folder_icon.disable()
         self.fullscreen_icon.disable()
         self.backup_session_icon.disable()
+        self.backup_session_icon.visible = False
         self.delete_session_icon.disable()
+        self.delete_session_icon.visible = False
+        self.action_fits_files_icon.disable()
+        self.selected_path = ""
 
         # Delete old icons from UI
         for icon in self.preview_icons.values():
             icon.delete()
         self.preview_icons.clear()
+
+    def update_gallery_icon(self):
+        with self.icon_row:
+            if not self.show_gallery_icon:
+                self.show_gallery_icon = ui.button("🖼️ Show Gallery", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
+            elif len(self.all_files_rows) > 1 and not self.selected_path and self.get_slideshow_image_data():
+                self.show_gallery_icon.visible = True
+                self.show_gallery_icon.enable()
+            else:
+                self.show_gallery_icon.visible = False
+                self.show_gallery_icon.disable()
 
     def update_preview_icons(self):
         with self.icon_row:
@@ -1373,7 +1520,7 @@ class ExploreApp:
                 self.backup_session_icon.set_text("Backup Session")
                 self.backup_session_icon.visible = True
                 self.backup_session_icon.enable()
-            elif self.mode == "backup" and self.only_on_backup.value and self.selected_path:
+            elif self.mode == "backup" and self.BackupDriveId and self.only_on_backup.value and self.selected_path:
                 self.backup_session_icon.set_text("Restore Session")
                 self.backup_session_icon.visible = True
                 self.backup_session_icon.enable()
@@ -1390,33 +1537,232 @@ class ExploreApp:
                 self.delete_session_icon.visible = False
                 self.delete_session_icon.disable()
 
+            if not self.action_fits_files_icon:
+                self.action_fits_files_icon = ui.button("", on_click=lambda: self.cleanup_fits()).classes('h-16')
+            elif self.mode != "backup" and self.only_on_backup.value and self.selected_path and os.path.isdir(self.selected_path):
+                print(f"nb fits files: {self.nb_fits_files}")
+                print(f"nb_failed fits files: {self.nb_failed_fits_files}")
+                if (self.nb_fits_files and self.nb_fits_files > 0) or (self.nb_failed_fits_files and self.nb_failed_fits_files > 0):
+                    print(f"Clean UP FITS files")
+                    # FITS exist → allow cleanup
+                    self.cleanup_fits_files_action = True
+                    self.action_fits_files_icon.text = "🧹 Cleanup FITS"
+                    self.action_fits_files_icon.visible = True
+                    self.action_fits_files_icon.enable()
+                else:
+                    print(f"Restore UP FITS files")
+                    # No FITS → allow restore from backup
+                    self.cleanup_fits_files_action = False
+                    self.action_fits_files_icon.text = "♻️ Restore FITS"
+                    self.action_fits_files_icon.visible = True
+                    self.action_fits_files_icon.enable()
+            else:
+                self.action_fits_files_icon.visible = False
+                self.action_fits_files_icon.disable()
+
     def set_preview(self, path: str):
         if path.lower().endswith('.fits'):
             path = generate_fits_preview(path)
         return path
 
-    def get_backup_url(self):
-        ui.notify("Launch Backup Dwarf Data...")  # Simulate showing data
-        explore_url = None
-        if self.mode != "backup":
-            Dwarf_id = self.get_selected_dwarf_id()
-            if Dwarf_id != ALL_DWARFS:
-                if self.selected_path:
-                    session = os.path.basename(self.selected_path)
-                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&session={session}&mode=Archive&back_url=1"
-                else:
-                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&mode=Archive&back_url=1"
-        elif self.mode == "backup" and self.BackupDriveId:
-            print(f"session:{self.selected_path}")
-            print(f"session folder:{self.base_folder}")
-            Dwarf_id = self.get_selected_dwarf_id()
-            if Dwarf_id != ALL_DWARFS:
-                if self.selected_path:
-                    session = self.selected_path
-                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
-                else:
-                    explore_url = f"/Transfer?DwarfId={Dwarf_id}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+    def get_slideshow_image_data(self):
+
+        # --- slideshow ---
+        self.first_image = True
+        self.current_file_index = 0
+        self.slideshow_image_data = []
+
+        for idx, row in enumerate(self.all_files_rows):
+            # extract DB Values
+            file_path = row[1]
+            exp_time = row[2]
+            gainDB = row[3]
+            filter  = row[4]
+            stacks = row[5]
+            backup_path = row[6]  # location from BackupDrive or USB Dwarf
+            session_date = row[7]
+            session_dir = row[8]
+            dwarf_name = row[9]
+            descriptionDB = row[18]
+
+            lens = "(W) " if ("_WIDE_") in session_dir else ""
+            exp = f"{exp_time}s" if exp_time is not None else "N/A"
+            exp_value = parse_exposure(exp) if exp != "N/A" else 0
+            gain = gainDB if gainDB is not None else "N/A"
+            astro_filter = f"{filter}" if filter else "No Filter"
+
+            info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+            details_session = f"⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}"
+
+            full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
+            base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
+            object_name,_ =  get_name_object(descriptionDB)
+
+            url_path = build_preview_url(file_path)
+            if os.path.exists(full_path):
+                self.slideshow_image_data.append({
+                    "url": url_path,
+                    "object_name": object_name or "Unknown Object",
+                    "dwarf_name": dwarf_name or "Unknown Device",
+                    "session_date": show_date_session(session_date),
+                    "type_session": info_stack,
+                    "details_session": details_session,
+                    "file_path": full_path,
+                    "base_folder": base_folder,
+                    "row_index": idx,
+                })
+
+        print (f"slideshow found {len(self.slideshow_image_data)} images")
+
+        if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
+            return False
         else:
-            explore_url = None
+            return True
+
+    def show_gallery(self):
+
+        if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
+            return False
+
+        # --- Stop previous timers ---
+        if getattr(self, "slideshow_timer", None):
+            self.slideshow_timer.cancel()
+            self.slideshow_timer = None
+        if getattr(self, "slideshow_timer_anim", None):
+            self.slideshow_timer_anim.cancel()
+            self.slideshow_timer_anim = None
+        
+        with ui.dialog() as dialog:
+            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
+                with ui.row().classes('w-full justify-center'):
+                    ui.label('🧩 Astro Gallery').classes("text-center mt-2 text-lg font-semibold")
+                    ui.button("Close", on_click=dialog.close).classes("mt-4 ml-auto")
+
+                with ui.column().classes("w-full").classes("items-center"):
+#                    ui.label("⭐ Astro Gallery ⭐").classes("text-center text-lg font-semibold")
+
+                    if self.slideshow_image_data:
+                        slideshow_image = ui.image("") \
+                            .classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
+
+                        image_info = ui.label("").classes("text-center mt-2 text-sm")
+                        image_detail = ui.label("").classes("text-center text-xs text-gray-400")
+
+                        def show_image():
+                            # Crossfade effect
+                            slideshow_image.classes('opacity-5').update()
+                            self.slideshow_timer_anim = ui.timer(0.2, lambda: update_image(), once=True)
+
+                        def update_image():
+                            print(f"Update Image: n°{self.current_file_index}")
+                            set_base_folder(self.slideshow_image_data[self.current_file_index]['base_folder'])
+                            slideshow_image.source = self.slideshow_image_data[self.current_file_index]['url']
+                            slideshow_image.classes('opacity-95').update()
+
+                            info_text = (
+                                f"🛰️ {self.slideshow_image_data[self.current_file_index]['object_name']} "
+                                f"🔭 {self.slideshow_image_data[self.current_file_index]['type_session']} on {self.slideshow_image_data[self.current_file_index]['dwarf_name']} "
+                                f"{self.slideshow_image_data[self.current_file_index]['details_session']} "
+                                f"📅 {self.slideshow_image_data[self.current_file_index]['session_date']}"
+                            )
+                            image_info.text = info_text
+
+                            image_detail.text = f"{self.slideshow_image_data[self.current_file_index]['file_path']}"
+
+                        def reaactive_timer():
+                            if self.slideshow_timer:
+                                self.slideshow_timer.cancel(with_current_invocation=True)
+                            print("reactive timer")
+                            self.slideshow_timer = ui.timer(interval=10, callback=next_image)
+
+                        def next_image():
+                            print(f"next_image: n°{self.current_file_index}")
+                            if self.first_image:
+                                self.current_file_index = (self.current_file_index) % len(self.slideshow_image_data)
+                                self.first_image = False
+                            else:
+                                self.current_file_index = (self.current_file_index + 1) % len(self.slideshow_image_data)
+                            show_image()
+
+                        def next_image_click():
+                            reaactive_timer()
+                            next_image()
+
+                        def prev_image():
+                            self.current_file_index = (self.current_file_index - 1) % len(self.slideshow_image_data)
+                            show_image()
+
+                        def prev_image_click():
+                            reaactive_timer()
+                            prev_image()
+
+                        def select_from_gallery():
+                            current = self.slideshow_image_data[self.current_file_index]
+                            row_index = current["row_index"]
+
+                            print(f"select from gallery index: {row_index}")
+                            if self.all_files_rows: 
+                                options = list(self.file_list.options)
+                                self.file_list.value = options[row_index+1]
+                                dialog.close()
+
+                        # Controls
+                        with ui.row().classes("gap-4 mt-2 mb-4"):
+                            ui.button("⬅ Previous", on_click=prev_image_click)
+                            ui.button("Select", on_click=select_from_gallery)
+                            ui.button("Next ➡", on_click=next_image_click)
+
+                        # Automatic slideshow with 5s interval
+                        self.slideshow_timer = ui.timer(interval=10, callback=next_image)
+
+                    else:
+                        ui.label("No images found.")
+
+            # Stop timer when dialog closes
+            def on_close():
+                print("TIMER CLOSE")
+                if self.slideshow_timer:
+                    self.slideshow_timer.cancel()
+                    self.slideshow_timer = None
+
+                if self.slideshow_timer_anim:
+                    self.slideshow_timer_anim.cancel()
+                    self.slideshow_timer_anim = None
+
+            dialog.on('hide', on_close)
+
+        dialog.open()
+
+    def get_backup_url(self):
+        ui.notify("Launch Backup Dwarf Data...")
+        explore_url = ""
+        if self.mode != "backup":
+            dwarf_id = self.get_selected_dwarf_id()
+
+            if dwarf_id == ALL_DWARFS:
+                ui.notify("Please select a Dwarf first", color="warning")
+
+            elif self.selected_path:
+                session = os.path.basename(self.selected_path)
+                explore_url =  f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Archive&back_url=1"
+            else:
+                explore_url =  f"/Transfer?DwarfId={dwarf_id}&mode=Archive&back_url=1"
+
+        elif self.mode == "backup":
+            if not self.BackupDriveId:
+                ui.notify("No backup drive selected", color="warning")
+
+            else:
+                dwarf_id = self.get_selected_dwarf_id()
+
+                if dwarf_id == ALL_DWARFS:
+                    ui.notify("Please select a Dwarf first", color="warning")
+
+                elif self.selected_path:
+                    session = self.selected_path
+                    explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+                else:
+                    explore_url = f"/Transfer?DwarfId={dwarf_id}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+
         print(explore_url)
         return explore_url

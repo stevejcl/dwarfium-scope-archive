@@ -326,10 +326,19 @@ def migrate_v2(conn):
         #    commit_db(conn)
         #    return True
 
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB: {e}")
+        return []
+
+def migrate_v3(conn):
+    try:
+        print("Migrating Database to V3...")
+        cursor = conn.cursor()
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ManualSession (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_name TEXT NOT NULL
+                session_name TEXT NOT NULL,
                 session_type TEXT,
                 jpeg_path TEXT,
                 modification_time INTEGER,
@@ -340,7 +349,8 @@ def migrate_v2(conn):
                 ra TEXT,
                 exp_time TEXT,
                 filter TEXT,
-                temp INTEGER,
+                maxTemp INTEGER,
+                minTemp INTEGER,
                 stacked_png_path TEXT,
                 stacked_fits_path TEXT,
                 stacked_fits_md5 TEXT
@@ -369,18 +379,17 @@ def migrate_v2(conn):
             )
         """)
 
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS LinkSession (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT,
-                dso_id INTEGER REFERENCES DsoCatalog(id),
-                dec TEXT,
-                ra TEXT,
-                is_group BOOLEAN DEFAULT 0
-            )
-        """)
+        #cursor.execute("""
+        #    CREATE TABLE IF NOT EXISTS LinkSession (
+        #        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #        name TEXT NOT NULL,
+        #        description TEXT,
+        #        dso_id INTEGER REFERENCES DsoCatalog(id),
+        #        dec TEXT,
+        #        ra TEXT,
+        #        is_group BOOLEAN DEFAULT 0
+        #    )
+        #""")
 
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB: {e}")
@@ -389,7 +398,8 @@ def migrate_v2(conn):
 
 MIGRATIONS = {
     1: migrate_v1,
-    2: migrate_v2
+    2: migrate_v2,
+    3: migrate_v3
     # Add more later...
 }
 

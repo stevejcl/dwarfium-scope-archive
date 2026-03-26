@@ -1,6 +1,7 @@
 import posixpath
 import socket
 import logging
+import stat
 from contextlib import asynccontextmanager
 import asyncssh
 # Encoding changed to UTF-8
@@ -61,3 +62,38 @@ async def async_sftp_upload(ip_address, remote_file_path, local_file_path, creat
             except Exception as e:
                 log.error(f"SSH/SFTP async_sftp_upload failed: {e}")
                 raise
+
+async def sftp_clean_subdir_files(ip_address: str, remote_dest_dir: str) -> None:
+    """For Repair mode (Dwarf 2 SFTP): delete all files inside subdirectories
+    of remote_dest_dir. Subdirectory structure is preserved, root-level files
+    are untouched.
+    """
+    async with asyncssh_sftp_session(ip_address) as sftp:
+        try:
+            entries = await sftp.readdir(remote_dest_dir)
+        except Exception as e:
+            log.warning(f"SFTP clean: cannot list {remote_dest_dir}: {e}")
+            return
+
+        for entry in entries:
+            if entry.filename in (".", ".."):
+                continue
+            remote_path = posixpath.join(remote_dest_dir, entry.filename)
+            # Only descend into subdirectories
+            if not stat.S_ISDIR(entry.attrs.permissions):
+                continue
+            try:
+                files = await sftp.readdir(remote_path)
+            except Exception as e:
+                log.warning(f"SFTP clean: cannot list {remote_path}: {e}")
+                continue
+            for f in files:
+                if f.filename in (".", ".."):
+                    continue
+                if stat.S_ISREG(f.attrs.permissions):
+                    remote_file = posixpath.join(remote_path, f.filename)
+                    try:
+                        await sftp.remove(remote_file)
+                        log.info(f"SFTP clean: removed {remote_file}")
+                    except Exception as e:
+                        log.warning(f"SFTP clean: failed to remove {remote_file}: {e}")

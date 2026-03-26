@@ -4,6 +4,7 @@ from nicegui import ui, app, run, Client
 import os
 import requests
 import traceback
+import asyncio
 
 from pathlib import Path
 import tempfile
@@ -31,10 +32,10 @@ from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC
 client_apps = {}
 
 @ui.page('/AddManualSession/')
-def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupId:int = None):
+async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupId:int = None):
 
     menu("Add Manual Session")
-
+    await ui.context.client.connected()
     # Launch the GUI
     ui.context.manual_session_app =  AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupId=BackupId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
@@ -91,6 +92,8 @@ class AddManualSession:
             client.storage.uploaded_files = []
 
         self.uploaded_fits_files = []
+        self._accepted_files_data = {}  # name -> bytes, files confirmed good
+        self._pending_reset = False
 
         self.sessions_list = []
         self.session_lookup = []
@@ -253,6 +256,21 @@ class AddManualSession:
 
                 self.remove_button = ui.button("🗑️ Remove all files", on_click=self.cleanup_temp_files).props("color=red")
 
+
+                # Use on_rejected + validation BEFORE the file hits the queue
+                #self.file_picker_fit2 = (
+                #    ui.upload(
+                #        label="Upload FITS",
+                #        auto_upload=True,
+                #        multiple=True,
+                #        on_upload=self.handle_upload,
+                #        on_rejected=self.handle_rejected,  # fires for wrong extensions
+                #    )
+                #    .props('accept=".fit,.fits,.fts"')
+                #    .props('filter="checkFitsTarget"')  # custom Quasar filter fn
+                #    .classes("mb-4")
+                #)
+                
                 ui.label(f"Select {self.mode} FITS file(s)").classes("mt-2 font-medium")
 
                 with ui.row().classes("w-full items-center gap-2"):
@@ -286,6 +304,14 @@ class AddManualSession:
             self.cancel_btn = ui.button('Cancel Import', on_click=lambda: self.cancel())
             self.cancel_btn.visible = False
             self.cancel_backup = False
+
+        # Inject a custom Quasar filter function via JS
+        #await ui.run_javascript(f"""
+        #    window.checkFitsTarget = function(files) {{
+        #        // Return only files that pass — rejected ones never enter the queue
+        #        return files;  // refine this with your target logic if readable client-side
+        #    }};
+        #""")
 
         self.thumbnail.visible = False
         self.remove_button.disable()
@@ -465,7 +491,7 @@ class AddManualSession:
             description,_ =  get_name_object(descriptionDB)
             # Building the details string with the star icon
             label_text = f"{description}\n"
-            label_text = label_text + f"{info_stack} with {dwarf_name} {lens} on {session_date}, Exp {exp}, Gain {gain}, {astro_filter}, Stacks {stacks}\n"
+            label_text = label_text + f"{info_stack} with 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}\n"
             label_text = label_text + f" RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}\n"
 
             full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.DwarfId)
@@ -609,43 +635,99 @@ class AddManualSession:
         from pathlib import Path
 
         suffix = Path(e.name).suffix.lower()
+        file_bytes = e.content.read()
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(e.content.read())
+            tmp.write(file_bytes)
             tmp_path = tmp.name
             self.track_temp_file(tmp_path)
-
+        
         # Append to uploaded_files (keep for later resolution)
         file_type = "fits" if suffix == ".fits" or suffix == ".fit" or suffix == ".fts" else "image"
 
         # To DO - Add Astro Resolution - Ignore File => delete from the widget (not working yet) 
-        if file_type == "test_fits":
-            # Show confirmation dialog
-            accepted = False #await self.show_fits_confirmation_dialog(tmp_path, e.name, meta)
+        if file_type == "fits":
 
-            if not accepted:
-                # delete temporary file
-                #self.file_picker_fit.removeFile(e.name)
-                self.file_picker_fit.run_method('reset')
-                #self.file_picker_fit.run_method('removeFile',e.name)
-                print(f"Remove temp file {tmp_path}")
-                os.remove(tmp_path)
-                # Automatically remove ONLY this file in the widget
-                #await self.remove_uploaded_file(e.name)
+            ui.run_javascript("document.body.style.cursor='wait'")
+            with ui.dialog().props('persistent') as dialog_fits:
 
-                ui.notify(f"❌ Rejected {e.name}", type="negative")
-                return
+                try:
+                    dialog_fits.open()
 
-        self.client.storage.uploaded_files.append({
-            "path": tmp_path,
-            "name": e.name,
-            "type": file_type,   # 👈 mark it
-            "is_temp": True,
-            "ra": None,
-            "dec": None,
-        })
-        self.update_remove_button()
+                    ui.run_javascript("document.body.style.cursor='default'")
+
+                    # Analyse File
+                    print(f"Temp: {tmp_path}")
+                    print(f"Name: {e.name}")
+                    await self.analyse_fits(tmp_path, e.name, dialog_fits, False)
+
+                except Exception as ex:
+                    ui.notify(f"Error reading FITS: {ex}", type='negative')
+                    os.remove(tmp_path)
+                    await asyncio.sleep(0.5)
+                    await self._reset_and_restore(rejected_name=e.name)
+                    return
+
+        else :
+            self.client.storage.uploaded_files.append({
+                "path": tmp_path,
+                "name": e.name,
+                "type": file_type,   # 👈 mark it
+                "is_temp": True,
+                "ra": None,
+               "dec": None,
+            })
+            self.update_remove_button()
 
         ui.notify(f"✅ Uploaded {e.name}")
+
+    async def _reset_and_restore(self, rejected_name: str):
+
+        # 1. Reset the uploader widget visually
+        self.file_picker_fit.run_method('reset')
+
+        # Small yield to let reset propagate to browser
+        await asyncio.sleep(0.1)
+
+        # 2. List files still accepted (in Python storage — source of truth)
+        kept_files = [
+            f["name"] for f in self.client.storage.uploaded_files
+            if f["name"] != rejected_name
+        ]
+
+        # 3. Notify user what's still in the session
+        if kept_files:
+            kept_list = ", ".join(kept_files)
+            ui.notify(
+                f"⚠️ Upload widget was reset. Still loaded in session: {kept_list}",
+                type='warning',
+                timeout=8000,
+                close_button=True,
+            )
+        else:
+            ui.notify(
+                "⚠️ Upload widget was reset. No files remaining in session.",
+                type='warning',
+            )
+
+    def refresh_fits_file_list(self):
+        """This is your source of truth display — not the Quasar widget"""
+        self.fits_file_list.clear()
+        with self.fits_file_list:
+            if not self.client.storage.uploaded_files:
+                ui.label("No files loaded").classes("text-gray-400 text-sm")
+                return
+            for f in self.client.storage.uploaded_files:
+                meta = f.get("meta", {}) or {}
+                target = meta.get("OBJECT") or f.get("target") or "Unknown target"
+                with ui.row().classes("items-center gap-2 w-full"):
+                    ui.icon("done").classes("text-green-500")
+                    ui.label(f["name"]).classes("text-sm flex-1 truncate")
+                    ui.badge(target, color="blue").classes("text-xs")
+                    ui.button(
+                        icon="close",
+                        on_click=lambda fn=f["name"]: self.remove_single_file(fn)
+                    ).props("flat round dense color=red")
 
 ###############################################
 # To DO - Ignore File => delete from the widget (not working yet
@@ -766,18 +848,29 @@ class AddManualSession:
             for data_detail in self.uploaded_fits_files:
                 ui.item(data_detail["name"], on_click=lambda i=data_detail["name"]: self.on_fits_file_selected(i)).props('clickable').classes('cursor-pointer')
 
-    async def analyse_fits(self, tmp_path, name, dialog_fits):
+    async def analyse_fits(self, tmp_path, name, dialog_fits, mode_upload_link = True):
         card_dialog = ui.card().style('width: 800px; max-width: none')
 
         print(f"Downloading OF for {tmp_path} - {name}")
         self.meta_info = read_fits_metadata(tmp_path, True)
 
-        def close_dialog_fits(result = False):
+        async def close_dialog_fits(result = False):
             if result == False:
                 print(f"🧹 Deleted temp file: {tmp_path}")
                 os.remove(tmp_path)
+                # close dialog before call javascript in _reset_and_restore
+                dialog_fits.close()
+                if not mode_upload_link:
+                    print(f"🧹 Rejected file: {name}")
+                    await asyncio.sleep(0.5)
+                    await self._reset_and_restore(rejected_name=name)
+                    
+            else:
+                if not mode_upload_link:
+                    print(f"🧹 Accepted file: {name}")
+                    self._accepted_files_data[name] = tmp_path 
+                dialog_fits.close()
             print(f"close_dialog_fits with result: {result}")
-            dialog_fits.close()
             return    
 
         async def resolve_and_refresh():
@@ -788,8 +881,8 @@ class AddManualSession:
             # self.meta_info = read_fits_metadata(tmp_path, True)
             await show_fits_dialog()  # reopen with updated info
 
-        def confirm():
-            close_dialog_fits(True)
+        async def confirm():
+            await close_dialog_fits(True)
 
             self.client.storage.uploaded_files.append({
                 "path": tmp_path,
@@ -1211,6 +1304,10 @@ class AddManualSession:
             if not self.cancel_backup and verified_files == total_files:
                 result = True
                 ui.notify("✅ Backup completed successfully!", type="positive")
+
+                # add to database
+                insert_ManualSessionEntry(self.conn ,  BackupDriveId, DwarfId, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id)
+
             elif not self.cancel_backup:
                 ui.notify("⚠️ Backup incomplete due to failures.", type="warning")
 

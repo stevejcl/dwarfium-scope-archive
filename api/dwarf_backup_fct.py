@@ -11,12 +11,12 @@ import re
 import platform
 import subprocess
 import glob
+import ftplib
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import numpy as np
 from auto_stretch import apply_stretch
 import cv2
-from nicegui import ui, run
 
 from api.dwarf_backup_db import connect_db, close_db, commit_db
 from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord, get_db_local_dwarf_dir
@@ -265,6 +265,110 @@ def count_failed_tiff_files(directory):
         if f.endswith('.tiff') and f.startswith('failed_')
     )
 
+def cleanup_fits_files(directory: str, dry_run: bool = False) -> None:
+    """
+    Remove all FITS files in a directory tree except those starting with 'stacked-16_'.
+
+    Args:
+        directory (str): Root directory of the session
+        dry_run (bool): If True, only prints what would be deleted
+    """
+
+    if not os.path.exists(directory):
+        raise ValueError(f"Directory does not exist: {directory}")
+
+    deleted_count = 0
+    kept_count = 0
+
+    for dirpath, _, filenames in os.walk(directory):
+        for filename in filenames:
+            # Normalize case just in case (.FITS, .fits, etc.)
+            if filename.lower().endswith(".fits"):
+                
+                # Keep stacked-16_* files
+                if filename.startswith("stacked-16_"):
+                    kept_count += 1
+                    continue
+
+                file_path = os.path.join(dirpath, filename)
+
+                if dry_run:
+                    print(f"[DRY RUN] Would delete: {file_path}")
+                else:
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"Error deleting {file_path}: {e}")
+
+    print("\nSummary:")
+    print(f"  Deleted FITS files: {deleted_count}")
+    print(f"  Kept stacked FITS: {kept_count}")
+
+    return deleted_count 
+ 
+def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry_run: bool = False):
+    """
+    Restore FITS files from backup to the Dwarf session folder.
+    Preserves subfolders and skips existing files.
+
+    Args:
+        src_backup_folder (str): Path to the backup session folder
+        dst_session_folder (str): Path to the session folder on Dwarf
+        dry_run (bool): If True, only prints what would be copied
+    """
+
+    if not os.path.exists(src_backup_folder):
+        raise ValueError(f"Backup folder does not exist: {src_backup_folder}")
+
+    os.makedirs(dst_session_folder, exist_ok=True)
+
+    restored_count = 0
+    skipped_count = 0
+    files_to_copy = []
+    total_fits_files = 0
+
+    for root, dirs, files in os.walk(src_backup_folder):
+        # Determine relative path to preserve folder structure
+        rel_path = os.path.relpath(root, src_backup_folder)
+        target_dir = os.path.join(dst_session_folder, rel_path)
+        os.makedirs(target_dir, exist_ok=True)
+        i = 0
+
+        for f in files:
+            if f.lower().endswith(".fits") and not f.startswith("stacked-16_"):
+                src_file = os.path.join(root, f)
+                dst_file = os.path.join(target_dir, f)
+
+                if os.path.exists(dst_file):
+                    skipped_count +=1
+                    continue  # skip existing files
+                files_to_copy.append((src_file, dst_file))               
+                total_fits_files += 1
+
+    for i, (src_file, dst_file) in enumerate(files_to_copy, 1):
+        if app.cancel_restore:
+            break  # stop restoring if cancel requested
+
+        progress = round((i + 1) / total_fits_files * 100)
+
+        if dry_run:
+            print(f"[DRY RUN] Would copy: {src_file} → {dst_file}")
+        else:
+            shutil.copy2(src_file, dst_file)
+            restored_count += 1
+            print(f"Restored: {dst_file}")
+            app.progress.value = round(progress)
+
+    print("\nSummary:")
+    print(f"  Restored FITS files: {restored_count}")
+    print(f"  Skipped (already exist): {skipped_count}")
+    print(f"  Total files: {total_fits_files}")
+    
+    app.cancel_button.visible = False
+    
+    return restored_count, skipped_count, total_fits_files
 #################
 # FITS Functions
 #################
@@ -291,7 +395,7 @@ def get_total_mosaic_exposure(mosaic_dir: str) -> float:
                 continue
 
             # Find stacked_16*.fits file
-            fits_files = glob(os.path.join(panel_path, "stacked-16*.fits"))
+            fits_files = glob.glob(os.path.join(panel_path, "stacked-16*.fits"))
             if not fits_files:
                 continue
 
@@ -330,8 +434,8 @@ def read_fits_metadata(fits_file, convert_to_hour = False):
             hdr = hdul[0].header
 
             binning = ''
-            if hdr.get('XBINNING') and hdr.get('YINNING'):
-                binning = f"{hdr.get('XBINNING', '')}x{hdr.get('YINNING', '')}"
+            if hdr.get('XBINNING') and hdr.get('YBINNING'):
+                binning = f"{hdr.get('XBINNING', '')}x{hdr.get('YBINNING', '')}"
 
             metadata = {
                 'TELESCOP': hdr.get('TELESCOP', ''),
@@ -489,13 +593,40 @@ def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_p
     safe_print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
 
 
+def write_target_json(session_dir, original_target, name, description):
+    """
+    Write target.json in the given session directory.
+
+    Parameters
+    ----------
+    session_dir : str or Path
+        Folder where the target.json file will be written
+    original_target : str
+        Original target from the telescope (ex: HD 198626)
+    name : str
+        Identified object name (ex: NGC 6960 - Veil Nebula)
+    description : str
+        Full description from the database
+    """
+
+    data = {
+        "original_target": original_target,
+        "identified_object": {
+            "name": name,
+            "description": description
+        }
+    }
+
+    file_path = Path(session_dir) / "target.json"
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
 ############################
 # DWARF LOCAL Dir functions
 ############################
 
 def create_local_dwarf_dir(conn: sqlite3.Connection):
-    result = False
-
 
     DwarfLocal_dir = get_local_dwarf_dir(conn)
     try:
@@ -722,8 +853,10 @@ def save_shots_info(json_path, linked_data):
         raw = {k: v for k, v in raw.items() if v is not None}
 
         # Ensure output directory exists
-        os.makedirs(os.path.dirname(json_path), exist_ok=True)
-
+        dir_path = os.path.dirname(json_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+    
         # Write JSON file
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(raw, f, indent=4, ensure_ascii=False)
@@ -871,22 +1004,6 @@ def transform_session_name(name: str) -> str:
         return None
 
     return display
-
-def extract_core_name(path: str) -> str:
-    filename = Path(path).name  # stacked-16_NGC 2246_45s60_Duo-Band_20251120-013033269.fits
-
-    # 1) Extract RAW folder name (ending with EXP_gain_date...)
-    raw_folder = p.parent.name
-
-    # 2) Extract core part from filename
-    filename_no_ext = p.name.replace('.fits', '')
-
-    # Extract part after "stacked-XX_"
-    m = re.search(r'stacked-\d+_(.+)', filename_no_ext)
-    if m:
-        return m.group(1)
-
-    return filename_no_ext  # fallback
 
 def extract_core_name(path: str) -> str:
     filename = Path(path).name  # stacked-16_NGC 2246_45s60_Duo-Band_20251120-013033269.fits
@@ -1509,8 +1626,6 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
 #########################
 # Thumbnail function
 #########################
-
-from PIL import Image
 
 from PIL import Image
 

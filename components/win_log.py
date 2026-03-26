@@ -1,4 +1,5 @@
 from nicegui import ui
+import inspect
 
 class WinLog:
     def __init__(self):
@@ -20,7 +21,10 @@ class WinLog:
         self.on_yes = on_yes
         result = await self.popup_dialog
         if result == "Yes" and self.on_yes:
-            self.on_yes()
+            if inspect.iscoroutinefunction(self.on_yes):
+                await self.on_yes()   # ? await async function
+            else:
+                self.on_yes()         # ? normal function
 
     def _on_yes_clicked(self):
         self.popup_dialog.submit("Yes")
