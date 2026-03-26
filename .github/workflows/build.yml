@@ -2,7 +2,7 @@ name: Build Dwarfium Scope Archive
 
 on:
   push:
-    branches: [main]
+    branches: [evolution]
   workflow_dispatch:
 
 permissions:
