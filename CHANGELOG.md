@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.0.2] - 2026-03-28
+
+### BugFix# 
+   Improve mosaic repair/merge robustness & UI
+   
+   long_path used for Mosaic functions
+   
+### Add 
+    Mosaic Page add Backup Drive Selection
+	Merge Dwarf and Backup selection
+	Avoid uploading Mosaic on Dwarf
+   
 ## [V3.0.1] - 2026-03-27
 
 ### BugFix# 

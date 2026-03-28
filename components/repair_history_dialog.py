@@ -6,6 +6,7 @@ has one or more recorded Repair or Merge actions.
 
 Displays the full action history for that primary session and offers:
   • [🔄 Redo]        → discard previous output, run action again
+  • [➡️ Continue]      → if different secondary session, continue action 
   • [📁 Copy to Dwarf] → skip to transfer, using the existing output dir
   • [🗑 Delete entry]  → remove the entry from the index (keeps files)
   • [❌ Cancel]        → close without doing anything
@@ -17,10 +18,12 @@ Usage
     dialog = RepairHistoryDialog(
         manager=mgr,                        # RepairSessionManager instance
         primary_session="DWARF_RAW_...",
+        secondary_session="DWARF_RAW_...",
         dwarf_id=1,
         backup_id=3,
         backup_root="D:\\Backup",
         on_redo=lambda: my_repair_func(),
+        on_continue=lambda: my_merge_continue_func(),
         on_copy=lambda entry: open_mosaic_restore_dialog(
             repaired_src_dir=str(mgr.get_output_path(entry)),
             backup_root="D:\\Backup",
@@ -58,6 +61,8 @@ class RepairHistoryDialog:
         The manager instance for the current temp root.
     primary_session : str
         The session name/path the user just selected.
+    secondary_session : str
+        The second session name/path the user just selected.
     dwarf_id : int | None
         Passed through to the Copy-to-Dwarf callback.
     backup_id : int | None
@@ -67,6 +72,8 @@ class RepairHistoryDialog:
     on_redo : Callable[[], None]
         Called when the user clicks "Redo" on any entry.
         The caller is responsible for deleting / overwriting the old output.
+    on_continue : Callable[[], None]
+        Called when the user clicks "Continue" on any entry.
     on_copy : Callable[[dict], None]
         Called with the selected ActionEntry dict when the user clicks
         "Copy to Dwarf".  The caller typically opens MosaicRestoreDialog.
@@ -78,8 +85,10 @@ class RepairHistoryDialog:
         self,
         manager: RepairSessionManager,
         primary_session: str,
+        secondary_session: str,
         backup_root: str,
         on_redo:   Callable[[], None],
+        on_continue:   Callable[[], None],
         on_copy:   Callable[[dict], None],
         dwarf_id:  int | None = None,
         backup_id: int | None = None,
@@ -87,10 +96,12 @@ class RepairHistoryDialog:
     ):
         self.manager          = manager
         self.primary_session  = primary_session
+        self.secondary_session  = secondary_session
         self.backup_root      = backup_root
         self.dwarf_id         = dwarf_id
         self.backup_id        = backup_id
         self._on_redo         = on_redo
+        self._on_continue     = on_continue
         self._on_copy         = on_copy
         self._on_cancel       = on_cancel
 
@@ -170,6 +181,14 @@ class RepairHistoryDialog:
                         )
                         self._btn_redo.disable()
 
+                        self._btn_continue = ui.button(
+                            "➡️ Continue",
+                            on_click=self._handle_continue,
+                        ).props("outline color=green").tooltip(
+                            "Ignore the initial copy and continue the merge action"
+                        )
+                        self._btn_continue.disable()
+
                         self._btn_copy = ui.button(
                             "📁 Copy to Dwarf",
                             on_click=self._handle_copy,
@@ -220,6 +239,9 @@ class RepairHistoryDialog:
 
         secondary = entry.get("secondary_session")
         secondary_str = f"\nSecondary: {secondary}" if secondary else ""
+
+        if self.secondary_session == secondary_str:
+            self.secondary_session = "" # ignore continue action
 
         sessions = entry.get("sessions")
         sessions_str = ""
@@ -284,10 +306,18 @@ class RepairHistoryDialog:
             self._btn_copy.enable()
         else:
             self._btn_copy.disable()
+        if self.secondary_session:
+            self._btn_continue.enable()
+        else:
+            self._btn_continue.disable()
 
     def _handle_redo(self):
         self.close()
         self._on_redo()
+
+    def _handle_continue(self):
+        self.close()
+        self._on_continue()
 
     def _handle_copy(self):
         if self._selected_entry is None:
@@ -335,8 +365,10 @@ class RepairHistoryDialog:
 def check_and_show_history(
     manager: RepairSessionManager,
     primary_session: str,
+    secondary_session: str,
     backup_root: str,
     on_redo:   Callable[[], None],
+    on_continue:   Callable[[], None],
     on_copy:   Callable[[dict], None],
     on_proceed: Callable[[], None],
     dwarf_id:  int | None = None,
@@ -356,8 +388,10 @@ def check_and_show_history(
         check_and_show_history(
             manager          = self.repair_mgr,
             primary_session  = self.selected_session,
+            secondary_session  = self.selected_secondary,
             backup_root      = self.backup_root,
             on_redo          = self.run_repair,
+            on_continue      = self.run_continue,   # second pass - merge
             on_copy          = lambda entry: open_mosaic_restore_dialog(...),
             on_proceed       = self.run_repair,   # first-time path
             dwarf_id         = self.DwarfId,
@@ -370,8 +404,10 @@ def check_and_show_history(
         dlg = RepairHistoryDialog(
             manager         = manager,
             primary_session = primary_session,
+            secondary_session = secondary_session,
             backup_root     = backup_root,
             on_redo         = on_redo,
+            on_continue     = on_continue,
             on_copy         = on_copy,
             dwarf_id        = dwarf_id,
             backup_id       = backup_id,

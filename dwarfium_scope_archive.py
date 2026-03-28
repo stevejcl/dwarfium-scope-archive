@@ -4,6 +4,8 @@ freeze_support()  # noqa
 
 from nicegui import native, app, ui
 
+import sys
+
 # Global flag for app mode
 ON_AIR = False
 
@@ -38,7 +40,7 @@ try:
     conn = start_db(DB_NAME)
     if not conn:
         print("[FAIL] Application halted, fatal error Database.")
-        exit
+        sys.exit(1)
     else:
         #verify default data
         insert_default_groups(conn)
@@ -49,6 +51,8 @@ try:
             native=True, 
             window_size=(1200, 1024),
             port=native.find_open_port(),
+            reconnect_timeout=6,
+            host="0.0.0.0",
             reload=False)
 
 except (KeyboardInterrupt, SystemExit):

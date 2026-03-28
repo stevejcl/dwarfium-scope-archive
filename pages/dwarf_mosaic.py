@@ -9,10 +9,10 @@ import traceback
 from pathlib import Path
 
 from components.menu import menu
-from api.dwarf_backup_fct import get_local_dwarf_dir, print_log
+from api.dwarf_backup_fct import get_local_dwarf_dir, print_log, win_long_path
 from api.dwarf_backup_fct_mosaic import repair_mosaic_session, merge_mosaic
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
+from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, get_backupDrive_detail
 from components.win_log import WinLog
 from api.repair_session_manager import RepairSessionManager
 from components.repair_history_dialog import check_and_show_history
@@ -46,7 +46,19 @@ class MosaicApp:
         self.DwarfId = DwarfId
         self.DwarfId_Init = DwarfId
         self.BackupId = BackupId
+        self.BackupId_Init = BackupId
         self.dwarf_options = []
+        self.backup_options = []
+        self.backup_data = {}
+
+        # Backup drive details
+        self.backup_location = ''
+        self.backup_astrodir = ''
+        self.backup_path = ''
+
+        # Source selection per picker: 'Dwarf' or 'Backup'
+        self.primary_source = 'Dwarf'
+        self.secondary_source = 'Dwarf'
 
         self.session = Session          # primary session (pre-filled if coming from Explore)
         self.BackUrl = BackUrl
@@ -94,16 +106,26 @@ class MosaicApp:
                 "Primary = reference mosaic (small but correct). Secondary = session to repair. Result goes to the work directory."
             ).classes("text-sm text-gray-500")
 
-            # Dwarf selector
-            with ui.grid(columns=1):
+            # Dwarf + Backup selector row
+            with ui.grid(columns=2):
                 with ui.column():
                     ui.label("Select Dwarf:").classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
                     self.usb_status_label = ui.label("").classes('pb-2')
+                with ui.column():
+                    ui.label("Backup Drive:").classes("text-lg font-semibold")
+                    self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
+                    self.backup_status_label = ui.label("").classes('pb-2')
 
         # ── Primary session card ─────────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
             self.primary_session_label = ui.label("📂 Primary Session (reference — correct mosaic)").classes("text-lg font-semibold")
+            with ui.row().classes("items-center gap-2"):
+                ui.label("Data source:").classes("text-sm text-gray-500")
+                self.primary_source_toggle = ui.toggle(
+                    ['Dwarf', 'Backup'], value='Dwarf',
+                    on_change=self.on_primary_source_change,
+                ).props('dense')
             self.input_primary_dir = (
                 ui.select(
                     label="Primary Session Directory:",
@@ -119,6 +141,12 @@ class MosaicApp:
         # ── Secondary session card ───────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
             self.secondary_session_label = ui.label("📂 Secondary Session (session to repair)").classes("text-lg font-semibold")
+            with ui.row().classes("items-center gap-2"):
+                ui.label("Data source:").classes("text-sm text-gray-500")
+                self.secondary_source_toggle = ui.toggle(
+                    ['Dwarf', 'Backup'], value='Dwarf',
+                    on_change=self.on_secondary_source_change,
+                ).props('dense')
             self.input_secondary_dir = (
                 ui.select(
                     label="Secondary Session Directory:",
@@ -164,6 +192,7 @@ class MosaicApp:
             self.image_ui = ui.image("").classes("mt-4 max-w-full")
 
         self.populate_dwarf_filter()
+        self.populate_backup_filter()
 
         self._build_copy_dialog()
  
@@ -218,6 +247,57 @@ class MosaicApp:
 
         self.dwarf_filter.set_options(names, value=initial_value)
 
+    def populate_backup_filter(self):
+        if self.DwarfId:
+            self.backup_options = get_backupDrive_list_dwarfId(self.conn, self.DwarfId)
+            self.backup_data = {
+                backup[1]: (backup[0], backup[3], backup[4]) for backup in self.backup_options
+            }
+            names = list(self.backup_data.keys())
+        else:
+            names = []
+            self.backup_data = {}
+
+        initial_value = None
+        for name, (id_, _, _) in self.backup_data.items():
+            if id_ == self.BackupId_Init:
+                initial_value = name
+                break
+        if not initial_value and names:
+            initial_value = names[0]
+
+        self.backup_filter.set_options(names, value=initial_value)
+
+        if initial_value:
+            self._apply_backup_details(initial_value)
+        else:
+            self.BackupId = None
+            self.backup_location = ""
+            self.backup_astrodir = ""
+            self.backup_path = ""
+            self.backup_status_label.text = ""
+
+    def _apply_backup_details(self, selected_name: str):
+        if selected_name in self.backup_data:
+            self.BackupId, self.backup_location, self.backup_astrodir = self.backup_data[selected_name]
+            self.backup_path = os.path.join(self.backup_location, self.backup_astrodir)
+            if os.path.exists(self.backup_path):
+                self.backup_status_label.text = "✅ Path detected."
+            else:
+                self.backup_status_label.text = "❌ Path not detected."
+        else:
+            self.BackupId = None
+            self.backup_location = ""
+            self.backup_astrodir = ""
+            self.backup_path = ""
+            self.backup_status_label.text = ""
+        # Refresh picker roots that are currently set to Backup
+        self._refresh_source_dirs()
+
+    def on_backup_filter_change(self):
+        selected_name = self.backup_filter.value
+        self._apply_backup_details(selected_name)
+
     async def on_dwarf_filter_change(self):
         self.usb_status_label.text = ""
         selected_name = self.dwarf_filter.value
@@ -225,6 +305,7 @@ class MosaicApp:
             if name == selected_name:
                 self.DwarfId = did
                 break
+        self.populate_backup_filter()
         await self.dwarf_data_update()
 
     async def dwarf_data_update(self):
@@ -246,8 +327,10 @@ class MosaicApp:
             self.usb_status_label.text = ""
 
     def update_session_directories(self):
-        """Pre-fill primary session from URL parameter if DwarfId matches."""
-        if self.DwarfId_Init == self.DwarfId and self.session:
+        """Reset both session pickers when Dwarf or Backup selection changes."""
+        # ── Primary ──────────────────────────────────────────────────────
+        primary_root = self._root_for_source(self.primary_source)
+        if self.primary_source == 'Dwarf' and self.DwarfId_Init == self.DwarfId and self.session:
             if self.session.startswith("RESTACKED"):
                 primary_path = os.path.join(self.dwarf_astroDir, "RESTACKED", self.session)
             else:
@@ -255,10 +338,63 @@ class MosaicApp:
             self.primary_session_dir = primary_path
             self.input_primary_dir.set_options([primary_path], value=primary_path)
         else:
-            self.input_primary_dir.set_options([self.dwarf_astroDir], value=self.dwarf_astroDir)
+            self.primary_session_dir = primary_root
+            self.input_primary_dir.set_options([primary_root], value=primary_root)
+        self.primary_main_dir = primary_root
 
-        self.primary_main_dir = self.dwarf_astroDir
-        self.secondary_main_dir = self.dwarf_astroDir
+        # ── Secondary ────────────────────────────────────────────────────
+        secondary_root = self._root_for_source(self.secondary_source)
+        self.secondary_session_dir = secondary_root
+        self.input_secondary_dir.set_options([secondary_root], value=secondary_root)
+        self.secondary_main_dir = secondary_root
+
+    # ── Source toggle helpers ─────────────────────────────────────────────
+
+    def _root_for_source(self, source: str) -> str:
+        """Return the root astro dir for the chosen source (Dwarf or Backup)."""
+        if source == 'Backup':
+            return self.backup_path or ""
+        return self.dwarf_astroDir or ""
+
+    def _refresh_source_dirs(self):
+        """Re-root primary/secondary pickers when backup details or source toggle changes."""
+        primary_root = self._root_for_source(self.primary_source)
+        secondary_root = self._root_for_source(self.secondary_source)
+
+        # Only reset if user hasn't navigated away from root yet
+        if not self.primary_session_dir or self.primary_session_dir == self.primary_main_dir:
+            self.input_primary_dir.set_options([primary_root], value=primary_root)
+            self.primary_session_dir = primary_root
+        self.primary_main_dir = primary_root
+
+        if not self.secondary_session_dir or self.secondary_session_dir == self.secondary_main_dir:
+            self.input_secondary_dir.set_options([secondary_root], value=secondary_root)
+            self.secondary_session_dir = secondary_root
+        self.secondary_main_dir = secondary_root
+
+    def on_primary_source_change(self):
+        self.primary_source = self.primary_source_toggle.value
+        root = self._root_for_source(self.primary_source)
+        if not root:
+            label = "Backup" if self.primary_source == 'Backup' else "Dwarf"
+            ui.notify(f"⚠️ No {label} directory available.", type="warning")
+            return
+        self.primary_session_dir = root
+        self.primary_main_dir = root
+        self.input_primary_dir.set_options([root], value=root)
+        ui.notify(f"✅ Primary source → {self.primary_source}: {root}", type="positive")
+
+    def on_secondary_source_change(self):
+        self.secondary_source = self.secondary_source_toggle.value
+        root = self._root_for_source(self.secondary_source)
+        if not root:
+            label = "Backup" if self.secondary_source == 'Backup' else "Dwarf"
+            ui.notify(f"⚠️ No {label} directory available.", type="warning")
+            return
+        self.secondary_session_dir = root
+        self.secondary_main_dir = root
+        self.input_secondary_dir.set_options([root], value=root)
+        ui.notify(f"✅ Secondary source → {self.secondary_source}: {root}", type="positive")
 
     # ------------------------------------------------------------------ #
     #  INPUT CHANGE HANDLERS                                               #
@@ -266,12 +402,12 @@ class MosaicApp:
 
     def on_primary_dir_change(self):
         self.primary_session_dir = self.input_primary_dir.value or ""
-        if self.primary_session_dir != self.dwarf_astroDir and "MOSAIC" not in self.primary_session_dir:
+        if self.primary_session_dir != self._root_for_source(self.primary_source) and "MOSAIC" not in self.primary_session_dir:
             ui.notify("Directory does not contain MOSAIC", type="warning")
 
     def on_secondary_dir_change(self):
         self.secondary_session_dir = self.input_secondary_dir.value or ""
-        if self.secondary_session_dir != "" and "MOSAIC" not in self.secondary_session_dir:
+        if self.secondary_session_dir != self._root_for_source(self.secondary_source) and "MOSAIC" not in self.secondary_session_dir:
             ui.notify("Directory does not contain MOSAIC", type="warning")
 
     # ------------------------------------------------------------------ #
@@ -303,10 +439,11 @@ class MosaicApp:
         return chosen
 
     async def select_primary_folder(self):
+        label = "the Backup directory!" if self.primary_source == 'Backup' else "the Dwarf astro directory!"
         chosen = await self._pick_folder(
             self.primary_session_dir or self.primary_main_dir,
             self.primary_main_dir,
-            "the Dwarf astro directory!",
+            label,
         )
         if chosen:
             self.primary_session_dir = chosen
@@ -314,10 +451,11 @@ class MosaicApp:
             ui.notify(f"✅ Primary session: {chosen}", type="positive")
 
     async def select_secondary_folder(self):
+        label = "the Backup directory!" if self.secondary_source == 'Backup' else "the Dwarf astro directory!"
         chosen = await self._pick_folder(
             self.secondary_session_dir or self.secondary_main_dir,
             self.secondary_main_dir,
-            "the Dwarf astro directory!",
+            label,
         )
         if chosen:
             self.secondary_session_dir = chosen
@@ -392,6 +530,11 @@ class MosaicApp:
             self._init_repair_mgr(output)
 
         primary_name = os.path.basename(os.path.normpath(primary))
+        secondary_name = os.path.basename(os.path.normpath(secondary))
+        if self.mode == "Repair":
+            # Ignore the continue Button in this case
+            # Set to empty the secondary_name to ignore this action
+            secondary_name = ""
 
         # ── History check ────────────────────────────────────────────────
         # If this primary has been treated before, show the history dialog.
@@ -400,8 +543,10 @@ class MosaicApp:
         already_shown = check_and_show_history(
             manager         = self.repair_mgr,
             primary_session = primary_name,
+            secondary_session = secondary_name,
             backup_root     = self.output_dir,
             on_redo         = lambda: ui.timer(0, lambda: asyncio.ensure_future(self._run_process(primary, secondary, output, primary_name)), once=True),
+            on_continue     = lambda: ui.timer(0, lambda: asyncio.ensure_future(self._run_process(primary, secondary, output, primary_name, True)), once=True),
             on_copy         = self._open_copy_dialog,
             on_proceed      = lambda: ui.timer(0, lambda: asyncio.ensure_future(self._run_process(primary, secondary, output, primary_name)), once=True),
             dwarf_id        = self.DwarfId,
@@ -411,7 +556,7 @@ class MosaicApp:
         # If history exists, the dialog handles routing — nothing more to do here.
         _ = already_shown
 
-    async def _run_process(self, primary: str, secondary: str, output: str, primary_name: str):
+    async def _run_process(self, primary: str, secondary: str, output: str, primary_name: str, ignore_copy: bool = False ):
         """Core repair/merge logic, called both on first run and on Redo."""
         work_primary = os.path.join(output, primary_name)
 
@@ -440,13 +585,17 @@ class MosaicApp:
 
         # ── Step 1: copy primary session into the work (output) directory ──
         try:
-            print_log(f"Copying '{primary}' → '{work_primary}'", self.log_ui)
-            if self.mode == "Repair":
-                await run.io_bound(self._copy_session, primary, work_primary)
+            if not ignore_copy :
+                print_log(f"Copying '{primary}' → '{work_primary}'", self.log_ui)
+                if self.mode == "Repair":
+                    await run.io_bound(self._copy_session, primary, work_primary)
+                else:
+                    await run.io_bound(self._copy_all_session, primary, work_primary)
+                self.progress.value = 20
+                print_log("✅ Copy complete.", self.log_ui)
             else:
-                await run.io_bound(self._copy_all_session, primary, work_primary)
-            self.progress.value = 20
-            print_log("✅ Copy complete.", self.log_ui)
+                self.progress.value = 20
+                print_log("✅ Copy Primary skipped.", self.log_ui)
         except Exception as e:
             self.notify_me.refresh(f"❌ Copy failed: {e}", type="negative")
             traceback.print_exc()
@@ -464,10 +613,10 @@ class MosaicApp:
         try:
             if self.mode == "Repair":
                 print_log("Starting Repair…", self.log_ui)
-                result = await repair_mosaic_session(secondary, work_primary, self.log_ui)
+                result = await repair_mosaic_session(secondary, work_primary, self.log_ui, self.progress)
             else:
                 print_log("Starting Merge…", self.log_ui)
-                result = await merge_mosaic(secondary, work_primary, self.log_ui)
+                result = await merge_mosaic(secondary, work_primary, self.log_ui, self.progress)
         except Exception as e:
             error = str(e)
             self.notify_me.refresh(f"❌ Error: {e}", type="negative")
@@ -531,8 +680,8 @@ class MosaicApp:
         - Copy files in the root directory (ZIPs, JSONs, stacked.jpg, …)
         - Recreate subdirectory structure (panel folders) with only their stacked-16* files.
         """
-        src_path = Path(src)
-        dest_path = Path(dest)
+        src_path = Path(win_long_path(src))
+        dest_path = Path(win_long_path(dest))
  
         if dest_path.exists():
             shutil.rmtree(dest_path)
@@ -541,17 +690,21 @@ class MosaicApp:
         # Copy root-level files only
         for item in src_path.iterdir():
             if item.is_file():
-                shutil.copy2(item, dest_path / item.name)
+                shutil.copy2(str(item), str(dest_path / item.name))
             elif item.is_dir():
                 panel_dest = dest_path / item.name
-                panel_dest.mkdir()
+                panel_dest.mkdir(parents=True, exist_ok=True)
                 # Copy only stacked-16* files (used as name reference by repair/merge)
                 for f in item.glob("stacked-16*"):
-                    shutil.copy2(f, panel_dest / f.name)
+                    shutil.copy2(str(f), str(panel_dest / f.name))
                     
     @staticmethod
     def _copy_all_session(src: str, dest: str) -> None:
         """Blocking copy of a session directory into the work directory."""
+        src = win_long_path(src)
+        dest = win_long_path(dest)
+
+        # remove existing
         if os.path.exists(dest):
             shutil.rmtree(dest)
-        shutil.copytree(src, dest)
+        shutil.copytree(src, dest)            
