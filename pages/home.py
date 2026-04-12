@@ -104,6 +104,9 @@ class HomeApp:
                 image_detail = ui.label("").classes("text-center mt-2 text-md")
 
                 def show_image():
+                    if not ui.context.client.connected:
+                        return
+
                     # Crossfade effect
                     slideshow_image.classes('opacity-5').update()
                     ui.timer(0.2, lambda: update_image(), once=True)
@@ -129,6 +132,9 @@ class HomeApp:
                             ).classes("text-green-600 pl-4 pr-4 pb-2 cursor-pointer hover:underline")
                             self.image_detail_click_set = True
                 def next_image():
+                    if not ui.context.client.connected:
+                        return
+
                     if self.first_image:
                         self.current_index = (self.current_index) % len(image_data)
                         self.first_image = False
@@ -141,7 +147,7 @@ class HomeApp:
                     show_image()
 
                 # Automatic slideshow with 5s interval
-                ui.timer(interval=10, callback=next_image)
+                self.timer = ui.timer(interval=10, callback=next_image)
 
                 with ui.row().classes("gap-4 mb-2"):
                     ui.button("Previous", on_click=prev_image)

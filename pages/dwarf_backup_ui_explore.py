@@ -10,6 +10,7 @@ import json
 import shutil
 import re
 import sys
+import asyncio
 from glob import glob
 from nicegui import app, run, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
@@ -18,20 +19,24 @@ from api.dwarf_backup_db_api import (
     get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_astro_object_description,
     get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup, delete_backup_entry_and_dwarf_data,
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
-    get_session_present_in_Dwarf, get_session_present_in_backupDrive, toggle_favorite
+    get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
-    get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files,
+    get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files, get_png_name_from_zip, get_fits_name_from_zip,
     hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure, get_total_mosaic_exposure, format_seconds_hms, 
-    preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure, cleanup_fits_files, restore_fits_files 
+    preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure, cleanup_fits_files, restore_fits_files, win_long_path
 )
+from api.dwarf_backup_fct_mosaic import (load_image, generate_panorama, create_thumbnail_mosaic, get_mosaic_panels)
+from api.dwarf_backup_fct_mosaic_fits import (stitch_fits_from_transforms)
+
 from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
+from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
 
 ALL_BACKUPS = "(All Backups)"
 ALL_DWARFS = "(All Dwarfs)"
@@ -50,7 +55,7 @@ def safe_print(text):
         print(text.encode(sys.stdout.encoding, errors='replace').decode())
 
 @ui.page('/Explore/')
-async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None):
+async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None):
 
     menu("Explore")
     await ui.context.client.connected()
@@ -60,17 +65,19 @@ async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str =
     print(f" mode: {mode}")
 
     # Launch the GUI with the parameters
-    ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url)
+    ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class ExploreApp:
-    def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None):
+    def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None, SessionId=None):
         self.database = database
         self.BackupDriveId = BackupDriveId
         self.BackupDriveId_Init = BackupDriveId
         self.DwarfId = DwarfId
         self.mode = mode
         self.BackUrl = BackUrl
+        self.SessionId = SessionId
+        self.AutoSelection_done = False
         self.only_on_dwarf = False
         self.only_on_backup = False
         self.dwarf_options = []
@@ -101,6 +108,8 @@ class ExploreApp:
         self.cancel_restore = False
         self.result_on_dwarf = None
         self.result_on_backupDrive = None
+        self.selected_sessions_multi = set()  # labels selected for multi-transfer
+        self.transfer_multi_btn = None  # button shown when multi-selection active
         self.image_dialog = {}
         self.selected_path = ""
         self.selected_DeleteEntryInfo = None
@@ -119,6 +128,8 @@ class ExploreApp:
         if os.path.exists(SKY_CATALOG_FILE): 
             with open(SKY_CATALOG_FILE  , "r", encoding="utf-8") as f:
                 self.dso_catalog = json.load(f)
+        # parameter for stitch params
+        self.stitch_params = get_stitch_params(self.conn)
 
         with ui.row().classes('w-full h-screen items-center justify-center'):
             with ui.grid(columns='1fr 2fr'):
@@ -195,6 +206,8 @@ class ExploreApp:
                             self.fullscreen_icon = ui.button("Show Fullscreen Image", on_click=self.show_fullscreen_image).classes('h-16')
                             self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
                             self.backup_session_icon.visible = False
+                            self.transfer_multi_btn = ui.button("📦 Backup Selected Sessions", on_click=lambda: ui.navigate.to(self.get_multi_transfer_url())).classes('h-16')
+                            self.transfer_multi_btn.visible = False
                             self.delete_session_icon = ui.button("🗑️ Delete Session", on_click=lambda: self.delete_directory()).classes('h-16')
                             self.delete_session_icon.visible = False
                             self.action_fits_files_icon = ui.button("", on_click=lambda: self.action_cleanup_restore_fits()).classes('h-16')
@@ -338,6 +351,32 @@ class ExploreApp:
         self.selected_object_description = None
         self.selected_object_is_group = False
         self.load_objects_ui()
+
+        # ✅ Auto-select session if provided and at first
+        if not self.AutoSelection_done and self.SessionId:
+            self.AutoSelection_done = True
+            ui.timer(0.2, lambda: self.auto_select_session(), once=True)
+ 
+    def auto_select_session(self):
+        print(f"Auto-select session: {self.SessionId}")
+        sessions = None
+
+        # Step 1: find the matching row in DB
+        if self.SessionId: 
+            sessions = get_sessions_backup(
+                self.conn,
+                backup_drive_id=self.BackupDriveId,
+                dwarf_id=self.get_selected_dwarf_id(),
+                session_id=self.SessionId
+        )
+
+        if not sessions:
+            print("No session found for auto-selection")
+            return
+
+        # Use ALL SESSIONS
+        print("Use ALL SESSIONS")
+        self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
 
     def _update_expanded_nodes(self, expanded_keys: list[str]):
         self.expanded_nodes = set(expanded_keys)
@@ -584,11 +623,11 @@ class ExploreApp:
         self.object_list.update()
         ui.update()
 
-    def _handle_object_click(self, oid, name, desc, dso_id, is_group):
+    def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id = None):
         self.selected_object = name 
         self.selected_object_description = desc 
         self.selected_object_is_group = is_group
-        self.select_object(oid, dso_id, is_group)
+        self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
 
     def clear_selected_object(self):
@@ -600,8 +639,11 @@ class ExploreApp:
         self.reset_preview_icons()
         self.file_list.set_options([])
         self.all_files_rows = []
+        self.selected_sessions_multi.clear()
+        if self.transfer_multi_btn:
+            self.transfer_multi_btn.visible = False
 
-    def select_object(self, object_id, dso_id, is_group):
+    def select_object(self, object_id, dso_id, is_group, session_id = None):
         dwarf_id = self.get_selected_dwarf_id()
         details = []
         self.clear_selected_object()
@@ -609,11 +651,11 @@ class ExploreApp:
         if self.mode == "backup":
             show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
             if show_only_duplicates:
-                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value)
+                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value, session_id)
             else:
-                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value)
+                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value, session_id)
         else:
-            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value)
+            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value, session_id)
 
         # Store all rows globally so we can access them later
         self.all_files_rows = [list(row) for row in files]
@@ -664,7 +706,7 @@ class ExploreApp:
                 exp_time = row[2]
                 gainDB = row[3]
                 IR_filter  = row[4]
-                stacks = row[5]
+                stacks = row[5] if row[5] is not None else 0
                 backup_path = row[6]  # location from BackupDrive or USB Dwarf
                 session_date = row[7]
                 session_dir = row[8]
@@ -672,7 +714,7 @@ class ExploreApp:
                 minTemp = row[10]
                 maxTemp = row[11]
                 is_favorite = row[12]  # The favorite column (0 or 1)
-                init_target = row[13]
+                init_target = row[13] if row[13] is not None else UNKNOWN
                 declination = row[14]
                 right_ascencion = row[15]
                 astro_object_id = row[16]
@@ -738,30 +780,78 @@ class ExploreApp:
                             selected_sessions.add(lbl)
                     update_buttons()
 
-                # "Select all / Deselect all" toggle
+                # Enable multi-selection in dwarf mode to allow multi-session transfer
                 checkboxes = []
-                # future improvement : use checkboxes to Archive / Restore multi sessions
-                use_checkboxes = False
+                use_checkboxes = (
+                    (
+                        self.mode != "backup"
+                        and bool(self.only_on_dwarf and self.only_on_dwarf.value)
+                        and bool(self.get_selected_dwarf_id())
+                    ) or (
+                        self.mode == "backup"
+                        and bool(self.only_on_backup and self.only_on_backup.value)
+                        and bool(self.BackupDriveId)
+                        and bool(self.get_selected_dwarf_id())
+                    )
+                )
+
+                def on_multi_selection_change():
+                    has_sel = (
+                        len(self.selected_sessions_multi) > 0
+                        and (
+                            (
+                                self.mode != "backup"
+                                and bool(self.only_on_dwarf and self.only_on_dwarf.value)
+                                and bool(self.get_selected_dwarf_id())
+                            ) or (
+                                self.mode == "backup"
+                                and bool(self.only_on_backup and self.only_on_backup.value)
+                                and bool(self.BackupDriveId)
+                                and bool(self.get_selected_dwarf_id())
+                            )
+                        )
+                    )
+                    if self.transfer_multi_btn:
+                        self.transfer_multi_btn.visible = has_sel
+                        if has_sel:
+                            self.transfer_multi_btn.set_text(
+                                "📦 Restore Selected Sessions" if self.mode == "backup"
+                                else "📦 Backup Selected Sessions"
+                            )
+                            self.transfer_multi_btn.enable()
+                        else:
+                            self.transfer_multi_btn.disable()
+                    # Keep backup_session_icon mutually exclusive with transfer_multi_btn
+                    if self.backup_session_icon:
+                        if has_sel:
+                            self.backup_session_icon.visible = False
+                            self.backup_session_icon.disable()
+                        else:
+                            # Re-evaluate correct state based on current selection/mode
+                            self.update_preview_icons()
+
                 if use_checkboxes:
-                    with ui.row():
+                    self.selected_sessions_multi.clear()
+                    on_multi_selection_change()
+
+                    with ui.row().classes('items-center gap-4 m-2'):
                         select_all_cb = ui.checkbox('Select All', on_change=lambda e: toggle_select_all(e.value))
-                        ui.button('Deselect All', on_click=lambda: toggle_select_all(False))
+                        ui.button('Deselect All', on_click=lambda: toggle_select_all(False)).props('flat dense')
 
                     # Checkboxes for each detail
                     for data_detail in details:
                         def on_check_change(e, label=data_detail):
                             if e.value:
-                                selected_sessions.add(label)
+                                self.selected_sessions_multi.add(label)
                             else:
-                                selected_sessions.discard(label)
-                            update_buttons()
+                                self.selected_sessions_multi.discard(label)
+                            on_multi_selection_change()
 
-                        with ui.row().classes('items-center gap-2'):
-                            cb = ui.checkbox(on_change=on_check_change)
+                        with ui.row().classes('items-center gap-2 flex-nowrap'):
+                            cb = ui.checkbox(on_change=on_check_change).classes('shrink-0')
                             checkboxes.append(cb)
-
-                            # clickable label to still select single session for detail view
-                            ui.label(data_detail).on('click', lambda e, i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+                            # clickable label still selects single session for detail view
+                            ui.label(data_detail).on('click', lambda e, i=data_detail: self.select_single_session(i, checkboxes)).props('clickable').classes('cursor-pointer break-all')
 
                 else:
 
@@ -770,7 +860,6 @@ class ExploreApp:
                         return re.sub(r"[⭐☆❗]", "", text).strip()
 
                     for data_detail in details:
-                        #ui.item(data_detail, on_click=lambda i=clean_label(data_detail).strip(): self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
                         ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
 
     def open_folder(self, directory = None):
@@ -920,23 +1009,6 @@ class ExploreApp:
             ok_confirm_restore_fits
         )
 
-    def get_mosaic_panels(self, mosaic_dir: str) -> list[tuple[str, str]]:
-        """Return list of (panel_name, stacked.jpg full path) for a mosaic directory."""
-        panels = []
-        try :
-            for subdir in sorted(os.listdir(mosaic_dir)):
-                panel_path = os.path.join(mosaic_dir, subdir)
-                stacked_img = os.path.join(panel_path, "stacked.jpg")
-                if os.path.isdir(panel_path) and os.path.isfile(stacked_img):
-                    panels.append((subdir, stacked_img))
-
-        except FileNotFoundError as e:
-            print(f"Mosaic Directory not found: {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-        
-        return panels
-
     def show_full_image(self, path):
         with ui.dialog().props('maximized') as full_dialog:
             with ui.card().classes("w-full h-full justify-center items-center bg-black"):
@@ -958,6 +1030,7 @@ class ExploreApp:
                         with ui.column().classes("gap-2 items-center mx-auto"):
                             for i, (panel_name, image_path) in enumerate(panels, start=1):
                                 with ui.column().classes("items-center p-1 border rounded shadow-md"):
+                                    print(image_path)
                                     ui.image(image_path).classes('w-[90vw] max-w-[2460px] h-auto rounded mx-auto').props('fit=contain').on('click', lambda path=image_path: self.show_full_image(path))
                                     ui.label(f"Panel {i}").classes("text-sm")
                     
@@ -973,11 +1046,11 @@ class ExploreApp:
                                 for i, (panel_name, image_path) in enumerate(reordered[2:], start=3):
                                     with ui.column().classes("items-center p-1 border rounded shadow-md"):
                                         ui.image(image_path).classes('w-[45vw] max-w-[1280px] h-auto rounded mx-auto').props('fit=contain').on('click', lambda path=image_path: self.show_full_image(path))
-                                        ui.label(f"Panel {i}").classes("text-sm")
+                                        ui.label(f"Panel {3-int(i) + 4}").classes("text-sm")
 
         dialog.open()
 
-    def on_file_selected(self):
+    async def on_file_selected(self):
         selection_index = None
         selected_value = self.file_list.value
         details = []
@@ -1019,7 +1092,7 @@ class ExploreApp:
             exp_time = row[2]
             gainDB = row[3]
             IR_filter  = row[4]
-            stacks = row[5]
+            stacks = row[5] if row[5] is not None else 0
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
             session_date = row[7]
             session_dir = row[8]
@@ -1027,7 +1100,7 @@ class ExploreApp:
             minTemp = row[10]
             maxTemp = row[11]
             is_favorite = row[12]  # The favorite column (0 or 1)
-            init_target = row[13]
+            init_target = row[13] if row[13] is not None else UNKNOWN
             declination = row[14]
             right_ascencion = row[15]
             astro_object_id = row[16]
@@ -1120,7 +1193,7 @@ class ExploreApp:
                 #   ui.item(data_detail)
 
             self.preview_image_path = full_path
-            self.update_preview(full_path)
+            await self.update_preview(full_path)
             self.update_preview_icons()
 
     def on_identify_target_click(self, dwarf_data: DwarfData, descriptiondb):
@@ -1220,16 +1293,15 @@ class ExploreApp:
             options[selection_index+1] = new_select_text
             self.file_list.set_options(options, value=new_select_text)
 
-    def update_preview(self, preview_image_path ):
+    async def update_preview(self, preview_image_path ):
         details_preview = []
         self.details_preview.clear()
         self.preview_image_type = get_extension(preview_image_path)
         self.preview_image_path = preview_image_path
 
         # convert Fits for preview
-        preview_image_path = self.set_preview(self.preview_image_path)
+        preview_image_path = await self.set_preview(self.preview_image_path)
         file_path = get_file_path(preview_image_path, self.base_folder)
-        print(file_path)
 
         size_dir_kb = None
         size_dir_mb = None
@@ -1323,11 +1395,17 @@ class ExploreApp:
 
             with ui.column().classes('gap-1').bind_visibility_from(toggle, 'value'):
 
-                if "_MOSAIC_" in file_path:
-                    panels = self.get_mosaic_panels(os.path.dirname(self.preview_image_path))
-                    if len(panels) > 1:
-                        ui.label(f'📦 {len(panels)} panel(s) found').classes('text-lg m-4')
-                        ui.button("🖼️ Show Mosaic Gallery", on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
+                with ui.row().classes("justify-center mx-auto"):
+                    if "_MOSAIC_" in file_path:
+                        panels = get_mosaic_panels(os.path.dirname(self.preview_image_path))
+                        if len(panels) > 1:
+                            ui.label(f'📦 {len(panels)} panel(s) found').classes('text-lg m-4')
+                            ui.button("🖼️ Show Mosaic Gallery", on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
+
+                        panels_png = get_mosaic_panels(os.path.dirname(self.preview_image_path), img_type="png")
+                        panels_fits = get_mosaic_panels(os.path.dirname(self.preview_image_path), img_type="fits")
+                        if len(panels_png) > 1:
+                            ui.button("🖼️ Create Mosaic", on_click=lambda: self.create_and_show_panorama(os.path.dirname(self.preview_image_path),panels, panels_png, panels_fits)).classes("m-4")
 
                 for data_detail in details_preview:
                     ui.item(data_detail).classes('text-sm')
@@ -1431,6 +1509,11 @@ class ExploreApp:
             else:
                 self.fullscreen_icon.disable()
 
+            # Delete any existing format icons before recreating them
+            for icon in self.preview_icons.values():
+                icon.delete()
+            self.preview_icons.clear()
+
             for fmt, path in self.astro_files.items():
                 using = (
                     fmt not in {"thumbnail", "zip"} 
@@ -1448,21 +1531,46 @@ class ExploreApp:
                         icon.on('click', lambda e, p=path: self.update_preview(p))
                     self.preview_icons[fmt] = icon
 
-                #self.icon_row.add(icon)  # Add icon to the row
-
             if not self.backup_session_icon:
                 self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
-            elif self.mode != "backup" and self.only_on_dwarf.value and self.selected_path:
-                self.backup_session_icon.set_text("Backup Session")
-                self.backup_session_icon.visible = True
-                self.backup_session_icon.enable()
-            elif self.mode == "backup" and self.BackupDriveId and self.only_on_backup.value and self.selected_path:
-                self.backup_session_icon.set_text("Restore Session")
-                self.backup_session_icon.visible = True
-                self.backup_session_icon.enable()
-            else:
+
+            # If multi-sessions are checked AND conditions match
+            has_multi = (
+                bool(self.selected_sessions_multi)
+                and (
+                    (
+                        self.mode != "backup"
+                        and bool(self.only_on_dwarf and self.only_on_dwarf.value)
+                        and bool(self.get_selected_dwarf_id())
+                    ) or (
+                        self.mode == "backup"
+                        and bool(self.only_on_backup and self.only_on_backup.value)
+                        and bool(self.BackupDriveId)
+                        and bool(self.get_selected_dwarf_id())
+                    )
+                )
+            )
+            if has_multi:
                 self.backup_session_icon.visible = False
                 self.backup_session_icon.disable()
+                if self.transfer_multi_btn:
+                    self.transfer_multi_btn.visible = True
+                    self.transfer_multi_btn.enable()
+            else:
+                if self.transfer_multi_btn:
+                    self.transfer_multi_btn.visible = False
+                    self.transfer_multi_btn.disable()
+                if self.mode != "backup" and self.only_on_dwarf.value and self.selected_path:
+                    self.backup_session_icon.set_text("Backup Session")
+                    self.backup_session_icon.visible = True
+                    self.backup_session_icon.enable()
+                elif self.mode == "backup" and self.BackupDriveId and self.only_on_backup.value and self.selected_path:
+                    self.backup_session_icon.set_text("Restore Session")
+                    self.backup_session_icon.visible = True
+                    self.backup_session_icon.enable()
+                else:
+                    self.backup_session_icon.visible = False
+                    self.backup_session_icon.disable()
 
             if not self.delete_session_icon:
                 self.delete_session_icon = ui.button("🗑️ Delete Session", on_click=lambda: self.delete_directory()).classes('h-16')
@@ -1496,9 +1604,9 @@ class ExploreApp:
                 self.action_fits_files_icon.visible = False
                 self.action_fits_files_icon.disable()
 
-    def set_preview(self, path: str):
+    async def set_preview(self, path: str):
         if path.lower().endswith('.fits'):
-            path = generate_fits_preview(path)
+            path = await run.io_bound(generate_fits_preview,path)
         return path
 
     def get_slideshow_image_data(self):
@@ -1514,7 +1622,7 @@ class ExploreApp:
             exp_time = row[2]
             gainDB = row[3]
             IR_filter  = row[4]
-            stacks = row[5]
+            stacks = row[5] if row[5] is not None else 0
             backup_path = row[6]  # location from BackupDrive or USB Dwarf
             session_date = row[7]
             session_dir = row[8]
@@ -1669,6 +1777,210 @@ class ExploreApp:
 
         dialog.open()
 
+    def open_stitch_params(self):
+        with ui.dialog() as d, ui.card():
+            StitchParamsEditor(
+                self.conn,
+                on_change=lambda p: setattr(self, 'stitch_params', p)
+            )
+            # Apply closes dialog
+        d.open()
+
+    async def create_and_show_panorama(self, directory: str, panels: list, panels_png: list, panels_fits: list):
+        pano_tmp_path_jpg = os.path.join(directory, "_mosaic_tmp.jpg")
+        pano_tmp_path_png = os.path.join(directory, "_mosaic_tmp.png")
+        pano_final_path_jpg = os.path.join(directory, "stacked.jpg")
+        pano_final_path_thumbnail = os.path.join(directory, "stacked_thumbnail.jpg")
+        pano_final_path_png = os.path.join(directory, get_png_name_from_zip(directory))
+        pano_existing_jpg = pano_final_path_jpg  # original before save
+        has_existing = os.path.isfile(pano_existing_jpg)
+        mosaic_image = None
+
+        # --- Progress dialog ---
+        with ui.dialog().props('persistent') as progress_dialog, ui.card().classes("w-full max-w-screen-xl items-center gap-4 p-6"):
+            ui.label("⚙️ Stitching Mosaic...").classes("text-lg font-semibold")
+            ui.spinner(size="lg")
+            main_log = ui.log(max_lines=6).classes('w-full').style('height: 100px; overflow: hidden;')
+            log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
+
+        # --- FITS progress dialog ---
+        with ui.dialog().props('persistent') as fits_progress_dialog, ui.card().classes("items-center gap-4 p-6"):
+            ui.label("⚙️ Creating FITS Mosaic...").classes("text-lg font-semibold")
+            ui.spinner(size="lg")
+
+        # --- Error dialog ---
+        with ui.dialog().props('persistent') as error_dialog, ui.card().classes("p-6 gap-4 w-full max-w-2xl"):
+            ui.label("❌ Stitching Failed").classes("text-xl font-bold text-red-500")
+            error_message = ui.label("").classes("text-sm text-gray-300 whitespace-pre-wrap")
+
+            with ui.row().classes("justify-end gap-2 mt-4 w-full"):
+                def on_error_params():
+                    self.open_stitch_params()  # reuse the same params dialog
+
+                def on_error_retry():
+                    error_dialog.close()
+                    # re-trigger stitching — user changed params and wants to retry
+                    ui.timer(
+                        0,
+                        lambda: self.create_and_show_panorama(directory, panels, panels_png, panels_fits),
+                        once=True,
+                    )
+
+                ui.button("🗑️ Discard", on_click=error_dialog.close).props("flat color=negative")
+                ui.button("⚙️ Change Parameters", on_click=on_error_params).props("flat")
+                ui.button("🔄 Retry", on_click=on_error_retry).props("color=positive")
+
+        # --- Result dialog ---
+        with ui.dialog().props('maximized') as result_dialog, ui.card().classes("w-full h-full p-4 gap-2"):
+
+            # Title row
+            with ui.row().classes("w-full items-center justify-between mb-2"):
+                ui.label("🌅 Mosaic Result").classes("text-xl font-bold")
+                with ui.row().classes("gap-2"):
+                    btn_show_panels = ui.button(
+                        "🧩 Show Current Panels",
+                        on_click=lambda: self.open_gallery_dialog(directory, panels)
+                    ).props("flat")
+                    btn_discard = ui.button("🗑️ Discard").props("flat color=negative")
+                    btn_save    = ui.button("💾 Save").props("color=positive")
+                    btn_fits    = ui.button("🔭 Create FITS & Close").props("color=primary").classes("hidden")
+                    btn_close   = ui.button("✖️ Close").props("flat").classes("hidden")
+
+            # Images — side by side if original exists, full width otherwise
+            if has_existing:
+                with ui.row().classes("w-full gap-4 items-start"):
+                    with ui.column().classes("flex-1 items-center"):
+                        ui.label("📷 Original").classes("text-sm font-semibold text-gray-400 mb-1")
+                        ui.image(pano_existing_jpg) \
+                            .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
+                            .on('click', lambda: self.show_full_image(pano_existing_jpg))
+                    with ui.column().classes("flex-1 items-center"):
+                        ui.label("✨ New Stitch").classes("text-sm font-semibold text-green-400 mb-1")
+                        result_mosaic_image = ui.image() \
+                            .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
+                            .on('click', lambda: self.show_full_image(pano_tmp_path_jpg))
+            else:
+                with ui.column().classes("w-full items-center"):
+                    ui.label("✨ New Stitch").classes("text-sm font-semibold text-green-400 mb-1")
+                    result_mosaic_image = ui.image() \
+                        .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
+                        .on('click', lambda: self.show_full_image(pano_tmp_path_jpg))
+
+        # Run stitching
+        progress_dialog.open()
+        try:
+            png_images_path = [path for _, path in panels_png]
+            fits_images_path = [path for _, path in panels_fits]
+            png_images = [load_image(win_long_path(path)) for _, path in panels_png]
+            result, mosaic_image, _ = await generate_panorama(
+                png_images_path, png_images,
+                pano_tmp_path_png, pano_tmp_path_jpg,
+                main_log=main_log, log=log,
+                stitch_params=self.stitch_params
+            )
+            failed = not result
+            progress_dialog.close()
+            if result:
+                result_mosaic_image.source = pano_tmp_path_jpg
+                result_dialog.open()
+            else:
+                ui.notify("Mosaic stitching has failed!", type="negative")
+                error_message.text = "Stitching returned no result.\nTry adjusting alignment parameters (lower detection sigma, increase padding)."
+                error_dialog.open()
+
+        except Exception as ex:
+            progress_dialog.close()
+            ui.notify(f"Mosaic failed: {ex}", type="negative")
+            return
+
+        def switch_to_post_save_buttons():
+            btn_discard.classes(add="hidden")
+            btn_save.classes(add="hidden")
+            btn_fits.classes(remove="hidden")
+            btn_close.classes(remove="hidden")
+
+        def on_discard():
+            try:
+                actual_png = _err_path(pano_tmp_path_png) if failed else pano_tmp_path_png
+                actual_jpg = _err_path(pano_tmp_path_jpg) if failed else pano_tmp_path_jpg
+                os.remove(actual_png)
+                os.remove(actual_jpg)
+            except Exception:
+                pass
+            finally:
+                result_dialog.close()
+                ui.notify("Mosaic discarded.", type="warning")
+
+        def on_save():
+            try:
+                shutil.move(pano_tmp_path_jpg, pano_final_path_jpg)
+                shutil.move(pano_tmp_path_png, pano_final_path_png)
+                create_thumbnail_mosaic(pano_final_path_thumbnail, mosaic_image)
+
+                self.astro_files = check_files(pano_final_path_thumbnail)
+                preview_image_path = self.preview_image_path
+                url_path = build_preview_url(preview_image_path)
+                self.preview_image.source = url_path
+                save_selected_path = self.selected_path
+                self.reset_preview_icons()
+                self.selected_path = save_selected_path
+                self.update_preview_icons()
+                ui.notify("✅ Mosaic saved to session!", type="positive")
+                if len(panels_fits) > 0:
+                    switch_to_post_save_buttons()
+                else:
+                    result_dialog.close()
+            except Exception as ex:
+                ui.notify(f"Save failed: {ex}", type="negative")
+
+        async def on_create_fits():
+            fits_progress_dialog.open()
+            try:
+                pano_final_path_fits = os.path.join(directory, get_fits_name_from_zip(directory))
+                await run.io_bound(
+                    stitch_fits_from_transforms,
+                    fits_images_path,
+                    pano_final_path_fits,
+                    normalise=True,
+                    crop=True,
+                )
+                # Refresh astro_files so the new FITS icon appears
+                self.astro_files = check_files(pano_final_path_fits)
+                preview_image_path = self.preview_image_path
+                url_path = build_preview_url(preview_image_path)
+                self.preview_image.source = url_path
+                save_selected_path = self.selected_path
+                self.reset_preview_icons()
+                self.selected_path = save_selected_path
+                self.update_preview_icons()
+                ui.notify("✅ FITS mosaic created!", type="positive")
+            except Exception as ex:
+                ui.notify(f"FITS creation failed: {ex}", type="negative")
+            finally:
+                fits_progress_dialog.close()
+                result_dialog.close()
+
+        def on_close():
+            result_dialog.close()
+
+        btn_discard.on("click", on_discard)
+        btn_save.on("click", on_save)
+        btn_fits.on("click", on_create_fits)
+        btn_close.on("click", on_close)
+
+    def select_single_session(self, label: str, checkboxes: list):
+        """Select a single session for detail view, clearing any multi-selection."""
+        # Uncheck all checkboxes
+        for cb in checkboxes:
+            cb.value = False
+        # Clear multi-selection set and hide transfer button
+        self.selected_sessions_multi.clear()
+        if self.transfer_multi_btn:
+            self.transfer_multi_btn.visible = False
+            self.transfer_multi_btn.disable()
+        # Now display the selected session detail
+        self.file_list.set_value(label)
+
     def get_backup_url(self):
         ui.notify("Launch Backup Dwarf Data...")
         explore_url = ""
@@ -1699,6 +2011,56 @@ class ExploreApp:
                     explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
                 else:
                     explore_url = f"/Transfer?DwarfId={dwarf_id}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+
+        print(explore_url)
+        return explore_url
+
+    def get_multi_transfer_url(self):
+        """Build a Transfer URL with all selected sessions (multi-selection mode)."""
+        import urllib.parse
+
+        if not self.selected_sessions_multi:
+            ui.notify("No sessions selected", color="warning")
+            return ""
+
+        dwarf_id = self.get_selected_dwarf_id()
+        if not dwarf_id or dwarf_id == ALL_DWARFS:
+            ui.notify("Please select a Dwarf first", color="warning")
+            return ""
+
+        # Resolve each selected label to its row and extract the session path
+        session_names = []
+        for label in self.selected_sessions_multi:
+            idx = self.label_to_index.get(label)
+            if idx is not None and idx < len(self.all_files_rows):
+                row = self.all_files_rows[idx]
+                if self.mode == "backup":
+                    # Restore: pass the full backup path of the session directory
+                    file_path = row[1]
+                    backup_path = row[6]
+                    full_path = get_Backup_fullpath(self.conn, backup_path, "", file_path, dwarf_id)
+                    session_path = os.path.dirname(full_path)
+                    if session_path and session_path not in session_names:
+                        session_names.append(session_path)
+                else:
+                    # Archive: pass the session dir name only
+                    session_dir = row[8]
+                    if session_dir and session_dir not in session_names:
+                        session_names.append(session_dir)
+
+        if not session_names:
+            ui.notify("Could not resolve selected sessions", color="warning")
+            return ""
+
+        ui.notify(f"Launching restore for {len(session_names)} session(s)..." if self.mode == "backup"
+                  else f"Launching transfer for {len(session_names)} session(s)...", color="positive")
+
+        sessions_param = urllib.parse.quote("|".join(session_names))
+
+        if self.mode == "backup":
+            explore_url = f"/Transfer?DwarfId={dwarf_id}&session={sessions_param}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+        else:
+            explore_url = f"/Transfer?DwarfId={dwarf_id}&session={sessions_param}&mode=Archive&back_url=1"
 
         print(explore_url)
         return explore_url

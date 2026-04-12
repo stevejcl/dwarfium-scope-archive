@@ -18,7 +18,7 @@ from astropy.wcs import WCS
 from components.menu import menu
 from api.dwarf_backup_fct import ( 
     hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
-    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail
+    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text
@@ -323,7 +323,7 @@ class AddManualSession:
 
     def show_full_image(self, e):
         with ui.dialog() as dialog, ui.card().classes("w-full h-auto max-w-screen-xl"):
-            ui.image(self.session_select_image).classes('w-full h-auto rounded-xl')
+            ui.image(self.session_select_image).classes('w-full h-auto object-contain rounded-xl')
             ui.button('Close', on_click=dialog.close)
 
         dialog.open()
@@ -453,70 +453,6 @@ class AddManualSession:
                 else:
                     self.session_name_lookup[session_id] = (session_dir, session_data)  # id -> name
 
-    def get_session_detail(self, row):
-        label_title = ""
-        label_text = ""
-        thumbnail_path = None
-        image_path = None
-
-        if len(row) > 0:
-            # extract DB Values
-            dwarf_data_id = row[0]
-            file_path = row[1]
-            exp_time = row[2]
-            gainDB = row[3]
-            filter  = row[4]
-            stacks = row[5]
-            backup_path = row[6]  # location from BackupDrive or USB Dwarf
-            session_date = row[7]
-            session_dir = row[8]
-            dwarf_name = row[9]
-            minTemp = row[10]
-            maxTemp = row[11]
-            is_favorite = row[12]  # The favorite column (0 or 1)
-            init_target = row[13]
-            declination = row[14]
-            right_ascencion = row[15]
-            astro_object_id = row[16]
-            astro_group_id = row[17]
-            descriptionDB = row[18]
-
-            # display Values
-            session_date = show_short_date_session(session_date)
-            lens = "(W) " if ("_WIDE_") in session_dir else ""
-            exp = f"{exp_time}s" if exp_time is not None else "N/A"
-            exp_value = parse_exposure(exp) if exp != "N/A" else 0
-            gain = gainDB if gainDB is not None else "N/A"
-            astro_filter = f"{filter}" if filter else "No Filter"
-
-            info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
-            target = init_target[:10]
-            description,_ =  get_name_object(descriptionDB)
-            # Building the details string with the star icon
-            label_text = f"{description}\n"
-            label_text = label_text + f"{info_stack} with 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}\n"
-            label_text = label_text + f" RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}\n"
-
-            full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.DwarfId)
-            astro_files = check_files(full_path)
-
-            # get exposure for Restacked session
-            exposure_time = format_seconds_hms(exp_value * stacks)
-            if is_Restacked(session_dir):
-                if "_MOSAIC_" in full_path:
-                    exposure_time = format_seconds_hms(get_total_mosaic_exposure(os.path.dirname(full_path)))
-                else:
-                    fits_path = astro_files.get('fits')
-                    if fits_path and os.path.isfile(fits_path):
-                        exposure_time = format_seconds_hms(get_total_exposure(fits_path))
-
-            label_title = f"Session: {session_dir}"
-            label_text = label_text + f"{stacks} stacked shots for a total exposure time of {exposure_time}"
-            thumbnail_path = astro_files.get('thumbnail')
-            image_path = astro_files.get('jpg') or astro_files.get('png')
-            print(thumbnail_path)
-        return label_title, label_text, thumbnail_path, image_path
-
     async def select_destination_folder(self):
         """Open folder selection dialog."""
         if hasattr(webview, 'FileDialog'):
@@ -582,7 +518,7 @@ class AddManualSession:
             details_session = get_session_backup_details(self.conn, session_id)
             if len(details_session) == 1:
                 print(details_session)
-                self.detail_session_name.text, self.detail_session.text, thumbnail_path, image_path = self.get_session_detail(details_session[0])
+                self.detail_session_name.text, self.detail_session.text, thumbnail_path, image_path = get_session_detail(self.conn, details_session[0], self.DwarfId)
                 if thumbnail_path:
                     self.session_select_thumbnail = thumbnail_path
                     self.session_select_image = image_path

@@ -26,3 +26,5 @@ image/image-fits.psd
 /dist
 /Session_2025_01
 /Stellar Studio
+/.venv
+/debug_masks

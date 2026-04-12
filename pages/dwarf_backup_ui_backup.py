@@ -5,9 +5,9 @@ import os
 from nicegui import native, app, run, ui
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive 
+from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, list_error_integrity  
 
-from api.dwarf_backup_db_api import get_dwarf_Names
+from api.dwarf_backup_db_api import get_dwarf_Names, get_sessions_backup
 from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
 from api.dwarf_backup_db_api import get_session_present_in_backupDrive
 from api.dwarf_backup_db_api import has_related_backup_entries, delete_backup_entries_and_dwarf_data
@@ -34,6 +34,10 @@ class ConfigApp:
         self.backupDrive_id = BackupId
         self.backup_scan_date = None
 
+        self.backup_integrity_done = False
+        self.backup_integrity_list = None
+        self.errors = None
+        self.selected_error = {"value": None}
         self.WinLog = WinLog()
         self.build_ui()
 
@@ -41,10 +45,13 @@ class ConfigApp:
         self.conn = connect_db(self.database)
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
-            with ui.grid(columns=2):
+            with ui.grid(columns=2).classes('items-start'):
                 ui.button("Show All Current Backup Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
                 ui.button("Analyze Current Drive", on_click=self.analyze_drive)
-
+                ui.button("Check Session Integrity", on_click=self.check_integrity_drive)
+                self.button_explore_session = ui.button("🔎 Open in Explorer", on_click=self.open_in_explore)
+            with ui.row().classes('col-span-2 items-start gap-4'):  
+               self.results_container = ui.column().classes('flex-1')
             ui.separator()
 
             with ui.row().classes('w-full gap-8 items-start'):
@@ -102,6 +109,7 @@ class ConfigApp:
 
         # need this button don't change if not
         setStyle()
+        self.resetIntegrity()
         self.refresh_backupDrive_list()
 
     def refresh_backupDrive_list(self):
@@ -139,12 +147,20 @@ class ConfigApp:
         else:
             self.backupDrive_selector.set_options([], value=None)
 
+    def resetIntegrity(self):
+        # reset Integrity 
+        self.errors = None
+        self.selected_error = {"value": None}
+        self.button_explore_session.visible=False
+        self.results_container.clear()
+
     def load_selected_backupDrive(self, _):
         value = self.backupDrive_selector.value
         if not value:
             return
         if value in self.backupDrive_map:
             self.backupDrive_id, path = self.backupDrive_map[value]
+            self.resetIntegrity()
         else:
             ui.notify("Invalid backup Drive selection.", type="negative")
             return
@@ -160,6 +176,7 @@ class ConfigApp:
             self.backup_scan_date.text = row[5]
 
     def set_new_BackupDrive(self):
+        self.resetIntegrity()
         self.backupDrive_id = None
         self.backupDrive_name.value = ""
         self.backupDrive_desc.value = ""
@@ -329,6 +346,84 @@ class ConfigApp:
             dialog.close()  # close dialog 
             self.load_selected_backupDrive(None)
 
+
+    async def check_integrity_drive(self):
+        location = self.backupDrive_location.value
+        if not location:
+            ui.notify("No location selected.", type="negative")
+            return
+
+        astroDir = self.backupDrive_astroDir.value or ""
+
+        # Dialog to block interaction and show progress
+        with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 2600px; height: 800px; margin: auto"):
+            error_label = ui.label().style('color: red')  # Empty label for future error messages
+            close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+            ui.label(f"🔍 Scanning: {location}, please wait...")
+            spinner = ui.spinner(size="lg")
+            log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
+
+        dialog.open()  # show the dialog
+        error_found = False
+
+        try:
+            backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
+            session_list = get_sessions_backup(self.conn, self.backupDrive_id)
+            print(f"session_list: {len(session_list)} found")
+            ui.notify(f"🔍 Scanning: {location}-{astroDir}")
+            self.errors = await run.io_bound (list_error_integrity, self.conn, backup_drive_id, self.backupDrive_location.value, session_list, log)
+            ui.notify(f"✅ Analysis Complete: {len(self.errors)} sessions errors found", type="positive")
+            spinner.visible = False
+            self.results_container.clear()
+            if len(self.errors) > 0:
+                error_found = True
+                close_button.text = "Close and Show Results"
+                # Store selected error
+                self.selected_error = {"value": None}
+
+                with self.results_container:
+                    ui.separator()
+                    ui.label("⚠️ Sessions with errors:").classes("text-bold")
+
+                    self.backup_integrity_list = ui.select(
+                        options={
+                            e["session_id"]: f"{e['session_dir']} → {e.get('reason') or e.get('status')}"
+                            for e in self.errors
+                        },
+                        label="Select a session",
+                        on_change=lambda e: self.selected_error.update({"value": e.value})
+                    ).classes("w-full")
+        except Exception as e:
+            msg = f"❌ Error: {str(e)}"
+            ui.notify(msg, type="negative")
+            error_label.text = msg 
+            close_button.visible = True
+
+        if self.button_explore_session and error_found:
+            self.button_explore_session.visible = True
+        elif self.button_explore_session and not error_found:
+            self.button_explore_session.visible = False
+
+    def open_in_explore(self):
+        if not self.selected_error["value"]:
+            ui.notify("Please select a session", type="warning")
+            return
+
+        # retrieve session from label
+        selected = next(
+            (e for e in self.errors if e["session_id"] == self.selected_error["value"]),
+            None
+        )
+
+        if not selected:
+            ui.notify("Session not found", type="negative")
+            return
+
+        session_id = selected["session_id"]
+
+        ui.navigate.to(self.get_explore_url(session_id))
+
+            
     async def confirm_and_delete_BackupDrive(self):
         if self.backupDrive_id is None:
             ui.notify("No Backup Drive selected", type="negative")
@@ -353,6 +448,7 @@ class ConfigApp:
         print(f"Deleted BackupDrive {self.backupDrive_id}.")
         self.refresh_backupDrive_list()
         self.set_new_BackupDrive()
+        self.resetIntegrity()
         ui.notify("BackupDrive deleted.", type="positive")
 
     async def confirm_and_delete_entries(self):
@@ -371,12 +467,14 @@ class ConfigApp:
         self.backup_scan_date.text = ""
         ui.notify("Backup entries and DwarfData deleted.", type="positive")
 
-    def get_explore_url(self):
+    def get_explore_url(self, session_id = None):
         ui.notify("Showing Backup Data...")  # Simulate showing data
         if self.backupDrive_id is None:
             explore_url = f"/Explore?mode=backup"
         else:
             back_url = f"/Backup?BackupId="
             explore_url = f"/Explore?BackupDriveId={self.backupDrive_id}&mode=backup&back_url={back_url}"
+        if session_id:
+            explore_url += f"&SessionId={session_id}"
         print(explore_url)
         return explore_url

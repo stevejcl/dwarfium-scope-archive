@@ -51,9 +51,19 @@ try:
             native=True, 
             window_size=(1200, 1024),
             port=native.find_open_port(),
-            reconnect_timeout=6,
-            host="0.0.0.0",
+            reconnect_timeout=20,
+#            host="0.0.0.0",
             reload=False)
 
-except (KeyboardInterrupt, SystemExit):
+except (KeyboardInterrupt):
     print("Application closed by user.")
+    pass
+
+except Exception as e:
+    print(f"Application closed error detected {e}.")
+    
+except (SystemExit):
+    print("Application closed.")
+    pass
+
+    pass

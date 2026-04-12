@@ -3,7 +3,6 @@ from nicegui import ui, app, run, Client
 
 import os
 import shutil
-import asyncio
 import hashlib
 import traceback
 from pathlib import Path
@@ -333,6 +332,8 @@ class TransferApp:
                         session_name = os.path.basename(self.session)
                         if session_name.startswith("RESTACKED"):
                             initial_ftp_dir = "/".join([self.ftp_dwarf_dir, "RESTACKED"])
+                        if session_name.startswith("STARTRAILS"):
+                            initial_ftp_dir = "/".join([self.ftp_dwarf_dir, "STARTRAILS"])
                     if initial_ftp_dir:
                         self.input_dest_dir.set_options([self.ftp_dwarf_dir, initial_ftp_dir], value=initial_ftp_dir)
                     else:
@@ -344,6 +345,8 @@ class TransferApp:
                     session_name = os.path.basename(self.session)
                     if session_name.startswith("RESTACKED"):
                         initial_dir = os.path.join(self.dwarf_astroDir, "RESTACKED")
+                    if session_name.startswith("STARTRAILS"):
+                        initial_dir = os.path.join(self.dwarf_astroDir, "STARTRAILS")
                 if initial_dir:
                     self.input_dest_dir.set_options([self.dwarf_astroDir, initial_dir], value=initial_dir)
                 else:
@@ -356,25 +359,61 @@ class TransferApp:
                 if self.DwarfId_Init == self.DwarfId and self.session:
                     base_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
                     if not base_dir:
-                        base_dir = "" 
-                    if self.session.startswith("RESTACKED"):
-                        self.ftp_dwarf_dir = "/".join([base_dir, "RESTACKED", self.session])
+                        base_dir = ""
+                    # Multi-session support: pipe-separated list
+                    sessions = self.session.split("|") if "|" in self.session else [self.session]
+                    if len(sessions) > 1:
+                        ftp_dirs = []
+                        for s in sessions:
+                            if s.startswith("RESTACKED"):
+                                ftp_dirs.append("/".join([base_dir, "RESTACKED", s]))
+                            elif s.startswith("STARTRAILS"):
+                                ftp_dirs.append("/".join([base_dir, "STARTRAILS", s]))
+                            else:
+                                ftp_dirs.append("/".join([base_dir, s]))
+                        self.ftp_dwarf_dir = ftp_dirs[0]
+                        self.input_src_dir.set_options(ftp_dirs, value=ftp_dirs[0])
+                        self.src_main_dir = self.ftp_dwarf_dir
                     else:
-                        self.ftp_dwarf_dir = "/".join([base_dir, self.session])
+                        if self.session.startswith("RESTACKED"):
+                            self.ftp_dwarf_dir = "/".join([base_dir, "RESTACKED", self.session])
+                        elif self.session.startswith("STARTRAILS"):
+                            self.ftp_dwarf_dir = "/".join([base_dir, "STARTRAILS", self.session])
+                        else:
+                            self.ftp_dwarf_dir = "/".join([base_dir, self.session])
+                        if self.ftp_dwarf_dir:
+                            self.input_src_dir.set_options([self.ftp_dwarf_dir], value=self.ftp_dwarf_dir)
+                            self.src_main_dir = self.ftp_dwarf_dir
                 else:
                     self.ftp_dwarf_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
-                if self.ftp_dwarf_dir:
-                    self.input_src_dir.set_options([self.ftp_dwarf_dir], value = self.ftp_dwarf_dir)
-                    self.src_main_dir = self.ftp_dwarf_dir
+                    if self.ftp_dwarf_dir:
+                        self.input_src_dir.set_options([self.ftp_dwarf_dir], value=self.ftp_dwarf_dir)
+                        self.src_main_dir = self.ftp_dwarf_dir
             else:
                 if self.DwarfId_Init == self.DwarfId and self.session:
-                    if self.session.startswith("RESTACKED"):
-                        restacked_session = os.path.join("RESTACKED", self.session)
-                        self.input_src_dir.set_options([os.path.join(self.dwarf_astroDir, restacked_session)], value = os.path.join(self.dwarf_astroDir, restacked_session))
+                    # Multi-session support: pipe-separated list
+                    sessions = self.session.split("|") if "|" in self.session else [self.session]
+                    if len(sessions) > 1:
+                        dirs = []
+                        for s in sessions:
+                            if s.startswith("RESTACKED"):
+                                dirs.append(os.path.join(self.dwarf_astroDir, "RESTACKED", s))
+                            elif s.startswith("STARTRAILS"):
+                                dirs.append(os.path.join(self.dwarf_astroDir, "STARTRAILS", s))
+                            else:
+                                dirs.append(os.path.join(self.dwarf_astroDir, s))
+                        self.input_src_dir.set_options(dirs, value=dirs[0])
                     else:
-                        self.input_src_dir.set_options([os.path.join(self.dwarf_astroDir, self.session)], value = os.path.join(self.dwarf_astroDir, self.session))
+                        if self.session.startswith("RESTACKED"):
+                            restacked_session = os.path.join("RESTACKED", self.session)
+                            self.input_src_dir.set_options([os.path.join(self.dwarf_astroDir, restacked_session)], value=os.path.join(self.dwarf_astroDir, restacked_session))
+                        elif self.session.startswith("STARTRAILS"):
+                            startrails_session = os.path.join("STARTRAILS", self.session)
+                            self.input_src_dir.set_options([os.path.join(self.dwarf_astroDir, startrails_session)], value=os.path.join(self.dwarf_astroDir, startrails_session))
+                        else:
+                            self.input_src_dir.set_options([os.path.join(self.dwarf_astroDir, self.session)], value=os.path.join(self.dwarf_astroDir, self.session))
                 else:
-                    self.input_src_dir.set_options([self.dwarf_astroDir], value = self.dwarf_astroDir)
+                    self.input_src_dir.set_options([self.dwarf_astroDir], value=self.dwarf_astroDir)
                 self.src_main_dir = self.dwarf_astroDir
         else:
             if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
@@ -386,6 +425,8 @@ class TransferApp:
                         session_name = os.path.basename(self.session)
                         if session_name.startswith("RESTACKED"):
                             initial_ftp_dir = "/".join([self.ftp_dwarf_dir, "RESTACKED"])
+                        if session_name.startswith("STARTRAILS"):
+                            initial_ftp_dir = "/".join([self.ftp_dwarf_dir, "STARTRAILS"])
                     if initial_ftp_dir:
                         self.input_dest_dir.set_options([self.ftp_dwarf_dir, initial_ftp_dir], value = initial_ftp_dir)
                     else:
@@ -397,6 +438,8 @@ class TransferApp:
                     session_name = os.path.basename(self.session)
                     if session_name.startswith("RESTACKED"):
                         initial_dir = os.path.join(self.dwarf_astroDir, "RESTACKED")
+                    if session_name.startswith("STARTRAILS"):
+                        initial_dir = os.path.join(self.dwarf_astroDir, "STARTRAILS")
                 if initial_dir:
                     self.input_dest_dir.set_options([self.dwarf_astroDir, initial_dir], value = initial_dir)
                 else:
@@ -495,7 +538,12 @@ class TransferApp:
             print(f"case self.BackupId_Init : {self.BackupId_Init}-{self.BackupId}-{self.session}")
             if self.BackupId_Init and self.BackupId_Init == self.BackupId and self.session:
                 print("case self.BackupId_Init")
-                self.input_src_dir.set_options([self.session], value = self.session)
+                # Multi-session restore: pipe-separated full backup paths
+                sessions = self.session.split("|") if "|" in self.session else [self.session]
+                if len(sessions) > 1:
+                    self.input_src_dir.set_options(sessions, value=sessions[0])
+                else:
+                    self.input_src_dir.set_options([self.session], value=self.session)
             else:
                 self.input_src_dir.set_options([self.backup_path], value = self.backup_path)
             self.src_main_dir = self.backup_path
@@ -542,14 +590,17 @@ class TransferApp:
                         base_dir = "" 
                     if self.session.startswith("RESTACKED"):
                         subdirs = ["/".join([base_dir, "RESTACKED", self.session])]
+                    elif self.session.startswith("STARTRAILS"):
+                        subdirs = ["/".join([base_dir, "STARTRAILS", self.session])]
                     else:
                         subdirs = ["/".join([base_dir, self.session])]
                 else:
                     subdirs = list_ftp_subdirectories(self.dwarf_ip_sta_mode)
                     restacked = list_ftp_subdirectories(self.dwarf_ip_sta_mode, subdir='RESTACKED')
-                    subdirs += [f"{s}" for s in restacked]
+                    startrails = list_ftp_subdirectories(self.dwarf_ip_sta_mode, subdir='STARTRAILS')
+                    subdirs += [f"{s}" for s in restacked] + [f"{s}" for s in startrails]
             except Exception as e:
-                ui.notify("No RESTACKED folder found on FTP or access failed")
+                ui.notify("No RESTACKED or STARTRAILS folder found on FTP or access failed")
 
             # Optionally remove duplicates
             subdirs = sorted(set(subdirs))
@@ -626,11 +677,6 @@ class TransferApp:
         self.progress.value = 0
         src_dir = self.input_src_dir.value
         print(f" Backup src_dir:  {src_dir}")
-        # Check is Full Backup : the Astro Directory is used only
-        isFullBackup = (src_dir == self.src_main_dir)
-        if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode: 
-            isFullBackup = (src_dir == get_ftp_astroDir(self.dwarf_ip_sta_mode))
-        print(f" is Full Backup task:  {isFullBackup}")
         dest_dir = self.input_dest_dir.value
         print(f" Backup dest_dir:  {dest_dir}")
         if not src_dir:
@@ -639,6 +685,75 @@ class TransferApp:
         if not dest_dir:
             self.progress_label.set_text("Select a Destination Directory.")
             return
+
+        # Multi-session: if the source dropdown lists several session folders (not the root dir)
+        all_src_dirs = list(self.input_src_dir.options) if self.input_src_dir.options else [src_dir]
+        is_multi = (
+            len(all_src_dirs) > 1
+            and all(d != self.src_main_dir for d in all_src_dirs)
+            and (self.mode == "Archive" or self.mode == "Restore")
+        )
+
+        if is_multi:
+            self.cancel_btn.visible = True
+            self.StartBackup.visible = False
+            total = len(all_src_dirs)
+            result_backup = True
+            for i, single_src in enumerate(all_src_dirs, 1):
+                if self.cancel_backup:
+                    ui.notify("Transfer cancelled.", type="warning")
+                    result_backup = False
+                    break
+                session_name = os.path.basename(os.path.normpath(single_src))
+                single_dest = os.path.join(dest_dir, session_name)
+                self.progress_label.set_text(f"[{i}/{total}] Processing: {session_name}...")
+                if os.path.exists(single_dest):
+                    ui.notify(f"'{session_name}' already exists — overwriting.", type="warning")
+                result = await self.execute_backup(single_src, single_dest, False, True)
+
+                if not result:
+                    result_backup = False
+                    break
+                
+            if result_backup:
+                local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
+                if not local_Main_Dwarf_dir:
+                    label.text = "Error while synchronizing sessions!"
+                    spinner.visible = False
+                    ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
+
+                else:
+                    # Synchonization : only one dialog
+                    with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
+                        label = ui.label(self.ScanningMessage)
+                        spinner = ui.spinner(size="lg")
+                        log = ui.log(max_lines=40).classes('w-full').style('height: 600px')
+                        ui.button('Close', on_click=dialog.close)
+                    dialog.open()  # show the dialog
+
+                    for i, single_src in enumerate(all_src_dirs, 1):
+                        session_name = os.path.basename(os.path.normpath(single_src))
+                        single_dest = os.path.join(dest_dir, session_name)
+
+                        try:
+                            # use sync_dwarf_sessions
+                            await  self.execute_sync_dwarf_sessions(single_src, single_dest, local_Main_Dwarf_dir, False, label, log, spinner)
+                        except Exception as e:
+                            label.text = "Error while synchronizing sessions!"
+                            spinner.visible = False
+                            ui.notify(f"❌ Error: {str(e)}", type="negative")
+                            break
+
+            self.cancel_btn.visible = False
+            self.StartBackup.visible = True
+
+            return
+
+        # Check is Full Backup : the Astro Directory is used only
+        isFullBackup = (src_dir == self.src_main_dir)
+        if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
+            isFullBackup = (src_dir == get_ftp_astroDir(self.dwarf_ip_sta_mode))
+        print(f" is Full Backup task:  {isFullBackup}")
 
         if self.mode != "Archive" and self.transfert_mode_select.value == "FTP":
             if int(self.dwarf_type) != 1: #only D2 is not read-only
@@ -654,9 +769,7 @@ class TransferApp:
                     dest_path = f"{dest_dir.rstrip('/')}/{src_basename}"
                 else:
                     dest_path = dest_dir.rstrip('/')
-                # You would need to check existence via FTP
-                if ftp_path_exists(self.dwarf_ip_sta_mode, dest_path):  # Implement this check
-                    base_path = "/mnt/sdcard" # use ssh
+                if ftp_path_exists(self.dwarf_ip_sta_mode, dest_path):
                     await self.confirm_overwrite(dest_path, isFullBackup)
                 else:
                     await self.execute_backup(src_dir, dest_path, isFullBackup)
@@ -679,6 +792,7 @@ class TransferApp:
         self.cancel_btn.visible = False
         self.StartBackup.visible = True
 
+
     async def confirm_overwrite(self, dest_path, isFullBackup):
 
         print("confirm_overwrite")
@@ -699,7 +813,7 @@ class TransferApp:
             self.cancel_btn.visible = False
             self.StartBackup.visible = True
 
-    async def execute_backup(self, src_dir, dest_path, isFullBackup):
+    async def execute_backup(self, src_dir, dest_path, isFullBackup, is_multi = False):
 
         list_files = await self.get_files(src_dir, dest_path, isFullBackup)
         total_files = 0
@@ -708,7 +822,7 @@ class TransferApp:
 
         if total_files == 0:
             self.progress_label.set_text("No files to copy.")
-            return
+            return True
         else:
             self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files...")
         ui.notify("Starting...")
@@ -731,84 +845,102 @@ class TransferApp:
             self.progress_label.set_text(f"End of Backup")
             ui.notify("✅ Backup complete and verified!")
 
-            with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
-                label = ui.label(self.ScanningMessage)
-                spinner = ui.spinner(size="lg")
-                log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
-                ui.button('Close', on_click=dialog.close)
-            dialog.open()  # show the dialog
+            if not is_multi : 
+                with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
+                    label = ui.label(self.ScanningMessage)
+                    spinner = ui.spinner(size="lg")
+                    log = ui.log(max_lines=25).classes('w-full').style('height: 450px;')
+                    ui.button('Close', on_click=dialog.close)
+                dialog.open()  # show the dialog
 
-            try:
-                # use sync_dwarf_sessions
-                local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
-                if not local_Main_Dwarf_dir:
-                    spinner.visible = False
-                    ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
-                else:
-                    ui.notify("Starting Local Sync ...")
-                    session_name = ""
-                    dir_parent_session = ""
-                    dir_backup_session = ""
-                    if self.mode == "Archive":
-                        if isFullBackup:
-                            dir_parent_session = dest_path
-                        else: 
-                            session_name = os.path.basename(dest_path)
-                            dir_parent_session = os.path.dirname(dest_path)
-                            dir_backup_session = dest_path
-                    elif self.mode == "Repair" or self.mode == "Merge":
-                        # Source is the repaired temp dir; dest is the Dwarf dir.
-                        # Sync only the Dwarf local dir (not a backup scan — repair
-                        # does not change the backup drive content).
-                        if isFullBackup:
-                            dir_parent_session = dest_path
-                        else:
-                            session_name = os.path.basename(dest_path)
-                            dir_parent_session = os.path.dirname(dest_path)
-                            dir_backup_session = ""   # no backup-side scan for Repair
-                    else:  # Restore
-                        if isFullBackup:
-                            dir_parent_session = src_dir
-                        else: 
-                            session_name = os.path.basename(src_dir)
-                            dir_parent_session = os.path.dirname(src_dir)
-                            dir_backup_session = src_dir
-
-                    print(f"session_name: {session_name}")
-                    print(f"dir_parent_session: {dir_parent_session}")
-                    print(f"dir_backup_session: {dir_backup_session}")
-                    # if session is a RESTACKED one will be copied in RESTACKED dir by sync_dwarf_sessions
-                    await run.io_bound (sync_dwarf_sessions, self.DwarfId, dir_parent_session, local_Main_Dwarf_dir,session_name,log)
-
-                    ui.notify("Starting Analysis ...")
-
-                    local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.DwarfId)
-                    local_Dwarf_session = ""
-                    if session_name:
-                       local_Dwarf_session = os.path.join(local_Dwarf_dir, session_name) 
-                    if session_name.startswith("RESTACKED"):
-                        restacked_session = os.path.join("RESTACKED", session_name)
-                        local_Dwarf_session = os.path.join(local_Dwarf_dir, restacked_session)
-                    print(local_Dwarf_session)
-
-                    total_dwarf, deleted_dwarf = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
-
-                    # In Repair mode the backup drive is unchanged — skip backup scan
-                    if self.mode != "Repair" and self.mode != "Merge" and dir_backup_session is not None:
-                        total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
-                        ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+                try:
+                    # use sync_dwarf_sessions
+                    local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
+                    if not local_Main_Dwarf_dir:
+                        label.text = "Error while synchronizing sessions!"
+                        spinner.visible = False
+                        ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
                     else:
-                        total_backup, deleted_backup = 0, 0
-
+                        await  self.execute_sync_dwarf_sessions(src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner)
+                except Exception as e:
+                    label.text = "Error while synchronizing sessions!"
                     spinner.visible = False
-                    label.text = self.EndScanningMessage
-                    ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive")
-                    ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
-
-            except Exception as e:
-                ui.notify(f"❌ Error: {str(e)}", type="negative")
+                    ui.notify(f"❌ Error: {str(e)}", type="negative")
         else:
             self.progress_label.set_text(f"Backup interrupted!")
+
+        return result
+
+    async def execute_sync_dwarf_sessions(self, src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner):
+
+        try:
+            ui.notify("Starting Local Sync ...")
+            session_name = ""
+            dir_parent_session = ""
+            dir_backup_session = ""
+            if self.mode == "Archive":
+                if isFullBackup:
+                    dir_parent_session = dest_path
+                else: 
+                    session_name = os.path.basename(dest_path)
+                    dir_parent_session = os.path.dirname(dest_path)
+                    dir_backup_session = dest_path
+            elif self.mode == "Repair" or self.mode == "Merge":
+                # Source is the repaired temp dir; dest is the Dwarf dir.
+                # Sync only the Dwarf local dir (not a backup scan — repair
+                # does not change the backup drive content).
+                if isFullBackup:
+                    dir_parent_session = dest_path
+                else:
+                    session_name = os.path.basename(dest_path)
+                    dir_parent_session = os.path.dirname(dest_path)
+                    dir_backup_session = ""   # no backup-side scan for Repair
+            else:  # Restore
+                if isFullBackup:
+                    dir_parent_session = src_dir
+                else: 
+                    session_name = os.path.basename(src_dir)
+                    dir_parent_session = os.path.dirname(src_dir)
+                    dir_backup_session = src_dir
+
+            print(f"session_name: {session_name}")
+            print(f"dir_parent_session: {dir_parent_session}")
+            print(f"dir_backup_session: {dir_backup_session}")
+            # if session is a RESTACKED one will be copied in RESTACKED dir by sync_dwarf_sessions
+            await run.io_bound (sync_dwarf_sessions, self.DwarfId, dir_parent_session, local_Main_Dwarf_dir,session_name,log)
+
+            ui.notify("Starting Analysis ...")
+
+            local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.DwarfId)
+            local_Dwarf_session = ""
+            if session_name:
+               local_Dwarf_session = os.path.join(local_Dwarf_dir, session_name) 
+            if session_name.startswith("RESTACKED"):
+                restacked_session = os.path.join("RESTACKED", session_name)
+                local_Dwarf_session = os.path.join(local_Dwarf_dir, restacked_session)
+            if session_name.startswith("STARTRAILS"):
+                startrails_session = os.path.join("STARTRAILS", session_name)
+                local_Dwarf_session = os.path.join(local_Dwarf_dir, startrails_session)
+            print(local_Dwarf_session)
+
+            total_dwarf, deleted_dwarf = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
+
+            # In Repair mode the backup drive is unchanged — skip backup scan
+            if self.mode != "Repair" and self.mode != "Merge" and dir_backup_session is not None:
+                total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
+                ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+            else:
+                total_backup, deleted_backup = 0, 0
+
+            spinner.visible = False
+            label.text = self.EndScanningMessage
+            ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive")
+            ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+
+        except Exception as e:
+            spinner.visible = False
+            ui.notify(f"❌ Error: {str(e)}", type="negative")
+
 
     @ui.refreshable
     def notify_me(self, msg: str | None) -> None:

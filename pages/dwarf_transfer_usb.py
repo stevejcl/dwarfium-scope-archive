@@ -340,7 +340,7 @@ class TransferAppUSB:
             with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
                 label = ui.label(self.ScanningMessage)
                 spinner = ui.spinner(size="lg")
-                log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
+                log = ui.log(max_lines=40).classes('w-full').style('height: 600px;')
                 ui.button('Close', on_click=dialog.close)
             dialog.open()  # show the dialog
 

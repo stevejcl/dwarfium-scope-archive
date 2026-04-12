@@ -10,6 +10,7 @@ from nicegui import ui, app
 from components.menu import menu
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import set_setting_text, get_setting_text
+from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
 
 @ui.page('/Settings/')
 def astro_settings(InitDwarfLocal = True):
@@ -96,6 +97,11 @@ class SettingsApp:
             else:
                 ui.label("❌ solve-field not found.")
                 ui.button("Install solve-field localy", on_click=self.install_local_astrometry)
+
+        with ui.card():
+            # astro_settings.py
+            ui.label("🔭 Mosaic & Stitch Parameters").classes("text-2xl font-bold mt-4")
+            StitchParamsEditor(self.conn)  # no on_change → Save button
 
         if not self.InitDwarfLocal:
             ui.notify(f"Configured path not found", type='warning')

@@ -12,8 +12,18 @@ def set_base_folder(path: str):
     BASE_FOLDER = path
 
 def build_preview_url(file_path: str) -> str:
-    """Builds a URL-safe preview URL for an image."""
-    return f'/preview/{quote(file_path.replace("\\", "/"))}'
+    """Builds a URL-safe preview URL for an image with cache busting."""
+    global BASE_FOLDER
+    mtime=""
+    if BASE_FOLDER is not None:
+        full_path = os.path.abspath(os.path.join(BASE_FOLDER, file_path.replace("\\", "/")))
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            mtime = int(os.path.getmtime(full_path))
+    
+    if mtime:
+        return f'/preview/{quote(file_path.replace("\\", "/"))}?v={mtime}'
+    else:
+        return f'/preview/{quote(file_path.replace("\\", "/"))}'
 
 def serve_preview(file_path: str):
     """Securely serves an image from the base folder."""

@@ -3,20 +3,31 @@ from nicegui import ui, app, run, Client
 
 import os
 import shutil
-import asyncio
+import threading
 import tempfile
 import traceback
+import asyncio
 from pathlib import Path
-
 from components.menu import menu
-from api.dwarf_backup_fct import get_local_dwarf_dir, print_log, win_long_path
-from api.dwarf_backup_fct_mosaic import repair_mosaic_session, merge_mosaic
+from api.dwarf_backup_fct import get_local_dwarf_dir, print_log, win_long_path, get_session_detail
+from api.dwarf_backup_fct_mosaic import repair_mosaic_session, merge_mosaic, safe_progress
+from api.dwarf_mosaic_check import (
+    read_shots_info,
+    check_mosaic_json_compatibility,
+    detect_inversion,
+    reorder_panels,
+    format_session_summary,
+    get_thumbnail_path,
+    orientation_confidence_label,
+)
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, get_backupDrive_detail
+from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, get_backupDrive_detail, get_sessions_dwarf, get_sessions_backup, get_session_dwarf_details, get_session_backup_details
 from components.win_log import WinLog
 from api.repair_session_manager import RepairSessionManager
 from components.repair_history_dialog import check_and_show_history
 from components.mosaic_restore_dialog import open_mosaic_restore_dialog
+from api.dwarf_backup_fct_mosaic import rebuild_mosaic_info, backup_merge_files, restore_merge_files, cleanup_backup
+from components.stitch_params_editor import get_stitch_params
 
 # =========================================================
 # PAGE + APP CLASS
@@ -32,7 +43,7 @@ async def mosaic_page(
     back_url: str = None,
 ):
 
-    menu("Mosaic Repair / Merge")
+    menu("Mosaic Merge / Repair")
     await ui.context.client.connected()
     ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId)
 
@@ -71,12 +82,23 @@ class MosaicApp:
         self.primary_main_dir = ''      # Root astro dir for primary picker
         self.secondary_main_dir = ''    # Root astro dir for secondary picker
 
+        self.detail_session_primary_name = ""
+        self.detail_session_primary = ""
+        self.session_select_thumbnail_primary = None
+        self.session_select_image_primary = None
+
+        self.detail_session_secondary_name = ""
+        self.detail_session_secondary = ""
+        self.session_select_thumbnail_secondary = None
+        self.session_select_image_secondary = None
+
         self.dwarf_astroDir = ''
         self.dwarf_ip_sta_mode = ''
         self.dwarf_type = None
 
-        self.mode = "Repair"
-        self.cancel_process = False
+        self.mode = "Merge"
+        self.cancel_process = threading.Event()
+        self.cancel_process.clear()
 
         # ── Repair/Merge session tracking ──────────────────────────────
         # RepairSessionManager is initialised lazily once output_dir is known
@@ -92,6 +114,8 @@ class MosaicApp:
     def build_ui(self):
         self.conn = connect_db(self.database)
         nbcol = 3 if self.BackUrl else 1
+        # parameter for stitch params
+        self.stitch_params = get_stitch_params(self.conn)
 
         # ── Header card ──────────────────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-2 items-center") as self.main_ui:
@@ -99,11 +123,11 @@ class MosaicApp:
                 if self.BackUrl:
                     ui.button("🔙 Back", on_click=lambda: ui.navigate.to(self.BackUrl)).classes("justify-self-start")
                 self.mode_toggle = ui.toggle(
-                    ['Repair', 'Merge'], value=self.mode, on_change=self.switch_mode
+                    ['Merge', 'Repair'], value=self.mode, on_change=self.switch_mode
                 ).classes("col-span-1 justify-self-center")
 
             self.main_label = ui.label(
-                "Primary = reference mosaic (small but correct). Secondary = session to repair. Result goes to the work directory."
+                "Primary = base mosaic. Secondary = session whose data will be merged into it. Result goes to the work directory."
             ).classes("text-sm text-gray-500")
 
             # Dwarf + Backup selector row
@@ -119,7 +143,7 @@ class MosaicApp:
 
         # ── Primary session card ─────────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
-            self.primary_session_label = ui.label("📂 Primary Session (reference — correct mosaic)").classes("text-lg font-semibold")
+            self.primary_session_label = ui.label("📂 Primary Session (base mosaic)").classes("text-lg font-semibold")
             with ui.row().classes("items-center gap-2"):
                 ui.label("Data source:").classes("text-sm text-gray-500")
                 self.primary_source_toggle = ui.toggle(
@@ -138,9 +162,20 @@ class MosaicApp:
             )
             ui.button("📁 Select Primary Session", on_click=self.select_primary_folder)
 
+            with ui.row().classes('w-full items-start'):
+                # LEFT COLUMN
+                with ui.column().classes('w-2/3'):
+                    self.detail_session_primary_name = ui.label("").classes('text-blue-800')
+                    self.detail_session_primary = ui.label("").style('white-space: pre-line').classes('text-purple-600')
+
+                # RIGHT COLUMN
+                with ui.column().classes('w-1/4'):
+                    self.thumbnail_primary = ui.image(self.session_select_thumbnail_primary) \
+                                     .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
+                                     .on('click', lambda: self._show_full_image(self.session_select_image_primary))
         # ── Secondary session card ───────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
-            self.secondary_session_label = ui.label("📂 Secondary Session (session to repair)").classes("text-lg font-semibold")
+            self.secondary_session_label = ui.label("📂 Secondary Session (Additional Data to Merge)").classes("text-lg font-semibold")
             with ui.row().classes("items-center gap-2"):
                 ui.label("Data source:").classes("text-sm text-gray-500")
                 self.secondary_source_toggle = ui.toggle(
@@ -159,6 +194,18 @@ class MosaicApp:
             )
             ui.button("📁 Select Secondary Session", on_click=self.select_secondary_folder)
 
+            with ui.row().classes('w-full items-start'):
+                # LEFT COLUMN
+                with ui.column().classes('w-2/3'):
+                    self.detail_session_secondary_name = ui.label("").classes('text-blue-800')
+                    self.detail_session_secondary = ui.label("").style('white-space: pre-line').classes('text-purple-600')
+
+                # RIGHT COLUMN
+                with ui.column().classes('w-1/4'):
+                    self.thumbnail_secondary = ui.image(self.session_select_thumbnail_secondary) \
+                                     .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
+                                     .on('click', lambda: self._show_full_image(self.session_select_image_secondary))
+
         # ── Output / temp directory card ─────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
             ui.label("📤 Output (Temporary) Directory").classes("text-lg font-semibold")
@@ -172,6 +219,7 @@ class MosaicApp:
                 .props('stack-label outlined')
                 .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
             )
+            self.copy_intermediate_files = ui.checkbox("Copy Fits/JPG Session Files, Check it to do Megastack on Dwarf")
             with ui.row():
                 ui.button("📁 Select Output Folder", on_click=self.select_output_folder)
                 ui.button("🗂️ Create Temp Folder", on_click=self.create_temp_folder)
@@ -185,7 +233,7 @@ class MosaicApp:
                 self.cancel_btn = ui.button("❌ Cancel", on_click=self.cancel)
                 self.cancel_btn.visible = False
 
-                self.action_button = ui.button("🔧 Start Repair", on_click=self.start_process)
+                self.action_button = ui.button("🔀 Start Merge", on_click=self.verify_process)
 
             ui.separator()
             self.log_ui = ui.log(max_lines=30).classes('w-full').style('height: 300px;')
@@ -224,11 +272,13 @@ class MosaicApp:
             self.action_button.text = "🔧 Start Repair"
             self.primary_session_label.text = "📂 Primary Session (reference — correct mosaic)"
             self.secondary_session_label.text = "📂 Secondary Session (session to repair)"
+            self.copy_intermediate_files.visible = False
         else:
             self.main_label.text = "Primary = base mosaic. Secondary = session whose data will be merged into it. Result goes to the work directory."
             self.action_button.text = "🔀 Start Merge"
-            self.primary_session_label.text = "📂 Primary Session (base mosaic)"
-            self.secondary_session_label.text = "📂 Secondary Session (data to merge in)"
+            self.primary_session_label.text = "📂 Primary Session (Base Mosaic)"
+            self.secondary_session_label.text = "📂 Secondary Session (Additional Data to Merge)"
+            self.copy_intermediate_files.visible = True
 
     # ------------------------------------------------------------------ #
     #  DWARF SELECTOR                                                      #
@@ -283,8 +333,14 @@ class MosaicApp:
             self.backup_path = os.path.join(self.backup_location, self.backup_astrodir)
             if os.path.exists(self.backup_path):
                 self.backup_status_label.text = "✅ Path detected."
+                if self.usb_status_label.text != "✅ Path detected." and self.primary_source_toggle.value == "Dwarf": 
+                    self.primary_source_toggle.value = "Backup"
+                    self.secondary_source_toggle.value = "Backup"
             else:
                 self.backup_status_label.text = "❌ Path not detected."
+                if self.usb_status_label.text == "✅ Path detected." and self.primary_source_toggle.value == "Backup": 
+                    self.primary_source_toggle.value = "Dwarf"
+                    self.secondary_source_toggle.value = "Dwarf"
         else:
             self.BackupId = None
             self.backup_location = ""
@@ -405,10 +461,68 @@ class MosaicApp:
         if self.primary_session_dir != self._root_for_source(self.primary_source) and "MOSAIC" not in self.primary_session_dir:
             ui.notify("Directory does not contain MOSAIC", type="warning")
 
+        details_session = []
+        if self.primary_source == "Dwarf":
+            sessions = get_sessions_dwarf(self.conn, self.DwarfId, Path(self.primary_session_dir).name)
+            if len(sessions) == 1:
+                session_id = sessions[0][0]
+                details_session = get_session_dwarf_details(self.conn, session_id)
+        else:
+            sessions = get_sessions_backup(self.conn, self.BackupId, self.DwarfId, Path(self.primary_session_dir).name)
+            if len(sessions) == 1:
+                session_id = sessions[0][0]
+                details_session = get_session_backup_details(self.conn, session_id)
+        if len(details_session) == 1:
+            print(details_session)
+            self.detail_session_primary_name.text, self.detail_session_primary.text, thumbnail_path, image_path = get_session_detail(self.conn, details_session[0], self.DwarfId)
+           
+            if thumbnail_path:
+                print(f"image_path: {image_path}")
+                self.session_select_thumbnail_primary = thumbnail_path
+                self.session_select_image_primary = image_path
+                self.thumbnail_primary.set_source(thumbnail_path)
+                self.thumbnail_primary.visible = True
+            else:
+                self.thumbnail_primary.visible = False
+        else:
+            self.detail_session_primary_name.text = ""
+            self.detail_session_primary.text = ""
+            self.thumbnail_primary.visible = False
+
+
     def on_secondary_dir_change(self):
         self.secondary_session_dir = self.input_secondary_dir.value or ""
         if self.secondary_session_dir != self._root_for_source(self.secondary_source) and "MOSAIC" not in self.secondary_session_dir:
             ui.notify("Directory does not contain MOSAIC", type="warning")
+
+        details_session = []
+        if self.secondary_source == "Dwarf":
+            sessions = get_sessions_dwarf(self.conn, self.DwarfId, Path(self.secondary_session_dir).name)
+            if len(sessions) == 1:
+                session_id = sessions[0][0]
+                details_session = get_session_dwarf_details(self.conn, session_id)
+        else:
+            sessions = get_sessions_backup(self.conn, self.BackupId, self.DwarfId, Path(self.secondary_session_dir).name)
+            if len(sessions) == 1:
+                session_id = sessions[0][0]
+                details_session = get_session_backup_details(self.conn, session_id)
+        if len(details_session) == 1:
+            print(details_session)
+            self.detail_session_secondary_name.text, self.detail_session_secondary.text, thumbnail_path, image_path = get_session_detail(self.conn, details_session[0], self.DwarfId)
+           
+            if thumbnail_path:
+                print(f"image_path: {image_path}")
+                self.session_select_thumbnail_secondary = thumbnail_path
+                self.session_select_image_secondary = image_path
+                self.thumbnail_secondary.set_source(thumbnail_path)
+                self.thumbnail_secondary.visible = True
+            else:
+                self.thumbnail_secondary.visible = False
+        else:
+            self.detail_session_secondary_name.text = ""
+            self.detail_session_secondary.text = ""
+            self.thumbnail_secondary.visible = False
+
 
     # ------------------------------------------------------------------ #
     #  FOLDER PICKERS                                                      #
@@ -495,16 +609,18 @@ class MosaicApp:
             ui.notify(msg)
 
     def cancel(self):
-        self.cancel_process = True
+        self.cancel_btn.text = "Cancelling"
+        self.cancel_process.set()
 
     # ------------------------------------------------------------------ #
-    #  PROCESS LAUNCH — with history check                                 #
+    #  Verify before launching process                                   #
     # ------------------------------------------------------------------ #
 
-    async def start_process(self):
+    async def verify_process(self):
         primary   = self.input_primary_dir.value
         secondary = self.input_secondary_dir.value
         output    = self.input_output_dir.value
+        self.cancel_btn.text = "❌ Cancel"
 
         if not primary:
             ui.notify("❌ Please select a Primary Session.", type="negative")
@@ -524,6 +640,164 @@ class MosaicApp:
         if "MOSAIC" not in secondary:
             ui.notify("⚠️ Primary does not contain MOSAIC.", type="warning")
             return
+
+        # ── Orientation check (Merge only) ─────────────────────────────────
+        # In Repair mode the faulty session has no stacked.jpg and its files
+        # are wiped anyway, so panel order does not matter.
+        if self.mode == "Merge":
+            info_a = read_shots_info(primary)
+            info_b = read_shots_info(secondary)
+
+            if info_a is None:
+                rebuild_mosaic_info(primary)
+            if info_b is None:
+                rebuild_mosaic_info(secondary)
+
+            info_a = read_shots_info(primary)
+            info_b = read_shots_info(secondary)
+
+            if info_a is None or info_b is None:
+                missing = "Primary" if info_a is None else "Secondary"
+                ui.notify(f"⚠️ shotsInfo.json missing in {missing} session.", type="warning")
+                return
+
+            compat = check_mosaic_json_compatibility(info_a, info_b)
+            if not compat.ok:
+                ui.notify(f"❌ Incompatible sessions: {compat.reason}", type="negative")
+                return
+
+            # Store panel order; may be overridden by the orientation dialog
+            self._merge_panel_paths_b = list(info_b.mosaic.panel_paths)
+            self._merge_inverted = False
+
+            # Show orientation dialog then continue asynchronously
+            self._show_orientation_dialog(
+                info_a=info_a,
+                info_b=info_b,
+            )
+            return  # dialog will call start_process when confirmed
+
+        else:
+            self.start_process()
+
+    # ------------------------------------------------------------------ #
+    #  ORIENTATION DIALOG (Merge only)                                    #
+    # ------------------------------------------------------------------ #
+
+    def _show_orientation_dialog(
+        self,
+        info_a,
+        info_b,
+    ):
+        """
+        Affiche un dialog de verification d'orientation avant le merge.
+        Compare les stacked.jpg des deux sessions, propose la detection
+        automatique et un toggle manuel, puis appelle start_process.
+        """
+
+        # Detection automatique si les deux thumbnails sont disponibles
+        auto = detect_inversion(info_a, info_b)
+        inverted_state = {"value": auto.inverted if auto is not None else False}
+
+        with ui.dialog().props("persistent") as dlg,              ui.card().style("min-width: 680px; max-width: 900px"):
+
+            ui.label("Verify orientation before merge").classes(
+                "text-lg font-semibold text-blue-800 mb-2"
+            )
+
+            # ── Resumes + thumbnails cote a cote ─────────────────────────
+            with ui.row().classes("w-full gap-4 items-start"):
+                for label, info in [("Primary (reference)", info_a),
+                                     ("Secondary (to merge)", info_b)]:
+                    with ui.column().classes("flex-1"):
+                        ui.label(label).classes(
+                            "text-xs text-gray-500 uppercase tracking-wide mb-1"
+                        )
+                        ui.label(format_session_summary(info)).style(
+                            "white-space: pre-line"
+                        ).classes("text-purple-600 text-sm")
+
+                        thumb = get_thumbnail_path(str(info.path))
+                        if thumb:
+                            with ui.card().classes("mt-2 p-0 cursor-pointer min-h-[250px] w-80").on(
+                                "click",
+                                lambda t=str(thumb): self._show_full_image(t),
+                            ):
+                                ui.image(str(thumb)).classes("w-full rounded")
+                        else:
+                            ui.label("(no thumbnail available)").classes(
+                                "text-gray-400 text-xs mt-2"
+                            )
+
+            ui.separator().classes("my-3")
+
+            # ── Resultat detection automatique ───────────────────────────
+            if auto is not None:
+                conf_label = orientation_confidence_label(auto)
+                color = (
+                    "text-green-700" if auto.confidence > 0.05
+                    else "text-amber-600" if auto.confidence > 0.01
+                    else "text-gray-500"
+                )
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("search").classes("text-gray-400").classes('text-5gl')
+                    ui.label(f"Auto-detect: {conf_label}").classes(f"text-sm {color}")
+            else:
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("info").classes("text-gray-400").classes('text-5gl')
+                    ui.label(
+                        "No thumbnail available — check orientation manually"
+                    ).classes("text-sm text-gray-500")
+
+            # ── Toggle manuel ─────────────────────────────────────────────
+            toggle = ui.switch(
+                "Secondary session is inverted (180° rotation)",
+                value=inverted_state["value"],
+            ).classes("text-sm mt-1")
+
+            def on_toggle(e):
+                inverted_state["value"] = e.value
+
+            toggle.on_value_change(on_toggle)
+
+            ui.separator().classes("my-3")
+
+            # ── Boutons ───────────────────────────────────────────────────
+            with ui.row().classes("gap-3 justify-end w-full"):
+                ui.button("Cancel", on_click=dlg.close).props("flat color=grey")
+
+                def on_confirm():
+                    self._merge_inverted = inverted_state["value"]
+                    self._merge_panel_paths_b = reorder_panels(
+                        info_b.mosaic.panel_paths,
+                        self._merge_inverted,
+                    )
+                    dlg.close()
+                    self.start_process()
+
+                ui.button(
+                    "Confirm and continue",
+                    on_click=on_confirm,
+                    icon="check_circle",
+                ).classes("bg-blue-600 text-white")
+
+        dlg.open()
+
+    def _show_full_image(self, path: str):
+        print(path)
+        with ui.dialog() as d, ui.card().classes("w-full h-auto max-w-screen-xl"):
+            ui.image(path).classes("w-full h-auto object-contain rounded-xl")
+            ui.button("Close", on_click=d.close).props("flat")
+        d.open()
+
+    # ------------------------------------------------------------------ #
+    #  PROCESS LAUNCH — with history check                                 #
+    # ------------------------------------------------------------------ #
+
+    def start_process(self):
+        primary   = self.input_primary_dir.value
+        secondary = self.input_secondary_dir.value
+        output    = self.input_output_dir.value
 
         # Ensure manager is initialised (in case user typed the path manually)
         if self.repair_mgr is None:
@@ -545,10 +819,10 @@ class MosaicApp:
             primary_session = primary_name,
             secondary_session = secondary_name,
             backup_root     = self.output_dir,
-            on_redo         = lambda: ui.timer(0, lambda: asyncio.ensure_future(self._run_process(primary, secondary, output, primary_name)), once=True),
-            on_continue     = lambda: ui.timer(0, lambda: asyncio.ensure_future(self._run_process(primary, secondary, output, primary_name, True)), once=True),
+            on_redo         = lambda: ui.timer(0, lambda: self._run_process(primary, secondary, output, primary_name), once=True),
+            on_continue     = lambda: ui.timer(0, lambda: self._run_process(primary, secondary, output, primary_name, True), once=True),
             on_copy         = self._open_copy_dialog,
-            on_proceed      = lambda: ui.timer(0, lambda: asyncio.ensure_future(self._run_process(primary, secondary, output, primary_name)), once=True),
+            on_proceed      = lambda: ui.timer(0, lambda: self._run_process(primary, secondary, output, primary_name), once=True),
             dwarf_id        = self.DwarfId,
             backup_id       = self.BackupId,
         )
@@ -560,17 +834,18 @@ class MosaicApp:
         """Core repair/merge logic, called both on first run and on Redo."""
         work_primary = os.path.join(output, primary_name)
 
-        self.cancel_process = False
+        self.cancel_process.clear()
+        self.cancel_btn.text = "❌ Cancel"
         self.cancel_btn.visible = True
         self.action_button.visible = False
         self.image_ui.set_source("")
         await self.client.run_javascript("document.body.style.cursor='wait'")
+        self.log_ui.clear()
         self.progress.value = 0
         self.progress_label.set_text("📋 Copying primary session to work directory…")
 
         # ── Step 0: register action as "running" ─────────────────────────
         from datetime import datetime
-        #output_subdir = f"{primary_name}_{self.mode.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_subdir = f"{primary_name}"
         entry = self.repair_mgr.write_action(
             action            = self.mode,
@@ -582,49 +857,62 @@ class MosaicApp:
             backup_id         = self.BackupId,
         )
         self._current_entry_id = entry["id"]
+        result = None
+        error = None
 
         # ── Step 1: copy primary session into the work (output) directory ──
-        try:
-            if not ignore_copy :
-                print_log(f"Copying '{primary}' → '{work_primary}'", self.log_ui)
-                if self.mode == "Repair":
-                    await run.io_bound(self._copy_session, primary, work_primary)
+        if not self.cancel_process.is_set():
+            try:
+                if not ignore_copy :
+                    print_log(f"Copying data, please wait...'", self.log_ui)
+                    print_log(f"  '{primary}'", self.log_ui)
+                    print_log(f" → ", self.log_ui)
+                    print_log(f"  '{work_primary}'", self.log_ui)
+                    if self.mode == "Repair":
+                        await run.io_bound(self._copy_session, primary, work_primary, self.log_ui, progress_cb=lambda p: safe_progress(self.progress, p * 20))
+                    else:
+                        await run.io_bound(self._copy_all_session, primary, work_primary, self.copy_intermediate_files.value, self.log_ui, progress_cb=lambda p: safe_progress(self.progress, p * 20))
+                    self.progress.value = 20
+                    print_log("✅ Copy complete.", self.log_ui)
                 else:
-                    await run.io_bound(self._copy_all_session, primary, work_primary)
-                self.progress.value = 20
-                print_log("✅ Copy complete.", self.log_ui)
-            else:
-                self.progress.value = 20
-                print_log("✅ Copy Primary skipped.", self.log_ui)
-        except Exception as e:
-            self.notify_me.refresh(f"❌ Copy failed: {e}", type="negative")
-            traceback.print_exc()
-            self.progress_label.set_text("❌ Copy failed.")
-            self.cancel_btn.visible = False
-            self.action_button.visible = True
-            self.repair_mgr.update_action_status(self._current_entry_id, "failed", error=str(e))
-            await self.client.run_javascript("document.body.style.cursor='default'")
-            return
+                    self.progress.value = 20
+                    print_log("✅ Copy Primary skipped.", self.log_ui)
+            except Exception as e:
+                error = str(e)
+                self.notify_me.refresh(f"❌ Copy failed: {e}", type="negative")
+                traceback.print_exc()
+                self.progress_label.set_text("❌ Copy failed.")
+                self.cancel_btn.visible = False
+                self.action_button.visible = True
+                self.repair_mgr.update_action_status(self._current_entry_id, "failed", error=str(e))
+                if self.client:
+                    await self.client.run_javascript("document.body.style.cursor='default'")
+                return
+        else:
+            result = None
 
-        # ── Step 2: run the repair / merge on the work copy ────────────────
-        self.progress_label.set_text("🚀 Running Mosaic process on work directory…")
-        result = None
-        error  = None
-        try:
-            if self.mode == "Repair":
-                print_log("Starting Repair…", self.log_ui)
-                result = await repair_mosaic_session(secondary, work_primary, self.log_ui, self.progress)
-            else:
-                print_log("Starting Merge…", self.log_ui)
-                result = await merge_mosaic(secondary, work_primary, self.log_ui, self.progress)
-        except Exception as e:
-            error = str(e)
-            self.notify_me.refresh(f"❌ Error: {e}", type="negative")
-            traceback.print_exc()
+        if not self.cancel_process.is_set():
+            # ── Step 2: run the repair / merge on the work copy ────────────────
+            self.progress_label.set_text("🚀 Running Mosaic process on work directory…")
+            try:
+                if self.mode == "Repair":
+                    print_log("Starting Repair…", self.log_ui)
+                    result = await repair_mosaic_session(secondary, work_primary, self.log_ui, self.progress, self.cancel_process, stitch_params=self.stitch_params)
+                else:
+                    print_log("Starting Merge…", self.log_ui)
+                    #result = await merge_mosaic(secondary, work_primary, self.copy_intermediate_files.value, self.log_ui, self.progress, self.cancel_process, panel_paths_b=self._merge_panel_paths_b)
+                    result = await self.create_and_show_panorama(secondary, work_primary )
+            except Exception as e:
+                error = str(e)
+                self.notify_me.refresh(f"❌ Error: {e}", type="negative")
+                traceback.print_exc()
+        else:
+            result = None
 
         self.cancel_btn.visible = False
         self.action_button.visible = True
-        await self.client.run_javascript("document.body.style.cursor='default'")
+        if self.client:
+            await self.client.run_javascript("document.body.style.cursor='default'")
 
         if result and Path(result).exists():
             self.progress.value = 100
@@ -674,37 +962,278 @@ class MosaicApp:
         if self._copy_dlg_entry is not None:
             self._open_copy_dialog(self._copy_dlg_entry)
 
+    async def create_and_show_panorama(self, secondary, work_primary):
+        result_path = None
+        work_primary_path = Path(work_primary)
+
+        # ── Backup before merge ─────────────────────────────────────────────
+        backed_up = backup_merge_files(work_primary)
+        if backed_up is None:
+            ui.notify("⚠️ Could not create backup — merge aborted.", type="negative")
+            return None
+
+        # Collect before/after pairs for comparison:
+        # { "root": (backup_jpg, work_jpg),
+        #   "panel_1": (backup_jpg, work_jpg), ... }
+        print (backed_up)
+        def build_comparison_pairs() -> dict:
+            pairs = {}
+            work_path = Path(work_primary)
+            backup_dir = Path(list(backed_up.values())[0]).parent  # temp root
+
+            # Root stacked.jpg
+            root_before = backup_dir / "stacked.jpg"
+            root_after  = work_path  / "stacked.jpg"
+
+            if root_before.exists():
+                pairs["🌅 Final Mosaic"] = (str(root_before), str(root_after))
+
+            # Per-panel stacked.jpg
+            for panel_dir in sorted(work_path.iterdir()):
+                if not panel_dir.is_dir():
+                    continue
+                before = backup_dir / panel_dir.name / "stacked.jpg"
+                after  = panel_dir / "stacked.jpg"
+                if before.exists() and after.exists():
+                    pairs[f"📦 {panel_dir.name}"] = (str(before), str(after))
+
+            return pairs
+
+        # --- Progress dialog ---
+        with ui.dialog().props('persistent') as progress_dialog, ui.card().classes("w-full max-w-screen-xl items-center gap-4 p-6"):
+            ui.label("⚙️ Stitching Mosaic...").classes("text-lg font-semibold")
+            with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
+                self.action_progress_label = ui.label("Idle…")
+                self.action_progress = ui.circular_progress(max=100, show_value=True)
+                with ui.row():
+                    self.cancel_action_btn = ui.button("❌ Cancel", on_click=self.cancel)
+                    self.cancel_action_btn.visible = False
+                ui.separator()
+                self.action_log = ui.log(max_lines=30).classes('w-full').style('height: 400px; overflow: hidden;')
+
+        # --- Error dialog ---
+        with ui.dialog().props('persistent') as error_dialog, ui.card().classes("p-6 gap-4 w-full max-w-2xl"):
+            ui.label("❌ Stitching Failed").classes("text-xl font-bold text-red-500")
+            error_message = ui.label("").classes("text-sm text-gray-300 whitespace-pre-wrap")
+            with ui.row().classes("justify-end gap-2 mt-4 w-full"):
+                def on_error_params():
+                    self.open_stitch_params()
+                def on_error_retry():
+                    error_dialog.close()
+                    restore_merge_files(backed_up)
+                    cleanup_backup(backed_up)
+                    ui.timer(0, lambda: self.create_and_show_panorama(secondary, work_primary), once=True)
+                def on_error_discard():
+                    restore_merge_files(backed_up)
+                    cleanup_backup(backed_up)
+                    error_dialog.close()
+                    ui.notify("Mosaic discarded — files restored.", type="warning")
+                ui.button("🗑️ Discard", on_click=on_error_discard).props("flat color=negative")
+                ui.button("⚙️ Change Parameters", on_click=on_error_params).props("flat")
+                ui.button("🔄 Retry", on_click=on_error_retry).props("color=positive")
+
+        # --- Result dialog ---
+        with ui.dialog().props('maximized') as result_dialog, ui.card().classes("w-full h-full p-4 gap-2 overflow-auto"):
+
+            with ui.row().classes("w-full items-center justify-between mb-2"):
+                ui.label("🌅 Mosaic Result").classes("text-xl font-bold")
+                with ui.row().classes("gap-2"):
+                    btn_discard = ui.button("🗑️ Discard").props("flat color=negative")
+                    btn_accept  = ui.button("✅ Accept & Close").props("color=positive")
+
+            # Tabs: one per panel + final mosaic
+            with ui.tabs().classes("w-full") as tabs:
+                tab_mosaic = ui.tab("🌅 Final Mosaic")
+                tab_panels = ui.tab("📦 Panels")
+
+            with ui.tab_panels(tabs, value=tab_mosaic).classes("w-full"):
+
+                # ── Final mosaic before/after ──────────────────────────────
+                with ui.tab_panel(tab_mosaic):
+                    with ui.row().classes("w-full gap-4 items-start"):
+                        with ui.column().classes("flex-1 items-center"):
+                            ui.label("Before").classes("text-sm font-semibold text-gray-400 mb-1")
+                            before_mosaic = ui.image().classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")
+                        with ui.column().classes("flex-1 items-center"):
+                            ui.label("After").classes("text-sm font-semibold text-green-400 mb-1")
+                            after_mosaic = ui.image().classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")
+
+                # ── Per-panel before/after ─────────────────────────────────
+                with ui.tab_panel(tab_panels):
+                    panel_before_images = []  # filled after merge
+                    panel_after_images  = []
+                    panels_container = ui.column().classes("w-full gap-6")
+
+        # --- Run merge ---
+        progress_dialog.open()
+        try:
+            result_path = await merge_mosaic(
+                secondary, work_primary,
+                self.copy_intermediate_files.value,
+                self.action_log, self.action_progress,
+                self.cancel_process,
+                panel_paths_b=self._merge_panel_paths_b,
+                stitch_params=self.stitch_params
+            )
+            progress_dialog.close()
+
+            if result_path and Path(result_path).exists():
+                # ── Build comparison pairs from backup ─────────────────
+                pairs = build_comparison_pairs()
+
+                # Final mosaic
+                mosaic_pair = pairs.get("🌅 Final Mosaic")
+                if mosaic_pair:
+                    before_mosaic.set_source(mosaic_pair[0])
+                    after_mosaic.set_source(str(result_path))
+                    before_mosaic.on('click', lambda p=mosaic_pair[0]: self._show_full_image(p))
+                    after_mosaic.on('click', lambda: self._show_full_image(str(result_path)))
+
+                # Per-panel comparison
+                with panels_container:
+                    for label, (before_path, after_path) in pairs.items():
+                        if label == "🌅 Final Mosaic":
+                            continue
+                        ui.label(label).classes("text-sm font-semibold text-gray-300 mt-2")
+                        with ui.row().classes("w-full gap-4 items-start"):
+                            with ui.column().classes("flex-1 items-center"):
+                                ui.label("Before").classes("text-xs text-gray-400")
+                                ui.image(before_path.replace("\\", "/")).classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")\
+                                  .on('click', lambda p=before_path.replace("\\", "/"): self._show_full_image(p))
+                            with ui.column().classes("flex-1 items-center"):
+                                ui.label("After").classes("text-xs text-green-400")
+                                ui.image(after_path.replace("\\", "/")).classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")\
+                                  .on('click', lambda p=after_path.replace("\\", "/"): self._show_full_image(p))
+
+                result_dialog.open()
+            else:
+                error_message.text = "Merge returned no result.\nTry adjusting alignment parameters."
+                error_dialog.open()
+                return None
+
+        except Exception as ex:
+            progress_dialog.close()
+            error_message.text = str(ex)
+            error_dialog.open()
+            return None
+
+        # --- Button handlers ---
+        accepted = False
+
+        def on_discard():
+            nonlocal accepted
+            restore_merge_files(backed_up)
+            cleanup_backup(backed_up)
+            result_dialog.close()
+            ui.notify("Mosaic discarded — files restored to original.", type="warning")
+
+        def on_accept():
+            nonlocal accepted
+            accepted = True
+            cleanup_backup(backed_up)
+            result_dialog.close()
+            ui.notify("✅ Mosaic accepted!", type="positive")
+
+        btn_discard.on("click", on_discard)
+        btn_accept.on("click", on_accept)
+
+        while result_dialog.value:
+            await asyncio.sleep(0.2)
+
+        return result_path if accepted else None       
+
     @staticmethod
-    def _copy_session(src: str, dest: str) -> None:
-        """Prepare the work directory from the primary session:
-        - Copy files in the root directory (ZIPs, JSONs, stacked.jpg, …)
-        - Recreate subdirectory structure (panel folders) with only their stacked-16* files.
-        """
+    def _copy_session(src: str, dest: str, log=None, progress_cb=None) -> None:
         src_path = Path(win_long_path(src))
         dest_path = Path(win_long_path(dest))
- 
+
         if dest_path.exists():
             shutil.rmtree(dest_path)
         dest_path.mkdir(parents=True)
- 
-        # Copy root-level files only
+
+        # Count total files upfront for progress
+        all_files = [i for i in src_path.iterdir() if i.is_file()]
+        all_panel_files = [f for i in src_path.iterdir() if i.is_dir()
+                             for f in i.glob("stacked-16*")]
+        total = len(all_files) + len(all_panel_files)
+        done = 0
+
         for item in src_path.iterdir():
             if item.is_file():
                 shutil.copy2(str(item), str(dest_path / item.name))
+                #print_log(f"  📄 {item.name}", log)
+                done += 1
+                if progress_cb and total > 0:
+                    progress_cb(done / total)
             elif item.is_dir():
                 panel_dest = dest_path / item.name
                 panel_dest.mkdir(parents=True, exist_ok=True)
-                # Copy only stacked-16* files (used as name reference by repair/merge)
-                for f in item.glob("stacked-16*"):
+                files = list(item.glob("stacked-16*"))
+                #print_log(f"  📁 {item.name} ({len(files)} files)", log)
+                for f in files:
                     shutil.copy2(str(f), str(panel_dest / f.name))
-                    
-    @staticmethod
-    def _copy_all_session(src: str, dest: str) -> None:
-        """Blocking copy of a session directory into the work directory."""
-        src = win_long_path(src)
-        dest = win_long_path(dest)
+                    #print_log(f"    ✔️ {f.name}", log)
+                    done += 1
+                    if progress_cb and total > 0:
+                        progress_cb(done / total)
 
-        # remove existing
-        if os.path.exists(dest):
-            shutil.rmtree(dest)
-        shutil.copytree(src, dest)            
+
+    @staticmethod
+    def _copy_all_session(src: str, dest: str, copy_intermediate_files=False, log=None, progress_cb=None) -> None:
+        src_path_str = win_long_path(src)
+        dest_path_str = win_long_path(dest)
+
+        if not copy_intermediate_files :
+            print_log( f"ℹ️ skipping copy Fits files", log)
+
+        if os.path.exists(dest_path_str):
+            print_log(f"  🗑️ Removing existing {dest_path_str}", log)
+            shutil.rmtree(dest_path_str)
+
+        # 🔎 Filter Function
+        def ignore_func(dir, files):
+            if copy_intermediate_files:
+                return []
+            ignored = []
+            for f in files:
+                # Ignore .fits files that don't start with "stacked-16"
+                if f.lower().endswith(".fits"):
+                    if not f.startswith("stacked-16"):
+                        ignored.append(f)
+                # Ignore .jpg files in "Thumbnail" subdirectory
+                elif f.lower().endswith(".jpg") and os.path.basename(dir).lower() == "thumbnail":
+                    ignored.append(f)
+            return ignored
+
+        # Count total files (depending of copy_intermediate_files value)
+        all_files = [
+            f for f in Path(src_path_str).rglob("*")
+            if f.is_file() and (
+                copy_intermediate_files or
+                not (
+                    (f.name.lower().endswith(".fits") and not f.name.lower().startswith("stacked-16")) or
+                    (f.name.lower().endswith(".jpg") and f.parent.name.lower() == "thumbnail")
+                )
+            )
+        ]
+        total = len(all_files)
+        done = 0
+        print_log(f"  📋 Copying {total} files...", log)
+
+        # copytree with custom copy function to track progress
+        def copy_with_progress(src_f, dst_f):
+            shutil.copy2(src_f, dst_f)
+            nonlocal done
+            done += 1
+            print(f"  ✔️ {Path(src_f).name}")
+            if progress_cb and total > 0:
+                progress_cb(done / total)
+
+        shutil.copytree(
+            src_path_str,
+            dest_path_str,
+            copy_function=copy_with_progress,
+            ignore=ignore_func
+        )
+     
+        print_log(f"  ✔️ Copy complete", log)

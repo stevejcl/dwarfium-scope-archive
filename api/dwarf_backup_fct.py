@@ -34,6 +34,8 @@ MOSAIC_UNKNOWN = "mosaic_unknown"
 MANUAL = "manual"
 TAKEN = "Taken"
 RESTACK = "Restack"
+STARTRAILS = "STARTRAILS"
+STARTRAILS_SESSION = "STARTRAILS_DWARF_RAW_WIDE_"
 
 ##################
 # Print functions
@@ -43,14 +45,21 @@ def safe_print(text):
         print(text)
     except UnicodeEncodeError:
         print(text.encode(sys.stdout.encoding, errors='replace').decode())
+    except Exception:
+        pass  # client disconnected — ignore silently
 
-def print_log(message, log):
-    if log:
-        log.push(message)
-    else:
-        safe_print(message)
-
-
+def print_log(message, log, style = None):
+    try:
+        if log:
+            if style:
+                log.push(message, classes=style)
+            else:
+                log.push(message)
+        else:
+            safe_print(message)
+    except Exception:
+        pass  # client disconnected — ignore silently
+        
 ###################
 # Files functions
 ###################
@@ -157,7 +166,43 @@ def has_subdirectories(directory):
         for entry in os.listdir(directory)
 )
 
+def get_png_name_from_zip(search_dir: str | Path) -> Path:
+    """
+    Return the PNG path based on the single ZIP file in the directory.
+    
+    Return None if no ZIP or multiple ZIPs are found.
+    """
+    search_dir = Path(search_dir)
 
+    zip_files = list(search_dir.glob("*.zip"))
+
+    if len(zip_files) == 0:
+        raise None
+
+    return zip_files[0].with_suffix(".png")
+
+def get_fits_name_from_zip(search_dir: str | Path) -> Path:
+    """
+    Return the PNG path based on the single ZIP file in the directory.
+    
+    Return None if no ZIP or multiple ZIPs are found.
+    """
+    search_dir = Path(search_dir)
+
+    zip_files = list(search_dir.glob("*.zip"))
+
+    if len(zip_files) == 0:
+        raise None
+
+    return zip_files[0].with_suffix(".fits")
+
+# tranform filename in cas of error
+def _err_path(p):
+    p = Path(p)
+    return p.with_stem(p.stem + "_err") if p else None
+    
+
+    
 ###########################
 # Specific Files functions
 ###########################
@@ -209,7 +254,7 @@ def check_files(full_path: str) -> dict:
             'tiff': tiff_match[0] if tiff_match else None,
             'thumbnail': thumbnail_match[0] if thumbnail_match else None
         }
-    elif zip_match:
+    elif zip_match and not fits_match:
         return {
             'jpg': jpg_match[0] if jpg_match else None,
             'png': png_match[0] if png_match else None,
@@ -1056,6 +1101,72 @@ def extract_datetime_from_session_name(session_name: str):
 
     return dt
 
+
+def get_session_detail(conn, row, dwarf_id):
+    label_title = ""
+    label_text = ""
+    thumbnail_path = None
+    image_path = None
+
+    if len(row) > 0:
+        # extract DB Values
+        dwarf_data_id = row[0]
+        file_path = row[1]
+        exp_time = row[2]
+        gainDB = row[3]
+        IR_filter  = row[4]
+        stacks = row[5]
+        backup_path = row[6]  # location from BackupDrive or USB Dwarf
+        session_date = row[7]
+        session_dir = row[8]
+        dwarf_name = row[9]
+        minTemp = row[10]
+        maxTemp = row[11]
+        is_favorite = row[12]  # The favorite column (0 or 1)
+        init_target = row[13]
+        declination = row[14]
+        right_ascencion = row[15]
+        astro_object_id = row[16]
+        astro_group_id = row[17]
+        descriptionDB = row[18]
+
+        # display Values
+        session_date = show_short_date_session(session_date)
+        lens = "(W) " if ("_WIDE_") in session_dir else ""
+        exp = f"{exp_time}s" if exp_time is not None else "N/A"
+        exp_value = parse_exposure(exp) if exp != "N/A" else 0
+        gain = gainDB if gainDB is not None else "N/A"
+        astro_filter = f"{IR_filter}" if IR_filter else "No Filter"
+
+        info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+        target = init_target[:10]
+        description,_ =  get_name_object(descriptionDB)
+        # Building the details string with the star icon
+        label_text = f"{description}\n"
+        label_text = label_text + f"{info_stack} with 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}\n"
+        label_text = label_text + f" RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}\n"
+
+        full_path = get_Backup_fullpath (conn, backup_path, "", file_path, dwarf_id)
+        astro_files = check_files(full_path)
+
+        # get exposure for Restacked session
+        exposure_time = format_seconds_hms(exp_value * stacks)
+        if is_Restacked(session_dir):
+            if "_MOSAIC_" in full_path:
+                exposure_time = format_seconds_hms(get_total_mosaic_exposure(os.path.dirname(full_path)))
+            else:
+                fits_path = astro_files.get('fits')
+                if fits_path and os.path.isfile(fits_path):
+                    exposure_time = format_seconds_hms(get_total_exposure(fits_path))
+
+        label_title = f"Session: {session_dir}"
+        label_text = label_text + f"{stacks} stacked shots for a total exposure time of {exposure_time}"
+        thumbnail_path = astro_files.get('thumbnail')
+        image_path = astro_files.get('jpg') or astro_files.get('png')
+        print(image_path)
+    return label_title, label_text, thumbnail_path, image_path
+
+
 #################################
 # Dwarf ID / Backup Id functions
 #################################
@@ -1247,7 +1358,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     os.makedirs(archive_dir, exist_ok=True)
     safe_print(f"source_root: {source_root}")
 
-    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED"}
+    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS"}
     session_dirs = [
         d for d in os.listdir(source_root) 
         if os.path.isdir(os.path.join(source_root, d)) and d not in excluded_dirs
@@ -1263,19 +1374,30 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     else:
         session_dirs_RESTACKED = []
 
+    # Look for STARTRAILS subdirectory inside source_root
+    source_startrails = os.path.join(source_root, "STARTRAILS")
+    if os.path.isdir(source_startrails):
+        session_dirs_STARTRAILS = [
+            os.path.join("STARTRAILS", d)  # keep relative path
+            for d in os.listdir(source_startrails)
+            if os.path.isdir(os.path.join(source_startrails, d))
+        ]
+    else:
+        session_dirs_STARTRAILS = []
+
     # Combine both lists
-    all_sessions = session_dirs + session_dirs_RESTACKED
+    all_sessions = session_dirs + session_dirs_RESTACKED + session_dirs_STARTRAILS
     safe_print(all_sessions)
 
     # If a specific session is provided, filter it
     if session_name:
         all_sessions = [
             s for s in all_sessions
-            if s == session_name or s == os.path.join("RESTACKED", session_name)
+            if s == session_name or s == os.path.join("RESTACKED", session_name) or s == os.path.join("STARTRAILS", session_name)
         ]
     safe_print(f"final all_sessions {all_sessions}")
 
-    # Sessions present in dwarf_dir, excepted in "Archive" and "RESTACKED"
+    # Sessions present in dwarf_dir, excepted in "Archive" and "RESTACKED" and "STARTRAILS"
     local_sessions = [
         d for d in os.listdir(dwarf_dir)
         if os.path.isdir(os.path.join(dwarf_dir, d)) and d not in excluded_dirs
@@ -1293,11 +1415,25 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     safe_print(local_sessions)
     print_log(f"\n🔄 Syncing {len(all_sessions)} sessions from source...\n", log)
 
+    # add those in STARTRAILS subdirectory
+    source_startrails = os.path.join(dwarf_dir, "STARTRAILS")
+    if os.path.isdir(source_startrails):
+        restacked_sessions = [
+            os.path.join("STARTRAILS", d)
+            for d in os.listdir(source_startrails)
+            if os.path.isdir(os.path.join(source_startrails, d))
+        ]
+        local_sessions += restacked_sessions
+    safe_print(local_sessions)
+    print_log(f"\n🔄 Syncing {len(all_sessions)} sessions from source...\n", log)
+
     for session in all_sessions:
         print_log(f"✅ Checking local session {session}.", log)
         src_session = os.path.join(source_root, session)
         dst_session = (
             os.path.join(dwarf_dir, "RESTACKED", session)
+            if session_name and session_name.startswith("RESTACKED_")
+            else os.path.join(dwarf_dir, "STARTRAILS", session)
             if session_name and session_name.startswith("RESTACKED_")
             else os.path.join(dwarf_dir, session)
         )
@@ -1453,11 +1589,13 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         else:
             astro_name = astro_dir
             safe_print(f"astro_name: {astro_name}")
+            safe_print(f"astro_path: {astro_path}")
             # Traverse all folders below astro_path
             for root, dirs, files in os.walk(astro_path):
                 dec_astro = None
                 ra_astro = None
                 astro_group_id = None
+                safe_print(f"current_dir check: {root},")
                 if check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
                     current_dir = os.path.basename(os.path.normpath(root))
                     safe_print(f"current_dir Dir: {current_dir}")
@@ -1467,11 +1605,17 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                     else:
                         last_dir = current_dir
                         last_dir_path = root
+                    
                     safe_print(f"check_target_file Dir: {last_dir}")
-                    check_target = extract_astro_name_from_folder(last_dir)
-                    if not check_target:
-                        safe_print(f"check_target_file Dir: {last_dir_path}")
-                        check_target, dec_astro, ra_astro = extract_target_json(last_dir_path)
+                    # Check special STARTRAILS
+                    if last_dir.startswith(STARTRAILS_SESSION):
+                        print("STARTRAILS detected...")
+                        check_target = STARTRAILS
+                    else:
+                        check_target = extract_astro_name_from_folder(last_dir)
+                        if not check_target:
+                            safe_print(f"check_target_file Dir: {last_dir_path}")
+                            check_target, dec_astro, ra_astro = extract_target_json(last_dir_path)
 
                     safe_print(f"check_target: {check_target}")
                     if check_target:
@@ -1658,6 +1802,140 @@ def create_thumbnail(input_path: str, output_path: str, size=(356, 200)):
     img_resized.save(output_path, format="JPEG", quality=90)
 
 #########################
+# Check Integrity  Functions
+#########################
+
+def count_valid_fits_files(directory: str) -> int:
+    count = 0
+
+    is_mosaic = "MOSAIC" in directory.upper()
+
+    if is_mosaic:
+        # 🔁 recursive scan (subdirectories)
+        for dirpath, _, filenames in os.walk(directory):
+            for fname in filenames:
+                if not fname.lower().endswith(".fits"):
+                    continue
+
+                if fname.startswith("stacked-16") or fname.startswith("failed"):
+                    continue
+
+                count += 1
+    else:
+        for fname in os.listdir(directory):
+            if not fname.lower().endswith(".fits"):
+                continue
+
+            # ❌ exclude unwanted files
+            if fname.startswith("stacked-16") or fname.startswith("failed"):
+                continue
+
+            count += 1
+
+    return count
+
+
+def get_shots_stacked(directory: str) -> int | None:
+
+    json_path = os.path.join(directory, "shotsInfo.json")
+
+    if not os.path.isfile(json_path):
+        return None
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f).get("shotsStacked")
+    except Exception:
+        return None
+
+
+def verify_session(directory: str, session_name, tolerance: int = 0):
+    if directory:
+        if "RESTACKED" in directory:
+            # No Fits for RESTACKED Session
+            return None
+
+        shots_stacked = get_shots_stacked(directory)
+        fits_count = count_valid_fits_files(directory)
+
+        if shots_stacked is None:
+            return {
+                "status": "error",
+                "path": directory,
+                "session": session_name,
+                "reason": "missing shotsInfo.json",
+                "fits_count": fits_count
+            }
+
+        status = "mismatch"
+        if fits_count == 0 and shots_stacked !=0:
+            status = "no fits available!"
+        
+        diff = shots_stacked - fits_count
+
+        if diff < 0 or abs(diff) <= tolerance:
+            return None  # ✅ OK
+
+        return {
+            "status": status,
+            "path": directory,
+            "session": session_name,
+            "shots_stacked": shots_stacked,
+            "fits_count": fits_count,
+            "missing": diff
+        }
+    return None
+    
+def list_error_integrity(conn,  backup_drive_id, backupDrive_location, session_list, log):
+    errors = []
+
+    print_log(f" 🔍 Integrity test for  {len(session_list)} sessions", log)
+
+    for session in session_list:
+        session_id = session[0]
+        session_dir = session[1]
+        stacked_fits_path = session[5]
+        stacked_path = session[6]
+        if stacked_fits_path or stacked_path:
+            json_full_path = get_Backup_fullpath(
+                conn, 
+                backupDrive_location,
+                "",
+                os.path.dirname(stacked_fits_path or stacked_path)
+            )
+            #print_log(f"testing: {json_full_path}", log)
+            session_name = os.path.basename(os.path.dirname(stacked_fits_path or stacked_path))
+            if not stacked_path:
+                print_log(f"ℹ️ {session_name} no stacked jpg found", log)
+                print_log(f"📂 {json_full_path}", log)
+            if not stacked_fits_path and 'MOSAIC' not in session_name:
+                print_log(f"ℹ️ {session_name} no stacked fits found", log)
+                print_log(f"📂 {json_full_path}", log)
+
+            result = verify_session(json_full_path, session_name)
+            if result:
+                if result.get("fits_count","") == 0:
+                    print_log(f"❌ Integrity error for session: {result.get("session", "")}", log, style = 'text-red')
+                else:
+                    print_log(f"⚠️ Integrity error for session: {result.get("session", "")}", log, style = 'text-orange')
+                print_log(f"📂 {json_full_path}", log)
+                if result.get("shots_stacked", False):
+                    print_log(f"  Details: {result.get("status","")} {result.get("fits_count","")} fits files found / {result.get("shots_stacked","")} in json info file", log)
+                else:
+                    print_log(f"  Details: {result.get("status","")}", log) 
+                errors.append({
+                    **result,
+                    "session_id": session_id,
+                    "session_dir": session_dir,
+                })                
+
+        else : 
+            print_log(f"  Ignoring session:{session[1]} no stacked jpg and fits path", log)
+        
+    return errors            
+    
+
+#########################
 # FITS Preview Functions
 #########################
 
@@ -1796,6 +2074,49 @@ def simple_color_balance(image):
 
     return np.stack([r, g, b], axis=-1)
 
+def white_balance(image, r=1.3, g=0.85, b=0.9):
+    image = image.copy()
+    image[..., 0] = np.clip(image[..., 0] * r, 0, 1)  # Red up
+    image[..., 1] = np.clip(image[..., 1] * g, 0, 1)  # Green down
+    image[..., 2] = np.clip(image[..., 2] * b, 0, 1)  # Blue slightly down
+    return image
+
+def stretch_with_highlight_protection(image, shadow_scale=5000.0, highlight_compress=0.7):
+    # 1. Clip top 0.1% of pixels before stretching (remove hot pixels / star cores blowing out)
+    p_high = np.percentile(image, 99.9)
+    image = np.clip(image / p_high, 0, 1)
+
+    # 2. Log stretch for faint detail
+    image = siril_log_stretch(image, scale=shadow_scale)
+
+    # 3. Soft highlight compression — pulls down only the bright end
+    #    Uses a tone curve: bright pixels are compressed, dark ones untouched
+    image = image / (image + highlight_compress * (1 - image))  # Reinhard-style
+
+    return image
+
+def stretch_with_highlight_protection(image, shadow_scale=5000.0, highlight_compress=0.7):
+    p_high = np.percentile(image, 99.9)
+    image = np.clip(image / p_high, 0, 1)
+    image = siril_log_stretch(image, scale=shadow_scale)
+    image = image / (image + highlight_compress * (1 - image))
+    return image
+
+def subtract_background(image, percentile=30):
+    """Per-channel background subtraction."""
+    for c in range(image.shape[2]):
+        bg = np.percentile(image[..., c], percentile)
+        image[..., c] = np.clip(image[..., c] - bg, 0, 1)
+    return image
+
+def renormalize(image):
+    for c in range(image.shape[2]):
+        ch = image[..., c]
+        ch_min, ch_max = ch.min(), ch.max()
+        if ch_max > ch_min:
+            image[..., c] = (ch - ch_min) / (ch_max - ch_min)
+    return image
+
 def generate_fits_preview(fits_path: str) -> str:
     try:
         from astropy.io import fits
@@ -1841,13 +2162,26 @@ def generate_fits_preview(fits_path: str) -> str:
         # Ensure image is in 0-1 range
         image = np.clip(image_rgb, 0, 1)
 
+        image = subtract_background(image, percentile=30)  # tune 20-35
+        image = renormalize(image)
+
+        # --- 2. Stretch with highlight protection ---
+        #image = stretch_with_highlight_protection(image, shadow_scale=5000.0, highlight_compress=0.7)
         #image = apply_stretch(image)
         # logarithm stretch
-        image = siril_log_stretch(image, scale=5000.0)
-        image = background_neutralization(image)
+        #image = stretch_with_highlight_protection(image, shadow_scale=5000.0, highlight_compress=0.7)
+        image = siril_log_stretch(image, scale=2800.0)
+        #image = siril_log_stretch(image, scale=500.0)
+        # Gamma to bring down blown-out midtones
+        #image = np.power(np.clip(image, 0, 1), 1.9) #1.8
+        # 3. Reinhard highlight compression — tame bright areas without gamma fighting stretch
+        image = image / (image + 0.6 * (1 - image))
+        # 4. Black point — push background back to true black
+        image = apply_black_point(image, black=0.05, white=0.95)
         #image = arcsinh_stretch(image, factor=15)   # or sigmoid if you prefer
-        image = simple_color_balance(image)
-        image = apply_black_point(image, black=0.08, white=0.98)
+        image = white_balance(image, r=0.80, g=0.93, b=0.82)
+        #image = simple_color_balance(image)
+        #image = apply_black_point(image, black=0.08, white=0.98)
         image = boost_saturation(image)
 
         # Apply contrast boost (optional)
