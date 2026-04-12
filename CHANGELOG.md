@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.0.3] - 2026-04-12
+
+### BugFix# 
+    Improve mosaic repair/merge robustness & UI
+
+### Add 
+    Multi Selection in Explore Page To Transfert Sessions to Dwarf or Backup from Dwarf
+    Add Support for importing StarTrails Sessions
+    Improve Merge Functions - Add Image Result and Choice to Merge or Discard
+    Add Params Page for Stiching Mosaic
+    Improve Stiching Mosaic Algo    
+
 ## [V3.0.2] - 2026-03-28
 
 ### BugFix# 

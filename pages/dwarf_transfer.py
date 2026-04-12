@@ -16,6 +16,8 @@ from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
 
+MULTI_SESSION = " (Multi Sessions)"
+
 @ui.page('/Transfer')
 async def transfer_page(
     client: Client,
@@ -69,6 +71,7 @@ class TransferApp:
         self.src_main_dir = '' # 'G:\\Astronomy\\DWARF_RAW_WIDE_C 20_EXP_15_GAIN_80_2025-04-28-04-21-24-416'
         self.dest_main_dir = '' # 'T:\\DWARFLAB_2\\DATA4\\DATA_OBJECTS\\NGC7000_North_American_Nebula'
 
+        self.MultiSession = False
         self.ftp_dwarf_dir = None
         self.dwarf_ip_sta_mode = ""
         self.dwarf_type = None
@@ -81,10 +84,10 @@ class TransferApp:
 
         if self.mode == "Archive":
             if self.transfert_mode_select.value == "FTP":
-                self.SourceDirectory.set_text("Source: Dwarf Drive (FTP)")
+                self.SourceDirectory.set_text(f"Source: Dwarf Drive (FTP){MULTI_SESSION if self.MultiSession else ''}")
                 self.DestinationDirectory.set_text("Destination: Backup Drive")
             else:
-                self.SourceDirectory.set_text("Source: Dwarf Drive")
+                self.SourceDirectory.set_text(f"Source: Dwarf Drive{MULTI_SESSION if self.MultiSession else ''}")
                 self.DestinationDirectory.set_text("Destination: Backup Drive")
             self.SourceMainDir = "the Dwarf directory!"
             self.DestinationMainDir = "the backup directory!"
@@ -115,10 +118,10 @@ class TransferApp:
 
         else:  # Restore
             if self.transfert_mode_select.value == "FTP":
-                self.SourceDirectory.set_text("Source: Backup Drive")
+                self.SourceDirectory.set_text(f"Source: Backup Drive{MULTI_SESSION if self.MultiSession else ''}")
                 self.DestinationDirectory.set_text("Destination: Dwarf Drive (FTP)")
             else:
-                self.SourceDirectory.set_text("Source: Backup Drive")
+                self.SourceDirectory.set_text(f"Source: Backup Drive{MULTI_SESSION if self.MultiSession else ''}")
                 self.DestinationDirectory.set_text("Destination: Dwarf Drive")
             self.SourceMainDir = "the backup directory!"
             self.DestinationMainDir = "the Dwarf directory!"
@@ -362,7 +365,8 @@ class TransferApp:
                         base_dir = ""
                     # Multi-session support: pipe-separated list
                     sessions = self.session.split("|") if "|" in self.session else [self.session]
-                    if len(sessions) > 1:
+                    self.MultiSession = (len(sessions) > 1)
+                    if self.MultiSession:
                         ftp_dirs = []
                         for s in sessions:
                             if s.startswith("RESTACKED"):
@@ -393,7 +397,8 @@ class TransferApp:
                 if self.DwarfId_Init == self.DwarfId and self.session:
                     # Multi-session support: pipe-separated list
                     sessions = self.session.split("|") if "|" in self.session else [self.session]
-                    if len(sessions) > 1:
+                    self.MultiSession = (len(sessions) > 1)
+                    if self.MultiSession:
                         dirs = []
                         for s in sessions:
                             if s.startswith("RESTACKED"):
@@ -537,10 +542,10 @@ class TransferApp:
             # case self.BackupId_Init
             print(f"case self.BackupId_Init : {self.BackupId_Init}-{self.BackupId}-{self.session}")
             if self.BackupId_Init and self.BackupId_Init == self.BackupId and self.session:
-                print("case self.BackupId_Init")
                 # Multi-session restore: pipe-separated full backup paths
                 sessions = self.session.split("|") if "|" in self.session else [self.session]
-                if len(sessions) > 1:
+                self.MultiSession = (len(sessions) > 1)
+                if self.MultiSession:
                     self.input_src_dir.set_options(sessions, value=sessions[0])
                 else:
                     self.input_src_dir.set_options([self.session], value=self.session)
