@@ -27,14 +27,19 @@ async def home_page():
             ui.label(title).classes("text-2xl font-bold my-2 mr-auto")
 
     # Launch the GUI
-    HomeApp(DB_NAME, ON_AIR)
+    home = HomeApp(DB_NAME, ON_AIR)
 
+    # Cancel the slideshow timer when the client discon nects
+    # (browser tab closed, page navigated away, window closed)
+    ui.context.client.on_disconnect(home.cancel_timer)
+  
 class HomeApp:
     def __init__(self, database, ON_AIR):
         self.database = database
         self.ON_AIR = ON_AIR
         self.image_detail_click_set = False
         self.conn = connect_db(self.database)
+        self.gallery_timer = None
         # Check settings and handle directory setup
         if not ensure_dwarf_local_path(self.conn):
             ui.navigate.to(f"/Settings?InitDwarfLocal={False}")
@@ -95,6 +100,9 @@ class HomeApp:
         # UI - Slideshow
         self.first_image = True
         self.current_index = 0  # Index for slideshow
+        if self.gallery_timer:
+            self.gallery_timer.cancel()
+            self.gallery_timer = None
 
         with ui.column().classes("w-full").classes("items-center"):
             ui.label("⭐ My Favorite images ⭐ ").classes("text-center mt-0 text-lg font-semibold")
@@ -147,7 +155,7 @@ class HomeApp:
                     show_image()
 
                 # Automatic slideshow with 5s interval
-                self.timer = ui.timer(interval=10, callback=next_image)
+                self.gallery_timer = ui.timer(interval=10, callback=next_image)
 
                 with ui.row().classes("gap-4 mb-2"):
                     ui.button("Previous", on_click=prev_image)
@@ -171,3 +179,8 @@ class HomeApp:
                 # or 'xdg-open' for Linux
         else:
             print("Folder does not exist!")
+
+    def cancel_timer(self):
+        if self.gallery_timer:
+            self.gallery_timer.cancel()
+            self.gallery_timer = None

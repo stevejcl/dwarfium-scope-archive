@@ -157,6 +157,12 @@ def get_file_path(full_path, base_folder):
     # Get the relative path
     return os.path.relpath(full_path, base_folder)
 
+def get_session_file_ref(session_dir, full_path):
+    p = Path(full_path)
+    result = f"{Path(session_dir).name}/{p.name}"
+    
+    return result
+
 def get_extension(file_path):
     return os.path.splitext(file_path)[1].lower().lstrip('.')
 
@@ -589,9 +595,9 @@ def dms_to_degrees(dms_str: str) -> float:
         return 0.0
 
 def format_seconds_hms( total_seconds):
-    if not total_seconds:
+    if not total_seconds or total_seconds == "":
         return "N/A"
-    total_seconds = int(total_seconds)
+    total_seconds = int(float(total_seconds))
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60

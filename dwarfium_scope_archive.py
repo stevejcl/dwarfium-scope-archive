@@ -23,6 +23,7 @@ import pages.dwarf_transfer
 import pages.dwarf_transfer_usb
 import pages.dwarf_mosaic
 import pages.dwarf_add_manual_session
+import pages.dwarf_backup_ui_manual_explore
 import pages.dwarf_dso_catalog
 import pages.astro_settings
 

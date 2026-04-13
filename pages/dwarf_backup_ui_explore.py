@@ -191,7 +191,7 @@ class ExploreApp:
                 with ui.column().classes('w-full'):
                     # Create the dialog that simulates fullscreen
                     with ui.dialog().props('maximized') as self.image_dialog, ui.card().classes("w-full h-full no-padding"):
-                        self.fullscreen_image = ui.image().classes('w-full h-full object-contain')
+                        self.fullscreen_image = ui.image().classes('w-full h-auto object-contain')
 
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):

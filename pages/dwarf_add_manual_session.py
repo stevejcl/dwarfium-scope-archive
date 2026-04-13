@@ -5,6 +5,7 @@ import os
 import requests
 import traceback
 import asyncio
+from datetime import datetime
 
 from pathlib import Path
 import tempfile
@@ -18,10 +19,10 @@ from astropy.wcs import WCS
 from components.menu import menu
 from api.dwarf_backup_fct import ( 
     hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
-    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail
+    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text
+from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id
 from api.astrometry_resolver import auto_resolve, get_fits_center_coordinates
 
 from components.win_log import WinLog
@@ -32,12 +33,12 @@ from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC
 client_apps = {}
 
 @ui.page('/AddManualSession/')
-async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupDriveId:int = None):
+async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupDriveId:int = None, ManualEntryId:int = None, back_url:str = None):
 
-    menu("Add Manual Session")
+    menu("Add Manual Session" if not ManualEntryId else "Edit Manual Session")
     await ui.context.client.connected()
-    # Launch the GUI
-    ui.context.manual_session_app =  AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupDriveId=BackupDriveId)
+    # Launch the GUI - ManualEntryId triggers edit mode for an existing session
+    ui.context.manual_session_app = AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupDriveId=BackupDriveId, ManualEntryId=ManualEntryId, BackUrl=back_url)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
     def final_cleanup_temp_files():
@@ -64,7 +65,7 @@ async def manual_session_page(client: Client, DwarfId:int = None, session:str = 
 
 
 class AddManualSession:
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, BackupDriveId=None):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, BackupDriveId=None, ManualEntryId=None, BackUrl=None):
         self.client = client
         self.mode_stellar = "Stellar Studio" # Default mode
         self.mode_manual = "Manual"
@@ -122,8 +123,217 @@ class AddManualSession:
         self.links = []
         self.main_meta_info = None
         self.meta_info = None
+
+        # --- Edit mode ---
+        # When ManualEntryId is set the page opens an existing ManualSession for update.
+        # The existing files on disk are listed so the user can delete or replace them
+        # before re-importing.
+        self.BackUrl = BackUrl
+        self.ManualEntryId = ManualEntryId
+        self.edit_mode = ManualEntryId is not None
+        self.existing_session_row = None   # row from get_ManualSession_by_entry_id
+        self.existing_files_on_disk = []   # list of {path, name, ext} already in session_dir
+
         self.build_ui()
-        self.set_mode_UI()
+
+    # =========================================================================
+    # Edit mode — load an existing ManualSession for update
+    # =========================================================================
+
+    def load_existing_session(self):
+        """
+        Called once after build_ui() when ManualEntryId is set.
+        Fetches the existing ManualSession row, pre-fills all form fields, and
+        populates the existing-files panel so the user can delete / replace files
+        before re-importing.
+        """
+        rows = get_ManualSession_by_entry_id(self.conn, self.ManualEntryId)
+        if not rows:
+            ui.notify("Session not found in database.", type="warning")
+            return
+
+        row = rows[0]
+        self.existing_session_row = row
+
+        # --- Unpack the row (same column layout as get_ObjectSelect_manual) ---
+        session_name    = row[1]
+        session_type    = row[2] or self.mode_stellar
+        description     = row[5]
+        dec             = row[6]
+        ra              = row[7]
+        exp_time        = row[8]
+        ircut_filter    = row[9]
+        max_temp        = row[10]
+        session_dir     = row[15]   # physical folder already on backup drive
+        backup_drive_id = row[20]
+        dwarf_id        = row[21]
+        session_id      = row[22]
+
+        # --- Pre-fill session name input ---
+        print(f"session name input: {session_name}")
+        print(f"session dir input: {session_dir}")
+        folder_name = os.path.basename(session_dir) if session_dir else session_name
+        self.selected_session_name    = folder_name
+        self.selected_session_dirname = folder_name
+        self.session_dirname.set_value(folder_name)
+        print(f"selected_session_dirname : {self.selected_session_dirname}")
+
+        # --- Pre-fill destination directory ---
+        if session_dir and os.path.dirname(session_dir):
+            self.input_dest_dir.value = os.path.dirname(session_dir)
+
+        # --- Set mode toggle to match the stored session type ---
+        if session_type in (self.mode_stellar, self.mode_manual):
+            self.mode = session_type
+            self.mode_toggle.set_value(session_type)
+
+        # --- Reconstruct main_meta_info from the stored ManualSession columns ---
+        self.main_meta_info = {
+            'RA':      ra,
+            'DEC':     dec,
+            'OBJECT':  None,    # filled below from AstroObject
+            'EXPTIME': float(exp_time) if exp_time else None,
+            'FILTER':  ircut_filter,
+            'TEMP':    max_temp,
+        }
+
+        # Fill OBJECT from the linked AstroObject name (row[19] is the display_name)
+        astro_display = row[19]
+        if astro_display:
+            from api.dwarf_backup_fct import get_name_object as _gno
+            obj_name, _ = _gno(astro_display)
+            self.main_meta_info['OBJECT'] = obj_name
+
+        self.meta_info = dict(self.main_meta_info)
+
+        # Restore linked_data so the DB insert later uses the correct astro_object_id
+        self.linked_data.update({
+            "astro_object_id": row[17],
+            "session_id":      session_id,
+            "session_full_name": session_name,
+        })
+
+        # select the session
+        self.session_dropdown.value  = session_id
+
+        # Show the session metadata panel
+        self.refresh_info_session()
+
+        # --- Populate the existing-files panel ---
+        self._load_existing_files_panel(session_dir)
+
+        ui.notify(f"✏️ Edit mode: session '{session_name}' loaded.", type="info")
+
+    def _load_existing_files_panel(self, session_dir: str):
+        """
+        Scan the session folder already on disk and display each file with a
+        delete button, so the user can selectively remove files before uploading
+        replacements.
+        """
+        self.existing_files_on_disk = []
+        self.existing_files_list.clear()
+
+        if not session_dir or not os.path.exists(session_dir):
+            # Folder not accessible on this machine — hide the panel silently
+            self.existing_files_card.visible = False
+            return
+
+        # Collect known image / FITS files in the session folder
+        known_extensions = {'.jpg', '.jpeg', '.png', '.fits', '.fit', '.fts'}
+        try:
+            entries = sorted(os.listdir(session_dir))
+        except PermissionError:
+            self.existing_files_card.visible = False
+            return
+
+        for filename in entries:
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in known_extensions:
+                continue
+            full_path = os.path.join(session_dir, filename)
+            file_size = os.path.getsize(full_path) if os.path.exists(full_path) else 0
+            self.existing_files_on_disk.append({
+                "path": full_path,
+                "name": filename,
+                "ext":  ext,
+                "size": file_size,
+            })
+
+        if not self.existing_files_on_disk:
+            self.existing_files_card.visible = False
+            return
+
+        self.existing_files_card.visible = True
+        self._render_existing_files_panel()
+
+    @ui.refreshable
+    def _render_existing_files_panel(self):
+        """
+        Render the list of existing files with individual delete buttons.
+        Decorated with @ui.refreshable so it can be rebuilt after a deletion
+        without rebuilding the whole page.
+        """
+        self.existing_files_list.clear()
+        with self.existing_files_list:
+            if not self.existing_files_on_disk:
+                ui.item("No files remaining in session folder.").classes("text-gray-400 text-sm")
+                return
+
+            for file_info in list(self.existing_files_on_disk):
+                size_kb = file_info["size"] // 1024
+                with ui.item().classes("w-full"):
+                    with ui.row().classes("items-center gap-2 w-full flex-nowrap"):
+                        # File type icon
+                        ext = file_info["ext"]
+                        icon = "📷" if ext in ('.jpg', '.jpeg') else ("🖼️" if ext == '.png' else "🔭")
+                        ui.label(f"{icon} {file_info['name']}").classes("flex-1 text-sm truncate")
+                        ui.label(f"{size_kb} KB").classes("text-xs text-gray-400 shrink-0")
+                        ui.button(
+                            icon="delete",
+                            on_click=lambda fi=file_info: self._delete_existing_file(fi),
+                        ).props("flat round dense color=red").classes("shrink-0")
+
+    def _delete_existing_file(self, file_info: dict):
+        """
+        Delete a single file from the session folder on disk and remove it from
+        the tracking list, then refresh the panel.
+        Also clears main_meta_info if the deleted file was the primary FITS source
+        (i.e. its session_name is referenced in existing_session_row).
+        """
+        path = file_info.get("path", "")
+        name = file_info.get("name", "")
+
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                ui.notify(f"🗑️ Deleted: {name}", type="positive")
+            else:
+                ui.notify(f"File not found on disk: {name}", type="warning")
+        except Exception as e:
+            ui.notify(f"Could not delete {name}: {e}", type="negative")
+            return
+
+        # Remove from tracking list
+        self.existing_files_on_disk = [
+            f for f in self.existing_files_on_disk if f["path"] != path
+        ]
+
+        # If the deleted file was the stacked FITS that feeds main_meta_info,
+        # clear the metadata panel so the user knows they need to upload a new one.
+        if self.existing_session_row:
+            stored_fits = self.existing_session_row[13]  # stacked_fits_path
+            if stored_fits and os.path.normpath(stored_fits) == os.path.normpath(path):
+                self.main_meta_info = None
+                self.meta_info = None
+                self.details_files.clear()
+                ui.notify("Primary FITS deleted — please upload a replacement.", type="info")
+
+        # Refresh the panel
+        self._render_existing_files_panel.refresh()
+
+        # Hide the card entirely when no files remain
+        if not self.existing_files_on_disk:
+            self.existing_files_card.visible = False
 
     def set_mode_UI(self):
 
@@ -184,6 +394,8 @@ class AddManualSession:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        nbcol = 3 if self.BackUrl else 1
+
         # Load the preprocessed catalog once at app start
         preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE)
 
@@ -192,7 +404,19 @@ class AddManualSession:
                 self.dso_catalog = json.load(f)
 
         with ui.card().classes("w-full p-4 mt-4 items-center") as self.main_ui:
-            self.mode_toggle = ui.toggle([self.mode_stellar, self.mode_manual], value=self.mode_stellar, on_change=self.switch_mode)
+
+            with ui.grid(columns=nbcol).classes("items-center"):
+                if self.BackUrl:
+                    # Back button — shown when navigating from ManualExplore in edit mode
+                    if self.BackUrl:
+                        import urllib.parse
+                        decoded_back = urllib.parse.unquote(self.BackUrl) if self.BackUrl else "/"
+                        ui.button(
+                            "🔙 Back",
+                            on_click=lambda: ui.navigate.to(decoded_back),
+                        ).style('width: 160px').classes('mb-2')
+
+                    self.mode_toggle = ui.toggle([self.mode_stellar, self.mode_manual], value=self.mode_stellar, on_change=self.switch_mode)
 
             with ui.grid(columns=2):
                 with ui.column():
@@ -288,6 +512,14 @@ class AddManualSession:
                     ui.label("Added FITS files list").classes("ml-2 mt-2 font-medium")
                     self.details_fits_files = ui.list().classes('w-full h-50 overflow-y-auto')
 
+                # --- EXISTING FILES (edit mode only) ---
+                # This card is always created so the reference is valid, but it is hidden
+                # in add mode and populated by load_existing_session() in edit mode.
+                with ui.card().tight().classes('w-full') as self.existing_files_card:
+                    ui.label("Files already in session (edit mode)").classes("ml-2 mt-2 font-medium text-orange-600")
+                    self.existing_files_list = ui.list().classes('w-full overflow-y-auto')
+                self.existing_files_card.visible = False
+
                 with ui.card().tight().classes('w-full'):
                     ui.label("Main File Session Information (From First Fits file uploaded)").classes("ml-2 mt-2 mb-2 font-medium")
                     self.details_files = ui.list().classes('w-full h-50 overflow-y-auto')
@@ -299,7 +531,10 @@ class AddManualSession:
 
             # --- ACTION BUTTON ---
             with ui.row().classes("mt-4 gap-2"):
-                self.Import_Files = ui.button("Import Files", on_click=self.start_import_files).classes("mt-4 bg-green-600 text-white")
+                self.Import_Files = ui.button(
+                    "Import Files" if not self.edit_mode else "Update Session Files",
+                    on_click=self.start_import_files,
+                ).classes("mt-4 bg-green-600 text-white")
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             self.progress_label = ui.label("Idle...")
@@ -320,6 +555,10 @@ class AddManualSession:
         self.remove_button.disable()
         self.populate_dwarf_filter()
         self.notify_me(None)
+
+        self.set_mode_UI()
+        if self.edit_mode:
+            self.load_existing_session()
 
     def show_full_image(self, e):
         with ui.dialog() as dialog, ui.card().classes("w-full h-auto max-w-screen-xl"):
@@ -559,6 +798,8 @@ class AddManualSession:
     def check_exist_dir_session_name(self):
         # Check if destination path exists
         dest_dir = self.input_dest_dir.value
+        print(f"dest_dir: {dest_dir}")
+        print(f"selected_session_dirname: {self.selected_session_dirname}")
         session_dir = os.path.join(dest_dir, self.selected_session_dirname)
         if os.path.exists(session_dir):
             self.session_select_status_label = "⚠️ Session already exists."
@@ -835,6 +1076,8 @@ class AddManualSession:
             })
             self.uploaded_fits_files.append(self.current_file_info)
             if len(self.uploaded_fits_files) == 1:
+                # Snapshot the metadata of the first accepted FITS as the session master record
+                self.main_meta_info = dict(self.meta_info) if self.meta_info else None
                 self.refresh_info_session()
 
             self.refresh_fits_file_list_uploaded()
@@ -922,6 +1165,15 @@ class AddManualSession:
             self.details_files.clear()
             if not self.meta_info.get('OBJECT'):
                 self.meta_info['OBJECT'] = UNKNOWN
+            # Keep main_meta_info in sync: it always reflects the first/primary FITS metadata.
+            # If it was never set (e.g. after a resolution update), capture it now.
+            if self.main_meta_info is None:
+                self.main_meta_info = dict(self.meta_info)
+            else:
+                # Propagate any coordinate update back to main_meta_info (post-resolution)
+                for key in ('RA', 'DEC', 'OBJECT', 'FILTER', 'EXPTIME', 'TEMP', 'DATE-OBS', 'CAMERA'):
+                    if key in self.meta_info:
+                        self.main_meta_info[key] = self.meta_info[key]
 
             print(f"Dwarf Target: {self.meta_info.get('OBJECT')} RA: {hours_to_hms(self.meta_info.get('RA'))} | Dec: {deg_to_dms(self.meta_info.get('DEC'))}")
             astro_name = self.meta_info.get('OBJECT')
@@ -1204,7 +1456,7 @@ class AddManualSession:
                     # png -> self.selected_session_name.png
                     # fits -> self.selected_session_name.fits
                     # Compute the new filename depending on the extension
-                    if ext == ".jpg":
+                    if (ext == ".jpg" or ext == ".jpeg"):
                         new_filename = "stacked.jpg"
 
                     elif ext == ".png":
@@ -1229,7 +1481,7 @@ class AddManualSession:
                     shutil.copy2(src_path, dest_file_path)
                     
                     #thumbnail for first jpeg
-                    if file_ext.lower() == ".jpg" and counter == 1:
+                    if (file_ext.lower() == ".jpg" or file_ext.lower() == ".jpeg" ) and counter == 1:
                         thumbnail_path = dest_file_path.replace("stacked.jpg", "stacked_thumbnail.jpg")
                         create_thumbnail (dest_file_path , thumbnail_path)
 
@@ -1246,8 +1498,102 @@ class AddManualSession:
                 result = True
                 ui.notify("✅ Backup completed successfully!", type="positive")
 
-                # add to database - TO DO
-                #insert_ManualSessionEntry(self.conn ,  BackupDriveId, DwarfId, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id)
+                # --- Register in database ---
+                try:
+                    # Gather metadata from the first FITS file (if any)
+                    meta = self.main_meta_info or {}
+                    description  = meta.get('OBJECT')
+                    dec          = meta.get('DEC')
+                    ra           = meta.get('RA')
+                    exp_time     = str(meta.get('EXPTIME', '')) or None
+                    IR_filter  = meta.get('FILTER')
+                    maxTemp      = meta.get('TEMP')
+                    minTemp      = None
+
+                    # Collect paths of copied files by extension
+                    jpeg_path        = None
+                    stacked_png_path = None
+                    stacked_fits_path= None
+                    stacked_fits_md5 = None
+                    total_size       = 0
+                    mtime            = None
+
+                    for file_info in self.client.storage.uploaded_files:
+                        src = file_info.get("path", "")
+                        ext = os.path.splitext(file_info.get("name", ""))[1].lower()
+                        if (ext == ".jpg" or ext == ".jpeg") and jpeg_path is None:
+                            jpeg_path = os.path.join(dest_path, "stacked.jpg")
+                        elif ext == ".png" and stacked_png_path is None:
+                            stacked_png_path = os.path.join(dest_path, f"stacked-16_{self.selected_session_name}.png")
+                        elif ext == ".fits" and stacked_fits_path is None:
+                            stacked_fits_path = os.path.join(dest_path, f"stacked-16_{self.selected_session_name}.fits")
+                            stacked_fits_md5 = compute_md5(stacked_fits_path)
+                        if os.path.exists(src):
+                            total_size += os.path.getsize(src)
+                            file_mtime = int(os.path.getmtime(src))
+                            if mtime is None or file_mtime > mtime:
+                                mtime = file_mtime
+
+                    thumbnail_path = jpeg_path.replace("stacked.jpg", "stacked_thumbnail.jpg") if jpeg_path else None
+                    session_name   = self.selected_session_name or self.session_dirname.value.strip()
+                    session_type   = self.mode
+
+                    # 1. Insert / upsert the ManualSession record
+                    manual_session_id, _ = insert_ManualSession(
+                        self.conn,
+                        session_name      = session_name,
+                        session_type      = session_type,
+                        jpeg_path         = get_session_file_ref(dest_path, jpeg_path),
+                        modification_time = mtime,
+                        thumbnail_path    = get_session_file_ref(dest_path, thumbnail_path),
+                        file_size         = total_size,
+                        description       = description,
+                        dec               = dec,
+                        ra                = ra,
+                        exp_time          = exp_time,
+                        IR_filter         = IR_filter,
+                        maxTemp           = maxTemp,
+                        minTemp           = minTemp,
+                        stacked_png_path  = get_session_file_ref(dest_path, stacked_png_path),
+                        stacked_fits_path = get_session_file_ref(dest_path, stacked_fits_path),
+                        stacked_fits_md5  = stacked_fits_md5,
+                    )
+
+                    if manual_session_id:
+                        # 2. Determine astro_group_id (Manual group)
+                        from api.dwarf_backup_db_api import get_astro_object_groupId, insert_astro_group
+                        astro_group_id = get_astro_object_groupId(self.conn, MANUAL)
+                        if not astro_group_id:
+                            astro_group_id, _ = insert_astro_group(self.conn, MANUAL)
+
+                        session_dt_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+                        astro_object_id = self.linked_data.get("astro_object_id")
+                        session_id = self.linked_data.get("session_id")
+
+                        # 3. Insert the ManualSessionEntry link record
+                        insert_ManualSessionEntry(
+                            self.conn,
+                            manual_session_id = manual_session_id,
+                            backup_drive_id   = self.BackupDriveId,
+                            dwarf_id          = self.DwarfId,
+                            astro_object_id   = astro_object_id,
+                            backup_entry_id   = session_id,
+                            session_dt_str    = session_dt_str,
+                            session_dir       = dest_path,
+                            astro_group_id    = astro_group_id,
+                        )
+                        ui.notify("✅ Session registered in database.", type="positive")
+                        # In edit mode, refresh the existing-files panel to show the
+                        # newly copied files alongside any that were kept.
+                        if self.edit_mode and manual_session_id:
+                            session_dir_for_refresh = dest_path
+                            self._load_existing_files_panel(session_dir_for_refresh)
+                    else:
+                        ui.notify("⚠️ Files saved but database registration failed.", type="warning")
+
+                except Exception as db_err:
+                    ui.notify(f"⚠️ Database error: {db_err}", type="warning")
+                    print(f"[DB ERROR] Manual session registration failed: {db_err}")
 
             elif not self.cancel_backup:
                 ui.notify("⚠️ Backup incomplete due to failures.", type="warning")
@@ -1286,13 +1632,17 @@ class AddManualSession:
         if self.file_picker_fit:
             self.file_picker_fit.reset()
 
-        self.client.storage.uploaded_files.clear();
+        self.client.storage.uploaded_files.clear()
         self.uploaded_fits_files = []
         self.refresh_fits_file_list_uploaded()
         self.selected_file = None
-        self.main_meta_info = None
-        self.meta_info = None
-        self.details_files.clear()
+
+        # In edit mode, main_meta_info comes from the stored DB record, not from
+        # the temp upload — keep it so the DB upsert can still read coordinates.
+        if not self.edit_mode:
+            self.main_meta_info = None
+            self.meta_info = None
+            self.details_files.clear()
         
         if self.remove_button:
             self.update_remove_button()

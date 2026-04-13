@@ -1,0 +1,1212 @@
+"""
+dwarf_backup_ui_manual_explore.py
+----------------------------------
+Dedicated explore page for manually-imported sessions (ManualSession /
+ManualSessionEntry tables).  The layout intentionally mirrors ExploreApp
+(dwarf_backup_ui_explore.py) so the two pages feel consistent to the user,
+but this page is simpler:
+
+  - No backup / dwarf-presence checkboxes (not applicable to manual sessions).
+  - The session detail panel shows session_type, filter, exp_time instead of
+    stacks / gain / ircut.
+  - A "🔗 View linked Dwarf session" button navigates to /Explore/ when
+    backup_entry_id is set on the ManualSessionEntry row.
+  - Favorite toggling and folder deletion are fully supported.
+"""
+
+import os
+import shutil
+import sys
+import re
+import json
+import subprocess
+import urllib.parse
+from dataclasses import dataclass
+from collections import defaultdict
+from datetime import datetime
+
+from nicegui import ui, app
+from api.dwarf_backup_db import DB_NAME, connect_db
+from api.dwarf_backup_db_api import (
+    get_dwarf_Names,
+    get_backupDrive_Names,
+    get_backupDrive_dwarfId,
+    get_backupDrive_dwarfNames,
+    get_astro_object_description,
+    get_Objects_manual,
+    get_countObjects_manual,
+    get_ObjectSelect_manual,
+    toggle_favorite_manual,
+    delete_manual_session_entry,
+)
+from api.dwarf_backup_fct import (
+    show_short_date_session,
+    preprocess_dso_catalog_json,
+    hours_to_hms,
+    deg_to_dms,
+    format_seconds_hms,
+    check_files,
+    get_name_object,
+    get_session_file_ref
+)
+from api.image_preview import set_base_folder, build_preview_url
+from components.win_log import WinLog
+from components.menu import menu
+from components.astro_object_associate import DwarfData, show_unknown_target_dialog
+
+from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL
+
+# ---------------------------------------------------------------------------
+# Constants shared with ExploreApp
+# ---------------------------------------------------------------------------
+ALL_BACKUPS  = "(All Backups)"
+ALL_DWARFS   = "(All Dwarfs)"
+ALL_SESSIONS = "[ALL SESSIONS]"
+
+
+# ---------------------------------------------------------------------------
+# Small helper dataclass – stores the row keys needed for delete / favorite
+# ---------------------------------------------------------------------------
+@dataclass
+class ManualEntryData:
+    entry_id: int          # ManualSessionEntry.id  (PK of the link row)
+    session_dir: str       # physical folder path on disk
+    backup_entry_id: int   # ManualSessionEntry.backup_entry_id (may be None)
+    backup_drive_id: int   # ManualSessionEntry.backup_drive_id (may be None)
+    dwarf_id: int          # ManualSessionEntry.dwarf_id (may be None)
+
+
+# ===========================================================================
+# NiceGUI page route
+# ===========================================================================
+
+@ui.page('/ManualExplore/')
+async def manual_explore_page(
+    BackupDriveId: int = None,
+    DwarfId: int = None,
+    back_url: str = None,
+    SessionId: int = None,
+):
+    menu("Explore Manual Sessions")
+    await ui.context.client.connected()
+
+    print(f" [ManualExplore] BackupDriveId={BackupDriveId}  DwarfId={DwarfId}  SessionId={SessionId}")
+
+    app_instance = ManualExploreApp(
+        DB_NAME,
+        BackupDriveId=BackupDriveId,
+        DwarfId=DwarfId,
+        BackUrl=back_url,
+        SessionId=SessionId,
+    )
+
+    ui.context.manual_explore_app = app_instance
+
+    # Cancel any running timers when the client disconnects
+    async def on_disconnect():
+        if app_instance.gallery_timer:
+            app_instance.gallery_timer.cancel()
+            app_instance.gallery_timer = None
+        if app_instance.gallery_timer_anim:
+            app_instance.gallery_timer_anim.cancel()
+            app_instance.gallery_timer_anim = None
+
+    ui.context.client.on_disconnect(on_disconnect)
+
+
+# ===========================================================================
+# Main application class
+# ===========================================================================
+
+class ManualExploreApp:
+    """
+    Explore page for ManualSession / ManualSessionEntry records.
+
+    The object-list on the left mirrors ExploreApp's tree/item layout (same
+    grouping logic, same sort order).  The detail panel on the right is
+    simplified: it shows the data available in ManualSession rather than
+    DwarfData columns.
+    """
+
+    def __init__(self, database, BackupDriveId=None, DwarfId=None, BackUrl=None, SessionId=None):
+        self.database          = database
+        self.BackupDriveId     = BackupDriveId
+        self.BackupDriveId_Init= BackupDriveId
+        self.DwarfId           = DwarfId
+        self.BackUrl           = BackUrl
+        self.SessionId         = SessionId
+
+        self.AutoSelection_done = False
+        self.dwarf_options      = []
+        self.backup_options     = []
+        self.objects            = []          # list of (id, display_name, dso_id, is_group)
+        self.all_files_rows     = []          # raw rows from get_ObjectSelect_manual
+        self.label_to_index     = {}          # session label -> index in all_files_rows
+
+        self.selected_object             = None
+        self.selected_object_description = None
+        self.selected_object_is_group    = False
+        self.selected_entry_data         = None   # ManualEntryData for the currently shown row
+        self.selected_path               = ""     # physical folder path (session_dir)
+
+        self.astro_files   = {}
+        self.dso_catalog   = False
+        self.tree_data_lookup = {}
+        self.expanded_nodes   = set()
+
+        # UI element references filled in build_ui()
+        self.backup_filter  = None
+        self.dwarf_filter   = None
+        self.count_label    = None
+        self.object_list    = None
+        self.object_filter  = None
+        self.file_list      = None
+        self.details_files  = None
+        self.details_preview= None
+        self.preview_image  = None
+        self.fullscreen_image = None
+        self.image_dialog   = None
+        self.open_folder_icon      = None
+        self.fullscreen_icon       = None
+        self.linked_session_icon   = None
+        self.edit_session_icon     = None
+        self.delete_session_icon   = None
+        self.favorite_icon         = None
+        self.classified_label      = None
+
+        # Gallery / slideshow state
+        self.gallery_image_data    = []   # list of {url, path, label, session_dir, row_index}
+        self.gallery_current_index = 0
+        self.gallery_first_image   = True
+        self.gallery_timer         = None
+        self.gallery_timer_anim    = None
+ 
+        self.WinLog = WinLog()
+        self.build_ui()
+
+    # -----------------------------------------------------------------------
+    # UI construction
+    # -----------------------------------------------------------------------
+
+    def build_ui(self):
+        self.conn = connect_db(self.database)
+
+        # Pre-process DSO catalog for target identification
+        preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE)
+        if os.path.exists(SKY_CATALOG_FILE):
+            with open(SKY_CATALOG_FILE, "r", encoding="utf-8") as f:
+                self.dso_catalog = json.load(f)
+
+        with ui.row().classes('w-full h-screen items-center justify-center'):
+            with ui.grid(columns='1fr 2fr'):
+
+                # ---- LEFT COLUMN: filters + object list -------------------
+                with ui.column().classes('w-full'):
+
+                    # Back button (optional)
+                    if self.BackUrl:
+                        ui.button(
+                            "🔙 Back",
+                            on_click=lambda: ui.navigate.to(self.BackUrl)
+                        ).style('width: 100px')
+
+                    with ui.grid(columns=2):
+                        with ui.column():
+                            ui.label("Backup Drive:")
+                            self.backup_filter = ui.select(
+                                options=[],
+                                on_change=self.on_backup_filter_change,
+                            ).props('outlined')
+
+                        with ui.column():
+                            ui.label("Dwarf:")
+                            self.dwarf_filter = ui.select(
+                                options=[],
+                                on_change=self.load_objects,
+                            ).props('outlined')
+
+                    self.count_label = ui.label("Total matching sessions: 0")
+
+                    with ui.card().tight().classes('w-full'):
+                        with ui.row().classes('items-center m-4 gap-2'):
+                            self.object_filter = (
+                                ui.input(
+                                    placeholder='🔍 Filter objects...',
+                                    on_change=lambda e: self.load_objects_ui() if e.value else self.load_objects(),
+                                )
+                                .classes('flex-1')
+                                .props('clearable')
+                            )
+                            (
+                                ui.button(icon='refresh', on_click=self.load_objects)
+                                .props('flat round dense')
+                                .bind_visibility_from(self.object_filter, 'value', lambda v: bool(v))
+                            )
+                        self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
+
+                # ---- RIGHT COLUMN: session selector + detail panel --------
+                with ui.column().classes('w-full'):
+
+                    # Fullscreen dialog (maximised image viewer)
+                    with ui.dialog().props('maximized') as self.image_dialog, \
+                            ui.card().classes("w-full h-full no-padding"):
+                        self.fullscreen_image = ui.image().classes('w-full h-auto object-contain')
+
+                    with ui.row().classes('w-full'):
+                        with ui.column().classes('w-full'):
+                            ui.label('Session list')
+                            self.file_list = (
+                                ui.select(options=[], on_change=self.on_file_selected)
+                                .props('outlined')
+                                .style('overflow-x: auto;')
+                            )
+                            self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
+
+                        # Action buttons (shown/hidden depending on selection)
+                        with ui.row().classes('items-center gap-4') as self.icon_row:
+                            self.open_folder_icon = ui.button(
+                                "🗁 Open", on_click=self.open_folder
+                            ).classes('h-16')
+                            self.open_folder_icon.visible = False
+
+                            self.fullscreen_icon = ui.button(
+                                "Show fullscreen", on_click=self.show_fullscreen_image
+                            ).classes('h-16')
+                            self.fullscreen_icon.visible = False
+
+                            # Navigates to /Explore/ to view the linked BackupEntry session
+                            self.linked_session_icon = ui.button(
+                                "🔗 View linked Dwarf session",
+                                on_click=self.navigate_to_linked_session,
+                            ).classes('h-16')
+                            self.linked_session_icon.visible = False
+
+                            self.favorite_icon = ui.button(
+                                "☆ Favorite", on_click=self.toggle_favorite
+                            ).classes('h-16')
+                            self.favorite_icon.visible = False
+
+                            # Edit session — open AddManualSession in update mode
+                            self.edit_session_icon = ui.button(
+                                "✏️ Edit session",
+                                on_click=self.navigate_to_edit_session,
+                            ).classes('h-16')
+                            self.edit_session_icon.visible = False
+
+                            self.delete_session_icon = ui.button(
+                                "🗑️ Delete session", on_click=self.delete_directory
+                            ).classes('h-16')
+                            self.delete_session_icon.visible = False
+
+                    with ui.row().classes('w-full'):
+                        with ui.card().tight().classes('w-full'):
+                            self.details_files   = ui.list().classes('w-full overflow-y-auto')
+                            self.details_preview = ui.list().classes('w-full overflow-y-auto')
+
+                    with ui.row().classes('w-full'):
+                        self.preview_image = (
+                            ui.image()
+                            .classes('w-full h-auto mb-4')
+                            .props('fit=contain')
+                            .on('click', self.show_fullscreen_image)
+                        )
+
+        self.fullscreen_image.visible = False
+        self.preview_image.visible    = False
+
+        self.populate_backup_filter()
+        self.selected_path = ""
+
+    # -----------------------------------------------------------------------
+    # Filter helpers
+    # -----------------------------------------------------------------------
+
+    def populate_backup_filter(self):
+        self.backup_options = get_backupDrive_Names(self.conn)
+        names = [ALL_BACKUPS] + [name for _, name in self.backup_options]
+        initial_value = names[0]
+
+        if self.BackupDriveId:
+            match = next((name for bid, name in self.backup_options if bid == self.BackupDriveId), None)
+            if match:
+                initial_value = match
+
+        self.backup_filter.set_options(names, value=initial_value)
+
+    def on_backup_filter_change(self):
+        prev_backup_id = self.BackupDriveId
+        selected = self.backup_filter.value
+
+        if selected == ALL_BACKUPS:
+            self.BackupDriveId = None
+        else:
+            for bid, name in self.backup_options:
+                if name == selected:
+                    self.BackupDriveId = bid
+                    break
+
+        self.populate_dwarf_filter()
+
+        # Reload only when the backup changed but the dwarf stayed the same
+        if prev_backup_id != self.BackupDriveId and self.get_selected_dwarf_id() == self.get_selected_dwarf_id():
+            self.load_objects()
+
+    def populate_dwarf_filter(self):
+        if self.BackupDriveId:
+            self.dwarf_options = get_backupDrive_dwarfNames(self.conn, self.BackupDriveId)
+            names = [name for _, name in self.dwarf_options]
+        else:
+            self.dwarf_options = get_dwarf_Names(self.conn)
+            names = [ALL_DWARFS] + [name for _, name in self.dwarf_options]
+
+        initial_value = names[0] if names else None
+
+        # Preserve current dwarf selection when possible
+        matching = self.get_selected_dwarf_id() or self.DwarfId
+        if not self.BackupDriveId and matching:
+            match = next((n for did, n in self.dwarf_options if did == matching), None)
+            if match:
+                initial_value = match
+
+        self.dwarf_filter.set_options(names, value=initial_value)
+
+    def get_selected_dwarf_id(self):
+        value = self.dwarf_filter.value if self.dwarf_filter else None
+        if value == ALL_DWARFS:
+            return None
+        return next((did for did, name in self.dwarf_options if name == value), None)
+
+    # -----------------------------------------------------------------------
+    # Object list loading  (mirrors ExploreApp.load_objects / load_objects_ui)
+    # -----------------------------------------------------------------------
+
+    def load_objects(self):
+        dwarf_id = self.get_selected_dwarf_id()
+        self.clear_selected_object()
+
+        self.objects = get_Objects_manual(
+            self.conn,
+            backup_drive_id=self.BackupDriveId,
+            dwarf_id=dwarf_id,
+            filter_object=self.object_filter.value,
+        )
+        count = get_countObjects_manual(
+            self.conn,
+            backup_drive_id=self.BackupDriveId,
+            dwarf_id=dwarf_id,
+            filter_object=self.object_filter.value,
+        )
+
+        self.count_label.text = f"Total matching sessions: {count}"
+        self.selected_object             = None
+        self.selected_object_description = None
+        self.selected_object_is_group    = False
+        self.load_objects_ui()
+
+        # Auto-select a specific session if SessionId was passed in the URL
+        if not self.AutoSelection_done and self.SessionId:
+            self.AutoSelection_done = True
+            ui.timer(0.2, lambda: self.auto_select_session(), once=True)
+
+    def auto_select_session(self):
+        """Directly select the ALL SESSIONS node and let on_file_selected pick the right row."""
+        print(f"[ManualExplore] auto_select_session SessionId={self.SessionId}")
+        self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
+
+    def _update_expanded_nodes(self, expanded_keys):
+        self.expanded_nodes = set(expanded_keys)
+
+    def load_objects_ui(self):
+        self.object_list.clear()
+        filter_dso     = set()
+        visible_names  = []
+        dso_id_counts  = defaultdict(int)
+        self.tree_data_lookup = {}
+        node_selected  = None
+
+        # --- Step 1: count how many times each dso_id appears after filtering ---
+        for _, name, dso_id, _ in self.objects:
+            name_object, _ = get_name_object(name)
+            if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
+                if dso_id is not None:
+                    filter_dso.add(dso_id)
+                continue
+            if dso_id is not None:
+                dso_id_counts[dso_id] += 1
+
+        shown_all_for_dso = set()
+        grouped_objects   = defaultdict(list)
+        priority_order    = {
+            ALL_SESSIONS:   0,
+            "Manual":       1,
+            "MOSAIC_Unknown": 2,
+            "Unknown":      3,
+        }
+
+        def sort_key(name_object):
+            return (priority_order.get(name_object, 4), name_object.casefold())
+
+        # --- Step 2: group objects by display name ---
+        for oid, name, dso_id, is_group in self.objects:
+            name_object, _ = get_name_object(name)
+            if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
+                continue
+            grouped_objects[name_object].append((oid, name, dso_id, is_group))
+
+        # Always add the catch-all "All sessions" entry at the top
+        grouped_objects[ALL_SESSIONS].append((None, ALL_SESSIONS, None, True))
+
+        display_items = []
+
+        for name_object in sorted(grouped_objects.keys(), key=sort_key):
+            entries = grouped_objects[name_object]
+            visible_names.append(name_object)
+
+            if len(entries) == 1:
+                oid, full_name, dso_id, is_group = entries[0]
+
+                # Insert an [ALL] entry when multiple AstroObjects share the same DSO
+                if (
+                    dso_id is not None
+                    and dso_id_counts[dso_id] > 1
+                    and dso_id not in shown_all_for_dso
+                    and dso_id not in filter_dso
+                ):
+                    all_name = f"{name_object.split(' [')[0]} [ALL]"
+                    visible_names.append(all_name)
+                    display_items.append({
+                        "type": "item",
+                        "label": all_name,
+                        "label_full": all_name,
+                        "data": {
+                            "oid": None, "name": all_name, "desc": full_name,
+                            "dso_id": dso_id, "is_group": is_group,
+                        },
+                    })
+                    shown_all_for_dso.add(dso_id)
+
+                label = f"{'✨ ' if is_group else ''}{name_object}"
+                display_items.append({
+                    "type": "item",
+                    "label": name_object,
+                    "label_full": label,
+                    "data": {
+                        "oid": oid, "name": name_object, "desc": full_name,
+                        "dso_id": dso_id, "is_group": is_group,
+                    },
+                })
+
+            else:
+                # Multiple objects with the same display name → tree node
+                children = []
+                for index, (oid, full_name, dso_id, is_group) in enumerate(entries, start=1):
+                    name_item = f"{name_object} .{index}"
+                    node_id   = f"obj_{oid}"
+                    is_selected = self.selected_object == name_item
+                    if is_selected:
+                        node_selected = node_id
+                    visible_names.append(name_item)
+                    data = {
+                        "oid": oid, "name": name_item, "desc": full_name,
+                        "dso_id": dso_id, "is_group": is_group,
+                    }
+                    children.append({
+                        "id": node_id, "label": f"{'✨ ' if is_group else ''}{name_item}",
+                        "data": data,
+                        "icon": "check" if is_selected else None,
+                    })
+                    self.tree_data_lookup[node_id] = data
+
+                # [ALL] node for DSO group
+                dso_id   = entries[0][2]
+                full_name= entries[0][1]
+                is_group = entries[0][3]
+                if (
+                    dso_id is not None
+                    and dso_id_counts[dso_id] > 1
+                    and dso_id not in shown_all_for_dso
+                    and dso_id not in filter_dso
+                ):
+                    all_name    = f"{name_object} [ALL]"
+                    all_node_id = f"all_{dso_id}"
+                    visible_names.append(all_name)
+                    is_selected = self.selected_object == all_name
+                    if is_selected:
+                        node_selected = all_node_id
+                    all_data = {
+                        "oid": None, "name": all_name, "desc": full_name,
+                        "dso_id": dso_id, "is_group": is_group,
+                    }
+                    children.insert(0, {
+                        "id": all_node_id, "label": all_name,
+                        "data": all_data,
+                        "icon": "check" if is_selected else None,
+                    })
+                    self.tree_data_lookup[all_node_id] = all_data
+                    shown_all_for_dso.add(dso_id)
+
+                children.sort(key=lambda c: c["label"].lower())
+                display_items.append({
+                    "type": "tree",
+                    "label": name_object,
+                    "node": {
+                        "id": name_object,
+                        "label": f"{name_object} ({len(entries)})",
+                        "children": children,
+                    },
+                })
+
+        # --- Step 3: render UI ---
+        with self.object_list:
+            ui.item_label('List objects').props('header').classes('text-bold')
+            ui.separator()
+
+            def handle_click(data):
+                self.selected_object = data["name"]
+                self._handle_object_click(
+                    data["oid"], data["name"], data["desc"], data["dso_id"], data["is_group"]
+                )
+
+            def handle_select(event):
+                node_id = event.value
+                if not node_id:
+                    return
+                data = self.tree_data_lookup.get(node_id)
+                if data:
+                    handle_click(data)
+
+            for entry in display_items:
+                treeview = None
+                if entry["type"] == "item":
+                    data = entry["data"]
+                    item = ui.item(
+                        entry["label_full"],
+                        on_click=lambda d=data: handle_click(d),
+                    )
+                    item.classes('bg-primary text-white' if data["name"] == self.selected_object else 'bg-transparent')
+
+                elif entry["type"] == "tree":
+                    node = entry["node"]
+                    treeview = ui.tree(
+                        nodes=[node],
+                        node_key='id',
+                        label_key='label',
+                        children_key='children',
+                        on_select=handle_select,
+                        on_expand=lambda e: self._update_expanded_nodes(e.value),
+                    ).expand()
+
+                if node_selected and treeview:
+                    treeview.props(add=f"selected={node_selected}")
+
+        if self.selected_object not in visible_names:
+            self.selected_object = None
+            self.clear_selected_object()
+
+        self.object_list.update()
+        ui.update()
+
+    def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
+        self.selected_object             = name
+        self.selected_object_description = desc
+        self.selected_object_is_group    = is_group
+        self.select_object(oid, dso_id, is_group, session_id)
+        self.load_objects_ui()
+
+    # -----------------------------------------------------------------------
+    # Session selection
+    # -----------------------------------------------------------------------
+
+    def clear_selected_object(self):
+        self.fullscreen_image.visible = False
+        self.preview_image.visible    = False
+        self.details_files.clear()
+        self.details_preview.clear()
+        self._hide_action_buttons()
+        self.file_list.set_options([])
+        self.all_files_rows  = []
+        self.label_to_index  = {}
+        self.selected_path   = ""
+        self.selected_entry_data = None
+
+    def _hide_action_buttons(self):
+        if self.open_folder_icon:
+            self.open_folder_icon.visible    = False
+        if self.fullscreen_icon:
+            self.fullscreen_icon.visible     = False
+        if self.linked_session_icon:
+            self.linked_session_icon.visible = False
+        if self.favorite_icon:
+            self.favorite_icon.visible       = False
+        if self.edit_session_icon:
+            self.edit_session_icon.visible   = False
+        if self.delete_session_icon:
+            self.delete_session_icon.visible = False
+
+    def select_object(self, object_id, dso_id, is_group, session_id=None):
+        """Load session rows for the selected AstroObject and populate the file list."""
+        dwarf_id = self.get_selected_dwarf_id()
+        self.clear_selected_object()
+
+        files = get_ObjectSelect_manual(
+            self.conn,
+            object_id=object_id,
+            dso_id=dso_id,
+            backup_drive_id=self.BackupDriveId,
+            dwarf_id=dwarf_id,
+            is_group=is_group,
+            filter_object=self.object_filter.value,
+            session_id=session_id,
+        )
+
+        self.all_files_rows = [list(row) for row in files]
+
+        if not files:
+            self.label_to_index = {}
+            self.file_list.set_options([])
+            with self.details_files:
+                ui.item_label('No session found.').props('header').classes('text-bold')
+            return
+
+        if len(files) == 1:
+            # Single result: show immediately without requiring a combobox selection
+            label = files[0][1]   # session_name
+            self.label_to_index[label] = 0
+            self.file_list.set_options([label], value=label)
+        else:
+            labels = [f'Select a session for {self.selected_object}']
+            self.label_to_index = {}
+
+            for idx, row in enumerate(files):
+                session_name  = row[1]
+                session_type  = row[2]  or ""
+                session_date  = row[14]
+                session_date  = show_short_date_session(session_date)
+                exp_time      = row[8]
+                ircut_filter   = row[9]  or "No filter"
+                dwarf_name    = row[24] or "?"
+                is_favorite   = row[16]
+                descriptionDB = row[19]
+
+                exp          = f"{format_seconds_hms(exp_time)}" if exp_time else "N/A"
+                description, _ = get_name_object(descriptionDB)
+                star_icon    = '⭐ ' if is_favorite else '☆ '
+                label_text   = (
+                    f"📁 {session_type} | 🔭 {dwarf_name} | "
+                    f"📅 {session_date} | ⚙️ Exp {exp}, {ircut_filter} | "
+                    f"🛰️ {description}"
+                )
+
+                # Make duplicate labels unique with invisible characters
+                base   = f"{star_icon}{label_text}"
+                detail = base
+                count  = 0
+                while detail in self.label_to_index:
+                    count  += 1
+                    detail  = base + ("\u200b" * count)
+
+                self.label_to_index[detail] = idx
+                labels.append(detail)
+
+            self.file_list.set_options(labels, value=labels[0])
+
+            with self.details_files:
+                ui.item_label(f"{len(files)} manual sessions found.").props('header').classes('text-bold')
+                ui.separator()
+                for data_detail in labels[1:]:
+                    ui.item(
+                        data_detail,
+                        on_click=lambda i=data_detail: self.file_list.set_value(i),
+                    ).props('clickable').classes('cursor-pointer')
+
+    def on_file_selected(self, event):
+        """Triggered when the user picks a session in the dropdown."""
+        label = event.value if hasattr(event, 'value') else self.file_list.value
+        if not label:
+            return
+
+        idx = self.label_to_index.get(label)
+        if idx is None:
+            return
+
+        self._display_session(idx)
+
+    def _display_session(self, idx: int):
+        """Render the detail panel for the ManualSession row at all_files_rows[idx]."""
+        row = self.all_files_rows[idx]
+
+        # --- Unpack row columns (see get_ObjectSelect_manual docstring) ---
+        manual_session_id   = row[0]
+        session_name        = row[1]
+        session_type        = row[2]  or ""
+        jpeg_path           = row[3]
+        thumbnail_path      = row[4]
+        description         = row[5]
+        dec                 = row[6]
+        ra                  = row[7]
+        exp_time            = row[8]
+        ircut_filter        = row[9]
+        max_temp            = row[10]
+        min_temp            = row[11]
+        stacked_png_path    = row[12]
+        stacked_fits_path   = row[13]
+        session_date        = row[14]
+        session_dir         = row[15]
+        is_favorite         = row[16]
+        astro_object_id     = row[17]
+        astro_group_id      = row[18]
+        description_db      = row[19]
+        backup_drive_id     = row[20]
+        dwarf_id            = row[21]
+        backup_entry_id     = row[22]   # FK to BackupEntry – may be None
+        entry_id            = row[23]   # ManualSessionEntry.id
+        dwarf_name          = row[24]   or "N/A"
+        backup_drive_name   = row[25]   or "N/A"
+
+        # Keep a reference for the action buttons
+        self.selected_entry_data = ManualEntryData(
+            entry_id=entry_id,
+            session_dir=session_dir or "",
+            backup_entry_id=backup_entry_id,
+            backup_drive_id=backup_drive_id,
+            dwarf_id=dwarf_id,
+        )
+        self.selected_path = session_dir or ""
+        print(self.selected_path)
+        preview_path = jpeg_path or stacked_png_path or thumbnail_path 
+
+        self._build_gallery_data(idx)
+        print(f"build_gallery_data: {len(self.gallery_image_data)} images found")
+        
+        # --- Detail panel ---
+        self.details_files.clear()
+        self.details_preview.clear()
+
+        with self.details_files:
+
+            # Target / classification row
+            description, _ = get_name_object(description_db)
+            ui.item(f"Session: {session_name}").classes('text-blue-800')
+            with ui.row().classes('w-full gap-8 items-start'):
+                ui.item(f"Target: {description}").classes('text-green-600')
+                if self.dso_catalog and astro_object_id:
+                    dwarf_data_obj = DwarfData(
+                        target=description_db,
+                        dec=dec,
+                        ra=ra,
+                        astro_object_id=astro_object_id,
+                    )
+                    ui.button(
+                        "🖼️ Identify target",
+                        on_click=lambda: show_unknown_target_dialog(
+                            self.conn, dwarf_data_obj, self.dso_catalog, False,
+                            lambda: None,
+                        ),
+                    )
+
+            self.classified_label = ui.label("").classes('text-gray-500 m-4')
+            if astro_object_id:
+                descdb = get_astro_object_description(self.conn, astro_object_id)
+                if descdb and descdb != description_db:
+                    self.classified_label.set_text(f"Classified as: {descdb}")
+
+            # Coordinates
+            if ra or dec:
+                ui.item(
+                    f"RA: {hours_to_hms(ra)}  |  Dec: {deg_to_dms(dec)}"
+                ).classes('text-purple-600')
+
+            # Session metadata
+            date_str = show_short_date_session(session_date)
+            ui.item(f"📅 Date: {date_str}").classes('text-indigo-600')
+            ui.item(f"📁 Type: {session_type}").classes('text-yellow-700')
+            ui.item(f"⚙️  Exposure: {format_seconds_hms(exp_time) or 'N/A'}  |  Filter: {ircut_filter or 'No filter'}").classes('text-yellow-700')
+
+            if max_temp is not None:
+                temp_str = f"🌡 Temp: {min_temp}°C – {max_temp}°C" if min_temp is not None else f"🌡 Temp: {max_temp}°C"
+                ui.item(temp_str).classes('text-sky-700')
+
+            ui.separator()
+            # --- Gallery: scan the whole current object for images (not just this session) ---
+            if len(self.gallery_image_data) > 1:
+                ui.label(f'📦 {len(self.gallery_image_data)} images found').classes('text-lg m-4')
+                
+            ui.button("🖼️ Show Gallery", on_click=lambda: self.show_gallery()).classes("m-4")
+
+            ui.item(f"🔭 Dwarf: {dwarf_name}").classes('text-gray-600')
+            ui.item(f"💾 Drive: {backup_drive_name}").classes('text-gray-600')
+
+            if session_dir:
+                ui.item(f"📂 Folder: {session_dir}").classes('text-gray-400 text-xs')
+
+        # --- Preview image ---
+        preview_path = jpeg_path or stacked_png_path or thumbnail_path 
+        self._update_preview(preview_path)
+
+        # --- Action buttons ---
+        self._update_action_buttons(is_favorite, backup_entry_id, backup_drive_id, session_dir)
+
+    def _update_preview(self, image_path: str | None):
+        """Display the preview image if the file exists."""
+        self.preview_image.visible    = False
+        self.fullscreen_image.visible = False
+
+        print(f"image_path : {image_path}")
+        full_path = os.path.join(self.selected_path, os.path.basename(image_path))
+        print(f"full image_path : {full_path}")
+
+        # Check if the file is an image
+        if not full_path:
+            self.fullscreen_image.visible = False
+            self.preview_image.visible = False
+            details_preview.append(f"Image File Path is empty - Preview is disable")
+
+        elif not os.path.isfile(full_path):
+            self.fullscreen_image.visible = False
+            self.preview_image.visible = False
+            details_preview.append(f"Image File is not reachable - Preview is disable")
+
+        try:
+            # ser parent name of session_dir for preview
+            set_base_folder(os.path.dirname(self.selected_path))
+            url = build_preview_url(image_path)
+
+            self.preview_image.visible = True
+            self.preview_image.source = url
+            self.fullscreen_image.visible = True
+            self.fullscreen_image.source  = url
+            if self.fullscreen_icon:
+                self.fullscreen_icon.visible = True
+        except Exception as e:
+            print(f"[ManualExplore] Preview error: {e}")
+
+    def _update_action_buttons(self, is_favorite, backup_entry_id, backup_drive_id, session_dir):
+        """Show / hide and label the action buttons for the current session."""
+        # Open-folder button (only when directory exists on this machine)
+        has_dir = bool(session_dir and os.path.exists(session_dir))
+        if self.open_folder_icon:
+            self.open_folder_icon.visible = has_dir
+
+        # Favorite toggle
+        if self.favorite_icon:
+            self.favorite_icon.set_text('⭐ Remove favorite' if is_favorite else '☆ Add favorite')
+            self.favorite_icon.visible = True
+
+        # Edit session — navigate back to AddManualSession in edit mode
+        if self.edit_session_icon:
+            self.edit_session_icon.visible = True
+
+        # Delete
+        if self.delete_session_icon:
+            self.delete_session_icon.visible = True
+
+        # Link to the associated BackupEntry session in /Explore/
+        if self.linked_session_icon:
+            self.linked_session_icon.visible = bool(backup_entry_id and backup_drive_id)
+
+    # -----------------------------------------------------------------------
+    # Action handlers
+    # -----------------------------------------------------------------------
+
+    def _build_gallery_data(self, idx):
+        """
+        Scan all rows in self.all_files_rows and collect every jpg/png image that
+        exists on disk.  Prefers jpeg_path, falls back to stacked_png_path, then
+        thumbnail_path.  One entry per session row (row_index mirrors the dropdown).
+ 
+        Populates self.gallery_image_data — each entry is a dict:
+            url         : preview URL (via build_preview_url)
+            path        : absolute path on disk
+            label       : short human-readable caption shown in the gallery
+            session_dir : folder path (used by "Select" to jump to that session)
+            row_index   : index into all_files_rows / file_list options
+        """
+        self.gallery_image_data    = []
+        self.gallery_current_index = 0
+        self.gallery_first_image   = True
+ 
+        row = self.all_files_rows[idx]
+        # Column layout from get_ObjectSelect_manual — see docstring there
+        jpeg_path        = row[3]
+        thumbnail_path   = row[4]
+        stacked_png_path = row[12]
+        session_date     = row[14]
+        session_dir      = row[15]
+        description_db   = row[19]
+        dwarf_name       = row[24] or "?"
+
+        obj_name, _ = get_name_object(description_db)
+        date_str     = show_short_date_session(session_date)
+        label        = f"🛰️ {obj_name or '?'}  🔭 {dwarf_name}  📅 {date_str}"
+
+        # Pick the available image files
+        if session_dir and os.path.isdir(session_dir):
+            for fname in sorted(os.listdir(session_dir)):
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in ('.jpg', '.jpeg', '.png'):
+                    parent_dir = os.path.dirname(session_dir)
+                    candidate = os.path.join(session_dir, fname)
+                    print(f"candidate: {candidate}")
+
+                    if not candidate or not os.path.isfile(candidate) or fname == "stacked_thumbnail.jpg":
+                        continue   # no image found for this session
+ 
+                    try:
+                        url = build_preview_url(get_session_file_ref(session_dir, candidate))
+                        print(f"url: {url}")
+                    except Exception:
+                        continue
+ 
+                    self.gallery_image_data.append({
+                        "url":         url,
+                        "path":        candidate,
+                        "label":       label,
+                        "session_dir": session_dir or "",
+                        "row_index":   idx,
+                    })
+ 
+    def show_gallery(self):
+        """
+        Open a modal slideshow dialog showing all jpg/png images collected in
+        self.gallery_image_data.  Controls: Previous / Next (auto-advance every
+        10 s) and a Select button that closes the dialog and selects the matching
+        session in the dropdown.
+        """
+        if not self.gallery_image_data:
+            ui.notify("No images found for this object.", type="info")
+            return
+ 
+        # Stop any previously running timers from an earlier gallery open
+        if self.gallery_timer:
+            self.gallery_timer.cancel()
+            self.gallery_timer = None
+        if self.gallery_timer_anim:
+            self.gallery_timer_anim.cancel()
+            self.gallery_timer_anim = None
+ 
+        self.gallery_current_index = 0
+        self.gallery_first_image   = True
+ 
+        with ui.dialog() as dialog:
+            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
+ 
+                # Header row
+                with ui.row().classes('w-full items-center justify-between mb-2'):
+                    ui.label(
+                        f"🖼️ Gallery — {len(self.gallery_image_data)} image(s)"
+                    ).classes("text-lg font-semibold")
+                    ui.button("Close", on_click=dialog.close).classes("ml-auto")
+ 
+                with ui.column().classes("w-full items-center"):
+ 
+                    # Main image display
+                    slideshow_img = (
+                        ui.image("")
+                        .classes(
+                            "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
+                            "transition-opacity duration-500 opacity-100"
+                        )
+                    )
+ 
+                    # Caption labels
+                    caption_label = ui.label("").classes("text-center mt-2 text-sm")
+                    path_label    = ui.label("").classes("text-center text-xs text-gray-400 mb-2")
+ 
+                    # --- Internal helpers ---
+                    def _do_update_image():
+                        entry = self.gallery_image_data[self.gallery_current_index]
+                        slideshow_img.source = entry["url"]
+                        slideshow_img.classes(remove="opacity-5", add="opacity-100").update()
+                        caption_label.set_text(
+                            f"[{self.gallery_current_index + 1}/{len(self.gallery_image_data)}]  "
+                            + entry["label"]
+                        )
+                        path_label.set_text(entry["path"])
+ 
+                    def _show_with_fade():
+                        """Fade out, then update image on the next tick."""
+                        slideshow_img.classes(remove="opacity-100", add="opacity-5").update()
+                        self.gallery_timer_anim = ui.timer(0.15, _do_update_image, once=True)
+ 
+                    def _reset_auto_timer():
+                        if self.gallery_timer:
+                            self.gallery_timer.cancel()
+                        self.gallery_timer = ui.timer(10, _next_auto, once=False)
+ 
+                    def _next_auto():
+                        """Called by the auto-advance timer."""
+                        if self.gallery_first_image:
+                            self.gallery_first_image = False
+                        else:
+                            self.gallery_current_index = (
+                                (self.gallery_current_index + 1) % len(self.gallery_image_data)
+                            )
+                        _show_with_fade()
+ 
+                    def _on_next():
+                        self.gallery_current_index = (
+                            (self.gallery_current_index + 1) % len(self.gallery_image_data)
+                        )
+                        _reset_auto_timer()
+                        _show_with_fade()
+ 
+                    def _on_prev():
+                        self.gallery_current_index = (
+                            (self.gallery_current_index - 1) % len(self.gallery_image_data)
+                        )
+                        _reset_auto_timer()
+                        _show_with_fade()
+ 
+                    def _on_select():
+                        """Jump to the corresponding session in the dropdown and close."""
+                        entry     = self.gallery_image_data[self.gallery_current_index]
+                        row_index = entry["row_index"]
+                        options   = list(self.file_list.options)
+                        # options[0] is the placeholder "Select a session for …"
+                        # actual entries start at index 1 matching all_files_rows[0]
+                        target_option_idx = row_index + 1
+                        if 0 < target_option_idx < len(options):
+                            self.file_list.set_value(options[target_option_idx])
+                        dialog.close()
+ 
+                    # Controls row
+                    with ui.row().classes("gap-4 mt-2 mb-4 items-center"):
+                        ui.button("⬅ Previous", on_click=_on_prev)
+                        ui.button("☑ Select this session", on_click=_on_select)
+                        ui.button("Next ➡", on_click=_on_next)
+ 
+                    # Start auto-advance timer (first tick shows the first image)
+                    self.gallery_timer = ui.timer(10, _next_auto, once=False)
+                    _do_update_image()   # show first image immediately without waiting
+ 
+            # Clean up timers when the dialog is dismissed
+            def _on_dialog_hide():
+                if self.gallery_timer:
+                    self.gallery_timer.cancel()
+                    self.gallery_timer = None
+                if self.gallery_timer_anim:
+                    self.gallery_timer_anim.cancel()
+                    self.gallery_timer_anim = None
+ 
+            dialog.on('hide', _on_dialog_hide)
+ 
+        dialog.open()
+ 
+    def show_fullscreen_image(self):
+        if self.fullscreen_image.visible:
+            self.image_dialog.open()
+            ui.notify("Press ESC to close the image", position="top", type="info")
+
+    def open_folder(self):
+        folder = self.selected_path
+        if not folder or not os.path.exists(folder):
+            ui.notify("Folder not found!", color="negative")
+            return
+        folder = os.path.normpath(folder)
+        if os.name == 'nt':
+            subprocess.Popen(f'explorer "{folder}"')
+        elif os.name == 'posix':
+            subprocess.Popen(['open', folder])
+
+    def navigate_to_linked_session(self):
+        """
+        Navigate to /Explore/ pre-selecting the BackupEntry session that was
+        recorded alongside this manual import.  Uses the existing SessionId
+        parameter mechanism already present in ExploreApp.auto_select_session.
+        """
+        if not self.selected_entry_data:
+            return
+        bid = self.selected_entry_data.backup_drive_id
+        eid = self.selected_entry_data.backup_entry_id
+        did = self.selected_entry_data.dwarf_id or ""
+        sid = self.selected_entry_data.entry_id
+        # back_url lets AddManualSession add a Back button pointing here
+        back = f"/ManualExplore/?BackupDriveId={bid}&DwarfId={did}&SessionId={sid}&NotUse="
+        back_encoded = urllib.parse.quote(back)
+        if bid and eid:
+            #ui.navigate.to(f"/Explore/?BackupDriveId={bid}&SessionId={eid}&mode=backup")
+            url=f"/Explore/?BackupDriveId={bid}&SessionId={eid}&mode=backup"
+            url += f"&back_url={back_encoded}"
+            print(f"URL: {url}")
+            ui.navigate.to(url)
+        else:
+            ui.notify("No linked Dwarf session for this import.", type="info")
+
+    def navigate_to_edit_session(self):
+        """
+        Navigate to /AddManualSession/ in edit mode, passing the ManualSessionEntry PK
+        so the page can load the existing session data and file list.
+        The DwarfId and BackupDriveId are forwarded so the form selectors are pre-set.
+        """
+        if not self.selected_entry_data:
+            ui.notify("No session selected.", type="warning")
+            return
+        eid = self.selected_entry_data.entry_id
+        bid = self.selected_entry_data.backup_drive_id or ""
+        did = self.selected_entry_data.dwarf_id or ""
+        # back_url lets AddManualSession add a Back button pointing here
+        back = f"/ManualExplore/?BackupDriveId={bid}&DwarfId={did}&SessionId={eid}"
+        back_encoded = urllib.parse.quote(back)
+        url = f"/AddManualSession/?ManualEntryId={eid}"
+        if bid:
+            url += f"&BackupDriveId={bid}"
+        if did:
+            url += f"&DwarfId={did}"
+        url += f"&back_url={back_encoded}"
+        print(f"URL: {url}")
+        ui.navigate.to(url)
+
+    def toggle_favorite(self):
+        if not self.selected_entry_data:
+            return
+        new_val = toggle_favorite_manual(self.conn, self.selected_entry_data.entry_id)
+        star = '⭐ Remove favorite' if new_val else '☆ Add favorite'
+        if self.favorite_icon:
+            self.favorite_icon.set_text(star)
+        # Refresh the session list so the star icon updates in the dropdown
+        idx = self.label_to_index.get(self.file_list.value)
+        if idx is not None and idx < len(self.all_files_rows):
+            self.all_files_rows[idx][15] = new_val
+        ui.notify("Favorite updated.", type="positive")
+
+    async def delete_directory(self):
+        """
+        Delete the physical session folder from disk, then remove the
+        ManualSessionEntry (and ManualSession if it becomes orphaned).
+        """
+        if not self.selected_entry_data:
+            ui.notify("No session selected.", color="negative")
+            return
+
+        folder = self.selected_entry_data.session_dir
+        entry_id = self.selected_entry_data.entry_id
+
+        if folder and not os.path.exists(folder):
+            # Folder already gone – just remove the DB record
+            folder = None
+
+        async def confirm_delete():
+            # 1. Remove files from disk (if present)
+            if folder:
+                try:
+                    shutil.rmtree(folder)
+                    ui.notify(f"Folder deleted: {folder}", color="positive")
+                except Exception as e:
+                    ui.notify(f"Could not delete folder: {e}", color="negative")
+
+            # 2. Remove the DB entry (and parent ManualSession if orphaned)
+            ok = delete_manual_session_entry(self.conn, entry_id)
+            if ok:
+                ui.notify("Session removed from database.", type="positive")
+            else:
+                ui.notify("DB removal failed.", type="warning")
+
+            # 3. Reload the object list
+            self.load_objects()
+
+        msg = (
+            f"⚠️ Are you sure you want to delete this session?\n\n"
+            + (f"The following folder will be permanently removed:\n{folder}\n\n" if folder else "")
+            + "The database record will also be deleted."
+        )
+        await self.WinLog.show("Confirm deletion", msg, confirm_delete)

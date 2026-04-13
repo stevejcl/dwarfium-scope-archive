@@ -216,7 +216,62 @@ def init_db(conn):
             )
         """)
 
-        # insert defaut group
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ManualSession (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_name TEXT NOT NULL,
+                session_type TEXT,
+                jpeg_path TEXT,
+                modification_time INTEGER,
+                thumbnail_path TEXT,
+                file_size INTEGER,
+                description TEXT,
+                dec TEXT,
+                ra TEXT,
+                exp_time TEXT,
+                ircut TEXT,
+                maxTemp INTEGER,
+                minTemp INTEGER,
+                stacked_png_path TEXT,
+                stacked_fits_path TEXT,
+                stacked_fits_md5 TEXT,
+                UNIQUE(session_name, session_type)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ManualSessionEntry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                manual_session_id INTEGER,
+                backup_drive_id INTEGER,
+                dwarf_id INTEGER,
+                astro_object_id INTEGER,
+                backup_entry_id INTEGER,
+                session_date DATETIME,
+                session_dir TEXT,
+                favorite BOOLEAN DEFAULT 0,
+                astro_group_id INTEGER,
+                FOREIGN KEY (manual_session_id) REFERENCES ManualSession(id),
+                FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
+                FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
+                FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
+                FOREIGN KEY (backup_entry_id) REFERENCES BackupEntry(id),
+                FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
+                UNIQUE("manual_session_id", "backup_drive_id", "dwarf_id", "backup_entry_id")
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_session_dir ON ManualSessionEntry(session_dir);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_astro_group_id ON ManualSessionEntry(astro_group_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_manual_session_id ON ManualSessionEntry(manual_session_id);
+        """)
+
+        # insert default group
 
         conn.commit()
 
@@ -348,12 +403,13 @@ def migrate_v3(conn):
                 dec TEXT,
                 ra TEXT,
                 exp_time TEXT,
-                filter TEXT,
+                ircut TEXT,
                 maxTemp INTEGER,
                 minTemp INTEGER,
                 stacked_png_path TEXT,
                 stacked_fits_path TEXT,
-                stacked_fits_md5 TEXT
+                stacked_fits_md5 TEXT,
+                UNIQUE(session_name, session_type)
             )
         """)
 
@@ -379,17 +435,18 @@ def migrate_v3(conn):
             )
         """)
 
-        #cursor.execute("""
-        #    CREATE TABLE IF NOT EXISTS LinkSession (
-        #        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        #        name TEXT NOT NULL,
-        #        description TEXT,
-        #        dso_id INTEGER REFERENCES DsoCatalog(id),
-        #        dec TEXT,
-        #        ra TEXT,
-        #        is_group BOOLEAN DEFAULT 0
-        #    )
-        #""")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_session_dir ON ManualSessionEntry(session_dir);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_astro_group_id ON ManualSessionEntry(astro_group_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_manual_session_id ON ManualSessionEntry(manual_session_id);
+        """)
+
+        conn.commit()
+        print("Migration v3 applied.")
 
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB: {e}")

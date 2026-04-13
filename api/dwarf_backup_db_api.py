@@ -1212,6 +1212,331 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
         return []
 
 
+##############################
+# ManualSession query functions
+##############################
+
+def get_Objects_manual(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, filter_object=None):
+    """
+    Return the distinct list of AstroObjects that have at least one ManualSessionEntry.
+    Mirrors the signature of get_Objects_backup / get_Objects_dwarf so ManualExplore
+    can call it the same way.
+
+    Result columns (per row):
+        [0] AstroObject.id
+        [1] display_name  (description + name, or name alone)
+        [2] AstroObject.dso_id
+        [3] AstroObject.is_group
+    """
+    try:
+        cursor = conn.cursor()
+
+        query = f"""
+            SELECT DISTINCT
+                AstroObject.id,
+                {display_name_expr} AS display_name,
+                AstroObject.dso_id,
+                AstroObject.is_group
+            FROM AstroObject
+            JOIN ManualSessionEntry
+                ON (
+                    -- Prefer the group label when the object belongs to a named group
+                    (AstroObject.id = ManualSessionEntry.astro_object_id AND ManualSessionEntry.astro_group_id IS NULL)
+                    OR
+                    (AstroObject.id = ManualSessionEntry.astro_object_id AND ManualSessionEntry.astro_group_id IS NOT NULL AND AstroObject.description != '')
+                    OR
+                    (AstroObject.id = ManualSessionEntry.astro_group_id  AND ManualSessionEntry.astro_object_id IS NOT NULL AND AstroObject.description = '')
+                )
+            JOIN ManualSession ON ManualSessionEntry.manual_session_id = ManualSession.id
+        """
+        conditions = []
+        params = []
+
+        if backup_drive_id:
+            conditions.append("ManualSessionEntry.backup_drive_id = ?")
+            params.append(backup_drive_id)
+
+        if dwarf_id:
+            conditions.append("ManualSessionEntry.dwarf_id = ?")
+            params.append(dwarf_id)
+
+        if filter_object:
+            conditions.append("LOWER(display_name) LIKE ?")
+            params.append(f"%{filter_object.lower()}%")
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        order_case_sql = generate_order_case("display_name", DEFAULT_GROUP_NAMES)
+        query += f"""
+            ORDER BY
+                {order_case_sql},
+                display_name
+        """
+
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_Objects_manual: {e}")
+        return []
+
+
+def get_countObjects_manual(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=None, filter_object=None):
+    """
+    Return the total number of ManualSessionEntry rows matching the given filters.
+    Used to populate the 'Total matching sessions' label in ManualExplore.
+    """
+    try:
+        cursor = conn.cursor()
+
+        query = f"""
+            SELECT COUNT(*)
+            FROM ManualSessionEntry
+            JOIN ManualSession ON ManualSessionEntry.manual_session_id = ManualSession.id
+            JOIN AstroObject ON ManualSessionEntry.astro_object_id = AstroObject.id
+            LEFT JOIN AstroObject AS AstroGroup ON ManualSessionEntry.astro_group_id = AstroGroup.id
+        """
+        conditions = []
+        params = []
+
+        if backup_drive_id:
+            conditions.append("ManualSessionEntry.backup_drive_id = ?")
+            params.append(backup_drive_id)
+
+        if dwarf_id:
+            conditions.append("ManualSessionEntry.dwarf_id = ?")
+            params.append(dwarf_id)
+
+        if filter_object:
+            conditions.append(f"(LOWER({display_name_expr}) LIKE ? OR LOWER({group_display_expr}) LIKE ?)")
+            params.append(f"%{filter_object.lower()}%")
+            params.append(f"%{filter_object.lower()}%")
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        cursor.execute(query, params)
+        return cursor.fetchone()[0]
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_countObjects_manual: {e}")
+        return 0
+
+
+def get_ObjectSelect_manual(conn: sqlite3.Connection, object_id=None, dso_id=None,
+                             backup_drive_id=None, dwarf_id=None,
+                             is_group=False, filter_object=None, session_id=None):
+    """
+    Return all ManualSession rows for a given AstroObject (or group), with every
+    piece of data the ManualExplore detail panel needs.
+
+    Result columns (per row) — keep this index table in sync with ManualExploreApp:
+        [0]  ManualSession.id
+        [1]  ManualSession.session_name        <- used as the display path
+        [2]  ManualSession.session_type        <- 'Stellar Studio' | 'Manual' | ...
+        [3]  ManualSession.jpeg_path
+        [4]  ManualSession.thumbnail_path
+        [5]  ManualSession.description
+        [6]  ManualSession.dec
+        [7]  ManualSession.ra
+        [8]  ManualSession.exp_time
+        [9]  ManualSession.ircut
+        [10] ManualSession.maxTemp
+        [11] ManualSession.minTemp
+        [12] ManualSession.stacked_png_path
+        [13] ManualSession.stacked_fits_path
+        [14] ManualSessionEntry.session_date
+        [15] ManualSessionEntry.session_dir    <- physical folder on backup drive
+        [16] ManualSessionEntry.favorite
+        [17] ManualSessionEntry.astro_object_id
+        [18] ManualSessionEntry.astro_group_id
+        [19] display_name                      <- AstroObject display name
+        [20] ManualSessionEntry.backup_drive_id
+        [21] ManualSessionEntry.dwarf_id
+        [22] ManualSessionEntry.backup_entry_id <- FK to BackupEntry (may be NULL)
+        [23] ManualSessionEntry.id              <- own PK, used for delete / favorite toggle
+        [24] Dwarf.name                         <- may be NULL if dwarf not set
+        [25] BackupDrive.name                   <- may be NULL if drive not set
+    """
+    try:
+        cursor = conn.cursor()
+
+        query = f"""
+            SELECT
+                ManualSession.id,
+                ManualSession.session_name,
+                ManualSession.session_type,
+                ManualSession.jpeg_path,
+                ManualSession.thumbnail_path,
+                ManualSession.description,
+                ManualSession.dec,
+                ManualSession.ra,
+                ManualSession.exp_time,
+                ManualSession.ircut,
+                ManualSession.maxTemp,
+                ManualSession.minTemp,
+                ManualSession.stacked_png_path,
+                ManualSession.stacked_fits_path,
+                ManualSessionEntry.session_date,
+                ManualSessionEntry.session_dir,
+                ManualSessionEntry.favorite,
+                ManualSessionEntry.astro_object_id,
+                ManualSessionEntry.astro_group_id,
+                {display_name_expr} AS display_name,
+                ManualSessionEntry.backup_drive_id,
+                ManualSessionEntry.dwarf_id,
+                ManualSessionEntry.backup_entry_id,
+                ManualSessionEntry.id,
+                Dwarf.name,
+                BackupDrive.name
+            FROM ManualSessionEntry
+            JOIN ManualSession ON ManualSessionEntry.manual_session_id = ManualSession.id
+            JOIN AstroObject   ON ManualSessionEntry.astro_object_id  = AstroObject.id
+            LEFT JOIN AstroObject AS AstroGroup ON ManualSessionEntry.astro_group_id = AstroGroup.id
+            LEFT JOIN Dwarf       ON ManualSessionEntry.dwarf_id       = Dwarf.id
+            LEFT JOIN BackupDrive ON ManualSessionEntry.backup_drive_id = BackupDrive.id
+        """
+
+        where_clauses = []
+        params = []
+
+        # --- Object / group filter ---
+        if object_id is not None:
+            if not is_group:
+                where_clauses.append("ManualSessionEntry.astro_object_id = ?")
+            else:
+                where_clauses.append("ManualSessionEntry.astro_group_id = ?")
+            params.append(object_id)
+
+        elif dso_id is not None:
+            # Match all AstroObjects sharing the same DSO catalogue entry
+            if not is_group:
+                where_clauses.append("""
+                    ManualSessionEntry.astro_object_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
+            else:
+                where_clauses.append("""
+                    ManualSessionEntry.astro_group_id IN (
+                        SELECT id FROM AstroObject WHERE dso_id = ?
+                    )
+                """)
+            params.append(dso_id)
+
+        # --- Optional drive / dwarf filters ---
+        if backup_drive_id:
+            where_clauses.append("ManualSessionEntry.backup_drive_id = ?")
+            params.append(backup_drive_id)
+
+        if dwarf_id:
+            where_clauses.append("ManualSessionEntry.dwarf_id = ?")
+            params.append(dwarf_id)
+
+        # --- Text search across display_name and group name ---
+        if filter_object:
+            where_clauses.append(f"(LOWER(display_name) LIKE ? OR LOWER({group_display_expr}) LIKE ?)")
+            params.append(f"%{filter_object.lower()}%")
+            params.append(f"%{filter_object.lower()}%")
+
+        # --- Direct session lookup (e.g. auto-selection from another page) ---
+        if session_id:
+            where_clauses.append("ManualSessionEntry.id = ?")
+            params.append(session_id)
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        query += " ORDER BY ManualSessionEntry.session_date DESC"
+
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_ObjectSelect_manual: {e}")
+        return []
+
+
+def toggle_favorite_manual(conn: sqlite3.Connection, entry_id: int) -> int:
+    """
+    Toggle the favorite flag on a ManualSessionEntry row (identified by its own PK).
+    Returns the new value (0 or 1), or 0 on error.
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE ManualSessionEntry SET favorite = NOT favorite WHERE id = ?",
+            (entry_id,)
+        )
+        commit_db(conn)
+        cursor.execute("SELECT favorite FROM ManualSessionEntry WHERE id = ?", (entry_id,))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to toggle_favorite_manual for entry_id={entry_id}: {e}")
+        return 0
+
+
+def delete_manual_session_entry(conn: sqlite3.Connection, entry_id: int) -> bool:
+    """
+    Delete a single ManualSessionEntry row and, if the parent ManualSession has no
+    remaining entries, delete the ManualSession record as well.
+
+    Args:
+        conn:     active DB connection
+        entry_id: ManualSessionEntry.id (the PK of the entry row, NOT ManualSession.id)
+
+    Returns True on success, False on error.
+    """
+    try:
+        cursor = conn.cursor()
+
+        # Retrieve the parent manual_session_id before deleting the entry
+        cursor.execute(
+            "SELECT manual_session_id FROM ManualSessionEntry WHERE id = ?",
+            (entry_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            print(f"[WARN] ManualSessionEntry id={entry_id} not found.")
+            return False
+
+        manual_session_id = row[0]
+
+        # Delete the entry row
+        cursor.execute("DELETE FROM ManualSessionEntry WHERE id = ?", (entry_id,))
+
+        # If the parent ManualSession has no more entries, delete it too
+        cursor.execute(
+            "SELECT COUNT(*) FROM ManualSessionEntry WHERE manual_session_id = ?",
+            (manual_session_id,)
+        )
+        remaining = cursor.fetchone()[0]
+        if remaining == 0:
+            cursor.execute("DELETE FROM ManualSession WHERE id = ?", (manual_session_id,))
+            print(f"[INFO] ManualSession id={manual_session_id} deleted (no more entries).")
+
+        commit_db(conn)
+        return True
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete_manual_session_entry id={entry_id}: {e}")
+        conn.rollback()
+        return False
+
+
+def get_ManualSession_by_entry_id(conn: sqlite3.Connection, entry_id: int):
+    """
+    Load a single ManualSession + ManualSessionEntry row by ManualSessionEntry.id.
+    Used by AddManualSession when opened in edit mode (ManualEntryId URL parameter).
+
+    Returns the same column layout as get_ObjectSelect_manual (25 columns), or None.
+    """
+    return get_ObjectSelect_manual(conn, session_id=entry_id)
+
+
 #####################
 # Favorite functions
 #####################
@@ -1910,92 +2235,89 @@ def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf
         return []
 
 def insert_ManualSession(conn: sqlite3.Connection, session_name, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
-        description, dec, ra, exp_time, filter, maxTemp, minTemp, stacked_png_path, stacked_fits_path, stacked_fits_md5):
+        description, dec, ra, exp_time, IR_filter, maxTemp, minTemp, stacked_png_path, stacked_fits_path, stacked_fits_md5):
     try:
 
         # Try to fetch existing ID first
-        row = conn.execute("SELECT id FROM DwarfData WHERE file_path = ?", (file_path,)).fetchone()
+        row = conn.execute(
+            "SELECT id FROM ManualSession WHERE session_name = ? AND session_type = ?",
+            (session_name, session_type)
+        ).fetchone()
         exist_id = row[0] if row else None
 
         cursor = conn.execute("""
-            INSERT INTO DwarfData (
-                file_path, modification_time, thumbnail_path, file_size,
-                dec, ra, target, binning, format, exp_time, gain,
-                shotsToTake, shotsTaken, shotsStacked, ircut, maxTemp, minTemp,
-                width, height, media_type, stacked_fits_path, stacked_fits_md5
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(file_path) DO UPDATE SET
+            INSERT INTO ManualSession (
+                session_name, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
+                description, dec, ra, exp_time, ircut, maxTemp, minTemp,
+                stacked_png_path, stacked_fits_path, stacked_fits_md5
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_name, session_type) DO UPDATE SET
+                jpeg_path = excluded.jpeg_path,
                 modification_time = excluded.modification_time,
                 thumbnail_path = excluded.thumbnail_path,
                 file_size = excluded.file_size,
+                description = excluded.description,
                 dec = excluded.dec,
                 ra = excluded.ra,
-                target = excluded.target,
-                binning = excluded.binning,
-                format = excluded.format,
                 exp_time = excluded.exp_time,
-                gain = excluded.gain,
-                shotsToTake = excluded.shotsToTake,
-                shotsTaken = excluded.shotsTaken,
-                shotsStacked = excluded.shotsStacked,
                 ircut = excluded.ircut,
                 maxTemp = excluded.maxTemp,
                 minTemp = excluded.minTemp,
-                width = excluded.width,
-                height = excluded.height,
-                media_type = excluded.media_type,
+                stacked_png_path = excluded.stacked_png_path,
                 stacked_fits_path = excluded.stacked_fits_path,
                 stacked_fits_md5 = excluded.stacked_fits_md5
-            WHERE excluded.modification_time > DwarfData.modification_time
-               OR excluded.target != DwarfData.target
+            WHERE excluded.modification_time > ManualSession.modification_time
+               OR excluded.description != ManualSession.description
         """, (
-            file_path, mtime, thumbnail_path, file_size,
-            dec, ra, target, binning, format, exp_time, gain,
-            shotsToTake, shotsTaken, shotsStacked, ircut, maxTemp, minTemp,
-            width, height, media_type, stacked_path, stacked_md5
+            session_name, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
+            description, dec, ra, exp_time, IR_filter, maxTemp, minTemp,
+            stacked_png_path, stacked_fits_path, stacked_fits_md5
         ))
 
         if cursor.rowcount > 0:
             commit_db(conn)
             if exist_id is None:
                 last_id = cursor.lastrowid
-                print(f" DwarData : Adding new Id :{last_id}")
+                print(f" ManualSession : Adding new Id :{last_id}")
                 return last_id, last_id
             else:
-                print(f" DwarData : Updated existing Id : {exist_id}")
+                print(f" ManualSession : Updated existing Id : {exist_id}")
                 return exist_id, exist_id
 
         else:
-            row = conn.execute("SELECT id FROM DwarfData WHERE file_path = ?", (file_path,)).fetchone()
+            row = conn.execute(
+                "SELECT id FROM ManualSession WHERE session_name = ? AND session_type = ?",
+                (session_name, session_type)
+            ).fetchone()
             exist_id = row[0] if row else None  # Already existed
-            print(f" DwarData : Already Exist Id :{exist_id}")
+            print(f" ManualSession : Already Exist Id :{exist_id}")
             return None, exist_id
 
     except Exception as e:
-        print(f"[DB ERROR] Failed to insert or fetch DwarfData: {e}")
+        print(f"[DB ERROR] Failed to insert or fetch ManualSession: {e}")
         return None, None
 
-def insert_ManualSessionEntry(conn: sqlite3.Connection, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id):
+def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id):
     try:
         # Insert entry in BackupEntry
         cursor = conn.execute("""
             INSERT OR IGNORE INTO ManualSessionEntry (
-                backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_date, session_dir, astro_group_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(backup_drive_id, dwarf_id, backup_entry_id)
+                manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_date, session_dir, astro_group_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(manual_session_id, backup_drive_id, dwarf_id, backup_entry_id)
             DO UPDATE SET
                 astro_object_id=excluded.astro_object_id,
                 session_date=excluded.session_date,
                 session_dir=excluded.session_dir,
                 astro_group_id=excluded.astro_group_id
-        """, (backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id))
+        """, (manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id))
 
         if cursor.rowcount > 0:
-            manualSession_id = cursor.lastrowid
-            if not manualSession_id:
-                print(f"Manual Session data updated: {backup_drive_id},{dwarf_id},{backup_entry_id}")
+            manualSessionEntry_id = cursor.lastrowid
+            if not manualSessionEntry_id :
+                print(f"Manual Session data updated: {manual_session_id} {backup_drive_id},{dwarf_id},{backup_entry_id}")
             commit_db(conn)
-            return manualSession_id
+            return manualSessionEntry_id
         else:
             print("Error Insert ignored : insert_ManualSessionEntry")
             return None

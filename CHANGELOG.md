@@ -1,5 +1,11 @@
 # Changelog
 
+## [V3.0.4] - 2026-04-13
+
+### Add 
+    Add DB request for Manual Session management
+    Add Manual Session pages : Add and Explore Pages
+
 ## [V3.0.3] - 2026-04-12
 
 ### BugFix# 
