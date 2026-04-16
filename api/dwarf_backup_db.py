@@ -1,9 +1,241 @@
 import sqlite3
 import os
+import re
 # Encoding changed to UTF-8
 DB_NAME = os.path.join("db", "dwarf_backup.db")
 CATALOG_FILE = os.path.join("db", "dso_catalog.json")
 
+def create_DsoCatalog_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS DsoCatalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            designation TEXT UNIQUE,
+            displayName TEXT,
+            catalogue TEXT,
+            objectNumber INTEGER,
+            type TEXT,
+            typeCategory TEXT,
+            ra TEXT,
+            dec TEXT,
+            magnitude REAL,
+            constellation TEXT,
+            size TEXT,
+            notes TEXT,
+            favorite BOOLEAN,
+            alternateNames TEXT
+        )
+        """
+
+def create_MtpDevices_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS MtpDevices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_name TEXT,
+            mtp_drive_id TEXT
+        )
+        """
+
+def create_AstroObject_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS AstroObject (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            dso_id INTEGER REFERENCES DsoCatalog(id),
+            dec TEXT,
+            ra TEXT,
+            is_group BOOLEAN DEFAULT 0
+        )
+        """
+
+def create_Dwarf_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS Dwarf (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            usb_astronomy_dir TEXT,
+            type TEXT,
+            last_scan_date DATETIME,
+            ip_sta_mode TEXT,
+            mtp_id INTEGER,
+            FOREIGN KEY (mtp_id) REFERENCES MtpDevices(id)
+        )
+        """
+
+def create_DwarfData_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS DwarfData (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT UNIQUE NOT NULL,
+            modification_time INTEGER,
+            thumbnail_path TEXT,
+            file_size INTEGER,
+            dec TEXT,
+            ra TEXT,
+            target TEXT,
+            binning TEXT,
+            format TEXT,
+            exp_time TEXT,
+            gain INTEGER,
+            shotsToTake INTEGER,
+            shotsTaken INTEGER,
+            shotsStacked INTEGER,
+            ircut TEXT,
+            maxTemp INTEGER,
+            minTemp INTEGER,
+            width TEXT,
+            height TEXT,
+            media_type INTEGER,
+            stacked_fits_path TEXT,
+            stacked_fits_md5 TEXT
+        )
+        """
+
+def create_DwarfEntry_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS DwarfEntry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dwarf_id INTEGER,
+            astro_object_id INTEGER,
+            dwarf_data_id INTEGER,
+            session_date DATETIME,
+            session_dir TEXT,
+            favorite BOOLEAN DEFAULT 0,
+            astro_group_id INTEGER,
+            FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
+            FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
+            FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id),
+            FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
+            UNIQUE("dwarf_id", "dwarf_data_id")
+        )
+        """
+
+def create_BackupDrive_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS BackupDrive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            description TEXT,
+            location TEXT UNIQUE,
+            astronomy_dir TEXT,
+            dwarf_id INTEGER,
+            last_backup_scan_date DATETIME,
+            FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id)
+        )
+        """
+
+def create_BackupEntry_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS BackupEntry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            backup_drive_id INTEGER,
+            dwarf_id INTEGER,
+            astro_object_id INTEGER,
+            dwarf_data_id INTEGER,
+            session_date DATETIME,
+            session_dir TEXT,
+            favorite BOOLEAN DEFAULT 0,
+            astro_group_id INTEGER,
+            FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
+            FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
+            FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
+            FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id),
+            FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
+            UNIQUE("backup_drive_id", "dwarf_id", "dwarf_data_id")
+        )
+        """
+
+def create_Settings_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS Settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parameter TEXT UNIQUE,
+            type TEXT,
+            valueText TEXT,
+            valueInt INTEGER
+        )
+        """
+
+def create_ManualSessionDrive_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS ManualSessionDrive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            description TEXT,
+            location TEXT UNIQUE,
+            manualsession_dir TEXT,
+            backup_drive_id INTEGER,
+            last_backup_scan_date DATETIME,
+            FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id) ON DELETE SET NULL
+        )
+        """
+
+def create_ManualSession_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS ManualSession (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_name TEXT NOT NULL,
+            session_tag TEXT DEFAULT '',
+            session_type TEXT,
+            jpeg_path TEXT,
+            modification_time INTEGER,
+            thumbnail_path TEXT,
+            file_size INTEGER,
+            description TEXT,
+            dec TEXT,
+            ra TEXT,
+            exp_time TEXT,
+            ircut TEXT,
+            maxTemp INTEGER,
+            minTemp INTEGER,
+            stacked_png_path TEXT,
+            stacked_fits_path TEXT,
+            stacked_fits_md5 TEXT,
+            UNIQUE("session_name", "session_tag", "session_type")
+        )
+        """
+
+def create_ManualSessionEntry_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS ManualSessionEntry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            manual_session_id INTEGER,
+            backup_drive_id INTEGER,
+            dwarf_id INTEGER,
+            astro_object_id INTEGER,
+            backup_entry_id INTEGER,
+            session_date DATETIME,
+            session_dir TEXT,
+            favorite BOOLEAN DEFAULT 0,
+            astro_group_id INTEGER,
+            manual_session_drive INTEGER,
+            FOREIGN KEY (manual_session_id) REFERENCES ManualSession(id),
+            FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
+            FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
+            FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
+            FOREIGN KEY (backup_entry_id) REFERENCES BackupEntry(id),
+            FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
+            FOREIGN KEY (manual_session_drive) REFERENCES ManualSessionDrive(id) ON DELETE SET NULL,
+            UNIQUE("manual_session_id", "backup_drive_id", "dwarf_id", "backup_entry_id")
+        )
+        """
+
+SCHEMAS = {
+    "DsoCatalog": create_DsoCatalog_sql,
+    "AstroObject": create_DwarfData_sql,
+    "MtpDevices": create_MtpDevices_sql,
+    "Dwarf": create_Dwarf_sql,
+    "DwarfData": create_DwarfData_sql,
+    "DwarfEntry": create_DwarfEntry_sql,
+    "BackupDrive": create_BackupDrive_sql,
+    "BackupEntry": create_BackupEntry_sql,
+    "Settings": create_Settings_sql,
+    "ManualSessionDrive": create_ManualSessionDrive_sql,
+    "ManualSession": create_ManualSession_sql,
+    "ManualSessionEntry": create_ManualSessionEntry_sql,
+}
+  
 def start_db(database: str = DB_NAME):
     try:
         db_dir = os.path.dirname(database)
@@ -51,144 +283,8 @@ def init_db(conn):
         if not is_new_database(conn):
             run_migrations(conn)
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS Dwarf (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT,
-                usb_astronomy_dir TEXT,
-                type TEXT,
-                last_scan_date DATETIME,
-                ip_sta_mode TEXT,
-                mtp_id INTEGER,
-                FOREIGN KEY (mtp_id) REFERENCES MtpDevices(id)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS BackupDrive (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT,
-                description TEXT,
-                location TEXT UNIQUE,
-                astronomy_dir TEXT,
-                dwarf_id INTEGER,
-                last_backup_scan_date DATETIME,
-                FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS DwarfData (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT UNIQUE NOT NULL,
-                modification_time INTEGER,
-                thumbnail_path TEXT,
-                file_size INTEGER,
-                dec TEXT,
-                ra TEXT,
-                target TEXT,
-                binning TEXT,
-                format TEXT,
-                exp_time TEXT,
-                gain INTEGER,
-                shotsToTake INTEGER,
-                shotsTaken INTEGER,
-                shotsStacked INTEGER,
-                ircut TEXT,
-                maxTemp INTEGER,
-                minTemp INTEGER,
-                width TEXT,
-                height TEXT,
-                media_type INTEGER,
-                stacked_fits_path TEXT,
-                stacked_fits_md5 TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS AstroObject (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT,
-                dso_id INTEGER REFERENCES DsoCatalog(id),
-                dec TEXT,
-                ra TEXT,
-                is_group BOOLEAN DEFAULT 0
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS BackupEntry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                backup_drive_id INTEGER,
-                dwarf_id INTEGER,
-                astro_object_id INTEGER,
-                dwarf_data_id INTEGER,
-                session_date DATETIME,
-                session_dir TEXT,
-                favorite BOOLEAN DEFAULT 0,
-                astro_group_id INTEGER,
-                FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
-                FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
-                FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
-                FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id),
-                FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
-                UNIQUE("backup_drive_id", "dwarf_id", "dwarf_data_id")
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS DwarfEntry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                dwarf_id INTEGER,
-                astro_object_id INTEGER,
-                dwarf_data_id INTEGER,
-                session_date DATETIME,
-                session_dir TEXT,
-                favorite BOOLEAN DEFAULT 0,
-                astro_group_id INTEGER,
-                FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
-                FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
-                FOREIGN KEY (dwarf_data_id) REFERENCES DwarfData(id),
-                FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
-                UNIQUE("dwarf_id", "dwarf_data_id")
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS MtpDevices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                device_name TEXT,
-                mtp_drive_id TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_backupentry_session_dir ON BackupEntry(session_dir);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dwarfentry_session_dir ON DwarfEntry(session_dir);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_backupentry_astro_group_id ON BackupEntry(astro_group_id);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_dwarfentry_astro_group_id ON DwarfEntry(astro_group_id);
-        """)
-        # Create table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS DsoCatalog (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                designation TEXT UNIQUE,
-                displayName TEXT,
-                catalogue TEXT,
-                objectNumber INTEGER,
-                type TEXT,
-                typeCategory TEXT,
-                ra TEXT,
-                dec TEXT,
-                magnitude REAL,
-                constellation TEXT,
-                size TEXT,
-                notes TEXT,
-                favorite BOOLEAN,
-                alternateNames TEXT
-            )
-        """)
+        cursor.execute(create_DsoCatalog_sql())
+
         cursor.execute("""
           CREATE INDEX IF NOT EXISTS idx_catalogue ON DsoCatalog(catalogue);
         """)
@@ -205,61 +301,43 @@ def init_db(conn):
         if row_count == 0 or row_count != count_catalog_elements():
             import_dso_catalog(conn)
 
-        # Create table
+        cursor.execute(create_AstroObject_sql())
+
+        cursor.execute(create_MtpDevices_sql())
+
+        cursor.execute(create_Dwarf_sql())
+
+        cursor.execute(create_DwarfData_sql())
+
+        cursor.execute(create_DwarfEntry_sql())
+
+        cursor.execute(create_BackupDrive_sql())
+        cursor.execute(create_BackupEntry_sql())
+
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS Settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                parameter TEXT UNIQUE,
-                type TEXT,
-                valueText TEXT,
-                valueInt INTEGER
-            )
+            CREATE INDEX IF NOT EXISTS idx_dwarfentry_session_dir ON DwarfEntry(session_dir);
         """)
 
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ManualSession (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_name TEXT NOT NULL,
-                session_type TEXT,
-                jpeg_path TEXT,
-                modification_time INTEGER,
-                thumbnail_path TEXT,
-                file_size INTEGER,
-                description TEXT,
-                dec TEXT,
-                ra TEXT,
-                exp_time TEXT,
-                ircut TEXT,
-                maxTemp INTEGER,
-                minTemp INTEGER,
-                stacked_png_path TEXT,
-                stacked_fits_path TEXT,
-                stacked_fits_md5 TEXT,
-                UNIQUE(session_name, session_type)
-            )
+            CREATE INDEX IF NOT EXISTS idx_backupentry_session_dir ON BackupEntry(session_dir);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_backupentry_astro_group_id ON BackupEntry(astro_group_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dwarfentry_astro_group_id ON DwarfEntry(astro_group_id);
         """)
 
+        # Create table for Manual Session Drive
+        cursor.execute(create_ManualSessionDrive_sql())
+
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ManualSessionEntry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                manual_session_id INTEGER,
-                backup_drive_id INTEGER,
-                dwarf_id INTEGER,
-                astro_object_id INTEGER,
-                backup_entry_id INTEGER,
-                session_date DATETIME,
-                session_dir TEXT,
-                favorite BOOLEAN DEFAULT 0,
-                astro_group_id INTEGER,
-                FOREIGN KEY (manual_session_id) REFERENCES ManualSession(id),
-                FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id),
-                FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id),
-                FOREIGN KEY (astro_object_id) REFERENCES AstroObject(id),
-                FOREIGN KEY (backup_entry_id) REFERENCES BackupEntry(id),
-                FOREIGN KEY (astro_group_id) REFERENCES AstroObject(id) ON DELETE SET NULL,
-                UNIQUE("manual_session_id", "backup_drive_id", "dwarf_id", "backup_entry_id")
-            )
+            CREATE INDEX IF NOT EXISTS idx_manualsessiondrive_location ON ManualSessionDrive(location);
         """)
+
+        cursor.execute(create_ManualSession_sql())
+
+        cursor.execute(create_ManualSessionEntry_sql())
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_manualsessionentry_session_dir ON ManualSessionEntry(session_dir);
@@ -270,8 +348,6 @@ def init_db(conn):
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_manualsessionentry_manual_session_id ON ManualSessionEntry(manual_session_id);
         """)
-
-        # insert default group
 
         conn.commit()
 
@@ -409,7 +485,7 @@ def migrate_v3(conn):
                 stacked_png_path TEXT,
                 stacked_fits_path TEXT,
                 stacked_fits_md5 TEXT,
-                UNIQUE(session_name, session_type)
+                UNIQUE("session_name", "session_type")
             )
         """)
 
@@ -452,11 +528,59 @@ def migrate_v3(conn):
         print(f"[DB ERROR] Failed to migrate DB: {e}")
         return []
 
+def migrate_v4(conn):
+    try:
+        print("Migrating Database to V4...")
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA foreign_keys = OFF;")
+
+        rebuild_tables( conn, ["Dwarf", "DwarfEntry", "BackupDrive", "BackupEntry"])
+
+        cursor.execute("PRAGMA foreign_keys = ON;")
+
+        # Create table for Manual SessionDrive
+        cursor.execute(create_ManualSessionDrive_sql())
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessiondrive_location ON ManualSessionDrive(location);
+        """)
+
+        # In migrate_v4: just add the column and rebuild only if the old unique constraint exists
+        add_column_if_not_exists(conn, "ManualSession", "session_tag", "TEXT DEFAULT ''")
+
+        add_missing_foreign_keys(conn, "ManualSession", foreign_keys= [], unique_constraints_override = ['UNIQUE("session_name", "session_tag", "session_type")'])
+        
+        # Check if old unique constraint needs replacing
+        add_column_if_not_exists(conn, "ManualSessionEntry", "manual_session_drive", "INTEGER")
+
+        add_missing_foreign_keys(conn, "ManualSessionEntry", foreign_keys= [
+            {
+                "column": "manual_session_id",
+                "ref_table": "ManualSession",
+                "ref_column": "id",
+            },
+            {
+                "column": "manual_session_drive",
+                "ref_table": "ManualSessionDrive",
+                "ref_column": "id",
+                "on_delete": "SET NULL"
+            }],
+        )
+
+        conn.commit()
+        print("Migration v4 applied.")
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB: {e}")
+        return []
+
 
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
-    3: migrate_v3
+    3: migrate_v3,
+    4: migrate_v4
     # Add more later...
 }
 
@@ -480,6 +604,49 @@ def is_new_database(conn):
         WHERE type='table' AND name NOT LIKE 'sqlite_%';
     """)
     return cursor.fetchone() is None
+
+def rename_table(cursor, table_name):
+    cursor.execute(f'ALTER TABLE "{table_name}" RENAME TO "{table_name}_old"')
+    
+def create_table(cursor, table_name):
+    cursor.execute(SCHEMAS[table_name]())
+
+def copy_table(cursor, table_name):
+    cursor.execute(f"""
+        INSERT INTO {table_name}
+        SELECT * FROM {table_name}_old
+    """)
+
+def drop_old_table(cursor, table_name):
+    cursor.execute(f'DROP TABLE "{table_name}_old"')
+    
+def rebuild_tables(conn, tables):
+    cursor = conn.cursor()
+
+    cursor.execute("PRAGMA foreign_keys = OFF")
+
+    # 1 Rename ALL first
+    for t in tables:
+        print(f"starting rebuild_table: {t}")
+        rename_table(cursor, t)
+
+    # 2 Recreate ALL
+    for t in tables:
+        create_table(cursor, t)
+
+    # 3 Copy data
+    for t in tables:
+        copy_table(cursor, t)
+
+    # 4 Drop old
+    for t in tables:
+        drop_old_table(cursor, t)
+        print(f"end rebuild_table: {t}")
+
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+    conn.commit()
+    
 
 def has_column(conn, table_name, column_name):
     cursor = conn.cursor()
@@ -536,7 +703,7 @@ def get_unique_constraints(cursor, table_name):
 
     return unique_constraints
 
-def add_missing_foreign_keys(conn, table_name, foreign_keys):
+def add_missing_foreign_keys(conn, table_name, foreign_keys, unique_constraints_override=None):
     cursor = conn.cursor()
     
     # 1. Get existing FKs
@@ -555,68 +722,159 @@ def add_missing_foreign_keys(conn, table_name, foreign_keys):
         if not fk_exists(fk["column"], fk["ref_table"], fk["ref_column"])
     ]
 
-    if not missing_fks:
-        print(f"All foreign keys already exist in {table_name}")
+    needs_rebuild = bool(missing_fks) or (unique_constraints_override is not None)
+    if not needs_rebuild:
+        print(f"No schema changes needed for {table_name}")
         return
 
-    print(f"[WARN] Missing FKs in {table_name}, rebuilding table...")
+    cursor.execute("PRAGMA foreign_keys = OFF;")
 
-    # 3. Get existing column definitions
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    columns_info = cursor.fetchall()
-    old_columns = [col[1] for col in columns_info]
-    column_defs = []
-    pk_columns = []
+    try:
+        print(f"[WARN] Missing FKs in {table_name}, rebuilding table...")
 
-    for col in columns_info:
-        name, col_type, notnull, dflt_value, pk = col[1], col[2], col[3], col[4], col[5]
-        col_def = f'"{name}" {col_type}'
-        if notnull:
-            col_def += " NOT NULL"
-        if dflt_value is not None:
-            col_def += f" DEFAULT {dflt_value}"
-        column_defs.append(col_def)
-        if pk:
-            pk_columns.append(name)
+        # 3. Get existing column definitions
+        # Keep Auto Increment
+        # Get original CREATE TABLE SQL
+        cursor.execute("""
+            SELECT sql
+            FROM sqlite_master
+            WHERE type='table' AND name=?
+        """, (table_name,))
+        create_sql = cursor.fetchone()[0] or ""
 
-    if pk_columns:
-        column_defs.append(f"PRIMARY KEY ({', '.join(pk_columns)})")
+        # Detect AUTOINCREMENT column (if any)
+        autoinc_column = None
 
-    # 4. Add ALL expected FKs (both existing and missing)
-    all_fks = foreign_keys  # You could optionally merge with existing FKs if needed
-
-    for fk in all_fks:
-        fk_def = (
-            f'FOREIGN KEY("{fk["column"]}") '
-            f'REFERENCES {fk["ref_table"]}({fk["ref_column"]})'
+        match = re.search(
+            r'"?(\w+)"?\s+INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT',
+            create_sql,
+            re.IGNORECASE
         )
-        if "on_delete" in fk and fk["on_delete"]:
-            fk_def += f' ON DELETE {fk["on_delete"]}'
-        column_defs.append(fk_def)
 
-    # 5. Add UNIQUE constraints
-    unique_constraints = get_unique_constraints(cursor, table_name)
-    column_defs.extend(unique_constraints)
+        if match:
+            autoinc_column = match.group(1)
 
-    # 6. Rename table
-    old_table = f"{table_name}_old"
-    cursor.execute(f'ALTER TABLE "{table_name}" RENAME TO "{old_table}"')
+        # Get column metadata
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns_info = cursor.fetchall()
 
-    # 7. Recreate table
-    create_stmt = f'CREATE TABLE "{table_name}" (\n    ' + ',\n    '.join(column_defs) + '\n);'
-    print("Executing:\n", create_stmt)
-    cursor.execute(create_stmt)
+        column_defs = []
+        pk_columns = []
 
-    # 8. Copy data back
-    col_list = ", ".join(f'"{col}"' for col in old_columns)
-    cursor.execute(f'INSERT INTO "{table_name}" ({col_list}) SELECT {col_list} FROM "{old_table}";')
+        old_columns = [col[1] for col in columns_info]
 
-    # 9. Drop backup
-    cursor.execute(f'DROP TABLE "{old_table}";')
+        for col in columns_info:
+            name, col_type, notnull, dflt_value, pk = (
+                col[1], col[2], col[3], col[4], col[5]
+            )
+
+            col_def = f'"{name}" {col_type}'
+
+            # Case 1: AUTOINCREMENT column (must be inline PK)
+            if autoinc_column and name == autoinc_column:
+                col_def += " PRIMARY KEY AUTOINCREMENT"
+
+            else:
+                # Case 2: normal NOT NULL
+                if notnull:
+                    col_def += " NOT NULL"
+
+                # Case 3: DEFAULT value (keep as-is)
+                if dflt_value is not None:
+                    col_def += f" DEFAULT {dflt_value}"
+
+                # Case 4: composite primary key support
+                if pk:
+                    pk_columns.append(name)
+
+            column_defs.append(col_def)
+
+        # Add composite primary key ONLY if no AUTOINCREMENT column exists
+        if pk_columns and not autoinc_column:
+            column_defs.append(
+                f"PRIMARY KEY ({', '.join(pk_columns)})"
+            )
+
+        # 4. Add ALL expected FKs (both existing and missing)
+        existing_fks = cursor.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
+
+        existing_fk_dicts = [
+            {
+                "column": fk[3],
+                "ref_table": fk[2],
+                "ref_column": fk[4],
+                "on_delete": fk[6] if fk[6] != "NO ACTION" else None
+            }
+            for fk in existing_fks
+            if not fk[2].endswith("_old")
+        ]
+
+        def fk_key(fk):
+            return (fk["column"], fk["ref_table"], fk["ref_column"])
+
+        merged = {fk_key(fk): fk for fk in existing_fk_dicts}
+
+        for fk in foreign_keys:
+            merged[fk_key(fk)] = fk
+
+        all_fks = list(merged.values())
+
+        for fk in all_fks:
+            fk_def = (
+                f'FOREIGN KEY("{fk["column"]}") '
+                f'REFERENCES {fk["ref_table"]}({fk["ref_column"]})'
+            )
+            if "on_delete" in fk and fk["on_delete"]:
+                fk_def += f' ON DELETE {fk["on_delete"]}'
+            column_defs.append(fk_def)
+
+        # 5. Add UNIQUE constraints
+        if unique_constraints_override is not None:
+            # Use new definition
+            column_defs.extend(unique_constraints_override)
+        else:
+            # Keep existing ones
+            unique_constraints = get_unique_constraints(cursor, table_name)
+            column_defs.extend(unique_constraints)
+
+        # 6. Rename table
+        old_table = f"{table_name}_old"
+        cursor.execute(f'ALTER TABLE {table_name} RENAME TO {old_table}')
+
+        # 7. Recreate table
+        create_stmt = f'CREATE TABLE {table_name} (\n    ' + ',\n    '.join(column_defs) + '\n);'
+        print("Executing:\n", create_stmt)
+        cursor.execute(create_stmt)
+
+        # 8. Copy data back
+        col_list = ", ".join(f'{col}' for col in old_columns)
+        cursor.execute(f'INSERT INTO {table_name} ({col_list}) SELECT {col_list} FROM {old_table};')
+
+        # 9. Drop backup
+        cursor.execute(f'DROP TABLE {old_table};')
+        conn.commit()
+
+        print(f"Table '{table_name}' rebuilt with all declared foreign keys.")
+
+    finally:
+        cursor.execute("PRAGMA foreign_keys = ON;")
+
+def rebuild_table(conn, table_name):
+    cursor = conn.cursor()
+
+    old = f"{table_name}_old"
+
+    cursor.execute(f'ALTER TABLE "{table_name}" RENAME TO "{old}"')
+    cursor.execute(SCHEMAS[table_name]())
+
+    cursor.execute(f"""
+        INSERT INTO {table_name}
+        SELECT * FROM {old}
+    """)
+
+    cursor.execute(f'DROP TABLE {old}')
     conn.commit()
-
-    print(f"Table '{table_name}' rebuilt with all declared foreign keys.")
-
+    
 ## Other functions
 
 def get_backup_entries(conn):

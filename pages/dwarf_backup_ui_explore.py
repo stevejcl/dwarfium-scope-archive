@@ -11,6 +11,7 @@ import shutil
 import re
 import sys
 import asyncio
+import urllib.parse
 from glob import glob
 from nicegui import app, run, ui
 from api.dwarf_backup_db import DB_NAME, connect_db
@@ -19,7 +20,8 @@ from api.dwarf_backup_db_api import (
     get_backupDrive_Names, get_backupDrive_dwarfId, get_backupDrive_dwarfNames, get_astro_object_description,
     get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup, delete_backup_entry_and_dwarf_data,
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
-    get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite
+    get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
+    has_related_manual_sessions, get_ManualSession_by_backup_entry_id
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
@@ -98,6 +100,7 @@ class ExploreApp:
         self.preview_icons = {}
         self.fullscreen_icon = {}
         self.backup_session_icon = {}
+        self.linked_manual_session_icon = None  # button to jump to linked ManualSession
         self.delete_session_icon = {}
         self.action_fits_files_icon = {}
         self.cleanup_fits_files_action  = True
@@ -210,6 +213,12 @@ class ExploreApp:
                             self.transfer_multi_btn.visible = False
                             self.delete_session_icon = ui.button("🗑️ Delete Session", on_click=lambda: self.delete_directory()).classes('h-16')
                             self.delete_session_icon.visible = False
+                            # Link to the ManualSession that was imported alongside this BackupEntry
+                            self.linked_manual_session_icon = ui.button(
+                                "🔗 View linked Manual session",
+                                on_click=self.navigate_to_linked_manual_session,
+                            ).classes('h-16')
+                            self.linked_manual_session_icon.visible = False
                             self.action_fits_files_icon = ui.button("", on_click=lambda: self.action_cleanup_restore_fits()).classes('h-16')
                             self.action_fits_files_icon.visible = False
                             self.update_preview_icons()  # populate icons
@@ -782,7 +791,7 @@ class ExploreApp:
 
                 # Enable multi-selection in dwarf mode to allow multi-session transfer
                 checkboxes = []
-                use_checkboxes = (
+                use_checkboxes = (len(files) > 1) and (
                     (
                         self.mode != "backup"
                         and bool(self.only_on_dwarf and self.only_on_dwarf.value)
@@ -1475,6 +1484,8 @@ class ExploreApp:
         self.delete_session_icon.disable()
         self.delete_session_icon.visible = False
         self.action_fits_files_icon.disable()
+        if self.linked_manual_session_icon:
+            self.linked_manual_session_icon.visible = False
         self.selected_path = ""
 
         # Delete old icons from UI
@@ -1580,6 +1591,37 @@ class ExploreApp:
             else:
                 self.delete_session_icon.visible = False
                 self.delete_session_icon.disable()
+
+            # Show the "View linked Manual session" button only in backup mode when
+            # at least one ManualSessionEntry references the current BackupEntry.
+            if not self.linked_manual_session_icon:
+                self.linked_manual_session_icon = ui.button(
+                    "🔗 View linked Manual session",
+                    on_click=self.navigate_to_linked_manual_session,
+                ).classes('h-16')
+
+            if (
+                self.mode == "backup"
+                and self.selected_path
+                and self.selected_DeleteEntryInfo
+                and self.selected_DeleteEntryInfo.backup_drive_id
+                and self.selected_DeleteEntryInfo.dwarf_id
+                and self.selected_DeleteEntryInfo.dwarf_data_id
+                and has_related_manual_sessions(
+                    self.conn,
+                    self.selected_DeleteEntryInfo.backup_drive_id,
+                    self.selected_DeleteEntryInfo.dwarf_id,
+                    self.selected_DeleteEntryInfo.dwarf_data_id,
+                )
+            ):
+                self.linked_manual_session_icon.visible = True
+                self.linked_manual_session_icon.enable()
+                # Disabel delete also
+                self.delete_session_icon.visible = False
+                self.delete_session_icon.disable()
+            else:
+                self.linked_manual_session_icon.visible = False
+                self.linked_manual_session_icon.disable()
 
             if not self.action_fits_files_icon:
                 self.action_fits_files_icon = ui.button("", on_click=lambda: self.cleanup_fits()).classes('h-16')
@@ -1698,7 +1740,7 @@ class ExploreApp:
                             self.slideshow_timer_anim = ui.timer(0.2, lambda: update_image(), once=True)
 
                         def update_image():
-                            print(f"Update Image: n°{self.current_file_index}")
+                            #print(f"Update Image: n°{self.current_file_index}")
                             set_base_folder(self.slideshow_image_data[self.current_file_index]['base_folder'])
                             slideshow_image.source = self.slideshow_image_data[self.current_file_index]['url']
                             slideshow_image.classes('opacity-95').update()
@@ -1715,12 +1757,10 @@ class ExploreApp:
 
                         def reaactive_timer():
                             if self.slideshow_timer:
-                                self.slideshow_timer.cancel(with_current_invocation=True)
-                            print("reactive timer")
-                            self.slideshow_timer = ui.timer(interval=10, callback=next_image)
+                                    self.slideshow_timer.cancel()
+                            self.slideshow_timer = ui.timer(10, next_image, immediate=False, once=False)
 
                         def next_image():
-                            print(f"next_image: n°{self.current_file_index}")
                             if self.first_image:
                                 self.current_file_index = (self.current_file_index) % len(self.slideshow_image_data)
                                 self.first_image = False
@@ -1744,7 +1784,6 @@ class ExploreApp:
                             current = self.slideshow_image_data[self.current_file_index]
                             row_index = current["row_index"]
 
-                            print(f"select from gallery index: {row_index}")
                             if self.all_files_rows: 
                                 options = list(self.file_list.options)
                                 self.file_list.value = options[row_index+1]
@@ -1764,7 +1803,6 @@ class ExploreApp:
 
             # Stop timer when dialog closes
             def on_close():
-                print("TIMER CLOSE")
                 if self.slideshow_timer:
                     self.slideshow_timer.cancel()
                     self.slideshow_timer = None
@@ -1980,6 +2018,63 @@ class ExploreApp:
             self.transfer_multi_btn.disable()
         # Now display the selected session detail
         self.file_list.set_value(label)
+
+    def navigate_to_linked_manual_session(self):
+        """
+        Navigate to /ManualExplore/ and auto-select the ManualSessionEntry that
+        was imported alongside the currently displayed BackupEntry.
+        When exactly one manual session is linked, navigate directly.
+        When several are linked (same backup session imported multiple times, e.g.
+        different session types), show a small picker dialog so the user can choose
+        which one to open.
+        """
+        if not self.selected_DeleteEntryInfo:
+            return
+
+        rows = get_ManualSession_by_backup_entry_id(
+            self.conn,
+            self.selected_DeleteEntryInfo.backup_drive_id,
+            self.selected_DeleteEntryInfo.dwarf_id,
+            self.selected_DeleteEntryInfo.dwarf_data_id
+        )
+        if not rows:
+            ui.notify("No linked Manual session found.", type="info")
+            return
+
+        def _go(entry_id, backup_entry_id):
+            back=f"/Explore/?BackupDriveId={self.selected_DeleteEntryInfo.backup_drive_id}&SessionId={backup_entry_id}&mode=backup"
+            back_encoded = urllib.parse.quote(back)
+
+            url = f"/ManualExplore/?BackupDriveId={self.selected_DeleteEntryInfo.backup_drive_id}&SessionId={entry_id}"
+            if self.selected_DeleteEntryInfo.dwarf_id:
+                url += f"&DwarfId={self.selected_DeleteEntryInfo.dwarf_id}"
+            url += f"&back_url={back_encoded}"
+            ui.navigate.to(url)
+
+        if len(rows) == 1:
+            # Single linked session — navigate directly
+            _go(rows[0][0], rows[0][22]) # row 0 is entry_id, row 22 is backup_entry_id
+            return
+
+        # Multiple linked sessions — show a picker dialog
+        # col [0] = ManualSessionEntry.id, [1] = session_name, [2] = session_type, [14] = session_date, col [22] is backup_entry_id
+        with ui.dialog() as dialog, ui.card().classes("p-4 gap-3").style("min-width: 60%;"):
+            ui.label(f"🔗 {len(rows)} linked Manual sessions — choose one:").classes("font-semibold")
+            ui.separator()
+            for row in rows:
+                entry_id   = row[0]
+                name       = row[1] or "—"
+                stype      = row[2] or ""
+                backup_entry_id = row [22] or ""
+                date_str   = show_short_date_session(row[14])
+                label      = f"📁 {name}  |  {stype}  |  📅 {date_str}"
+                ui.button(
+                    label,
+                    on_click=lambda eid=entry_id, bid=backup_entry_id: (dialog.close(), _go(eid, bid)),
+                ).props("flat align=left").classes("w-full text-left")
+            ui.separator()
+            ui.button("Cancel", on_click=dialog.close).props("flat color=grey")
+        dialog.open()
 
     def get_backup_url(self):
         ui.notify("Launch Backup Dwarf Data...")

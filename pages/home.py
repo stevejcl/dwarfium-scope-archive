@@ -154,7 +154,7 @@ class HomeApp:
                     self.current_index = (self.current_index - 1) % len(image_data)
                     show_image()
 
-                # Automatic slideshow with 5s interval
+                # Automatic slideshow with 10s interval
                 self.gallery_timer = ui.timer(interval=10, callback=next_image)
 
                 with ui.row().classes("gap-4 mb-2"):

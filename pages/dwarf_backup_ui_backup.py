@@ -10,7 +10,7 @@ from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive,
 from api.dwarf_backup_db_api import get_dwarf_Names, get_sessions_backup
 from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
 from api.dwarf_backup_db_api import get_session_present_in_backupDrive
-from api.dwarf_backup_db_api import has_related_backup_entries, delete_backup_entries_and_dwarf_data
+from api.dwarf_backup_db_api import has_related_backup_entries,  has_related_manual_entries, delete_backup_entries_and_dwarf_data
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
@@ -427,6 +427,12 @@ class ConfigApp:
     async def confirm_and_delete_BackupDrive(self):
         if self.backupDrive_id is None:
             ui.notify("No Backup Drive selected", type="negative")
+            return
+
+        if has_related_manual_entries(self.conn, self.backupDrive_id):
+            ui.notify(
+                "This Backup Drive is still in use by one or more manual entries. Please remove them first.",
+                type="negative")
             return
 
         if has_related_backup_entries(self.conn, self.backupDrive_id):

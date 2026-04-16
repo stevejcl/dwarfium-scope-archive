@@ -1333,31 +1333,32 @@ def get_ObjectSelect_manual(conn: sqlite3.Connection, object_id=None, dso_id=Non
 
     Result columns (per row) — keep this index table in sync with ManualExploreApp:
         [0]  ManualSession.id
-        [1]  ManualSession.session_name        <- used as the display path
-        [2]  ManualSession.session_type        <- 'Stellar Studio' | 'Manual' | ...
-        [3]  ManualSession.jpeg_path
-        [4]  ManualSession.thumbnail_path
-        [5]  ManualSession.description
-        [6]  ManualSession.dec
-        [7]  ManualSession.ra
-        [8]  ManualSession.exp_time
-        [9]  ManualSession.ircut
-        [10] ManualSession.maxTemp
-        [11] ManualSession.minTemp
-        [12] ManualSession.stacked_png_path
-        [13] ManualSession.stacked_fits_path
-        [14] ManualSessionEntry.session_date
-        [15] ManualSessionEntry.session_dir    <- physical folder on backup drive
-        [16] ManualSessionEntry.favorite
-        [17] ManualSessionEntry.astro_object_id
-        [18] ManualSessionEntry.astro_group_id
-        [19] display_name                      <- AstroObject display name
-        [20] ManualSessionEntry.backup_drive_id
-        [21] ManualSessionEntry.dwarf_id
-        [22] ManualSessionEntry.backup_entry_id <- FK to BackupEntry (may be NULL)
-        [23] ManualSessionEntry.id              <- own PK, used for delete / favorite toggle
-        [24] Dwarf.name                         <- may be NULL if dwarf not set
-        [25] BackupDrive.name                   <- may be NULL if drive not set
+        [1]  ManualSession.session_name        <- base session name
+        [2]  ManualSession.session_tag         <- optional tag / sub-folder ('' when unused)
+        [3]  ManualSession.session_type        <- 'Stellar Studio' | 'Manual' | ...
+        [4]  ManualSession.jpeg_path
+        [5]  ManualSession.thumbnail_path
+        [6]  ManualSession.description
+        [7]  ManualSession.dec
+        [8]  ManualSession.ra
+        [9]  ManualSession.exp_time
+        [10] ManualSession.ircut
+        [11] ManualSession.maxTemp
+        [12] ManualSession.minTemp
+        [13] ManualSession.stacked_png_path
+        [14] ManualSession.stacked_fits_path
+        [15] ManualSessionEntry.session_date
+        [16] ManualSessionEntry.session_dir    <- physical base folder on backup drive
+        [17] ManualSessionEntry.favorite
+        [18] ManualSessionEntry.astro_object_id
+        [19] ManualSessionEntry.astro_group_id
+        [20] display_name                      <- AstroObject display name
+        [21] ManualSessionEntry.backup_drive_id
+        [22] ManualSessionEntry.dwarf_id
+        [23] ManualSessionEntry.backup_entry_id <- FK to BackupEntry (may be NULL)
+        [24] ManualSessionEntry.id              <- own PK, used for delete / favorite toggle
+        [25] Dwarf.name                         <- may be NULL if dwarf not set
+        [26] BackupDrive.name                   <- may be NULL if drive not set
     """
     try:
         cursor = conn.cursor()
@@ -1366,6 +1367,7 @@ def get_ObjectSelect_manual(conn: sqlite3.Connection, object_id=None, dso_id=Non
             SELECT
                 ManualSession.id,
                 ManualSession.session_name,
+                ManualSession.session_tag,
                 ManualSession.session_type,
                 ManualSession.jpeg_path,
                 ManualSession.thumbnail_path,
@@ -1479,62 +1481,52 @@ def toggle_favorite_manual(conn: sqlite3.Connection, entry_id: int) -> int:
         return 0
 
 
-def delete_manual_session_entry(conn: sqlite3.Connection, entry_id: int) -> bool:
-    """
-    Delete a single ManualSessionEntry row and, if the parent ManualSession has no
-    remaining entries, delete the ManualSession record as well.
-
-    Args:
-        conn:     active DB connection
-        entry_id: ManualSessionEntry.id (the PK of the entry row, NOT ManualSession.id)
-
-    Returns True on success, False on error.
-    """
-    try:
-        cursor = conn.cursor()
-
-        # Retrieve the parent manual_session_id before deleting the entry
-        cursor.execute(
-            "SELECT manual_session_id FROM ManualSessionEntry WHERE id = ?",
-            (entry_id,)
-        )
-        row = cursor.fetchone()
-        if not row:
-            print(f"[WARN] ManualSessionEntry id={entry_id} not found.")
-            return False
-
-        manual_session_id = row[0]
-
-        # Delete the entry row
-        cursor.execute("DELETE FROM ManualSessionEntry WHERE id = ?", (entry_id,))
-
-        # If the parent ManualSession has no more entries, delete it too
-        cursor.execute(
-            "SELECT COUNT(*) FROM ManualSessionEntry WHERE manual_session_id = ?",
-            (manual_session_id,)
-        )
-        remaining = cursor.fetchone()[0]
-        if remaining == 0:
-            cursor.execute("DELETE FROM ManualSession WHERE id = ?", (manual_session_id,))
-            print(f"[INFO] ManualSession id={manual_session_id} deleted (no more entries).")
-
-        commit_db(conn)
-        return True
-
-    except Exception as e:
-        print(f"[DB ERROR] Failed to delete_manual_session_entry id={entry_id}: {e}")
-        conn.rollback()
-        return False
-
-
 def get_ManualSession_by_entry_id(conn: sqlite3.Connection, entry_id: int):
     """
     Load a single ManualSession + ManualSessionEntry row by ManualSessionEntry.id.
     Used by AddManualSession when opened in edit mode (ManualEntryId URL parameter).
 
-    Returns the same column layout as get_ObjectSelect_manual (25 columns), or None.
+    Returns the same column layout as get_ObjectSelect_manual (27 columns), or [].
     """
     return get_ObjectSelect_manual(conn, session_id=entry_id)
+
+
+def get_ManualSession_by_backup_entry_id(conn: sqlite3.Connection, backup_drive_id: int, dwarf_id: int, dwarf_data_id: int):
+    """
+    Return ALL ManualSessionEntry rows linked to the BackupEntry identified by
+    (backup_drive_id, dwarf_id, dwarf_data_id).
+
+    A single backup session can have multiple linked manual imports (e.g. the same
+    target imported at different times or with different session types), so this
+    intentionally returns all of them — not just the first one.
+
+    Each row uses the same 27-column layout as get_ObjectSelect_manual.
+    Returns [] if nothing is linked or on error.
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT mse.id
+            FROM ManualSessionEntry mse
+            JOIN BackupEntry be ON be.id = mse.backup_entry_id
+            WHERE mse.backup_drive_id = ?
+              AND mse.dwarf_id = ?
+              AND be.dwarf_data_id = ?
+            ORDER BY mse.session_date DESC
+        """, (backup_drive_id, dwarf_id, dwarf_data_id))
+        entry_ids = [row[0] for row in cursor.fetchall()]
+        if not entry_ids:
+            return []
+        # Build the full rows for each ManualSessionEntry found
+        rows = []
+        for eid in entry_ids:
+            result = get_ObjectSelect_manual(conn, session_id=eid)
+            if result:
+                rows.append(result[0])
+        return rows
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_ManualSession_by_backup_entry_id: {e}")
+        return []
 
 
 #####################
@@ -1617,6 +1609,35 @@ def get_dwarf_favorites(conn: sqlite3.Connection):
         print(f"[DB ERROR] Failed to fetch dwarf favorites: {e}")
         return []
 
+def get_manual_favorites(conn: sqlite3.Connection):
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                ManualEntry.id,
+                BackupEntry.session_date,
+                AstroObject.name AS object_name,
+                DwarfData.file_path,
+                Dwarf.name AS dwarf_name,
+                BackupDrive.name AS backup_drive_name,
+                BackupDrive.location,
+                AstroObject.description AS description
+            FROM BackupEntry
+            LEFT JOIN AstroObject ON BackupEntry.astro_object_id = AstroObject.id
+            LEFT JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+            LEFT JOIN Dwarf ON BackupEntry.dwarf_id = Dwarf.id
+            LEFT JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+            WHERE BackupEntry.favorite = TRUE
+            ORDER BY BackupEntry.id DESC
+        """)
+        rows = cursor.fetchall()
+
+        return rows
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup favorites: {e}")
+        return []
+
+
 #########################
 # Related data functions
 #########################
@@ -1625,38 +1646,163 @@ def has_related_dwarf_entries(conn: sqlite3.Connection, dwarf_id: int) -> bool:
     try:
         cursor = conn.cursor()
 
-        # Verify in DwarfEntry
-        cursor.execute("SELECT COUNT(*) FROM DwarfEntry WHERE dwarf_id = ?", (dwarf_id,))
-        dwarfentry_count = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT 1 FROM DwarfEntry WHERE dwarf_id = ? LIMIT 1",
+            (dwarf_id,)
+        )
+        if cursor.fetchone():
+            return True
 
-        # Verify in  BackupDrive
-        cursor.execute("SELECT COUNT(*) FROM BackupDrive WHERE dwarf_id = ?", (dwarf_id,))
-        backup_count = cursor.fetchone()[0]
-
-        return (dwarfentry_count + backup_count) > 0
+        cursor.execute(
+            "SELECT 1 FROM BackupDrive WHERE dwarf_id = ? LIMIT 1",
+            (dwarf_id,)
+        )
+        return cursor.fetchone() is not None
 
     except Exception as e:
         print(f"[DB ERROR] Failed to check related entries for dwarf_id {dwarf_id}: {e}")
         return True  # For Security
 
-def has_related_backup_entries(conn: sqlite3.Connection, backup_drive_id=None):
+def has_related_backup_entries(conn: sqlite3.Connection, backup_drive_id: int):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COUNT(*) FROM BackupEntry WHERE backup_drive_id = ?",
+            "SELECT 1 FROM BackupEntry WHERE backup_drive_id = ? LIMIT 1",
             (backup_drive_id,)
         )
-        count = cursor.fetchone()[0]
-        return count > 0
+        return cursor.fetchone() is not None
 
     except Exception as e:
         print(f"[DB ERROR] Failed to verify has related backup entries: {e}")
         return True  # For Security
 
+def has_related_manual_entries(conn: sqlite3.Connection, backup_drive_id: int):
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM ManualSessionEntry WHERE backup_drive_id = ? LIMIT 1",
+            (backup_drive_id,)
+        )
+        return cursor.fetchone() is not None
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to verify has related manual entries: {e}")
+        return True  # For Security
+
+def has_related_manual_sessions(conn: sqlite3.Connection, backup_drive_id: int,  dwarf_id: int, dwarf_data_id: int) -> bool:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 1
+                FROM ManualSessionEntry mse
+                JOIN BackupEntry be ON be.id = mse.backup_entry_id
+                WHERE mse.backup_drive_id = ?
+                  AND mse.dwarf_id = ?
+                  AND be.dwarf_data_id = ?
+                LIMIT 1
+            """, (backup_drive_id, dwarf_id, dwarf_data_id)
+        )
+        return cursor.fetchone() is not None
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to verify has related manual sessions: {e}")
+        return False
+
+
 #########################
 # Related data functions
 #########################
 
+def delete_manual_session_entry(conn: sqlite3.Connection, entry_id: int) -> bool:
+    """
+    Delete a single ManualSessionEntry row and, if the parent ManualSession has no
+    remaining entries, delete the ManualSession record as well.
+
+    Args:
+        conn:     active DB connection
+        entry_id: ManualSessionEntry.id (the PK of the entry row, NOT ManualSession.id)
+
+    Returns True on success, False on error.
+    """
+    try:
+        cursor = conn.cursor()
+
+        # Retrieve the parent manual_session_id before deleting the entry
+        cursor.execute(
+            "SELECT manual_session_id FROM ManualSessionEntry WHERE id = ?",
+            (entry_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            print(f"[WARN] ManualSessionEntry id={entry_id} not found.")
+            return False
+
+        manual_session_id = row[0]
+
+        # Delete the entry row
+        cursor.execute("DELETE FROM ManualSessionEntry WHERE id = ?", (entry_id,))
+
+        # If the parent ManualSession has no more entries, delete it too
+        cursor.execute(
+            "SELECT COUNT(*) FROM ManualSessionEntry WHERE manual_session_id = ?",
+            (manual_session_id,)
+        )
+        remaining = cursor.fetchone()[0]
+        if remaining == 0:
+            cursor.execute("DELETE FROM ManualSession WHERE id = ?", (manual_session_id,))
+            print(f"[INFO] ManualSession id={manual_session_id} deleted (no more entries).")
+
+        commit_db(conn)
+        return True
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete_manual_session_entry id={entry_id}: {e}")
+        conn.rollback()
+        return False
+
+
+def delete_manual_entries(conn: sqlite3.Connection, backup_drive_id=None):
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+
+        # Step 1: Collect all ManualSession IDs referenced by entries on this drive
+        cursor.execute("""
+            SELECT manual_session_id FROM ManualSessionEntry WHERE backup_drive_id = ?
+        """, (backup_drive_id,))
+        manual_session_ids = [row[0] for row in cursor.fetchall() if row[0] is not None]
+
+        # Step 2: Delete the ManualSessionEntry rows for this backup drive
+        cursor.execute(
+            "DELETE FROM ManualSessionEntry WHERE backup_drive_id = ?",
+            (backup_drive_id,)
+        )
+
+        # Step 3: For each parent ManualSession, delete it only if no other
+        #         ManualSessionEntry still references it (from another backup drive)
+        for manual_session_id in manual_session_ids:
+            cursor.execute("""
+                SELECT COUNT(*) FROM ManualSessionEntry WHERE manual_session_id = ?
+            """, (manual_session_id,))
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                cursor.execute(
+                    "DELETE FROM ManualSession WHERE id = ?",
+                    (manual_session_id,)
+                )
+
+        commit_db(conn)
+        print(
+            f"Deleted {len(manual_session_ids)} ManualSessionEntry rows and "
+            f"orphaned ManualSession records for backup_drive_id={backup_drive_id}."
+        )
+        return True
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to delete manual entries for backup_drive_id={backup_drive_id}: {e}")
+        return False
+        
 def delete_backup_entries_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id=None):
     try:
         conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK rules
@@ -2234,24 +2380,24 @@ def insert_DwarfEntry(conn: sqlite3.Connection, dwarf_id, astro_object_id, dwarf
         print(f"[DB ERROR] Failed to insert DwarfEntry: {e}")
         return []
 
-def insert_ManualSession(conn: sqlite3.Connection, session_name, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
+def insert_ManualSession(conn: sqlite3.Connection, session_name, session_tag, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
         description, dec, ra, exp_time, IR_filter, maxTemp, minTemp, stacked_png_path, stacked_fits_path, stacked_fits_md5):
     try:
 
         # Try to fetch existing ID first
         row = conn.execute(
-            "SELECT id FROM ManualSession WHERE session_name = ? AND session_type = ?",
-            (session_name, session_type)
+            "SELECT id FROM ManualSession WHERE session_name = ? AND session_tag = ? AND session_type = ?",
+            (session_name, session_tag, session_type)
         ).fetchone()
         exist_id = row[0] if row else None
 
         cursor = conn.execute("""
             INSERT INTO ManualSession (
-                session_name, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
+                session_name, session_tag, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
                 description, dec, ra, exp_time, ircut, maxTemp, minTemp,
                 stacked_png_path, stacked_fits_path, stacked_fits_md5
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(session_name, session_type) DO UPDATE SET
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_name, session_tag, session_type) DO UPDATE SET
                 jpeg_path = excluded.jpeg_path,
                 modification_time = excluded.modification_time,
                 thumbnail_path = excluded.thumbnail_path,
@@ -2269,7 +2415,7 @@ def insert_ManualSession(conn: sqlite3.Connection, session_name, session_type, j
             WHERE excluded.modification_time > ManualSession.modification_time
                OR excluded.description != ManualSession.description
         """, (
-            session_name, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
+            session_name, session_tag, session_type, jpeg_path, modification_time, thumbnail_path, file_size,
             description, dec, ra, exp_time, IR_filter, maxTemp, minTemp,
             stacked_png_path, stacked_fits_path, stacked_fits_md5
         ))
@@ -2286,8 +2432,8 @@ def insert_ManualSession(conn: sqlite3.Connection, session_name, session_type, j
 
         else:
             row = conn.execute(
-                "SELECT id FROM ManualSession WHERE session_name = ? AND session_type = ?",
-                (session_name, session_type)
+                "SELECT id FROM ManualSession WHERE session_name = ? AND session_tag AND session_type = ?",
+                (session_name, session_tag, session_type)
             ).fetchone()
             exist_id = row[0] if row else None  # Already existed
             print(f" ManualSession : Already Exist Id :{exist_id}")

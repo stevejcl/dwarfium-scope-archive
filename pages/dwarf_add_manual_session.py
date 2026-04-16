@@ -101,8 +101,10 @@ class AddManualSession:
         self.session_name_lookup = {}
         self.label_session_dir="Directory:"
         self.selected_session_dirname = None
+        self.selected_session_tag = ""
         self.selected_session_name = None
         self.session_select_status_label = ""
+        self.session_select_tag_label = ""
         self.session_select_thumbnail = None
         self.session_select_image = None
         
@@ -157,30 +159,50 @@ class AddManualSession:
 
         # --- Unpack the row (same column layout as get_ObjectSelect_manual) ---
         session_name    = row[1]
-        session_type    = row[2] or self.mode_stellar
-        description     = row[5]
-        dec             = row[6]
-        ra              = row[7]
-        exp_time        = row[8]
-        ircut_filter    = row[9]
-        max_temp        = row[10]
-        session_dir     = row[15]   # physical folder already on backup drive
-        backup_drive_id = row[20]
-        dwarf_id        = row[21]
-        session_id      = row[22]
+        session_tag     = row[2]  # sub dir of the session or empty
+        session_type    = row[3] or self.mode_stellar
+        description     = row[6]
+        dec             = row[7]
+        ra              = row[8]
+        exp_time        = row[9]
+        ircut_filter    = row[10]
+        max_temp        = row[11]
+        session_dir     = row[16]   # physical folder already on backup drive
+        backup_drive_id = row[21]
+        dwarf_id        = row[22]
+        session_id      = row[23]
 
-        # --- Pre-fill session name input ---
+        # --- Pre-fill session name and tag inputs ---
         print(f"session name input: {session_name}")
         print(f"session dir input: {session_dir}")
-        folder_name = os.path.basename(session_dir) if session_dir else session_name
-        self.selected_session_name    = folder_name
-        self.selected_session_dirname = folder_name
-        self.session_dirname.set_value(folder_name)
+        print(f"session tag input: {session_tag}")
+
+        # In edit mode the session_dirname shows the base folder only;
+        # the tag sub-folder is shown separately in the tag input.
+        base_folder = os.path.basename(os.path.dirname(session_dir)) if (session_tag and session_dir) else (os.path.basename(session_dir) if session_dir else session_name)
+        self.selected_session_name    = base_folder
+        self.selected_session_dirname = base_folder
+        self.session_dirname.set_value(base_folder)
         print(f"selected_session_dirname : {self.selected_session_dirname}")
 
+        # Pre-fill the tag and trigger directory validation
+        safe_tag = session_tag or ""
+        self.selected_session_tag = safe_tag
+        self.session_tag.set_value(safe_tag)
+
         # --- Pre-fill destination directory ---
-        if session_dir and os.path.dirname(session_dir):
-            self.input_dest_dir.value = os.path.dirname(session_dir)
+        # session_dir is already the full effective path (base/tag or just base).
+        # The dest_dir input should point to the parent of the base session folder,
+        # not the parent of the tag sub-folder.
+        if session_dir:
+            if safe_tag:
+                # session_dir = …/base/tag  → dest = …  (two levels up)
+                dest_parent = os.path.dirname(os.path.dirname(session_dir))
+            else:
+                # session_dir = …/base      → dest = …  (one level up)
+                dest_parent = os.path.dirname(session_dir)
+            if dest_parent:
+                self.input_dest_dir.value = dest_parent
 
         # --- Set mode toggle to match the stored session type ---
         if session_type in (self.mode_stellar, self.mode_manual):
@@ -435,9 +457,21 @@ class AddManualSession:
                 # --- SESSION SELECTION ---
                 with ui.row().classes("items-center mb-4"):
                     ui.label("Select Backup Session:")
-                    self.session_dropdown = ui.select(options=[], on_change=self.on_session_select).classes("w-auto min-w-[300px]")
+                    self.session_dropdown = ui.select(options=[], on_change=self.on_session_select).classes("w-auto min-w-[250px]")
                     ui.label("Session:")
-                    self.session_dirname = ui.input(self.session_select_status_label, placeholder="Enter new session name", on_change=self.on_check_session_dirname).classes("min-w-[500px] w-auto overflow-x-auto whitespace-nowrap")
+                    self.session_dirname = ui.input(self.session_select_status_label, value="", placeholder="Enter new session name", on_change=self.on_check_session_dirname).classes("min-w-[550px] w-auto overflow-x-auto whitespace-nowrap")
+                    ui.label("Tag:").tooltip("Tag is Optional. The files will be saved in a sub-folder: session_name / tag")
+                    self.session_tag = (
+                        ui.input(self.session_select_tag_label, value="", placeholder="optional — e.g. v2, Siril",
+                                 on_change=self.on_check_session_tag)
+                        .classes("min-w-[160px] w-auto overflow-x-auto whitespace-nowrap")
+                    )
+                    with ui.row().classes("items-center"):
+                        ui.label("Help: " \
+                            "Tag is Optional. Leave empty for a single version.\n" \
+                            "Use a tag (e.g. 'v2', 'Siril') to keep multiple " \
+                            "imports of the same session side by side.\n" \
+                        ).style('color: grey')
 
                 with ui.row().classes('w-full items-start'):
                     # LEFT COLUMN
@@ -673,10 +707,14 @@ class AddManualSession:
         self.session_lookup = {}  # reverse lookup: id -> name
         self.session_name_lookup = {}  # reverse lookup: id -> full name
         self.session_dirname.set_value("")
+        self.session_tag.set_value("")
+        self.selected_session_tag = ""
         self.detail_session_name.text = ""
         self.detail_session.text = ""
         self.session_select_status_label = ""
         self.session_dirname.label = self.session_select_status_label
+        self.session_select_tag_label = ""
+        self.session_tag.label = self.session_select_tag_label
 
         for row in sessions_list_db:
             session_id = row[0]
@@ -789,23 +827,72 @@ class AddManualSession:
                 "session_full_name": ""
             })
 
-    def on_check_session_dirname (self, e):
+    def on_check_session_dirname(self, e):
+        """Called when the user edits the session name field."""
         safe_name = self.sanitize_session_name(e.value)
         self.session_dirname.set_value(safe_name)
         self.resize_input(self.session_dirname)
         self.check_exist_dir_session_name()
 
+    def on_check_session_tag(self, e):
+        """Called when the user edits the tag field.
+        Sanitizes the value and re-evaluates the target directory status.
+        """
+        safe_tag = self.sanitize_session_name(e.value)
+        # Only update the widget if we actually changed something, to avoid
+        # moving the cursor while the user types
+        if safe_tag != e.value:
+            self.session_tag.set_value(safe_tag)
+        self.selected_session_tag = safe_tag
+        self.check_exist_dir_session_name()
+
+    def _get_effective_dest_path(self, dest_dir: str = None) -> str:
+        """
+        Compute the effective destination path taking the optional tag into account.
+
+        Without tag:  <dest_dir>/<session_dirname>
+        With tag:     <dest_dir>/<session_dirname>/<tag>
+
+        This is the single source of truth used by both check_exist_dir_session_name
+        and start_import_files so the two are always in sync.
+        """
+        base = dest_dir or self.input_dest_dir.value
+        dirname = (self.session_dirname.value or "").strip()
+        tag     = (self.session_tag.value     or "").strip()
+        if not dirname:
+            return base
+        path = os.path.join(base, dirname)
+        if tag:
+            path = os.path.join(path, tag)
+        return path
+
     def check_exist_dir_session_name(self):
-        # Check if destination path exists
-        dest_dir = self.input_dest_dir.value
-        print(f"dest_dir: {dest_dir}")
-        print(f"selected_session_dirname: {self.selected_session_dirname}")
-        session_dir = os.path.join(dest_dir, self.selected_session_dirname)
-        if os.path.exists(session_dir):
-            self.session_select_status_label = "⚠️ Session already exists."
+        """Update the session name label to reflect whether the target directory
+        already exists, guiding the user on whether to add / change the tag.
+        """
+        dirname = (self.session_dirname.value or "").strip()
+        if not dirname:
+            self.session_dirname.label = ""
+            return
+
+        tag     = (self.session_tag.value or "").strip()
+        effective = self._get_effective_dest_path()
+
+        if os.path.exists(effective):
+            if tag:
+                # Directory with this exact tag exists — warn and ask for a new tag
+                self.session_dirname.label = f"⚠️ '{dirname}/{tag}' already exists — choose a different tag or files will be added to the existing one"
+                self.session_tag.label = "Change tag"
+            else:
+                # No tag, base directory already used — suggest using a tag
+                self.session_dirname.label = "⚠️ Already exists — add a Tag to create a new version or files will be added to the existing one"
+                self.session_tag.label ="Add a tag"
         else:
-            self.session_select_status_label = f"new {self.mode} session"
-        self.session_dirname.label = self.session_select_status_label
+            self.session_tag.label = ""
+            if tag:
+                self.session_dirname.label = f"new {self.mode} session (tag: {tag})"
+            else:
+                self.session_dirname.label = f"new {self.mode} session"
 
     def update_remove_button(self):
         self.remove_button.enable() if self.client.storage.uploaded_files  and len(self.client.storage.uploaded_files) > 0 else self.remove_button.disable()
@@ -1355,8 +1442,9 @@ class AddManualSession:
             ui.notify("Please provide or select a session name.", type="warning")
             return
 
-        session_dir = os.path.join(dest_dir, session_dirname)
-        print(f" Session dest_dir:  {session_dir}")
+        # _get_effective_dest_path includes the tag sub-folder when set
+        session_dir = self._get_effective_dest_path(dest_dir)
+        print(f" Session dest_dir (effective):  {session_dir}")
 
         self.cancel_btn.visible = True
         self.Import_Files.visible = False
@@ -1431,6 +1519,7 @@ class AddManualSession:
         Uses self.client.storage.uploaded_files, which contains dicts:
         { "path", "name", "type", "is_temp", "ra", "dec" }.
         """
+        print(f"dest_path :  {dest_path}")
         self.cancel_backup = False
         verified_files = 0
         total_files = len(self.client.storage.uploaded_files)
@@ -1519,6 +1608,7 @@ class AddManualSession:
                     mtime            = None
 
                     for file_info in self.client.storage.uploaded_files:
+                        print(file_info)
                         src = file_info.get("path", "")
                         ext = os.path.splitext(file_info.get("name", ""))[1].lower()
                         if (ext == ".jpg" or ext == ".jpeg") and jpeg_path is None:
@@ -1536,12 +1626,14 @@ class AddManualSession:
 
                     thumbnail_path = jpeg_path.replace("stacked.jpg", "stacked_thumbnail.jpg") if jpeg_path else None
                     session_name   = self.selected_session_name or self.session_dirname.value.strip()
+                    session_tag    = (self.session_tag.value or "").strip()
                     session_type   = self.mode
-
+                    print("before insert")
                     # 1. Insert / upsert the ManualSession record
                     manual_session_id, _ = insert_ManualSession(
                         self.conn,
                         session_name      = session_name,
+                        session_tag       = session_tag,
                         session_type      = session_type,
                         jpeg_path         = get_session_file_ref(dest_path, jpeg_path),
                         modification_time = mtime,

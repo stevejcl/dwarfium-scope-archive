@@ -47,7 +47,8 @@ from api.dwarf_backup_fct import (
     format_seconds_hms,
     check_files,
     get_name_object,
-    get_session_file_ref
+    get_session_file_ref,
+    get_root_manual_session_dir
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
@@ -71,6 +72,7 @@ ALL_SESSIONS = "[ALL SESSIONS]"
 class ManualEntryData:
     entry_id: int          # ManualSessionEntry.id  (PK of the link row)
     session_dir: str       # physical folder path on disk
+    sub_dir_tag: str       # sub directorory it tag not empty
     backup_entry_id: int   # ManualSessionEntry.backup_entry_id (may be None)
     backup_drive_id: int   # ManualSessionEntry.backup_drive_id (may be None)
     dwarf_id: int          # ManualSessionEntry.dwarf_id (may be None)
@@ -147,7 +149,7 @@ class ManualExploreApp:
         self.selected_object_description = None
         self.selected_object_is_group    = False
         self.selected_entry_data         = None   # ManualEntryData for the currently shown row
-        self.selected_path               = ""     # physical folder path (session_dir)
+        self.selected_path               = ""     # physical folder path (session_dir/session_tag)
 
         self.astro_files   = {}
         self.dso_catalog   = False
@@ -202,15 +204,15 @@ class ManualExploreApp:
 
                 # ---- LEFT COLUMN: filters + object list -------------------
                 with ui.column().classes('w-full'):
-
+                    nbcolumns = 3 if self.BackUrl else 2
+                    with ui.grid(columns=nbcolumns):
                     # Back button (optional)
-                    if self.BackUrl:
-                        ui.button(
-                            "🔙 Back",
-                            on_click=lambda: ui.navigate.to(self.BackUrl)
-                        ).style('width: 100px')
+                        if self.BackUrl:
+                            ui.button(
+                                "🔙 Back",
+                                on_click=lambda: ui.navigate.to(self.BackUrl)
+                            ).style('width: 100px')
 
-                    with ui.grid(columns=2):
                         with ui.column():
                             ui.label("Backup Drive:")
                             self.backup_filter = ui.select(
@@ -679,20 +681,21 @@ class ManualExploreApp:
 
             for idx, row in enumerate(files):
                 session_name  = row[1]
-                session_type  = row[2]  or ""
-                session_date  = row[14]
-                session_date  = show_short_date_session(session_date)
-                exp_time      = row[8]
-                ircut_filter   = row[9]  or "No filter"
-                dwarf_name    = row[24] or "?"
-                is_favorite   = row[16]
-                descriptionDB = row[19]
+                session_tag   = row[2]  or ""
+                session_type  = row[3]  or ""
+                session_date  = show_short_date_session(row[15])
+                exp_time      = row[9]
+                ircut_filter  = row[10] or "No filter"
+                dwarf_name    = row[25] or "?"
+                is_favorite   = row[17]
+                descriptionDB = row[20]
 
                 exp          = f"{format_seconds_hms(exp_time)}" if exp_time else "N/A"
                 description, _ = get_name_object(descriptionDB)
                 star_icon    = '⭐ ' if is_favorite else '☆ '
+                tag_part     = f" [{session_tag}]" if session_tag else ""
                 label_text   = (
-                    f"📁 {session_type} | 🔭 {dwarf_name} | "
+                    f"📁 {session_type}{tag_part} | 🔭 {dwarf_name} | "
                     f"📅 {session_date} | ⚙️ Exp {exp}, {ircut_filter} | "
                     f"🛰️ {description}"
                 )
@@ -731,6 +734,10 @@ class ManualExploreApp:
 
         self._display_session(idx)
 
+    def get_full_path(self, session_dir, session_tag):
+        """Return the effective physical path: session_dir/tag if tag set, else session_dir."""
+        return os.path.join(session_dir, session_tag) if session_tag else session_dir
+
     def _display_session(self, idx: int):
         """Render the detail panel for the ManualSession row at all_files_rows[idx]."""
         row = self.all_files_rows[idx]
@@ -738,40 +745,42 @@ class ManualExploreApp:
         # --- Unpack row columns (see get_ObjectSelect_manual docstring) ---
         manual_session_id   = row[0]
         session_name        = row[1]
-        session_type        = row[2]  or ""
-        jpeg_path           = row[3]
-        thumbnail_path      = row[4]
-        description         = row[5]
-        dec                 = row[6]
-        ra                  = row[7]
-        exp_time            = row[8]
-        ircut_filter        = row[9]
-        max_temp            = row[10]
-        min_temp            = row[11]
-        stacked_png_path    = row[12]
-        stacked_fits_path   = row[13]
-        session_date        = row[14]
-        session_dir         = row[15]
-        is_favorite         = row[16]
-        astro_object_id     = row[17]
-        astro_group_id      = row[18]
-        description_db      = row[19]
-        backup_drive_id     = row[20]
-        dwarf_id            = row[21]
-        backup_entry_id     = row[22]   # FK to BackupEntry – may be None
-        entry_id            = row[23]   # ManualSessionEntry.id
-        dwarf_name          = row[24]   or "N/A"
-        backup_drive_name   = row[25]   or "N/A"
+        session_tag         = row[2]   or ""
+        session_type        = row[3]   or ""
+        jpeg_path           = row[4]
+        thumbnail_path      = row[5]
+        description         = row[6]
+        dec                 = row[7]
+        ra                  = row[8]
+        exp_time            = row[9]
+        ircut_filter        = row[10]
+        max_temp            = row[11]
+        min_temp            = row[12]
+        stacked_png_path    = row[13]
+        stacked_fits_path   = row[14]
+        session_date        = row[15]
+        session_dir         = row[16]
+        is_favorite         = row[17]
+        astro_object_id     = row[18]
+        astro_group_id      = row[19]
+        description_db      = row[20]
+        backup_drive_id     = row[21]
+        dwarf_id            = row[22]
+        backup_entry_id     = row[23]   # FK to BackupEntry – may be None
+        entry_id            = row[24]   # ManualSessionEntry.id
+        dwarf_name          = row[25]   or "N/A"
+        backup_drive_name   = row[26]   or "N/A"
 
         # Keep a reference for the action buttons
         self.selected_entry_data = ManualEntryData(
             entry_id=entry_id,
             session_dir=session_dir or "",
+            sub_dir_tag=session_tag or "",
             backup_entry_id=backup_entry_id,
             backup_drive_id=backup_drive_id,
             dwarf_id=dwarf_id,
         )
-        self.selected_path = session_dir or ""
+        self.selected_path = session_dir
         print(self.selected_path)
         preview_path = jpeg_path or stacked_png_path or thumbnail_path 
 
@@ -786,7 +795,8 @@ class ManualExploreApp:
 
             # Target / classification row
             description, _ = get_name_object(description_db)
-            ui.item(f"Session: {session_name}").classes('text-blue-800')
+            tag_display = f"  [{session_tag}]" if session_tag else ""
+            ui.item(f"Session: {session_name}{tag_display}").classes('text-blue-650')
             with ui.row().classes('w-full gap-8 items-start'):
                 ui.item(f"Target: {description}").classes('text-green-600')
                 if self.dso_catalog and astro_object_id:
@@ -844,14 +854,13 @@ class ManualExploreApp:
         self._update_preview(preview_path)
 
         # --- Action buttons ---
-        self._update_action_buttons(is_favorite, backup_entry_id, backup_drive_id, session_dir)
+        self._update_action_buttons(is_favorite, backup_entry_id, backup_drive_id, session_dir, session_tag)
 
     def _update_preview(self, image_path: str | None):
         """Display the preview image if the file exists."""
         self.preview_image.visible    = False
         self.fullscreen_image.visible = False
 
-        print(f"image_path : {image_path}")
         full_path = os.path.join(self.selected_path, os.path.basename(image_path))
         print(f"full image_path : {full_path}")
 
@@ -859,18 +868,20 @@ class ManualExploreApp:
         if not full_path:
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
-            details_preview.append(f"Image File Path is empty - Preview is disable")
+            self.details_preview.append(f"Image File Path is empty - Preview is disable")
 
         elif not os.path.isfile(full_path):
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
-            details_preview.append(f"Image File is not reachable - Preview is disable")
+            self.details_preview.append(f"Image File is not reachable - Preview is disable")
 
         try:
-            # ser parent name of session_dir for preview
-            set_base_folder(os.path.dirname(self.selected_path))
+            # ser parent name of session_dir/session_tag for preview
+            base_folder_path = get_root_manual_session_dir( self.selected_path, image_path)
+            print(f"base_folder_path: {base_folder_path}")
+            set_base_folder(base_folder_path)
             url = build_preview_url(image_path)
-
+            print(f"url: {url}")
             self.preview_image.visible = True
             self.preview_image.source = url
             self.fullscreen_image.visible = True
@@ -880,10 +891,10 @@ class ManualExploreApp:
         except Exception as e:
             print(f"[ManualExplore] Preview error: {e}")
 
-    def _update_action_buttons(self, is_favorite, backup_entry_id, backup_drive_id, session_dir):
+    def _update_action_buttons(self, is_favorite, backup_entry_id, backup_drive_id, session_dir, session_tag):
         """Show / hide and label the action buttons for the current session."""
         # Open-folder button (only when directory exists on this machine)
-        has_dir = bool(session_dir and os.path.exists(session_dir))
+        has_dir = bool(session_dir) and os.path.exists(session_dir)
         if self.open_folder_icon:
             self.open_folder_icon.visible = has_dir
 
@@ -919,6 +930,7 @@ class ManualExploreApp:
             path        : absolute path on disk
             label       : short human-readable caption shown in the gallery
             session_dir : folder path (used by "Select" to jump to that session)
+            session_tag : subdirectory if not empty
             row_index   : index into all_files_rows / file_list options
         """
         self.gallery_image_data    = []
@@ -927,25 +939,27 @@ class ManualExploreApp:
  
         row = self.all_files_rows[idx]
         # Column layout from get_ObjectSelect_manual — see docstring there
-        jpeg_path        = row[3]
-        thumbnail_path   = row[4]
-        stacked_png_path = row[12]
-        session_date     = row[14]
-        session_dir      = row[15]
-        description_db   = row[19]
-        dwarf_name       = row[24] or "?"
+        session_tag      = row[2]  or ""
+        jpeg_path        = row[4]
+        thumbnail_path   = row[5]
+        stacked_png_path = row[13]
+        session_date     = row[15]
+        session_dir      = row[16]
+        description_db   = row[20]
+        dwarf_name       = row[25] or "?"
 
         obj_name, _ = get_name_object(description_db)
         date_str     = show_short_date_session(session_date)
         label        = f"🛰️ {obj_name or '?'}  🔭 {dwarf_name}  📅 {date_str}"
 
+        full_path = session_dir
         # Pick the available image files
-        if session_dir and os.path.isdir(session_dir):
-            for fname in sorted(os.listdir(session_dir)):
+        if full_path and os.path.isdir(full_path):
+            for fname in sorted(os.listdir(full_path)):
                 ext = os.path.splitext(fname)[1].lower()
                 if ext in ('.jpg', '.jpeg', '.png'):
                     parent_dir = os.path.dirname(session_dir)
-                    candidate = os.path.join(session_dir, fname)
+                    candidate = os.path.join(full_path, fname)
                     print(f"candidate: {candidate}")
 
                     if not candidate or not os.path.isfile(candidate) or fname == "stacked_thumbnail.jpg":
@@ -1014,11 +1028,12 @@ class ManualExploreApp:
  
                     # --- Internal helpers ---
                     def _do_update_image():
+                        print(f"Update Image: n°{self.gallery_current_index}")
                         entry = self.gallery_image_data[self.gallery_current_index]
                         slideshow_img.source = entry["url"]
                         slideshow_img.classes(remove="opacity-5", add="opacity-100").update()
                         caption_label.set_text(
-                            f"[{self.gallery_current_index + 1}/{len(self.gallery_image_data)}]  "
+                            f"[{self.gallery_current_index+1}/{len(self.gallery_image_data)}]  "
                             + entry["label"]
                         )
                         path_label.set_text(entry["path"])
@@ -1026,35 +1041,46 @@ class ManualExploreApp:
                     def _show_with_fade():
                         """Fade out, then update image on the next tick."""
                         slideshow_img.classes(remove="opacity-100", add="opacity-5").update()
-                        self.gallery_timer_anim = ui.timer(0.15, _do_update_image, once=True)
+                        self.gallery_timer_anim = ui.timer(0.15, lambda: _do_update_image(), once=True)
  
                     def _reset_auto_timer():
                         if self.gallery_timer:
                             self.gallery_timer.cancel()
-                        self.gallery_timer = ui.timer(10, _next_auto, once=False)
+                        self.gallery_timer = ui.timer(10, _next_auto, immediate=False, once=False)
  
                     def _next_auto():
-                        """Called by the auto-advance timer."""
+                        if not ui.context.client.connected:
+                            return
                         if self.gallery_first_image:
+                            self.gallery_current_index = (
+                                (self.gallery_current_index) % len(self.gallery_image_data)
+                            )
                             self.gallery_first_image = False
                         else:
+                            """Called by the auto-advance timer."""
                             self.gallery_current_index = (
                                 (self.gallery_current_index + 1) % len(self.gallery_image_data)
                             )
                         _show_with_fade()
  
                     def _on_next():
-                        self.gallery_current_index = (
-                            (self.gallery_current_index + 1) % len(self.gallery_image_data)
-                        )
                         _reset_auto_timer()
+                        if self.gallery_first_image:
+                            self.gallery_current_index = (
+                                (self.gallery_current_index) % len(self.gallery_image_data)
+                            )
+                            self.gallery_first_image = False
+                        else :
+                            self.gallery_current_index = (
+                                (self.gallery_current_index + 1) % len(self.gallery_image_data)
+                            )
                         _show_with_fade()
  
                     def _on_prev():
+                        _reset_auto_timer()
                         self.gallery_current_index = (
                             (self.gallery_current_index - 1) % len(self.gallery_image_data)
                         )
-                        _reset_auto_timer()
                         _show_with_fade()
  
                     def _on_select():
@@ -1076,11 +1102,11 @@ class ManualExploreApp:
                         ui.button("Next ➡", on_click=_on_next)
  
                     # Start auto-advance timer (first tick shows the first image)
-                    self.gallery_timer = ui.timer(10, _next_auto, once=False)
+                    self.gallery_timer = ui.timer(10, _next_auto, immediate=False, once=False)
                     _do_update_image()   # show first image immediately without waiting
  
             # Clean up timers when the dialog is dismissed
-            def _on_dialog_hide():
+            def on_close():
                 if self.gallery_timer:
                     self.gallery_timer.cancel()
                     self.gallery_timer = None
@@ -1088,7 +1114,7 @@ class ManualExploreApp:
                     self.gallery_timer_anim.cancel()
                     self.gallery_timer_anim = None
  
-            dialog.on('hide', _on_dialog_hide)
+            dialog.on('hide', on_close)
  
         dialog.open()
  
@@ -1166,7 +1192,7 @@ class ManualExploreApp:
         # Refresh the session list so the star icon updates in the dropdown
         idx = self.label_to_index.get(self.file_list.value)
         if idx is not None and idx < len(self.all_files_rows):
-            self.all_files_rows[idx][15] = new_val
+            self.all_files_rows[idx][17] = new_val
         ui.notify("Favorite updated.", type="positive")
 
     async def delete_directory(self):
@@ -1178,6 +1204,7 @@ class ManualExploreApp:
             ui.notify("No session selected.", color="negative")
             return
 
+        # Use the effective path (base/tag) for the physical deletion already in database
         folder = self.selected_entry_data.session_dir
         entry_id = self.selected_entry_data.entry_id
 

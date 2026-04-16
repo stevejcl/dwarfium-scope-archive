@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.0.5] - 2026-04-16
+
+### Add 
+    Add Tag for ManualSession to permit multiple version of same session
+	Manual Session Explore Page OK
+
+### BugFix# 
+    Database migration correction, lost of Auto Increment during Migration
+    Improve DB migration routine recreate current Tables
+    Add rule to prevent deletion of data if Manual Session use it
+
+
 ## [V3.0.4] - 2026-04-13
 
 ### Add 

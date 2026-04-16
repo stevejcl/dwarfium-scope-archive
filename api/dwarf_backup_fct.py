@@ -158,11 +158,34 @@ def get_file_path(full_path, base_folder):
     return os.path.relpath(full_path, base_folder)
 
 def get_session_file_ref(session_dir, full_path):
-    p = Path(full_path)
-    result = f"{Path(session_dir).name}/{p.name}"
-    
-    return result
+    if not session_dir or not full_path:
+        return None
 
+    full = Path(full_path)
+    session_parts = Path(session_dir).parts
+
+    parts = full.parts
+
+    # find where session_dir starts inside full_path
+    for i in range(len(parts)):
+        if parts[i:i+len(session_parts)] == session_parts:
+            rel = Path(*parts[i:])
+            return str(rel)
+
+# get the root directory (ManualSessionDrive) from the Session Dir and a path of a image (with or without tag)
+# use for preview image
+def get_root_manual_session_dir(session_dir, image_path):
+
+    # 1. Normalize selected_path
+    p2 = Path(session_dir).resolve()
+    # 2. Remove the relative image_path from the end of selected_path
+    base = p2
+    for part in reversed(Path(image_path).parts):
+        if base.name == part:
+            base = base.parent
+
+    return base
+   
 def get_extension(file_path):
     return os.path.splitext(file_path)[1].lower().lstrip('.')
 
