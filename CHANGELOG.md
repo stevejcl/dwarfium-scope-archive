@@ -5,6 +5,7 @@
 ### Add 
     Add Tag for ManualSession to permit multiple version of same session
 	Manual Session Explore Page OK
+	Add Linked to Manual Session on Explore Page
 
 ### BugFix# 
     Database migration correction, lost of Auto Increment during Migration
