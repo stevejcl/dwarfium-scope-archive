@@ -134,8 +134,8 @@ class ExploreApp:
         # parameter for stitch params
         self.stitch_params = get_stitch_params(self.conn)
 
-        with ui.row().classes('w-full h-screen items-center justify-center'):
-            with ui.grid(columns='1fr 2fr'):
+        with ui.row().classes('w-full items-start'):
+            with ui.grid(columns='1fr 2fr').classes('w-full items-start'):
                 with ui.column().classes('w-full'):
                     if self.mode == "backup":
                         nbcolumns = 3 if self.BackUrl else 2
@@ -333,6 +333,10 @@ class ExploreApp:
         self.load_objects()
       
     def load_objects(self):
+        ui.run_javascript("document.body.style.cursor='wait'")
+        ui.timer(0.05, lambda: self._load_objects_work(), once=True)
+ 
+    def _load_objects_work(self):
         dwarf_id = self.get_selected_dwarf_id()
         self.clear_selected_object()
 
@@ -360,6 +364,7 @@ class ExploreApp:
         self.selected_object_description = None
         self.selected_object_is_group = False
         self.load_objects_ui()
+        ui.run_javascript("document.body.style.cursor='default'")
 
         # ✅ Auto-select session if provided and at first
         if not self.AutoSelection_done and self.SessionId:
@@ -631,13 +636,19 @@ class ExploreApp:
 
         self.object_list.update()
         ui.update()
+        ui.run_javascript("document.body.style.cursor='default'")
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id = None):
+        ui.run_javascript("document.body.style.cursor='wait'")
         self.selected_object = name 
         self.selected_object_description = desc 
         self.selected_object_is_group = is_group
+        ui.timer(0.05, lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id), once=True)
+
+    def _handle_object_click_work(self, oid, dso_id, is_group, session_id = None):
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
+        ui.run_javascript("document.body.style.cursor='default'")
 
     def clear_selected_object(self):
         self.fullscreen_image.visible = False

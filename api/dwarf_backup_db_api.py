@@ -1486,7 +1486,7 @@ def get_ManualSession_by_entry_id(conn: sqlite3.Connection, entry_id: int):
     Load a single ManualSession + ManualSessionEntry row by ManualSessionEntry.id.
     Used by AddManualSession when opened in edit mode (ManualEntryId URL parameter).
 
-    Returns the same column layout as get_ObjectSelect_manual (27 columns), or [].
+    Returns the same column layout as get_ObjectSelect_manual (26 columns), or [].
     """
     return get_ObjectSelect_manual(conn, session_id=entry_id)
 
@@ -1500,7 +1500,7 @@ def get_ManualSession_by_backup_entry_id(conn: sqlite3.Connection, backup_drive_
     target imported at different times or with different session types), so this
     intentionally returns all of them — not just the first one.
 
-    Each row uses the same 27-column layout as get_ObjectSelect_manual.
+    Each row uses the same 26-column layout as get_ObjectSelect_manual.
     Returns [] if nothing is linked or on error.
     """
     try:
@@ -2306,16 +2306,16 @@ def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path,
             commit_db(conn)
             if exist_id is None:
                 last_id = cursor.lastrowid
-                print(f" DwarData : Adding new Id :{last_id}")
+                print(f" DwarfData : Adding new Id :{last_id}")
                 return last_id, last_id
             else:
-                print(f" DwarData : Updated existing Id : {exist_id}")
+                print(f" DwarfData : Updated existing Id : {exist_id}")
                 return exist_id, exist_id
 
         else:
             row = conn.execute("SELECT id FROM DwarfData WHERE file_path = ?", (file_path,)).fetchone()
             exist_id = row[0] if row else None  # Already existed
-            print(f" DwarData : Already Exist Id :{exist_id}")
+            print(f" DwarfData : Already Exist Id :{exist_id}")
             return None, exist_id
 
     except Exception as e:
@@ -2432,7 +2432,7 @@ def insert_ManualSession(conn: sqlite3.Connection, session_name, session_tag, se
 
         else:
             row = conn.execute(
-                "SELECT id FROM ManualSession WHERE session_name = ? AND session_tag AND session_type = ?",
+                "SELECT id FROM ManualSession WHERE session_name = ? AND session_tag = ? AND session_type = ?",
                 (session_name, session_tag, session_type)
             ).fetchone()
             exist_id = row[0] if row else None  # Already existed
@@ -2443,20 +2443,21 @@ def insert_ManualSession(conn: sqlite3.Connection, session_name, session_tag, se
         print(f"[DB ERROR] Failed to insert or fetch ManualSession: {e}")
         return None, None
 
-def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id):
+def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive_id=None):
     try:
         # Insert entry in BackupEntry
         cursor = conn.execute("""
             INSERT OR IGNORE INTO ManualSessionEntry (
-                manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_date, session_dir, astro_group_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_date, session_dir, astro_group_id, manual_session_drive
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(manual_session_id, backup_drive_id, dwarf_id, backup_entry_id)
             DO UPDATE SET
                 astro_object_id=excluded.astro_object_id,
                 session_date=excluded.session_date,
                 session_dir=excluded.session_dir,
-                astro_group_id=excluded.astro_group_id
-        """, (manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id))
+                astro_group_id=excluded.astro_group_id,
+                manual_session_drive=excluded.manual_session_drive
+        """, (manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive_id))
 
         if cursor.rowcount > 0:
             manualSessionEntry_id = cursor.lastrowid
@@ -2471,6 +2472,643 @@ def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backu
     except Exception as e:
         print(f"[DB ERROR] Failed to insert ManualSessionEntry: {e}")
         return []
+
+
+def get_or_create_ManualSessionDrive(conn: sqlite3.Connection, location: str, name: str = None, description: str = None, manualsession_dir: str = None, backup_drive_id: int = None):
+    try:
+        # Try to fetch existing ID first
+        row = conn.execute("SELECT id FROM ManualSessionDrive WHERE location = ?", (location,)).fetchone()
+        if row:
+            # Row already exists — update backup_drive_id and scan date
+            conn.execute(
+                """UPDATE ManualSessionDrive
+                   SET backup_drive_id        = COALESCE(?, backup_drive_id),
+                       last_backup_scan_date  = ?
+                   WHERE id = ?""",
+                (backup_drive_id,
+                 datetime.now().isoformat(sep=' ', timespec='seconds'),
+                 row[0])
+            )
+            commit_db(conn)
+            return row[0]
+
+        # Insert new one
+        cursor = conn.execute("""
+            INSERT INTO ManualSessionDrive (location, name, description, manualsession_dir, backup_drive_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, (location, name, description, manualsession_dir, backup_drive_id))
+        commit_db(conn)
+        return cursor.lastrowid
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to get or create ManualSessionDrive: {e}")
+        return None
+
+
+
+def write_missing_shotsInfo(conn: sqlite3.Connection) -> dict:
+    """
+    One-shot utility: write shotsInfo.json into every ManualSession folder
+    that does not already have one.
+
+    Safe to call at any time — skips sessions where the file already exists,
+    skips sessions whose session_dir is not accessible on this machine.
+
+    Returns {"written": N, "skipped": N, "errors": N}
+    """
+    import json as _json
+
+    written = 0
+    skipped = 0
+    errors  = 0
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                ms.session_name,
+                ms.session_tag,
+                ms.session_type,
+                ms.dec,
+                ms.ra,
+                ms.description,
+                mse.session_dir,
+                mse.session_date,
+                mse.backup_entry_id,
+                bd.location   AS backup_drive_location,
+                bd.astronomy_dir,
+                d.name        AS dwarf_name,
+                be.session_dir AS backup_session_dir
+            FROM ManualSession ms
+            JOIN ManualSessionEntry mse ON mse.manual_session_id = ms.id
+            LEFT JOIN BackupDrive  bd  ON bd.id  = mse.backup_drive_id
+            LEFT JOIN Dwarf        d   ON d.id   = mse.dwarf_id
+            LEFT JOIN BackupEntry  be  ON be.id  = mse.backup_entry_id
+        """)
+        rows = cursor.fetchall()
+
+        for (session_name, session_tag, session_type,
+             dec, ra, description,
+             session_dir, session_date, backup_entry_id,
+             backup_drive_location, astronomy_dir,
+             dwarf_name, backup_session_dir) in rows:
+
+            if not session_dir or not os.path.isdir(session_dir):
+                print(f"[INFO] write_missing_shotsInfo: folder not accessible "
+                      f"'{session_dir}' — skipped.")
+                skipped += 1
+                continue
+
+            shots_path = os.path.join(session_dir, "shotsInfo.json")
+            if os.path.isfile(shots_path):
+                print(f"[INFO] write_missing_shotsInfo: already exists for "
+                      f"'{session_name}' — skipped.")
+                skipped += 1
+                continue
+
+            # Derive manualsession_dir: parent of session folder
+            # (two levels up if tag present, one level otherwise)
+            norm_sd = os.path.normpath(session_dir)
+            if session_tag:
+                manualsession_dir = os.path.normpath(
+                    os.path.dirname(os.path.dirname(norm_sd))
+                )
+            else:
+                manualsession_dir = os.path.normpath(os.path.dirname(norm_sd))
+
+            # backup_drive_location must be the drive that *hosts* the manual
+            # session files — find the BackupDrive whose location is the longest
+            # prefix of session_dir (may differ from the Dwarf backup drive).
+            cursor.execute("SELECT location FROM BackupDrive WHERE location IS NOT NULL")
+            all_locations = [r[0] for r in cursor.fetchall()]
+            all_locations.sort(key=len, reverse=True)  # longest first
+            msd_drive_location = backup_drive_location or ""
+            for loc in all_locations:
+                # Add separator so DWARF_MINI doesn't match DWARF_MINI_NEW paths
+                if norm_sd.startswith(os.path.normpath(loc) + os.sep):
+                    msd_drive_location = loc
+                    break
+
+            try:
+                shots_info = {
+                    "session_name":          session_name   or "",
+                    "session_tag":           session_tag    or "",
+                    "session_type":          session_type   or "",
+                    "session_dir":           session_dir    or "",
+                    "backup_drive_location": msd_drive_location,
+                    "manualsession_dir":     manualsession_dir,
+                    "dwarf_name":            dwarf_name     or "",
+                    "backup_session_dir":    backup_session_dir or "",
+                    "session_date":          str(session_date)  if session_date else "",
+                    "dec":                   dec  or "",
+                    "ra":                    ra   or "",
+                    "description":           description    or "",
+                }
+                with open(shots_path, "w", encoding="utf-8") as f:
+                    _json.dump(shots_info, f, indent=2, ensure_ascii=False)
+                print(f"[INFO] write_missing_shotsInfo: written for '{session_name}'.")
+                written += 1
+            except Exception as e:
+                print(f"[DB ERROR] write_missing_shotsInfo: failed for "
+                      f"'{session_name}': {e}")
+                errors += 1
+
+    except Exception as outer_e:
+        print(f"[DB ERROR] write_missing_shotsInfo: outer failure: {outer_e}")
+        errors += 1
+
+    print(f"[INFO] write_missing_shotsInfo complete — "
+          f"written={written}, skipped={skipped}, errors={errors}")
+    return {"written": written, "skipped": skipped, "errors": errors}
+
+
+def rebuild_manual_session_entries(conn: sqlite3.Connection) -> dict:
+    """
+    Reconstruct orphaned ManualSessionEntry rows after a DB wipe + backup rescan.
+
+    Strategy
+    --------
+    After a full DB reset, BackupDrive rows are rebuilt by the backup scanner with
+    new primary key ids.  ManualSession rows survive untouched (they hold all
+    metadata), but every ManualSessionEntry is gone because its FK targets no
+    longer exist.
+
+    ManualSessionDrive is the anchor: it stores the physical location of every
+    backup drive that has ever hosted a manual session, independently of BackupDrive.
+    For each ManualSession that has no ManualSessionEntry, this function:
+
+      1. Finds which ManualSessionDrive owns the session by prefix-matching
+         ManualSession.stacked_fits_path / jpeg_path against ManualSessionDrive.location.
+      2. Re-links ManualSessionDrive.backup_drive_id to the new BackupDrive row
+         (matched by location).
+      3. Looks up the matching BackupEntry by session_dir (optional link).
+      4. Re-creates the AstroObject from stored RA/Dec/description.
+      5. Inserts the ManualSessionEntry.
+
+    Returns a dict:
+        {
+            "rebuilt":  int,   # entries successfully created
+            "skipped":  int,   # ManualSessions with no matching drive on disk
+            "errors":   int,   # unexpected failures
+        }
+    """
+    from api.dwarf_backup_fct import MANUAL, UNKNOWN, get_root_manual_session_dir
+
+    rebuilt = 0
+    skipped = 0
+    errors  = 0
+
+    try:
+        cursor = conn.cursor()
+
+        # ── Step 1: find ManualSessions that need a ManualSessionDrive link ──────
+        # Two cases:
+        #   a) No ManualSessionEntry at all (full DB wipe scenario)
+        #   b) ManualSessionEntry exists but manual_session_drive IS NULL
+        #      (sessions created before ManualSessionDrive table was introduced)
+        cursor.execute("""
+            SELECT DISTINCT
+                ms.id,
+                ms.session_name,
+                ms.session_tag,
+                ms.session_type,
+                ms.dec,
+                ms.ra,
+                ms.description,
+                ms.jpeg_path,
+                ms.stacked_fits_path,
+                ms.stacked_png_path,
+                -- session_dir from existing entry (NULL for Case a, set for Case b)
+                (SELECT mse.session_dir FROM ManualSessionEntry mse
+                 WHERE mse.manual_session_id = ms.id LIMIT 1) AS session_dir
+            FROM ManualSession ms
+            WHERE
+                -- Case a: no entry at all
+                NOT EXISTS (
+                    SELECT 1 FROM ManualSessionEntry mse
+                    WHERE mse.manual_session_id = ms.id
+                )
+                OR
+                -- Case b: entry exists but drive link is missing
+                EXISTS (
+                    SELECT 1 FROM ManualSessionEntry mse
+                    WHERE mse.manual_session_id = ms.id
+                      AND mse.manual_session_drive IS NULL
+                )
+        """)
+        orphans = cursor.fetchall()
+
+        if not orphans:
+            print("[INFO] rebuild_manual_session_entries: all ManualSession entries already linked.")
+            return {"rebuilt": 0, "skipped": 0, "errors": 0}
+
+        print(f"[INFO] rebuild_manual_session_entries: {len(orphans)} ManualSession(s) to process.")
+
+        # ── Step 2: load ManualSessionDrive rows for prefix matching ──────────
+        # Longest location prefix wins — order DESC by length
+        cursor.execute("""
+            SELECT id, location, manualsession_dir, backup_drive_id
+            FROM ManualSessionDrive
+            ORDER BY LENGTH(location) DESC
+        """)
+        drives = cursor.fetchall()
+
+        # ── Step 3: re-link ManualSessionDrive → new BackupDrive ids ──────────
+        # BackupDrive was rebuilt by the scanner with new ids; re-match by location
+        cursor.execute("SELECT id, location FROM BackupDrive")
+        backup_drives = {os.path.normpath(loc): bid for bid, loc in cursor.fetchall() if loc}
+
+        for msd_id, msd_location, msd_dir, old_bd_id in drives:
+            norm = os.path.normpath(msd_location)
+            new_bd_id = backup_drives.get(norm)
+            if new_bd_id and new_bd_id != old_bd_id:
+                cursor.execute(
+                    "UPDATE ManualSessionDrive SET backup_drive_id = ? WHERE id = ?",
+                    (new_bd_id, msd_id)
+                )
+                print(f"[INFO] ManualSessionDrive id={msd_id}: backup_drive_id updated "
+                      f"{old_bd_id} → {new_bd_id}")
+
+        commit_db(conn)
+
+        # Reload drives with updated backup_drive_id values
+        cursor.execute("""
+            SELECT id, location, manualsession_dir, backup_drive_id
+            FROM ManualSessionDrive
+            ORDER BY LENGTH(location) DESC
+        """)
+        drives = cursor.fetchall()
+
+        # ── Step 4: ensure the Manual astro_group exists ──────────────────────
+        astro_group_id, _ = insert_astro_group(conn, MANUAL)
+
+        # ── Step 5: process each orphan ───────────────────────────────────────
+        for (ms_id, session_name, session_tag, session_type,
+             dec, ra, description, jpeg_path,
+             stacked_fits_path, stacked_png_path,
+             existing_session_dir) in orphans:
+
+            try:
+                # ── 5a: try shotsInfo.json first ──────────────────────────────
+                # Written at import time — contains stable string identifiers
+                # that survive a DB wipe. Use it as the primary source.
+                shots_info    = None
+                shots_session_dir = existing_session_dir  # may be overridden below
+
+                if existing_session_dir and os.path.isdir(existing_session_dir):
+                    shots_path = os.path.join(existing_session_dir, "shotsInfo.json")
+                    if os.path.isfile(shots_path):
+                        try:
+                            import json as _json
+                            with open(shots_path, encoding="utf-8") as f:
+                                shots_info = _json.load(f)
+                            print(f"[INFO] rebuild: found shotsInfo.json for '{session_name}'")
+                        except Exception as je:
+                            print(f"[WARN] rebuild: could not read shotsInfo.json: {je}")
+
+                if shots_info:
+                    # Resolve all ids from stable string values in shotsInfo.json
+                    bd_location  = shots_info.get("backup_drive_location", "")
+                    dwarf_name   = shots_info.get("dwarf_name", "")
+                    bs_dir       = shots_info.get("backup_session_dir", "")
+                    msd_dir_json = shots_info.get("manualsession_dir", "")
+                    sd_json      = shots_info.get("session_dir", existing_session_dir or "")
+
+                    # Find BackupDrive by location
+                    cursor.execute(
+                        "SELECT id, dwarf_id FROM BackupDrive WHERE location = ?",
+                        (bd_location,)
+                    )
+                    bd_row = cursor.fetchone()
+                    if not bd_row:
+                        # Try normpath match
+                        cursor.execute("SELECT id, location, dwarf_id FROM BackupDrive")
+                        for r in cursor.fetchall():
+                            if r[1] and os.path.normpath(r[1]) == os.path.normpath(bd_location):
+                                bd_row = (r[0], r[2])
+                                break
+
+                    if not bd_row:
+                        print(f"[WARN] rebuild: shotsInfo BackupDrive not found "
+                              f"for '{session_name}' — skipped.")
+                        skipped += 1
+                        continue
+
+                    backup_drive_id = bd_row[0]
+                    dwarf_id        = bd_row[1]
+
+                    # Find dwarf_id by name if not set on BackupDrive
+                    if not dwarf_id and dwarf_name:
+                        cursor.execute(
+                            "SELECT id FROM Dwarf WHERE name = ?", (dwarf_name,)
+                        )
+                        dr = cursor.fetchone()
+                        if dr:
+                            dwarf_id = dr[0]
+
+                    # Find BackupEntry by session_dir
+                    backup_entry_id = None
+                    if bs_dir:
+                        cursor.execute(
+                            "SELECT id FROM BackupEntry WHERE session_dir = ? LIMIT 1",
+                            (bs_dir,)
+                        )
+                        be = cursor.fetchone()
+                        backup_entry_id = be[0] if be else None
+
+                    # Get or create ManualSessionDrive
+                    msd_id = get_or_create_ManualSessionDrive(
+                        conn,
+                        location          = bd_location,
+                        manualsession_dir = msd_dir_json,
+                        name              = os.path.basename(bd_location) or bd_location,
+                        backup_drive_id   = backup_drive_id,
+                    )
+
+                    session_dir  = os.path.normpath(sd_json) if sd_json else existing_session_dir
+                    manualsession_dir = msd_dir_json
+
+                    # Re-create AstroObject
+                    astro_object_id = None
+                    obj_name = description or session_name
+                    if obj_name:
+                        is_unknown = obj_name.lower() in (UNKNOWN.lower(), "unknown")
+                        astro_object_id, _ = insert_astro_object(
+                            conn, obj_name, is_unknown, dec, ra
+                        )
+
+                    # Update or insert ManualSessionEntry
+                    cursor.execute("""
+                        SELECT id FROM ManualSessionEntry
+                        WHERE manual_session_id = ? AND manual_session_drive IS NULL
+                        LIMIT 1
+                    """, (ms_id,))
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        cursor.execute("""
+                            UPDATE ManualSessionEntry
+                            SET manual_session_drive = ?,
+                                backup_drive_id      = ?,
+                                dwarf_id             = ?,
+                                backup_entry_id      = ?,
+                                session_dir          = ?
+                            WHERE id = ?
+                        """, (msd_id, backup_drive_id, dwarf_id,
+                              backup_entry_id, session_dir, existing[0]))
+                        commit_db(conn)
+                        print(f"[INFO] rebuild: ManualSessionEntry id={existing[0]} "
+                              f"updated from shotsInfo.json for '{session_name}'.")
+                    else:
+                        session_dt_str = datetime.now().isoformat(sep=' ', timespec='seconds')
+                        insert_ManualSessionEntry(
+                            conn,
+                            manual_session_id       = ms_id,
+                            backup_drive_id         = backup_drive_id,
+                            dwarf_id                = dwarf_id,
+                            astro_object_id         = astro_object_id,
+                            backup_entry_id         = backup_entry_id,
+                            session_dt_str          = session_dt_str,
+                            session_dir             = session_dir,
+                            astro_group_id          = astro_group_id,
+                            manual_session_drive_id = msd_id,
+                        )
+                        print(f"[INFO] rebuild: ManualSessionEntry created from "
+                              f"shotsInfo.json for '{session_name}'.")
+
+                    # Update scan date
+                    if msd_id:
+                        cursor.execute(
+                            "UPDATE ManualSessionDrive SET last_backup_scan_date = ? WHERE id = ?",
+                            (datetime.now().isoformat(sep=' ', timespec='seconds'), msd_id)
+                        )
+                        commit_db(conn)
+
+                    rebuilt += 1
+                    continue   # ← done for this orphan, skip fallback below
+
+                # ── 5b: fallback — no shotsInfo.json, use DB-based matching ──
+                reference_paths = [p for p in (jpeg_path, stacked_fits_path, stacked_png_path) if p]
+
+                matched_msd = None
+                for msd_id, msd_location, msd_dir, msd_bd_id in drives:
+                    for ref in reference_paths:
+                        candidate = os.path.normpath(os.path.join(msd_location, ref))
+                        if os.path.exists(candidate):
+                            matched_msd = (msd_id, msd_location, msd_dir, msd_bd_id)
+                            break
+                    if matched_msd:
+                        break
+
+                if not matched_msd:
+                    # No ManualSessionDrive exists yet — this happens for sessions
+                    # created before the ManualSessionDrive table was introduced.
+                    # Try to find the BackupDrive whose location is a prefix of any
+                    # stored file path, then auto-create the ManualSessionDrive row.
+                    cursor.execute("SELECT id, location, dwarf_id FROM BackupDrive")
+                    all_backup_drives = cursor.fetchall()
+
+                    # Strategy:
+                    # 1. If we have session_dir from an existing entry (Case b),
+                    #    use it directly — it's the full absolute path to the session
+                    #    folder, so manualsession_dir is just its parent (or grandparent
+                    #    if a tag sub-folder is present).
+                    # 2. Otherwise (Case a) try to match via reference_paths + BackupDrive.
+
+                    found_bd = None
+                    manualsession_dir = None
+
+                    if existing_session_dir:
+                        # Case b: derive everything from the stored session_dir
+                        # session_dir = .../STELLAR_SESSION/session_name[/tag]
+                        norm_sd = os.path.normpath(existing_session_dir)
+                        # manualsession_dir is the parent of the session folder
+                        # (two levels up if tagged, one level up otherwise)
+                        if session_tag:
+                            manualsession_dir = os.path.normpath(
+                                os.path.dirname(os.path.dirname(norm_sd))
+                            )
+                        else:
+                            manualsession_dir = os.path.normpath(
+                                os.path.dirname(norm_sd)
+                            )
+                        # Match BackupDrive by checking whose location is a prefix
+                        # of the session_dir — reliable since session_dir is absolute
+                        for bd_id, bd_loc, bd_dwarf in all_backup_drives:
+                            if not bd_loc:
+                                continue
+                            # Add separator so DWARF_MINI doesn't match DWARF_MINI_NEW
+                            if norm_sd.startswith(os.path.normpath(bd_loc) + os.sep):
+                                found_bd = (bd_id, bd_loc, bd_dwarf)
+                                break
+                    else:
+                        # Case a (full wipe): try file existence check
+                        ref_for_dir = next((p for p in reference_paths if p), None)
+                        for bd_id, bd_loc, bd_dwarf in all_backup_drives:
+                            if not bd_loc:
+                                continue
+                            for ref in reference_paths:
+                                candidate = os.path.normpath(os.path.join(bd_loc, ref))
+                                if os.path.exists(candidate):
+                                    found_bd = (bd_id, bd_loc, bd_dwarf)
+                                    if ref_for_dir:
+                                        full_ref = os.path.normpath(
+                                            os.path.join(bd_loc, ref_for_dir)
+                                        )
+                                        manualsession_dir = str(
+                                            get_root_manual_session_dir(full_ref, ref_for_dir)
+                                        )
+                                        manualsession_dir = os.path.normpath(manualsession_dir)
+                                    break
+                            if found_bd:
+                                break
+
+                    if not found_bd:
+                        print(f"[WARN] rebuild: no BackupDrive matched "
+                              f"ManualSession '{session_name}' (id={ms_id}) — skipped.")
+                        skipped += 1
+                        continue
+
+                    if not manualsession_dir:
+                        manualsession_dir = os.path.normpath(
+                            found_bd[1]  # fallback: drive root
+                        )
+
+                    bd_id, bd_loc, bd_dwarf = found_bd
+
+                    new_msd_id = get_or_create_ManualSessionDrive(
+                        conn,
+                        location          = bd_loc,
+                        manualsession_dir = manualsession_dir,
+                        name              = os.path.basename(bd_loc) or bd_loc,
+                        backup_drive_id   = bd_id,
+                    )
+                    if not new_msd_id:
+                        print(f"[WARN] rebuild: could not create ManualSessionDrive "
+                              f"for '{session_name}' (id={ms_id}) — skipped.")
+                        skipped += 1
+                        continue
+
+                    print(f"[INFO] rebuild: auto-created ManualSessionDrive id={new_msd_id} "
+                          f"for location '{bd_loc}'.")
+
+                    # Reload drives list so subsequent sessions in this loop can match it
+                    cursor.execute("""
+                        SELECT id, location, manualsession_dir, backup_drive_id
+                        FROM ManualSessionDrive
+                        ORDER BY LENGTH(location) DESC
+                    """)
+                    drives = cursor.fetchall()
+
+                    matched_msd = (new_msd_id, bd_loc, manualsession_dir, bd_id)
+
+                msd_id, msd_location, msd_dir, backup_drive_id = matched_msd
+
+                # Use existing session_dir when available (Case b),
+                # otherwise reconstruct from manualsession_dir / name [/ tag]
+                if existing_session_dir and os.path.isdir(existing_session_dir):
+                    session_dir = os.path.normpath(existing_session_dir)
+                else:
+                    session_dir = os.path.join(msd_dir, session_name)
+                    if session_tag:
+                        session_dir = os.path.join(session_dir, session_tag)
+                    session_dir = os.path.normpath(session_dir)
+
+                if not os.path.isdir(session_dir):
+                    print(f"[WARN] rebuild: session folder not found on disk: "
+                          f"'{session_dir}' — skipped.")
+                    skipped += 1
+                    continue
+
+                # dwarf_id comes from the BackupDrive (one drive → one Dwarf)
+                cursor.execute(
+                    "SELECT dwarf_id FROM BackupDrive WHERE id = ?",
+                    (backup_drive_id,)
+                )
+                bd_row = cursor.fetchone()
+                dwarf_id = bd_row[0] if bd_row else None
+
+                # Try to find a matching BackupEntry by session_dir basename
+                session_dirname = os.path.basename(
+                    os.path.dirname(session_dir) if session_tag else session_dir
+                )
+                cursor.execute("""
+                    SELECT id FROM BackupEntry
+                    WHERE backup_drive_id = ?
+                      AND session_dir LIKE ?
+                    LIMIT 1
+                """, (backup_drive_id, f"%{session_dirname}%"))
+                be_row = cursor.fetchone()
+                backup_entry_id = be_row[0] if be_row else None
+
+                # Re-create or retrieve the AstroObject
+                astro_object_id = None
+                obj_name = description or session_name
+                if obj_name:
+                    is_unknown = obj_name.lower() in (UNKNOWN.lower(), "unknown")
+                    astro_object_id, _ = insert_astro_object(
+                        conn, obj_name, is_unknown, dec, ra
+                    )
+
+                # Check if an entry already exists (case b — drive link missing)
+                cursor.execute("""
+                    SELECT id FROM ManualSessionEntry
+                    WHERE manual_session_id = ? AND manual_session_drive IS NULL
+                    LIMIT 1
+                """, (ms_id,))
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Case b: patch the missing drive link and refresh stale FKs
+                    cursor.execute("""
+                        UPDATE ManualSessionEntry
+                        SET manual_session_drive = ?,
+                            backup_drive_id      = ?,
+                            dwarf_id             = ?,
+                            session_dir          = ?
+                        WHERE id = ?
+                    """, (msd_id, backup_drive_id, dwarf_id, session_dir, existing[0]))
+                    commit_db(conn)
+                    print(f"[INFO] rebuild: ManualSessionEntry id={existing[0]} updated "
+                          f"with drive link for '{session_name}' (tag='{session_tag}').")
+                else:
+                    # Case a: no entry existed — full insert
+                    session_dt_str = datetime.now().isoformat(sep=' ', timespec='seconds')
+                    insert_ManualSessionEntry(
+                        conn,
+                        manual_session_id       = ms_id,
+                        backup_drive_id         = backup_drive_id,
+                        dwarf_id                = dwarf_id,
+                        astro_object_id         = astro_object_id,
+                        backup_entry_id         = backup_entry_id,
+                        session_dt_str          = session_dt_str,
+                        session_dir             = session_dir,
+                        astro_group_id          = astro_group_id,
+                        manual_session_drive_id = msd_id,
+                    )
+
+                    print(f"[INFO] rebuild: ManualSessionEntry created for "
+                          f"'{session_name}' (tag='{session_tag}', "
+                          f"backup_drive_id={backup_drive_id}).")
+                # Update the scan date on the ManualSessionDrive
+                cursor.execute(
+                    "UPDATE ManualSessionDrive SET last_backup_scan_date = ? WHERE id = ?",
+                    (datetime.now().isoformat(sep=' ', timespec='seconds'), msd_id)
+                )
+                commit_db(conn)
+                rebuilt += 1
+
+            except Exception as inner_e:
+                print(f"[DB ERROR] rebuild: failed for ManualSession id={{ms_id}}: {{inner_e}}")
+                errors += 1
+
+    except Exception as outer_e:
+        print(f"[DB ERROR] rebuild_manual_session_entries: outer failure: {{outer_e}}")
+        errors += 1
+
+    print(f"[INFO] rebuild_manual_session_entries complete — "
+          f"rebuilt={rebuilt}, skipped={skipped}, errors={errors}")
+    return {"rebuilt": rebuilt, "skipped": skipped, "errors": errors}
 
 
 #########################
@@ -2772,4 +3410,3 @@ def get_mtp_device(conn: sqlite3.Connection, mtp_id):
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch MtpDevices: {e}")
         return []
-

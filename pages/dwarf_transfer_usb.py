@@ -383,8 +383,12 @@ class TransferAppUSB:
                         local_Dwarf_session = os.path.join(local_Dwarf_dir, restacked_session)
                     print(local_Dwarf_session)
 
-                    total_dwarf, deleted_dwarf = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
-                    total_backup, deleted_backup = await run.io_bound (scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
+                    total_dwarf, deleted_dwarf, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
+                    total_backup, deleted_backup, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
+                    if rebuild_result["rebuilt"] > 0:
+                        ui.notify(f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked.", type="positive")
+                    if rebuild_result["skipped"] > 0:
+                        ui.notify(f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched.", type="warning", timeout=8000)
 
                     spinner.visible = False
                     label.text = self.EndScanningMessage

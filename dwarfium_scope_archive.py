@@ -33,6 +33,15 @@ from api.dwarf_backup_db_api import insert_default_groups
 
 app.native.settings['ALLOW_DOWNLOADS'] = True
 
+import asyncio
+import logging
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Suppress the noisy ConnectionResetError from ProactorEventLoop
+logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+
 @app.get('/preview/{file_path:path}')
 def preview_image(file_path: str):
     return serve_preview(file_path)

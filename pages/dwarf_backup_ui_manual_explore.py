@@ -199,8 +199,8 @@ class ManualExploreApp:
             with open(SKY_CATALOG_FILE, "r", encoding="utf-8") as f:
                 self.dso_catalog = json.load(f)
 
-        with ui.row().classes('w-full h-screen items-center justify-center'):
-            with ui.grid(columns='1fr 2fr'):
+        with ui.row().classes('w-full items-start'):
+            with ui.grid(columns='1fr 2fr').classes('w-full items-start'):
 
                 # ---- LEFT COLUMN: filters + object list -------------------
                 with ui.column().classes('w-full'):
@@ -383,6 +383,10 @@ class ManualExploreApp:
     # -----------------------------------------------------------------------
 
     def load_objects(self):
+        ui.run_javascript("document.body.style.cursor='wait'")
+        ui.timer(0.05, self._load_objects_work, once=True)
+
+    def _load_objects_work(self):
         dwarf_id = self.get_selected_dwarf_id()
         self.clear_selected_object()
 
@@ -404,6 +408,7 @@ class ManualExploreApp:
         self.selected_object_description = None
         self.selected_object_is_group    = False
         self.load_objects_ui()
+        ui.run_javascript("document.body.style.cursor='default'")
 
         # Auto-select a specific session if SessionId was passed in the URL
         if not self.AutoSelection_done and self.SessionId:
@@ -607,13 +612,19 @@ class ManualExploreApp:
 
         self.object_list.update()
         ui.update()
+        ui.run_javascript("document.body.style.cursor='default'")
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
+        ui.run_javascript("document.body.style.cursor='wait'")
         self.selected_object             = name
         self.selected_object_description = desc
         self.selected_object_is_group    = is_group
+        ui.timer(0.05, lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id), once=True)
+
+    def _handle_object_click_work(self, oid, dso_id, is_group, session_id = None):
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
+        ui.run_javascript("document.body.style.cursor='default'")
 
     # -----------------------------------------------------------------------
     # Session selection

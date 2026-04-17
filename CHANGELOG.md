@@ -1,5 +1,16 @@
 # Changelog
 
+## [V3.0.6] - 2026-04-17
+
+### Add 
+    Rebuild ManualSessionEntry if need
+    Add Optional Delete Manual Session
+    UI Improvement for Dwarf and Backup Page
+    Add some spinning cursor when loading data
+
+### BugFix# 
+    Secure Database Migration
+
 ## [V3.0.5] - 2026-04-16
 
 ### Add 

@@ -10,7 +10,7 @@ from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive,
 from api.dwarf_backup_db_api import get_dwarf_Names, get_sessions_backup
 from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
 from api.dwarf_backup_db_api import get_session_present_in_backupDrive
-from api.dwarf_backup_db_api import has_related_backup_entries,  has_related_manual_entries, delete_backup_entries_and_dwarf_data
+from api.dwarf_backup_db_api import has_related_backup_entries, has_related_manual_entries, delete_backup_entries_and_dwarf_data, delete_manual_entries
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
@@ -55,10 +55,13 @@ class ConfigApp:
             ui.separator()
 
             with ui.row().classes('w-full gap-8 items-start'):
-                with ui.column():
-                    ui.button("Add New BackupDrive", on_click=self.set_new_BackupDrive)
 
-                with ui.column():
+                # Left: Add New button aligned with form top
+                with ui.column().classes('items-start pt-8'):
+                    ui.button("➕ Add New BackupDrive", on_click=self.set_new_BackupDrive)
+
+                # Right: form fields
+                with ui.column().classes('items-start flex-1'):
                     ui.label("Select Existing BackupDrive").classes("text-lg font-semibold")
 
                     # BackupDrive Selection
@@ -66,27 +69,26 @@ class ConfigApp:
                         options=[],
                         on_change=self.load_selected_backupDrive,
                         label="Please select"
-                    ).props('stack-label').props('outlined').classes('w-40')
+                    ).props('stack-label').props('outlined').classes('w-60')
 
-                    with ui.grid(columns=2).classes("items-center gap-4"):
-                        self.backupDrive_name = ui.input("Backup Drive Name")
+                    with ui.row().classes('items-center gap-4'):
+                        self.backupDrive_name = ui.input("Backup Drive Name").classes('w-55')
+                        ui.button("🗑️ Delete Backup Drive",
+                                  on_click=self.confirm_and_delete_BackupDrive).props("color=red")
 
-                        with ui.row().classes("w-full items-center"):
-                            ui.button("🗑️ Delete Backup Drive", on_click=self.confirm_and_delete_BackupDrive).props("color=red")
- 
-                    self.backupDrive_desc = ui.input("Drive Description")
+                    self.backupDrive_desc = ui.input("Drive Description").classes('w-55')
 
-                    with ui.grid(columns='auto 1fr').classes("items-center gap-4"):
-                        self.backupDrive_location = ui.input("Location")
+                    with ui.row().classes('items-center gap-4'):
+                        self.backupDrive_location = (
+                            ui.input("Location")
+                            .classes("overflow-x-auto whitespace-nowrap")
+                            .style("min-width: 260px; max-width: 400px;")
+                        )
+                        ui.button("Select Folder", on_click=self.select_folder)
 
-                        with ui.row().classes("w-full items-center"):
-                            ui.button("Select Folder", on_click=self.select_folder)
-
-                    with ui.grid(columns='auto 1fr').classes("items-center gap-4"):
-                        self.backupDrive_astroDir = ui.input("Astronomy Directory") or ""
-
-                        with ui.row().classes("w-full items-center"):
-                            ui.button("Select Sub Folder", on_click=self.select_subfolder)
+                    with ui.row().classes('items-center gap-4'):
+                        self.backupDrive_astroDir = ui.input("Astronomy Directory").classes('w-55') or ""
+                        ui.button("Select Sub Folder", on_click=self.select_subfolder)
 
                     # Dwarf selection
                     self.dwarf_list = get_dwarf_Names(self.conn)
@@ -96,16 +98,22 @@ class ConfigApp:
                     self.dwarf_selector = ui.select(
                         options=list(self.dwarf_name_to_id.keys()),
                         label="Select Dwarf"
-                    ).props('stack-label').props('outlined').classes('w-40')
+                    ).props('stack-label').props('outlined').classes('w-60')
 
                     with ui.card().tight():
                         ui.colors(brand='#A1A0A1')
                         ui.item_label('Last Scan on:').props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
                         self.backup_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
 
-                    with ui.row().classes("gap-4 mt-4"):
-                         ui.button("Save / Update Backup Drive", on_click=self.save_or_update_backup_drive)
-                         ui.button("🗑️ Delete Backup Entries", on_click=self.confirm_and_delete_entries).props("color=red")
+            # ── Bottom: action buttons centered ───────────────────────────────
+            ui.separator()
+            with ui.row().classes("w-full mt-2 mb-2 justify-between"):
+                ui.button("Save / Update Backup Drive",
+                          on_click=self.save_or_update_backup_drive)
+                ui.button("🗑️ Delete Backup Entries",
+                          on_click=self.confirm_and_delete_entries).props("color=red")
+                ui.button("🗑️ Delete Manual Entries",
+                          on_click=self.confirm_and_delete_manual_entries).props("color=red")
 
         # need this button don't change if not
         setStyle()
@@ -174,6 +182,24 @@ class ConfigApp:
             self.backupDrive_astroDir.value = row[3]
             self.dwarf_selector.value = row[4]
             self.backup_scan_date.text = row[5]
+            self._resize_location_input()
+
+    def _resize_location_input(self):
+        """Auto-resize the location input to fit its content."""
+        ui.run_javascript(f"""
+            const el = document.getElementById('{self.backupDrive_location.id}');
+            if (!el) return;
+            const span = document.createElement('span');
+            span.style.visibility = 'hidden';
+            span.style.whiteSpace = 'nowrap';
+            span.style.font = window.getComputedStyle(el).font;
+            span.innerText = el.value || el.placeholder || '';
+            document.body.appendChild(span);
+            let w = span.offsetWidth + 48;
+            document.body.removeChild(span);
+            w = Math.min(Math.max(w, 320), 460);
+            el.style.width = w + 'px';
+        """)
 
     def set_new_BackupDrive(self):
         self.resetIntegrity()
@@ -334,9 +360,22 @@ class ConfigApp:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
 
             ui.notify(f"🔍 Scanning: {location}-{astroDir}")
-            total, deleted = await run.io_bound (scan_backup_folder,DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)
+            total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)
             ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
 
+            # Report manual session re-linking that happened during the scan
+            if rebuild_result["rebuilt"] > 0:
+                ui.notify(
+                    f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked.",
+                    type="positive",
+                )
+            if rebuild_result["skipped"] > 0:
+                ui.notify(
+                    f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched — "
+                    f"check that the backup drive is connected.",
+                    type="warning",
+                    timeout=8000,
+                )
         except Exception as e:
             msg = f"❌ Error: {str(e)}"
             ui.notify(msg, type="negative")
@@ -472,6 +511,63 @@ class ConfigApp:
         delete_backup_entries_and_dwarf_data(self.conn, self.backupDrive_id)
         self.backup_scan_date.text = ""
         ui.notify("Backup entries and DwarfData deleted.", type="positive")
+
+    async def confirm_and_delete_manual_entries(self):
+        if self.backupDrive_id is None:
+            ui.notify("No Backup Drive selected.", type="negative")
+            return
+
+        if not has_related_manual_entries(self.conn, self.backupDrive_id):
+            ui.notify("No manual entries found for this drive.", type="info")
+            return
+
+        # First confirmation — warn about ManualSession records
+        msg = (
+            "This will delete all ManualSessionEntry rows for this backup drive.\n\n"
+            "The ManualSession records (metadata + file paths) will be kept.\n"
+            "After deleting the backup drive and recreating it, run Analyze Drive\n"
+            "to automatically re-link them from the shotsInfo.json files on disk.\n\n"
+            "Are you sure you want to continue?"
+        )
+        await self.WinLog.show(
+            "Confirm Delete Manual Entries",
+            msg,
+            self._ask_delete_manual_sessions_too,
+        )
+
+    async def _ask_delete_manual_sessions_too(self):
+        """Second check: offer to also delete orphaned ManualSession records."""
+        with ui.dialog().props('persistent') as dialog, ui.card().classes("p-4 gap-3"):
+            ui.label("🗑️ Also delete ManualSession records?").classes("font-semibold")
+            ui.separator()
+            ui.label(
+                "ManualSession records hold the metadata (RA/Dec, description, file paths). "
+                "Keep them if you want the rebuild from shotsInfo.json to restore everything. "
+                "Delete them only if you want a completely clean slate."
+            )
+            ui.separator()
+            with ui.row().classes("gap-4"):
+                ui.button(
+                    "Delete entries only",
+                    on_click=lambda: (dialog.close(),
+                                      self._do_delete_manual_entries(also_sessions=False))
+                ).props("color=orange")
+                ui.button(
+                    "Delete entries AND sessions",
+                    on_click=lambda: (dialog.close(),
+                                      self._do_delete_manual_entries(also_sessions=True))
+                ).props("color=red")
+                ui.button("Cancel", on_click=dialog.close).props("flat color=grey")
+        dialog.open()
+
+    def _do_delete_manual_entries(self, also_sessions: bool):
+        delete_manual_entries(self.conn, self.backupDrive_id)
+        msg = "Manual entries deleted."
+        if also_sessions:
+            # delete_manual_entries already removes orphaned ManualSession rows
+            # so nothing extra needed — just notify
+            msg = "Manual entries and orphaned ManualSession records deleted."
+        ui.notify(msg, type="positive")
 
     def get_explore_url(self, session_id = None):
         ui.notify("Showing Backup Data...")  # Simulate showing data

@@ -223,7 +223,7 @@ def create_ManualSessionEntry_sql():
 
 SCHEMAS = {
     "DsoCatalog": create_DsoCatalog_sql,
-    "AstroObject": create_DwarfData_sql,
+    "AstroObject": create_AstroObject_sql,
     "MtpDevices": create_MtpDevices_sql,
     "Dwarf": create_Dwarf_sql,
     "DwarfData": create_DwarfData_sql,
@@ -462,10 +462,19 @@ def migrate_v2(conn):
         return []
 
 def migrate_v3(conn):
+    """
+    Creates ManualSession and ManualSessionEntry tables (original v3 schema,
+    without session_tag and without manual_session_drive column).
+    migrate_v4 will upgrade these to the final schema via rebuild_tables,
+    so this migration only runs CREATE TABLE IF NOT EXISTS — it is always
+    safe to re-run and never overwrites data.
+    """
     try:
         print("Migrating Database to V3...")
         cursor = conn.cursor()
 
+        # Use CREATE TABLE IF NOT EXISTS so this is safe even if migrate_v4
+        # already ran first (e.g. on a fresh install that jumped straight to v4).
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ManualSession (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -528,7 +537,7 @@ def migrate_v3(conn):
         print(f"[DB ERROR] Failed to migrate DB: {e}")
         return []
 
-def migrate_v4(conn):
+def migrate_v5(conn):
     try:
         print("Migrating Database to V4...")
         cursor = conn.cursor()
@@ -546,30 +555,25 @@ def migrate_v4(conn):
             CREATE INDEX IF NOT EXISTS idx_manualsessiondrive_location ON ManualSessionDrive(location);
         """)
 
-        # In migrate_v4: just add the column and rebuild only if the old unique constraint exists
-        add_column_if_not_exists(conn, "ManualSession", "session_tag", "TEXT DEFAULT ''")
+        # Rebuild both ManualSession and ManualSessionEntry using the canonical
+        # SQL factory functions. This is cleaner than add_missing_foreign_keys
+        # because SQLite's PRAGMA foreign_key_list is unreliable for tables created
+        # with CREATE TABLE IF NOT EXISTS. rebuild_tables handles everything:
+        # session_tag column, new UNIQUE constraint, and all FKs including
+        # manual_session_drive → ManualSessionDrive.
+        rebuild_tables(conn, ["ManualSession", "ManualSessionEntry"])
 
-        add_missing_foreign_keys(conn, "ManualSession", foreign_keys= [], unique_constraints_override = ['UNIQUE("session_name", "session_tag", "session_type")'])
-        
-        # Check if old unique constraint needs replacing
-        add_column_if_not_exists(conn, "ManualSessionEntry", "manual_session_drive", "INTEGER")
-
-        add_missing_foreign_keys(conn, "ManualSessionEntry", foreign_keys= [
-            {
-                "column": "manual_session_id",
-                "ref_table": "ManualSession",
-                "ref_column": "id",
-            },
-            {
-                "column": "manual_session_drive",
-                "ref_table": "ManualSessionDrive",
-                "ref_column": "id",
-                "on_delete": "SET NULL"
-            }],
-        )
-
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_session_dir ON ManualSessionEntry(session_dir);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_astro_group_id ON ManualSessionEntry(astro_group_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsessionentry_manual_session_id ON ManualSessionEntry(manual_session_id);
+        """)
         conn.commit()
-        print("Migration v4 applied.")
+        print("Migration v5 applied.")
 
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB: {e}")
@@ -580,7 +584,8 @@ MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
     3: migrate_v3,
-    4: migrate_v4
+#    4: migrate_v4, has been removed
+    5: migrate_v5
     # Add more later...
 }
 
@@ -612,9 +617,27 @@ def create_table(cursor, table_name):
     cursor.execute(SCHEMAS[table_name]())
 
 def copy_table(cursor, table_name):
+    """
+    Copy data from table_name_old into table_name.
+    Only copies columns that exist in BOTH tables — new columns get their
+    DEFAULT values automatically. This handles the case where a migration
+    adds columns (e.g. session_tag in ManualSession).
+    """
+    # Get columns of the OLD table
+    cursor.execute(f"PRAGMA table_info({table_name}_old)")
+    old_cols = {row[1] for row in cursor.fetchall()}
+
+    # Get columns of the NEW table
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    new_cols = {row[1] for row in cursor.fetchall()}
+
+    # Only copy columns present in both
+    common = [c for c in new_cols if c in old_cols]
+    col_list = ", ".join(f'"{c}"' for c in common)
+
     cursor.execute(f"""
-        INSERT INTO {table_name}
-        SELECT * FROM {table_name}_old
+        INSERT INTO "{table_name}" ({col_list})
+        SELECT {col_list} FROM "{table_name}_old"
     """)
 
 def drop_old_table(cursor, table_name):

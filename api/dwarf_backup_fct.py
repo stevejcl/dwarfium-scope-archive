@@ -21,7 +21,7 @@ import cv2
 from api.dwarf_backup_db import connect_db, close_db, commit_db
 from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord, get_db_local_dwarf_dir
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
-from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId
+from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId, rebuild_manual_session_entries, write_missing_shotsInfo
 
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import VerifyError
@@ -1758,9 +1758,31 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             if deleted or total_added:
                 set_backup_scan_date(conn, backup_drive_id)
 
+    # --- Rebuild any orphaned ManualSessionEntry rows ---
+    # Must run after BackupEntry rows are up to date and before the
+    # connection is closed.  Safe to call on every scan: it no-ops when
+    # nothing is orphaned.
+    rebuild_result = {"rebuilt": 0, "skipped": 0, "errors": 0}
+    if backup_drive_id:
+        rebuild_result = rebuild_manual_session_entries(conn)
+        # Write shotsInfo.json for any session that doesn't have one yet
+        # (covers sessions created before this feature was introduced)
+        write_missing_shotsInfo(conn)
+        if rebuild_result["rebuilt"] > 0:
+            print_log(
+                f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked after scan.",
+                log,
+            )
+        if rebuild_result["skipped"] > 0:
+            print_log(
+                f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched "
+                f"(drive may be disconnected).",
+                log,
+            )
+
     commit_db(conn)
     close_db(conn)
-    return total_added, deleted
+    return total_added, deleted, rebuild_result
 
 def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id=None, new_data = False, astro_group_id = None): 
     added = 0

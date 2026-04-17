@@ -63,10 +63,13 @@ class ConfigApp:
             ui.separator()
 
             with ui.row().classes('w-full gap-8 items-start'):
-                with ui.column():
+
+                # Left: Add New button
+                with ui.column().classes('items-start pt-8'):
                     ui.button("➕ Add New Dwarf", on_click=self.set_new_dwarf)
 
-                with ui.column():
+                # Right: form fields
+                with ui.column().classes('items-start flex-1'):
                     ui.label("Select Existing Dwarf").classes("text-lg font-semibold")
 
                     # Dwarf Selection
@@ -74,15 +77,14 @@ class ConfigApp:
                         options=[],
                         on_change=self.load_selected_dwarf,
                         label="Please select"
-                    ).props('stack-label').props('outlined').classes('w-40')
+                    ).props('stack-label').props('outlined').classes('w-60')
 
-                    with ui.grid(columns=2):
-                        self.dwarf_name = ui.input("Dwarf Name")
+                    with ui.row().classes('items-center gap-4'):
+                        self.dwarf_name = ui.input("Dwarf Name").classes('w-55')
+                        ui.button("🗑️ Delete Dwarf",
+                                  on_click=self.confirm_and_delete_Dwarf).props("color=red")
 
-                        with ui.row().classes("w-full  pt-4 justify-end"):
-                            ui.button("🗑️ Delete Dwarf", on_click=self.confirm_and_delete_Dwarf).props("color=red")
-
-                    self.dwarf_desc = ui.input("Description")
+                    self.dwarf_desc = ui.input("Description").classes('w-55')
 
                     # Dwarf Type selection
                     self.dwarf_type_var = ui.select(
@@ -90,24 +92,25 @@ class ConfigApp:
                         value="Dwarf3",
                         label="Type",
                         on_change=self.modif_dwarf_type
-                    ).props('stack-label').props('outlined').classes('w-40')
+                    ).props('stack-label').props('outlined').classes('w-60')
 
-                    with ui.grid(columns=2):
-                        self.dwarf_astroDir = ui.input("Astronomy Directory")
-
-                        with ui.row().classes("w-full pt-4"):
-                            ui.button("Select USB Folder", on_click=self.select_dwarf_folder)
+                    with ui.row().classes('items-center gap-4'):
+                        self.dwarf_astroDir = ui.input("Astronomy Directory").classes('w-55')
+                        ui.button("Select USB Folder", on_click=self.select_dwarf_folder)
 
                     self.usb_status_label = ui.label("").classes('pb-2')
 
                     with ui.grid(columns=2) as self.mtp_column:
-                       self.render_mtp_section()
+                        self.render_mtp_section()
 
                     self.mtp_status_label = ui.label("").classes('pb-2')
                     self.mtp_status_label.visible = False
 
                     with ui.grid(columns=2):
-                        self.dwarf_ip_sta_mode = ui.input("Ip Address STA Mode", validation={'Invalid IP address': lambda value: self.is_valid_ip(value)})
+                        self.dwarf_ip_sta_mode = ui.input(
+                            "Ip Address STA Mode",
+                            validation={'Invalid IP address': lambda value: self.is_valid_ip(value)}
+                        ).classes('w-55')
                         with ui.row().classes("gap-4 mt-4"):
                             self.ftp_spinner = ui.spinner(size="2em")
                             self.ftp_status_label = ui.label("").classes('pt-6')
@@ -117,9 +120,12 @@ class ConfigApp:
                         ui.item_label('Last Scan on:').props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
                         self.dwarf_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
 
-                    with ui.row().classes("gap-4 mt-4"):
-                        ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
-                        ui.button("🗑️ Delete Dwarf Entries", on_click=self.confirm_and_delete_dwarf_entries).props("color=red")
+            # ── Bottom: action buttons centered ───────────────────────────────
+            ui.separator()
+            with ui.row().classes("w-full mt-2 mb-2 justify-between"):
+                ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
+                ui.button("🗑️ Delete Dwarf Entries",
+                          on_click=self.confirm_and_delete_dwarf_entries).props("color=red")
 
             ui.separator()
 
@@ -470,7 +476,7 @@ class ConfigApp:
                 local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
                 print(local_Dwarf_dir)
                 ui.notify("Starting Analysis ...")
-                total, deleted = await run.io_bound (scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None,  None, log)
+                total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log)
                 ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
             else:
                ui.notify(f"❌ Error: can't create Local Dwarf Directory", type="negative")

@@ -22,7 +22,7 @@ from api.dwarf_backup_fct import (
     show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id
+from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id, get_or_create_ManualSessionDrive
 from api.astrometry_resolver import auto_resolve, get_fits_center_coordinates
 
 from components.win_log import WinLog
@@ -168,6 +168,8 @@ class AddManualSession:
         ircut_filter    = row[10]
         max_temp        = row[11]
         session_dir     = row[16]   # physical folder already on backup drive
+        astro_object_id = row[18]
+        astro_display   = row[20]
         backup_drive_id = row[21]
         dwarf_id        = row[22]
         session_id      = row[23]
@@ -219,8 +221,7 @@ class AddManualSession:
             'TEMP':    max_temp,
         }
 
-        # Fill OBJECT from the linked AstroObject name (row[19] is the display_name)
-        astro_display = row[19]
+        # Fill OBJECT from the linked AstroObject name
         if astro_display:
             from api.dwarf_backup_fct import get_name_object as _gno
             obj_name, _ = _gno(astro_display)
@@ -230,7 +231,7 @@ class AddManualSession:
 
         # Restore linked_data so the DB insert later uses the correct astro_object_id
         self.linked_data.update({
-            "astro_object_id": row[17],
+            "astro_object_id": astro_object_id,
             "session_id":      session_id,
             "session_full_name": session_name,
         })
@@ -343,7 +344,7 @@ class AddManualSession:
         # If the deleted file was the stacked FITS that feeds main_meta_info,
         # clear the metadata panel so the user knows they need to upload a new one.
         if self.existing_session_row:
-            stored_fits = self.existing_session_row[13]  # stacked_fits_path
+            stored_fits = self.existing_session_row[14]  # stacked_fits_path
             if stored_fits and os.path.normpath(stored_fits) == os.path.normpath(path):
                 self.main_meta_info = None
                 self.meta_info = None
@@ -1662,6 +1663,18 @@ class AddManualSession:
                         astro_object_id = self.linked_data.get("astro_object_id")
                         session_id = self.linked_data.get("session_id")
 
+                        # Get or create ManualSessionDrive.
+                        # location = drive root (BackupDrive.location) — used as the
+                        # UNIQUE key and prefix anchor for rebuild_manual_session_entries.
+                        # manualsession_dir = actual destination folder chosen by the user.
+                        manual_session_drive_id = get_or_create_ManualSessionDrive(
+                            self.conn,
+                            location          = self.backup_location,
+                            manualsession_dir = self.input_dest_dir.value,
+                            name              = self.backup_filter.value or self.backup_location,
+                            backup_drive_id   = self.BackupDriveId,
+                        )
+
                         # 3. Insert the ManualSessionEntry link record
                         insert_ManualSessionEntry(
                             self.conn,
@@ -1673,7 +1686,65 @@ class AddManualSession:
                             session_dt_str    = session_dt_str,
                             session_dir       = dest_path,
                             astro_group_id    = astro_group_id,
+                            manual_session_drive_id = manual_session_drive_id,
                         )
+
+                        # 4. Write shotsInfo.json into the session folder.
+                        # Stores stable string identifiers so rebuild_manual_session_entries
+                        # can reconstruct ManualSessionEntry without relying on DB integer ids.
+                        try:
+                            # Resolve the BackupEntry.session_dir from the lookup
+                            backup_session_dir = None
+                            if session_id and session_id in self.session_name_lookup:
+                                backup_session_dir = self.session_name_lookup[session_id][0]
+
+                            # The backup_drive_location for the rebuild anchor must be
+                            # the drive that *hosts* the manual session files — i.e. the
+                            # drive whose location is a prefix of manualsession_dir.
+                            # This may differ from self.backup_location (the Dwarf backup
+                            # drive the original session came from).
+                            # Find which BackupDrive hosts manualsession_dir
+                            # (may differ from the Dwarf backup drive)
+                            msd_drive_location = self.backup_location  # sensible default
+                            dest_norm = os.path.normpath(self.input_dest_dir.value)
+                            try:
+                                _cur = self.conn.cursor()
+                                _cur.execute(
+                                    "SELECT location FROM BackupDrive "
+                                    "WHERE location IS NOT NULL "
+                                    "ORDER BY LENGTH(location) DESC"
+                                )
+                                for (_bloc,) in _cur.fetchall():
+                                    # Add separator so DWARF_MINI doesn't match
+                                    # DWARF_MINI_NEW paths
+                                    norm_bloc = os.path.normpath(_bloc) + os.sep
+                                    if dest_norm.startswith(norm_bloc):
+                                        msd_drive_location = _bloc
+                                        break
+                            except Exception:
+                                pass  # keep default
+
+                            shots_info = {
+                                "session_name":         session_name,
+                                "session_tag":          session_tag,
+                                "session_type":         session_type,
+                                "session_dir":          dest_path,
+                                "backup_drive_location": msd_drive_location,
+                                "manualsession_dir":    self.input_dest_dir.value,
+                                "dwarf_name":           self.dwarf_filter.value or "",
+                                "backup_session_dir":   backup_session_dir or "",
+                                "session_date":         session_dt_str,
+                                "dec":                  dec  or "",
+                                "ra":                   ra   or "",
+                                "description":          description or "",
+                            }
+                            shots_path = os.path.join(dest_path, "shotsInfo.json")
+                            with open(shots_path, "w", encoding="utf-8") as f:
+                                json.dump(shots_info, f, indent=2, ensure_ascii=False)
+                            print(f"[INFO] shotsInfo.json written to {shots_path}")
+                        except Exception as json_err:
+                            print(f"[WARN] Could not write shotsInfo.json: {json_err}")
+
                         ui.notify("✅ Session registered in database.", type="positive")
                         # In edit mode, refresh the existing-files panel to show the
                         # newly copied files alongside any that were kept.
@@ -1746,4 +1817,3 @@ class AddManualSession:
 
     def cancel(self):
         self.cancel_backup = True
-
