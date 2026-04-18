@@ -21,7 +21,8 @@ from api.dwarf_backup_db_api import (
     get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup, delete_backup_entry_and_dwarf_data,
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
-    has_related_manual_sessions, get_ManualSession_by_backup_entry_id
+    has_related_manual_sessions, get_ManualSession_by_backup_entry_id,
+    find_matching_darks, generate_siril_session_json,
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
@@ -116,6 +117,8 @@ class ExploreApp:
         self.image_dialog = {}
         self.selected_path = ""
         self.selected_DeleteEntryInfo = None
+        self.current_session_row = None
+        self.current_backup_location = None
         self.classified_label = None
         self.expanded_nodes = set()
         self.dso_catalog = False
@@ -221,6 +224,11 @@ class ExploreApp:
                             self.linked_manual_session_icon.visible = False
                             self.action_fits_files_icon = ui.button("", on_click=lambda: self.action_cleanup_restore_fits()).classes('h-16')
                             self.action_fits_files_icon.visible = False
+                            self.siril_json_icon = ui.button(
+                                "📡 Prepare for Siril",
+                                on_click=self.prepare_siril_json
+                            ).classes('h-16')
+                            self.siril_json_icon.visible = False
                             self.update_preview_icons()  # populate icons
 
                             #self.preview_icons['jpg'] = ui.image('image/image-jpg.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('JPG File')
@@ -1106,6 +1114,8 @@ class ExploreApp:
                 dwarf_id=row[20],
                 dwarf_data_id=row[0]
             )
+            self.current_session_row = row
+            self.current_backup_location = row[6] if row[6] else ""
             # extract DB Values
             dwarf_data_id = row[0]
             file_path = row[1]
@@ -1126,12 +1136,19 @@ class ExploreApp:
             astro_object_id = row[16]
             astro_group_id = row[17]
             descriptionDB = row[18]
+            # row[19]=backup_drive_id  row[20]=dwarf_id  row[21]=binning
+            _binning_raw = row[21] if len(row) > 21 else None
+            try:
+                binning = int(str(_binning_raw).split("*")[0]) if _binning_raw else 1
+            except Exception:
+                binning = 1
 
             # display Values
             info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
             star_icon = '⭐ ' if is_favorite else '☆ '
             full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
             self.selected_path = os.path.dirname(full_path)
+            self.current_session_full_dir = self.selected_path
 
             # Store the base folder once
             self.base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
@@ -1207,6 +1224,28 @@ class ExploreApp:
                             exposure_time = format_seconds_hms(get_total_exposure(fits_path))
 
                 ui.item(f"📊 {stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
+
+                # --- Dark match badge ---
+                _dwarf_id = self.get_selected_dwarf_id()
+                if _dwarf_id and exp_time and gainDB:
+                    try:
+                        _dark = find_matching_darks(
+                            self.conn,
+                            dwarf_id = _dwarf_id,
+                            exp_s    = float(exp_time),
+                            gain     = int(gainDB),
+                            binning  = binning,
+                            min_temp = int(minTemp) if minTemp is not None else None,
+                            max_temp = int(maxTemp) if maxTemp is not None else None,
+                        )
+                        if _dark["status"] == "matched":
+                            ui.item(f"🎯 {_dark['count']} dark(s) matched (temp in range)").classes('text-green-600')
+                        elif _dark["status"] == "partial":
+                            ui.item(f"🎯 {_dark['count']} dark(s) matched (closest temp)").classes('text-orange-500')
+                        else:
+                            ui.item("❌ No matching darks found").classes('text-red-500')
+                    except Exception as _e:
+                        print(f"[dark match] {_e}")
 
                 # add Mosaic Panel Info
                 #for data_detail in details:
@@ -1634,6 +1673,18 @@ class ExploreApp:
                 self.linked_manual_session_icon.visible = False
                 self.linked_manual_session_icon.disable()
 
+            # Siril JSON button — shown in backup mode when a session is selected
+            if hasattr(self, 'siril_json_icon') and self.siril_json_icon:
+                if (self.mode == "backup"
+                        and self.current_session_row is not None
+                        and self.selected_path
+                        and not self.selected_sessions_multi):  # hidden on multi-selection
+                    self.siril_json_icon.visible = True
+                    self.siril_json_icon.enable()
+                else:
+                    self.siril_json_icon.visible = False
+                    self.siril_json_icon.disable()
+
             if not self.action_fits_files_icon:
                 self.action_fits_files_icon = ui.button("", on_click=lambda: self.cleanup_fits()).classes('h-16')
             elif self.mode != "backup" and self.only_on_backup.value and self.selected_path and os.path.isdir(self.selected_path):
@@ -2029,6 +2080,68 @@ class ExploreApp:
             self.transfer_multi_btn.disable()
         # Now display the selected session detail
         self.file_list.set_value(label)
+
+    async def prepare_siril_json(self):
+        """Generate siril_session.json and offer it as a download."""
+        if self.current_session_row is None:
+            ui.notify("No session selected.", type="warning")
+            return
+
+        import json, webview, os
+        from pathlib import Path
+
+        ui.run_javascript("document.body.style.cursor='wait'")
+        try:
+            data = generate_siril_session_json(
+                self.conn,
+                self.current_session_row,
+                self.current_backup_location or "",
+                session_full_dir=self.current_session_full_dir or "",
+            )
+        except Exception as e:
+            ui.notify(f"❌ Failed to generate JSON: {e}", type="negative")
+            ui.run_javascript("document.body.style.cursor='default'")
+            return
+        ui.run_javascript("document.body.style.cursor='default'")
+
+        json_str = json.dumps(data, indent=2, ensure_ascii=False)
+
+        # Suggest a filename
+        target = data["session"].get("target", "session").replace(" ", "_")
+        date   = data["session"].get("date", "")[:10].replace("-", "")
+        default_name = f"siril_{target}_{date}.json"
+
+        # Ask user where to save
+        if hasattr(webview, 'FileDialog'):
+            save_mode = webview.FileDialog.SAVE
+        else:
+            save_mode = webview.SAVE_DIALOG
+
+        try:
+            dest = await app.native.main_window.create_file_dialog(
+                save_mode,
+                save_filename=default_name,
+                file_types=("JSON files (*.json)",),
+            )
+            if dest:
+                out_path = dest[0] if isinstance(dest, (list, tuple)) else dest
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                ui.notify(f"✅ Saved: {os.path.basename(out_path)}", type="positive")
+
+                # Summary notification
+                lights = len(data.get("lights", []))
+                darks  = data["darks"]["count"]
+                status = data["darks"]["status"]
+                bias   = "✅" if data.get("bias_dir") else "❌"
+                flat   = "✅" if data.get("flat_dir") else "❌"
+                ui.notify(
+                    f"📋 {lights} lights · 🎯 {darks} darks ({status}) · "
+                    f"bias {bias} · flat {flat}",
+                    type="info", timeout=8000
+                )
+        except Exception as e:
+            ui.notify(f"❌ Save failed: {e}", type="negative")
 
     def navigate_to_linked_manual_session(self):
         """

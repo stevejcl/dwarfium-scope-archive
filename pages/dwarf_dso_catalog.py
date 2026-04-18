@@ -14,9 +14,21 @@ async def dwarf_catalog():
 
     menu("Catalog Edition")
     await ui.context.client.connected()
-    # Launch the GUI with the parameters
-    ui.context.catalog_app =  CatalogApp(DB_NAME)
+    ui.context.catalog_app = CatalogApp(DB_NAME)
+    # Defer load after page is fully connected — avoids drawer JS timeout
+    ui.timer(0.5, ui.context.catalog_app.load_data, once=True)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
+
+def _fetch_catalog_data(database):
+    """Module-level function — safe for run.io_bound (no self, no conn to pickle)."""
+    from api.dwarf_backup_db import connect_db, close_db
+    from api.dwarf_backup_db_api import get_astro_objects
+    conn = connect_db(database)
+    try:
+        return get_astro_objects(conn)
+    finally:
+        close_db(conn)
+
 
 class CatalogApp:
     def __init__(self, database):
@@ -29,10 +41,12 @@ class CatalogApp:
         self.conn = connect_db(self.database)
 
         # UI Components
-        with ui.row().classes('w-full h-screen items-center justify-center'):
+        with ui.column().classes('w-full p-4'):
             ui.label('🔭 AstroObject to DSO Association').classes('text-2xl')
-            ui.button('Export Associations to CSV', on_click=self.on_export_click).classes('my-4')
-            ui.button('Delete Astro Objects not used anymore', on_click=self.on_delete_click).classes('my-4')
+            with ui.row().classes('gap-4'):
+                ui.button('Export Associations to CSV', on_click=self.on_export_click)
+                ui.button('Delete Astro Objects not used anymore', on_click=self.on_delete_click)
+            self.loading_spinner = ui.spinner(size='lg').classes('m-4')
 
             columns=[
                 {'name': 'id', 'label': 'ID', 'field': 'id', 'sortable': True},
@@ -44,11 +58,16 @@ class CatalogApp:
 
             # Create the table
             self.table = ui.table(columns=columns, rows=[], row_key='id').classes('w-full')
-
-            self.reload()
-
-            # Bind the action
             self.table.on('assign_dso', self.on_assign_dso)
+
+    async def load_data(self):
+        """Load catalog data in a thread so spinner renders first."""
+        from nicegui import run
+        db = self.database
+        self.data = await run.io_bound(_fetch_catalog_data, db)
+        self.reload()
+        if hasattr(self, 'loading_spinner'):
+            self.loading_spinner.visible = False
 
     # Export Button
     def on_export_click(self):
@@ -85,7 +104,8 @@ class CatalogApp:
     @ui.refreshable
     def reload(self):
         self.table.rows.clear()
-        self.data = get_astro_objects(self.conn)  # reload from source
+        if not self.data:
+            self.data = get_astro_objects(self.conn)
 
         for ao in self.data:
             self.table.rows = [{
@@ -220,4 +240,3 @@ class CatalogApp:
                 ui.button('Cancel', on_click=dialog.close)
 
         dialog.open()
-

@@ -507,7 +507,13 @@ class AddManualSession:
                         ).props('accept="image/png"').classes("mb-4")
 
                     with ui.column().classes("items-center justify-center text-center w-full"):
-                        ui.label("Select Local FITS Files (optional)").classes("mt-2 font-medium")
+                        with ui.row().classes("items-center gap-1"):
+                            ui.label("Select Local FITS Files (optional)").classes("mt-2 font-medium")
+                            ui.icon("info").classes("text-gray-400 cursor-help mt-2").tooltip(
+                                "First FITS → renamed to stacked-16_{session}.fits\n"
+                                "Additional FITS → original filename kept\n"
+                                "(e.g. Cave_Nebula_Starless.fits stays as-is)"
+                            )
                         self.file_picker_fit = ui.upload(
                             label="Upload FITS",
                             auto_upload=True,
@@ -539,7 +545,15 @@ class AddManualSession:
                     self.link_input = ui.input(
                         placeholder="Enter FITS file URL (https://...)",
                         on_change=self.on_fits_file_change
-                    ).props('clearable').classes("w-[80%]")
+                    ).props('clearable').classes("flex-1")
+                    self.url_suffix_select = ui.select(
+                        options=["", "Auto", "Denoise", "Starless"],
+                        value="",
+                        label="Type",
+                    ).props('stack-label outlined').classes('w-32').tooltip(
+                        "Suffix added to the filename for Stellar Studio files. "
+                        "Leave empty for the first/main stack."
+                    )
                     self.add_button = ui.button("Add", on_click=self.add_or_remove_file)
 
                 with ui.card().tight().classes('w-full'):
@@ -564,12 +578,17 @@ class AddManualSession:
                     self.input_dest_dir = ui.input("Destination Directory:", value = self.dest_dir).classes("w-[80%] overflow-x-auto whitespace-nowrap")
                     ui.button("Select Destination", on_click=lambda : self.select_destination_folder())
 
-            # --- ACTION BUTTON ---
-            with ui.row().classes("mt-4 gap-2"):
+            # --- ACTION BUTTONS ---
+            with ui.row().classes("mt-4 gap-4 items-center"):
                 self.Import_Files = ui.button(
                     "Import Files" if not self.edit_mode else "Update Session Files",
                     on_click=self.start_import_files,
-                ).classes("mt-4 bg-green-600 text-white")
+                ).classes("bg-green-600 text-white")
+                self.view_session_button = ui.button(
+                    "🔭 View Session in Explore",
+                    on_click=lambda: None,
+                ).props("color=teal")
+                self.view_session_button.visible = False
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             self.progress_label = ui.label("Idle...")
@@ -932,6 +951,7 @@ class AddManualSession:
                 except Exception as ex:
                     ui.notify(f"Error reading FITS: {ex}", type='negative')
                     os.remove(tmp_path)
+                    dialog_fits.close()
                     await asyncio.sleep(0.5)
                     await self._reset_and_restore(rejected_name=file.name)
                     return
@@ -1077,8 +1097,7 @@ class AddManualSession:
 
         ui.run_javascript("document.body.style.cursor='wait'")
         with ui.dialog().props('persistent') as dialog_fits:
-            ui.notify("Downloading FITS file...", type='info')
-
+            ui.label("⏳ Downloading FITS file...")
             try:
                 dialog_fits.open()
 
@@ -1091,11 +1110,30 @@ class AddManualSession:
 
                 ui.run_javascript("document.body.style.cursor='default'")
 
-                # Analyse File
-                await self.analyse_fits(tmp_path, Path(url).name, dialog_fits)
+                # Analyse File — use suffix from selector to build a meaningful name
+                _suffix = self.url_suffix_select.value.strip() if self.url_suffix_select.value else ""
+                _url_name = Path(url).name  # original (usually meaningless)
+                await self.analyse_fits(tmp_path, _url_name, dialog_fits, url_suffix=_suffix)
 
             except Exception as ex:
-               ui.notify(f"Error reading FITS: {ex}", type='negative')
+                # On error: restore cursor, close dialog, show message
+                ui.run_javascript("document.body.style.cursor='default'")
+                try:
+                    dialog_fits.close()
+                except Exception:
+                    pass
+                import requests as _req
+                if isinstance(ex, _req.HTTPError) and ex.response is not None:
+                    status = ex.response.status_code
+                    if status == 403:
+                        msg = "❌ Access forbidden (403) — the URL requires authentication or is not public."
+                    elif status == 404:
+                        msg = "❌ File not found (404) — check the URL."
+                    else:
+                        msg = f"❌ HTTP error {status}: {ex}"
+                else:
+                    msg = f"❌ Download failed: {ex}"
+                ui.notify(msg, type='negative', timeout=8000)
 
     def on_fits_file_change(self, e):
         self.selected_file = None
@@ -1118,7 +1156,7 @@ class AddManualSession:
             for data_detail in self.uploaded_fits_files:
                 ui.item(data_detail["name"], on_click=lambda i=data_detail["name"]: self.on_fits_file_selected(i)).props('clickable').classes('cursor-pointer')
 
-    async def analyse_fits(self, tmp_path, name, dialog_fits, mode_upload_link = True):
+    async def analyse_fits(self, tmp_path, name, dialog_fits, mode_upload_link=True, url_suffix=""):
         card_dialog = ui.card().style('width: 800px; max-width: none')
 
         print(f"Downloading OF for {tmp_path} - {name}")
@@ -1160,7 +1198,8 @@ class AddManualSession:
                 "type": "fits",
                 "is_temp": True,
                 "ra": None,
-                "dec": None
+                "dec": None,
+                "url_suffix": url_suffix,
             })
             self.uploaded_fits_files.append(self.current_file_info)
             if len(self.uploaded_fits_files) == 1:
@@ -1530,6 +1569,26 @@ class AddManualSession:
             self.error_execute("No files to backup.", type="info")
             return False
 
+        # Mark the first file of each extension type so rename logic knows
+        # which one gets the canonical stacked-16_* name.
+        _seen_ext = set()
+        for file_info in self.client.storage.uploaded_files:
+            ext = os.path.splitext(file_info.get("name", ""))[1].lower()
+            if ext in (".jpg", ".jpeg"):
+                ext_key = ".jpg"
+            elif ext == ".png":
+                ext_key = ".png"
+            elif ext in (".fits", ".fit", ".fts"):
+                # URL files with a suffix are never "first" — they always use suffix name
+                ext_key = ".fits" if not file_info.get("url_suffix") else None
+            else:
+                ext_key = None
+            if ext_key and ext_key not in _seen_ext:
+                file_info["is_first_of_type"] = True
+                _seen_ext.add(ext_key)
+            else:
+                file_info["is_first_of_type"] = False
+
         try:
             for i, file_info in enumerate(self.client.storage.uploaded_files, start=1):
                 if self.cancel_backup:
@@ -1541,22 +1600,32 @@ class AddManualSession:
                     filename = file_info.get("name")
                     ext = os.path.splitext(filename)[1].lower()
 
-                    # replace file name:
-                    # jpeg -> stacked.jpg
-                    # png -> self.selected_session_name.png
-                    # fits -> self.selected_session_name.fits
-                    # Compute the new filename depending on the extension
-                    if (ext == ".jpg" or ext == ".jpeg"):
+                    # Rename rules:
+                    #  • First JPG  → stacked.jpg
+                    #  • First PNG  → stacked-16_{session}.png
+                    #  • First FITS → stacked-16_{session}.fits
+                    #  • URL FITS with suffix → stacked-16_{session}__{suffix}.fits
+                    #  • Subsequent local FITS → keep original filename
+                    url_suffix = file_info.get("url_suffix", "")
+                    is_first = file_info.get("is_first_of_type", False)
+
+                    if ext in (".jpg", ".jpeg"):
                         new_filename = "stacked.jpg"
-
                     elif ext == ".png":
-                        new_filename = f"stacked-16_{self.selected_session_name}.png"
-
-                    elif ext == ".fits":
-                        new_filename = f"stacked-16_{self.selected_session_name}.fits"
-
+                        if is_first:
+                            new_filename = f"stacked-16_{self.selected_session_name}.png"
+                        else:
+                            new_filename = filename
+                    elif ext in (".fits", ".fit", ".fts"):
+                        if url_suffix:
+                            # Stellar Studio URL download with chosen suffix
+                            new_filename = f"stacked-16_{self.selected_session_name}__{url_suffix}.fits"
+                        elif is_first:
+                            new_filename = f"stacked-16_{self.selected_session_name}.fits"
+                        else:
+                            # Keep original filename — user already named it meaningfully
+                            new_filename = filename
                     else:
-                        # Keep original name for unknown types
                         new_filename = filename
 
                     # Avoid overwriting existing files
@@ -1611,14 +1680,25 @@ class AddManualSession:
                     for file_info in self.client.storage.uploaded_files:
                         print(file_info)
                         src = file_info.get("path", "")
-                        ext = os.path.splitext(file_info.get("name", ""))[1].lower()
-                        if (ext == ".jpg" or ext == ".jpeg") and jpeg_path is None:
+                        orig_name = file_info.get("name", "")
+                        ext = os.path.splitext(orig_name)[1].lower()
+                        url_suffix = file_info.get("url_suffix", "")
+                        is_first = file_info.get("is_first_of_type", False)
+
+                        if ext in (".jpg", ".jpeg") and jpeg_path is None:
                             jpeg_path = os.path.join(dest_path, "stacked.jpg")
-                        elif ext == ".png" and stacked_png_path is None:
+                        elif ext == ".png" and stacked_png_path is None and is_first:
                             stacked_png_path = os.path.join(dest_path, f"stacked-16_{self.selected_session_name}.png")
-                        elif ext == ".fits" and stacked_fits_path is None:
-                            stacked_fits_path = os.path.join(dest_path, f"stacked-16_{self.selected_session_name}.fits")
-                            stacked_fits_md5 = compute_md5(stacked_fits_path)
+                        elif ext in (".fits", ".fit", ".fts") and stacked_fits_path is None:
+                            if url_suffix:
+                                _fname = f"stacked-16_{self.selected_session_name}__{url_suffix}.fits"
+                            elif is_first:
+                                _fname = f"stacked-16_{self.selected_session_name}.fits"
+                            else:
+                                _fname = orig_name
+                            stacked_fits_path = os.path.join(dest_path, _fname)
+                            if os.path.exists(stacked_fits_path):
+                                stacked_fits_md5 = compute_md5(stacked_fits_path)
                         if os.path.exists(src):
                             total_size += os.path.getsize(src)
                             file_mtime = int(os.path.getmtime(src))
@@ -1688,64 +1768,24 @@ class AddManualSession:
                             astro_group_id    = astro_group_id,
                             manual_session_drive_id = manual_session_drive_id,
                         )
-
-                        # 4. Write shotsInfo.json into the session folder.
-                        # Stores stable string identifiers so rebuild_manual_session_entries
-                        # can reconstruct ManualSessionEntry without relying on DB integer ids.
-                        try:
-                            # Resolve the BackupEntry.session_dir from the lookup
-                            backup_session_dir = None
-                            if session_id and session_id in self.session_name_lookup:
-                                backup_session_dir = self.session_name_lookup[session_id][0]
-
-                            # The backup_drive_location for the rebuild anchor must be
-                            # the drive that *hosts* the manual session files — i.e. the
-                            # drive whose location is a prefix of manualsession_dir.
-                            # This may differ from self.backup_location (the Dwarf backup
-                            # drive the original session came from).
-                            # Find which BackupDrive hosts manualsession_dir
-                            # (may differ from the Dwarf backup drive)
-                            msd_drive_location = self.backup_location  # sensible default
-                            dest_norm = os.path.normpath(self.input_dest_dir.value)
-                            try:
-                                _cur = self.conn.cursor()
-                                _cur.execute(
-                                    "SELECT location FROM BackupDrive "
-                                    "WHERE location IS NOT NULL "
-                                    "ORDER BY LENGTH(location) DESC"
-                                )
-                                for (_bloc,) in _cur.fetchall():
-                                    # Add separator so DWARF_MINI doesn't match
-                                    # DWARF_MINI_NEW paths
-                                    norm_bloc = os.path.normpath(_bloc) + os.sep
-                                    if dest_norm.startswith(norm_bloc):
-                                        msd_drive_location = _bloc
-                                        break
-                            except Exception:
-                                pass  # keep default
-
-                            shots_info = {
-                                "session_name":         session_name,
-                                "session_tag":          session_tag,
-                                "session_type":         session_type,
-                                "session_dir":          dest_path,
-                                "backup_drive_location": msd_drive_location,
-                                "manualsession_dir":    self.input_dest_dir.value,
-                                "dwarf_name":           self.dwarf_filter.value or "",
-                                "backup_session_dir":   backup_session_dir or "",
-                                "session_date":         session_dt_str,
-                                "dec":                  dec  or "",
-                                "ra":                   ra   or "",
-                                "description":          description or "",
-                            }
-                            shots_path = os.path.join(dest_path, "shotsInfo.json")
-                            with open(shots_path, "w", encoding="utf-8") as f:
-                                json.dump(shots_info, f, indent=2, ensure_ascii=False)
-                            print(f"[INFO] shotsInfo.json written to {shots_path}")
-                        except Exception as json_err:
-                            print(f"[WARN] Could not write shotsInfo.json: {json_err}")
-
                         ui.notify("✅ Session registered in database.", type="positive")
+
+                        # Show "View Session" button linking to ManualExplore
+                        import urllib.parse
+                        _params = {"SessionId": manual_session_id}
+                        if self.BackupDriveId:
+                            _params["BackupDriveId"] = self.BackupDriveId
+                        if self.DwarfId:
+                            _params["DwarfId"] = self.DwarfId
+                        _back = urllib.parse.quote(
+                            f"/ManualSession?ManualEntryId={manual_session_id}", safe=""
+                        )
+                        _params["back_url"] = _back
+                        _explore_url = "/ManualExplore/?" + urllib.parse.urlencode(_params)
+                        self.view_session_button.set_text("🔭 View Session in Explore")
+                        self.view_session_button.on("click", lambda u=_explore_url: ui.navigate.to(u))
+                        self.view_session_button.visible = True
+
                         # In edit mode, refresh the existing-files panel to show the
                         # newly copied files alongside any that were kept.
                         if self.edit_mode and manual_session_id:

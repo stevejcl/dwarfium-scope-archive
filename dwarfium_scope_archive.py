@@ -26,6 +26,7 @@ import pages.dwarf_add_manual_session
 import pages.dwarf_backup_ui_manual_explore
 import pages.dwarf_dso_catalog
 import pages.astro_settings
+import pages.dwarf_backup_ui_dark_library
 
 from api.image_preview import serve_preview
 from api.dwarf_backup_db import DB_NAME, start_db, close_db

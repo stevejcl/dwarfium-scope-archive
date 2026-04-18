@@ -26,23 +26,28 @@ def menu(title):
 
         #ui.button('Dwarf Connect').classes('text-sm')
 
-        with ui.button(icon='menu').classes('text-sm ml-auto'):
-            with ui.menu():
+        with ui.button(icon='menu').classes('h-full text-sm ml-auto'):
+            with ui.menu().style('max-height: 90vh; overflow-y: auto;'):
                 ui.menu_item('Home', on_click=lambda: ui.navigate.to('/'))
+                ui.separator()
                 ui.menu_item('Dwarfs Settings', on_click=lambda: ui.navigate.to('/Dwarf'))
                 ui.menu_item('Backup Setting', on_click=lambda: ui.navigate.to('/Backup'))
+                ui.menu_item('Dark Library', on_click=lambda: ui.navigate.to('/DarkLibrary'))
+                ui.separator()
                 ui.menu_item('Explore', on_click=lambda: ui.navigate.to('/Explore'))
+                ui.menu_item('Manual Sessions', on_click=lambda: ui.navigate.to('/ManualExplore'))
+                ui.separator()
                 ui.menu_item('Transfer', on_click=lambda: ui.navigate.to('/Transfer'))
-#                ui.menu_item('USB Transfer', on_click=lambda: ui.navigate.to('/TransferUSB'))
-                ui.menu_item('Mosaics', on_click=lambda: ui.navigate.to('/Mosaic'))
                 ui.menu_item('Add Session', on_click=lambda: ui.navigate.to('/AddManualSession'))
-                ui.menu_item('Show Session', on_click=lambda: ui.navigate.to('/ManualExplore'))
+                ui.menu_item('Mosaics', on_click=lambda: ui.navigate.to('/Mosaic'))
+                ui.separator()
                 ui.menu_item('MtpDevice', on_click=lambda: ui.navigate.to('/MtpDevice'))
                 ui.menu_item('Catalog', on_click=lambda: ui.navigate.to('/Catalog'))
                 ui.menu_item('Settings', on_click=lambda: ui.navigate.to('/Settings'))
-                ui.menu_item('Dark Mode', on_click=lambda: dark_mode())
-                ui.menu_item('Light Mode', on_click=lambda: light_mode())
-                ui.menu_item('Help', on_click=open_help)
+                ui.separator()
+                ui.menu_item('🌙 Dark Mode', on_click=lambda: dark_mode())
+                ui.menu_item('☀️ Light Mode', on_click=lambda: light_mode())
+                ui.menu_item('❓ Help', on_click=open_help)
     setStyle()
 
 def dark_mode():

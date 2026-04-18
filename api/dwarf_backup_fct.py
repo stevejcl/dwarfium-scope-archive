@@ -1501,6 +1501,17 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     print_log("\n✅ Sync complete.", log)
     safe_print("\nSync complete.")
 
+def count_session_fits_files(directory):
+    try:
+        return sum(
+            1 for f in os.listdir(directory)
+            if f.endswith('.fits')
+        )
+    except Exception as e:
+        safe_print(f"Could not access {directory}: {e}")
+        return 0
+
+
 def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None):
     if not db_name:
         print_log(f"❌ database name can not be empty!",log)
@@ -1538,8 +1549,9 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     total_added = 0
     deleted = 0
 
+    skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed"}
     for astro_dir in os.listdir(data_root):
-        if astro_dir == "Archive":
+        if astro_dir in skip_dirs:
             safe_print(f"Skip: {astro_dir}")
             continue
 

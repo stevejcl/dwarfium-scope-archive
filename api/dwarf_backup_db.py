@@ -157,6 +157,19 @@ def create_Settings_sql():
         )
         """
 
+def create_DarkLibrary_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS DarkLibrary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            location TEXT UNIQUE,
+            backup_drive_id INTEGER,
+            last_scan_date DATETIME,
+            FOREIGN KEY (backup_drive_id) REFERENCES BackupDrive(id) ON DELETE SET NULL
+        )
+        """
+
+
 def create_ManualSessionDrive_sql():
     return """
         CREATE TABLE IF NOT EXISTS ManualSessionDrive (
@@ -231,10 +244,17 @@ SCHEMAS = {
     "BackupDrive": create_BackupDrive_sql,
     "BackupEntry": create_BackupEntry_sql,
     "Settings": create_Settings_sql,
+    "DarkLibrary": create_DarkLibrary_sql,
     "ManualSessionDrive": create_ManualSessionDrive_sql,
     "ManualSession": create_ManualSession_sql,
     "ManualSessionEntry": create_ManualSessionEntry_sql,
 }
+
+# Sanity check — catch wrong mappings at import time, not at runtime
+assert SCHEMAS["AstroObject"] is create_AstroObject_sql, (
+    "SCHEMAS['AstroObject'] must be create_AstroObject_sql — "
+    "do not map it to create_DwarfData_sql"
+)
   
 def start_db(database: str = DB_NAME):
     try:
@@ -326,6 +346,12 @@ def init_db(conn):
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_dwarfentry_astro_group_id ON DwarfEntry(astro_group_id);
+        """)
+
+        # Create table for Dark Library
+        cursor.execute(create_DarkLibrary_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_darklibrary_backup_drive_id ON DarkLibrary(backup_drive_id);
         """)
 
         # Create table for Manual Session Drive
@@ -580,12 +606,28 @@ def migrate_v5(conn):
         return []
 
 
+def migrate_v6(conn):
+    try:
+        print("Migrating Database to V6...")
+        cursor = conn.cursor()
+        cursor.execute(create_DarkLibrary_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_darklibrary_backup_drive_id ON DarkLibrary(backup_drive_id);
+        """)
+        conn.commit()
+        print("Migration v6 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v6: {e}")
+        return []
+
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
     3: migrate_v3,
-#    4: migrate_v4, has been removed
-    5: migrate_v5
+#   4: migrate_v4,  removed
+    5: migrate_v5,
+    6: migrate_v6,
     # Add more later...
 }
 

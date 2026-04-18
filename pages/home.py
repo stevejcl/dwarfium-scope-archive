@@ -4,9 +4,9 @@ import os
 import subprocess
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import ensure_dwarf_local_path, get_dwarf_favorites, get_backup_favorites
+from api.dwarf_backup_db_api import ensure_dwarf_local_path, get_dwarf_favorites, get_backup_favorites, get_manual_favorites
 
-from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session
+from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session, get_root_manual_session_dir
 
 from api.image_preview import set_base_folder, build_preview_url
 
@@ -95,6 +95,42 @@ class HomeApp:
                     "file_path": full_path,
                     "base_folder": base_folder
                 })
+        # ── Manual Session favorites ──────────────────────────────────────────
+        for row in get_manual_favorites(self.conn):
+            # [0]id [1]date [2]session_name [3]jpeg_path [4]dwarf [5]drive_name
+            # [6]location [7]description [8]session_dir [9]session_type
+            session_date = row[1]
+            session_name = row[2]
+            jpeg_path    = row[3]
+            dwarf_name   = row[4]
+            location     = row[6]
+            description  = row[7]
+            session_dir  = row[8]
+            session_type = row[9]
+
+            if not jpeg_path:
+                continue
+            # Resolve full path
+            full_path = os.path.join(session_dir, os.path.basename(jpeg_path))
+            if not os.path.exists(full_path):
+                continue
+
+            base_folder = get_root_manual_session_dir( session_dir, jpeg_path)
+            set_base_folder(base_folder)
+            url = build_preview_url(jpeg_path)
+
+            label = description or session_name or "Manual Session"
+            type_icon = "🖼️" if session_type else "📷"
+            image_data.append({
+                "url":          url,
+                "object_name":  f"{type_icon} {label}",
+                "dwarf_name":   f"🔭 {dwarf_name}" if dwarf_name else "Manual",
+                "session_date": f"📅 {show_date_session(session_date)}" if session_date else "",
+                "file_path":    full_path,
+                "base_folder":  base_folder,
+                "source":       "manual",
+            })
+
         close_db(self.conn)
 
         # UI - Slideshow

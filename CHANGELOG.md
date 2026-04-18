@@ -1,5 +1,16 @@
 # Changelog
 
+## [V3.0.7] - 2026-04-18
+
+### Add 
+    Add DarkLibrary Management
+    Add API functions to list/create/delete DarkLibrary entries, scan CALI_FRAME folders
+    Find matching darks (by exp/gain/bin/temp), locate bias/flat files, for Explore Page
+    Generate Siril_session.json payloads that include matched calibration files.
+    This json can be used with Dwarfium Archive Selector script in Siril
+    Refactor manual session code paths: 
+    Add Manual Sessions Favorite Image to Home Page
+
 ## [V3.0.6] - 2026-04-17
 
 ### Add 

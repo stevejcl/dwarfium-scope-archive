@@ -47,9 +47,11 @@ class SettingsApp:
     def build_ui(self):
         self.conn = connect_db(self.database)
 
-        ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-2xl font-bold mt-4")
+        with ui.column().classes("w-full max-w-2xl mx-auto gap-4 mt-4"):
 
-        with ui.card().classes("p-4 w-[600px]") as info_dwarf_local:
+         ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
+
+         with ui.card().classes("w-full p-4") as info_dwarf_local:
             current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
             self.path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
             if current_path == "Not Defined":
@@ -71,12 +73,11 @@ class SettingsApp:
 
             ui.button("Save", on_click=save_path).classes("mt-4")
      
-        ui.label("🔭 Configuration of NOVA Astrometry").classes("text-2xl font-bold mt-4")
+         ui.label("🔭 Configuration of NOVA Astrometry").classes("text-xl font-bold")
 
-        system = platform.system()
-        ui.label(f"Detected System : {system}")
+         ui.label(f"Detected System : {platform.system()}")
 
-        with ui.card():
+         with ui.card().classes("w-full"):
             ui.label("🌐 Online mode (Astrometry.net)")
             ui.button("Create an API key on Astrometry.net",
                       on_click=lambda: ui.open('https://nova.astrometry.net/api_help'))
@@ -89,7 +90,7 @@ class SettingsApp:
 
             ui.button("💾 Save key", on_click=save_api_key)
 
-        with ui.card():
+         with ui.card().classes("w-full"):
             ui.label("💻 Local Mode (solve-field)")
 
             if self.check_solve_field():
@@ -98,9 +99,8 @@ class SettingsApp:
                 ui.label("❌ solve-field not found.")
                 ui.button("Install solve-field localy", on_click=self.install_local_astrometry)
 
-        with ui.card():
-            # astro_settings.py
-            ui.label("🔭 Mosaic & Stitch Parameters").classes("text-2xl font-bold mt-4")
+         with ui.card().classes("w-full"):
+            ui.label("🔭 Mosaic & Stitch Parameters").classes("text-xl font-bold")
             StitchParamsEditor(self.conn)  # no on_change → Save button
 
         if not self.InitDwarfLocal:

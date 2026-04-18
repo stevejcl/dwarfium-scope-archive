@@ -25,16 +25,25 @@ def build_help():
 
     path = ui.context.client.page.path
 
-    data = help_content.get(path, {
+    # Try exact match first, then strip/add trailing slash
+    data = help_content.get(path) or help_content.get(path.rstrip('/')) or help_content.get(path + '/') or {
         'title': 'Help',
         'content': 'No help available for this page.'
-    })
+    }
 
     help_drawer.clear()
     with help_drawer:
-        ui.label(data['title']).classes('text-h6')
+        ui.label(data['title']).classes('text-subtitle1 font-bold')
         ui.separator()
-        ui.markdown(data['content'])
+        ui.markdown(data['content']).style('font-size: 1.5rem; line-height: 1.5;').classes('help-content')
+
+    ui.add_css("""
+        .help-content h1, .help-content h2 { font-size: 1rem !important; font-weight: 600; margin: 0.6rem 0 0.3rem; }
+        .help-content h3 { font-size: 0.9rem !important; font-weight: 600; margin: 0.5rem 0 0.2rem; }
+        .help-content p, .help-content li { font-size: 0.85rem; }
+        .help-content ul, .help-content ol { padding-left: 1.2rem; }
+        .help-content pre, .help-content code { white-space: pre-wrap; word-break: break-all; font-size: 0.78rem; }
+    """)
 
 def open_help():
     global help_drawer

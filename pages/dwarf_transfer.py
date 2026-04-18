@@ -28,6 +28,7 @@ async def transfer_page(
     back_url: str = None,
     src_override: str = None,   # pre-filled source dir (e.g. repaired Mosaic temp dir)
     src_root: str = None,       # browsing constraint root (must be inside backup dir)
+    dest_override: str = None,  # force destination to this path (e.g. CALI_FRAME dir)
 ):
     menu("Session Transfer")
     await ui.context.client.connected()
@@ -42,11 +43,12 @@ async def transfer_page(
         BackUrl=back_url,
         SrcOverride=src_override,
         SrcRoot=src_root,
+        DestOverride=dest_override,
     )
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class TransferApp:
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None, DestOverride=None):
         self.client = client
         self.mode = Mode  # "Archive" | "Restore" | "Repair" | "Merge"
         self.database = database
@@ -63,8 +65,10 @@ class TransferApp:
         self.BackUrl = BackUrl
 
         # Repair mode: pre-filled source and browsing constraint
-        self.src_override = SrcOverride  # e.g. "D:\Backup\temp_mosaic\SESSION_NAME"
-        self.src_root     = SrcRoot      # e.g. "D:\Backup" — folder picker stays inside here
+        self.src_override  = SrcOverride   # e.g. "D:\Backup\temp_mosaic\SESSION_NAME"
+        self.src_root      = SrcRoot       # e.g. "D:\Backup" — folder picker stays inside here
+        # Dark library download: force destination to CALI_FRAME dir (locked)
+        self.dest_override = DestOverride  # e.g. "X:\DWARF_MINI_NEW\CALI_FRAME"
 
         self.src_dir = '' # 'G:\\Astronomy\\DWARF_RAW_WIDE_C 20_EXP_15_GAIN_80_2025-04-28-04-21-24-416'
         self.dest_dir = '' # 'T:\\DWARFLAB_2\\DATA4\\DATA_OBJECTS\\NGC7000_North_American_Nebula'
@@ -83,7 +87,13 @@ class TransferApp:
     def set_mode_UI(self):
 
         if self.mode == "Archive":
-            if self.transfert_mode_select.value == "FTP":
+            if self.dest_override:
+                if self.transfert_mode_select.value == "FTP":
+                    self.SourceDirectory.set_text("Source: Dwarf CALI_FRAME (FTP)")
+                else:
+                    self.SourceDirectory.set_text("Source: Dwarf CALI_FRAME")
+                self.DestinationDirectory.set_text(f"Destination: Backup Drive → {os.path.basename(self.dest_override)}")
+            elif self.transfert_mode_select.value == "FTP":
                 self.SourceDirectory.set_text(f"Source: Dwarf Drive (FTP){MULTI_SESSION if self.MultiSession else ''}")
                 self.DestinationDirectory.set_text("Destination: Backup Drive")
             else:
@@ -358,6 +368,21 @@ class TransferApp:
             return
 
         if self.mode == "Archive":
+            # Dark download mode: force source to CALI_FRAME on the Dwarf
+            if self.dest_override:
+                if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
+                    base_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
+                    if base_dir:
+                        cali_ftp = "/".join([base_dir.rstrip("/"), "CALI_FRAME"])
+                        self.ftp_dwarf_dir = cali_ftp
+                        self.input_src_dir.set_options([cali_ftp], value=cali_ftp)
+                        self.src_main_dir = cali_ftp
+                else:
+                    cali_usb = os.path.join(self.dwarf_astroDir, "CALI_FRAME")
+                    self.input_src_dir.set_options([cali_usb], value=cali_usb)
+                    self.src_main_dir = cali_usb
+                return
+
             if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
                 if self.DwarfId_Init == self.DwarfId and self.session:
                     base_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
@@ -536,8 +561,14 @@ class TransferApp:
             self.backup_status_label.text = ""
 
         if self.mode == "Archive":
-            self.input_dest_dir.set_options([self.backup_path], value = self.backup_path)
-            self.dest_main_dir = self.backup_path
+            if self.dest_override:
+                # dest_override is the starting point (e.g. BackupDrive root for dark downloads)
+                # user can still navigate freely within it
+                self.input_dest_dir.set_options([self.dest_override], value=self.dest_override)
+                self.dest_main_dir = self.dest_override
+            else:
+                self.input_dest_dir.set_options([self.backup_path], value=self.backup_path)
+                self.dest_main_dir = self.backup_path
         else:
             # case self.BackupId_Init
             print(f"case self.BackupId_Init : {self.BackupId_Init}-{self.BackupId}-{self.session}")
@@ -758,6 +789,12 @@ class TransferApp:
         isFullBackup = (src_dir == self.src_main_dir)
         if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
             isFullBackup = (src_dir == get_ftp_astroDir(self.dwarf_ip_sta_mode))
+
+        # Dark download mode: always non-full-backup so CALI_FRAME is created
+        # as a subfolder inside the chosen destination.
+        if self.dest_override:
+            isFullBackup = False
+
         print(f" is Full Backup task:  {isFullBackup}")
 
         if self.mode != "Archive" and self.transfert_mode_select.value == "FTP":
@@ -849,6 +886,10 @@ class TransferApp:
         if result:
             self.progress_label.set_text(f"End of Backup")
             ui.notify("✅ Backup complete and verified!")
+
+            # Dark download mode: just a file copy — no session scan needed
+            if self.dest_override:
+                return result
 
             if not is_multi : 
                 with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
@@ -1117,6 +1158,9 @@ class TransferApp:
         return result
 
     def get_explore_url(self):
+        if self.BackUrl and self.BackUrl != "/Mosaic":
+            # Generic back URL — use it directly (e.g. /DarkLibrary?LibraryId=1)
+            return self.BackUrl
         if self.BackUrl == "/Mosaic":
             explore_url = f"{self.BackUrl}?"
             explore_url_data = ""

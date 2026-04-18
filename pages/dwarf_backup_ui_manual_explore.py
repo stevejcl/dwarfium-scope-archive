@@ -48,7 +48,8 @@ from api.dwarf_backup_fct import (
     check_files,
     get_name_object,
     get_session_file_ref,
-    get_root_manual_session_dir
+    get_root_manual_session_dir,
+    count_session_fits_files,
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
@@ -244,6 +245,8 @@ class ManualExploreApp:
                                 .props('flat round dense')
                                 .bind_visibility_from(self.object_filter, 'value', lambda v: bool(v))
                             )
+                        self.loading_spinner = ui.spinner(size='lg').classes('m-4')
+                        self.loading_spinner.visible = False
                         self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
 
                 # ---- RIGHT COLUMN: session selector + detail panel --------
@@ -383,7 +386,15 @@ class ManualExploreApp:
     # -----------------------------------------------------------------------
 
     def load_objects(self):
-        ui.run_javascript("document.body.style.cursor='wait'")
+        """Show spinner via JS immediately, then defer DB work to next tick."""
+        # Use JavaScript to show the spinner instantly — Python's event loop
+        # won't paint a visibility change before the synchronous work starts.
+        ui.run_javascript(f"""
+            const el = document.getElementById('{self.loading_spinner.id}');
+            if (el) el.style.display = 'block';
+            const list = document.getElementById('{self.object_list.id}');
+            if (list) list.innerHTML = '';
+        """)
         ui.timer(0.05, self._load_objects_work, once=True)
 
     def _load_objects_work(self):
@@ -408,7 +419,13 @@ class ManualExploreApp:
         self.selected_object_description = None
         self.selected_object_is_group    = False
         self.load_objects_ui()
-        ui.run_javascript("document.body.style.cursor='default'")
+
+        if self.loading_spinner:
+            self.loading_spinner.visible = False
+            ui.run_javascript(f"""
+                const el = document.getElementById('{self.loading_spinner.id}');
+                if (el) el.style.display = 'none';
+            """)
 
         # Auto-select a specific session if SessionId was passed in the URL
         if not self.AutoSelection_done and self.SessionId:
@@ -612,19 +629,13 @@ class ManualExploreApp:
 
         self.object_list.update()
         ui.update()
-        ui.run_javascript("document.body.style.cursor='default'")
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
-        ui.run_javascript("document.body.style.cursor='wait'")
         self.selected_object             = name
         self.selected_object_description = desc
         self.selected_object_is_group    = is_group
-        ui.timer(0.05, lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id), once=True)
-
-    def _handle_object_click_work(self, oid, dso_id, is_group, session_id = None):
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
-        ui.run_javascript("document.body.style.cursor='default'")
 
     # -----------------------------------------------------------------------
     # Session selection
@@ -848,10 +859,16 @@ class ManualExploreApp:
                 ui.item(temp_str).classes('text-sky-700')
 
             ui.separator()
+            # --- FITS file count for this session ---
+            if session_dir and os.path.isdir(session_dir):
+                fits_count = count_session_fits_files(session_dir)
+                if fits_count > 0:
+                    ui.item(f"🔭 {fits_count} FITS file(s) in session folder").classes('text-indigo-500')
+
             # --- Gallery: scan the whole current object for images (not just this session) ---
             if len(self.gallery_image_data) > 1:
                 ui.label(f'📦 {len(self.gallery_image_data)} images found').classes('text-lg m-4')
-                
+
             ui.button("🖼️ Show Gallery", on_click=lambda: self.show_gallery()).classes("m-4")
 
             ui.item(f"🔭 Dwarf: {dwarf_name}").classes('text-gray-600')
