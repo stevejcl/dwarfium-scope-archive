@@ -1,3 +1,4 @@
+import urllib.parse
 import webview
 from nicegui import native, app, run, ui
 import os
@@ -120,7 +121,7 @@ class ConfigApp:
                         ui.item_label('Last Scan on:').props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
                         self.dwarf_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
 
-            # ── Bottom: action buttons centered ───────────────────────────────
+            # ── Bottom: action buttons ────────────────────────────────────────
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
                 ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
@@ -534,7 +535,7 @@ class ConfigApp:
  
     def get_explore_url(self):
         if self.dwarf_id:
-            back_url = f"/Dwarf?DwarfId="
+            back_url = urllib.parse.quote(f"/Dwarf?DwarfId=", safe='')
             explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode=dwarf&back_url={back_url}"
         else:
             explore_url = f"/Explore?mode=dwarf"

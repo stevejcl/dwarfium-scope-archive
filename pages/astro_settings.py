@@ -35,14 +35,22 @@ class SettingsApp:
         else:
             folder_mode = webview.FOLDER_DIALOG
 
-        if self.path_input.value:
-            full_path = os.path.abspath(self.path_input.value)
-            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=full_path)
-            if folder:
-                folder = os.path.normpath(folder[0])
-                self.path_input.set_value(folder)
-            else:
-                self.path_input.set_value("Not Defined")
+        # Use current value as starting dir only if it's a real existing directory
+        current = self.path_input.value.strip()
+        if current and current != "Not Defined" and os.path.isdir(current):
+            start_dir = current
+        else:
+            # Fallback: create a dedicated subfolder in the user's home
+            default_dir = os.path.join(os.path.expanduser("~"), "DwarfiumArchive")
+            os.makedirs(default_dir, exist_ok=True)
+            start_dir = default_dir
+
+        folder = await app.native.main_window.create_file_dialog(
+            folder_mode, allow_multiple=False, directory=start_dir
+        )
+        if folder:
+            self.path_input.set_value(os.path.normpath(folder[0]))
+        # If cancelled, leave current value unchanged
 
     def build_ui(self):
         self.conn = connect_db(self.database)
@@ -54,6 +62,12 @@ class SettingsApp:
          with ui.card().classes("w-full p-4") as info_dwarf_local:
             current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
             self.path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
+            ui.label(
+                "⚠️ This folder stores a local index of your sessions — stacked results only "
+                "(FITS, PNG, JPG) not the individual raw frames. "
+                "Depending on the number of sessions this can still reach 10 GB or more. "
+                "Choose a drive with enough free space."
+            ).classes("text-sm text-orange-600 mt-2")
             if current_path == "Not Defined":
                 ui.notify('Select a directory to store Dwarf data locally for offline use.', type='warning')
                 current_path = "."
@@ -129,4 +143,3 @@ class SettingsApp:
             subprocess.Popen(["bash", "extern/linux/astrometry/install_astrometry.sh"])
         else:
             ui.notify("Installation automatique non supportée pour ce système.", type='warning')
-

@@ -130,7 +130,8 @@ class AddManualSession:
         # When ManualEntryId is set the page opens an existing ManualSession for update.
         # The existing files on disk are listed so the user can delete or replace them
         # before re-importing.
-        self.BackUrl = BackUrl
+        import urllib.parse as _up
+        self.BackUrl = _up.unquote(BackUrl) if BackUrl else BackUrl
         self.ManualEntryId = ManualEntryId
         self.edit_mode = ManualEntryId is not None
         self.existing_session_row = None   # row from get_ManualSession_by_entry_id

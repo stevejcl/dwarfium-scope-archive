@@ -42,7 +42,7 @@ class HomeApp:
         self.gallery_timer = None
         # Check settings and handle directory setup
         if not ensure_dwarf_local_path(self.conn):
-            ui.navigate.to(f"/Settings?InitDwarfLocal={False}")
+            ui.timer(0.1, lambda: ui.navigate.to("/Settings?InitDwarfLocal=False"), once=True)
             return
         self.build_ui()
 
@@ -111,23 +111,34 @@ class HomeApp:
             if not jpeg_path:
                 continue
             # Resolve full path
-            full_path = os.path.join(session_dir, os.path.basename(jpeg_path))
+            if os.path.isabs(jpeg_path):
+                full_path = jpeg_path
+            else:
+                full_path = os.path.join(session_dir, jpeg_path) if session_dir else jpeg_path
+            if not os.path.exists(full_path) and location:
+                full_path = os.path.join(location, jpeg_path)
             if not os.path.exists(full_path):
                 continue
 
-            base_folder = get_root_manual_session_dir( session_dir, jpeg_path)
-            set_base_folder(base_folder)
-            url = build_preview_url(jpeg_path)
+            # Use same logic as ManualExplore: base_folder via get_root_manual_session_dir
+            # jpeg_path may be relative (e.g. "stacked.jpg") or absolute
+            if os.path.isabs(jpeg_path):
+                image_path_for_url = os.path.basename(jpeg_path)
+                base_folder = get_root_manual_session_dir(os.path.dirname(full_path), image_path_for_url)
+            else:
+                image_path_for_url = jpeg_path
+                base_folder = get_root_manual_session_dir(session_dir or os.path.dirname(full_path), jpeg_path)
 
+            url_path = build_preview_url(image_path_for_url)
             label = description or session_name or "Manual Session"
             type_icon = "🖼️" if session_type else "📷"
             image_data.append({
-                "url":          url,
+                "url":          url_path,
                 "object_name":  f"{type_icon} {label}",
                 "dwarf_name":   f"🔭 {dwarf_name}" if dwarf_name else "Manual",
                 "session_date": f"📅 {show_date_session(session_date)}" if session_date else "",
                 "file_path":    full_path,
-                "base_folder":  base_folder,
+                "base_folder":  str(base_folder),
                 "source":       "manual",
             })
 

@@ -84,7 +84,7 @@ def ensure_dwarf_local_path(conn: sqlite3.Connection):
     row = cursor.fetchone()
 
     if row is None:
-        # Try to auto-detect old folder
+        # Try to auto-detect old folder next to the app
         default_path = os.path.abspath("./Dwarf_Local")
         if os.path.isdir(default_path):
             cursor.execute(
@@ -99,12 +99,22 @@ def ensure_dwarf_local_path(conn: sqlite3.Connection):
             return False
 
     value = row[0]
-    if not value:
+    if not value or value == "Not Defined":
         return False
 
-    # Check the path exists
-    if not os.path.isdir(os.path.join(value, "Dwarf_Local")):
+    # Parent directory must exist
+    if not os.path.isdir(value):
         return False
+
+    # Auto-create the Dwarf_Local subfolder if parent exists but subdir doesn't
+    dwarf_local = os.path.join(value, "Dwarf_Local")
+    if not os.path.isdir(dwarf_local):
+        try:
+            os.makedirs(dwarf_local, exist_ok=True)
+            print(f"[INFO] Created Dwarf_Local at {dwarf_local}")
+        except Exception as e:
+            print(f"[ERROR] Could not create Dwarf_Local: {e}")
+            return False
 
     return True
 

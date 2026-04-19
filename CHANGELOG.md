@@ -1,5 +1,23 @@
 # Changelog
 
+## [V3.0.8] - 2026-04-19
+
+### Add 
+    Informs the User for the DWARF LOCAL directory : warning about size
+    Add a No Backup Button to redirect the User to Backup Page
+    Then add a Dialog to go the Dwarf Explore Page with the option selected to Backup a session
+    Remove All DWARFS / ALL BACKUPS if only one choice to see the checbox directly.
+    Correction for The Back URL corruption : using URL Encode the BACKURL to avoid problem
+    Use ui.context.client.layout for Dialog with long process to avoid User Interraction before the dialog is shown
+    Add Alert Message in Transfert Page to avoid closing the Transfert Page
+
+### BugFix# 
+    Fresh DB Install forgets Settings table
+    Fresh DB Install runs Migration => corrected by bypass and set to Last Version
+    Error When selecting a Dwarf Local Directory, Default was used
+    Error 404 to Backup a session in no Backup exists
+    Error In Explore Page BAD index For AUTO SELECTION For Manual Session Back URL
+
 ## [V3.0.7] - 2026-04-18
 
 ### Add 

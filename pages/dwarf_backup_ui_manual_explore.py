@@ -136,7 +136,8 @@ class ManualExploreApp:
         self.BackupDriveId     = BackupDriveId
         self.BackupDriveId_Init= BackupDriveId
         self.DwarfId           = DwarfId
-        self.BackUrl           = BackUrl
+        import urllib.parse as _up
+        self.BackUrl = _up.unquote(BackUrl) if BackUrl else BackUrl
         self.SessionId         = SessionId
 
         self.AutoSelection_done = False

@@ -1,5 +1,6 @@
 import webview
-from nicegui import ui, app, run, Client
+import asyncio
+from nicegui import ui, app, run, Client, background_tasks
 
 import os
 import shutil
@@ -81,6 +82,7 @@ class TransferApp:
         self.dwarf_type = None
         self.usb_available = False
         self.ftp_available = False
+        self._client_id = client.id
         self.build_ui()
         self.set_mode_UI()
 
@@ -215,6 +217,22 @@ class TransferApp:
             self.cancel_btn.visible = False
             self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup())
             self.cancel_backup = False
+            ui.label(
+                "⚠️ Do not close or navigate away from this window during a transfer — "
+                "the copy may be incomplete if interrupted."
+            ).classes("text-sm text-orange-500 mt-2")
+
+            # Background task progress panel — shown when a transfer is running
+            # and reconnects automatically when user returns to this page
+            ui.separator()
+            self.bg_status_label = ui.label("").classes("text-sm text-gray-500")
+            self.bg_progress = ui.linear_progress(value=0).classes("w-full")
+            self.bg_progress.visible = False
+            self.bg_status_label.visible = False
+
+            # Poll progress storage every second
+            self._progress_timer = ui.timer(1.0, self._poll_transfer_progress)
+            self._restore_transfer_state()
 
         self.populate_dwarf_filter()
         self.notify_me(None)
@@ -754,17 +772,15 @@ class TransferApp:
             if result_backup:
                 local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
                 if not local_Main_Dwarf_dir:
-                    label.text = "Error while synchronizing sessions!"
-                    spinner.visible = False
-                    ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
-
+                    self._safe_ui(lambda: ui.notify(f"❌ Error accessing local Dwarf Directory", type="negative"))
                 else:
-                    # Synchonization : only one dialog
-                    with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
-                        label = ui.label(self.ScanningMessage)
-                        spinner = ui.spinner(size="lg")
-                        log = ui.log(max_lines=40).classes('w-full').style('height: 600px')
-                        ui.button('Close', on_click=dialog.close)
+                    # Synchonization : only one dialog — created at root level
+                    with ui.context.client.layout:
+                        with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
+                            label = ui.label(self.ScanningMessage)
+                            spinner = ui.spinner(size="lg")
+                            log = ui.log(max_lines=40).classes('w-full').style('height: 600px')
+                            ui.button('Close', on_click=dialog.close)
                     dialog.open()  # show the dialog
 
                     for i, single_src in enumerate(all_src_dirs, 1):
@@ -863,11 +879,11 @@ class TransferApp:
             total_files = len(list_files)
 
         if total_files == 0:
-            self.progress_label.set_text("No files to copy.")
+            self._safe_ui(lambda: self.progress_label.set_text("No files to copy."))
             return True
         else:
-            self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files...")
-        ui.notify("Starting...")
+            self._safe_ui(lambda: self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files..."))
+        self._safe_ui(lambda: ui.notify("Starting..."))
 
         if self.mode == "Repair":
             transfer_mode = self.transfert_mode_select.value
@@ -884,43 +900,59 @@ class TransferApp:
         result = await self.copy_with_progress_async(list_files, self.progress, self.cancel_btn)
 
         if result:
-            self.progress_label.set_text(f"End of Backup")
-            ui.notify("✅ Backup complete and verified!")
+            self._safe_ui(lambda: self.progress_label.set_text("End of Backup"))
+            self._safe_ui(lambda: ui.notify("✅ Backup complete and verified!"))
 
             # Dark download mode: just a file copy — no session scan needed
             if self.dest_override:
                 return result
 
-            if not is_multi : 
-                with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
-                    label = ui.label(self.ScanningMessage)
-                    spinner = ui.spinner(size="lg")
-                    log = ui.log(max_lines=25).classes('w-full').style('height: 450px;')
-                    ui.button('Close', on_click=dialog.close)
-                dialog.open()  # show the dialog
-
-                try:
-                    # use sync_dwarf_sessions
-                    local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
-                    if not local_Main_Dwarf_dir:
-                        label.text = "Error while synchronizing sessions!"
-                        spinner.visible = False
-                        ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
-                    else:
-                        await  self.execute_sync_dwarf_sessions(src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner)
-                except Exception as e:
-                    label.text = "Error while synchronizing sessions!"
-                    spinner.visible = False
-                    ui.notify(f"❌ Error: {str(e)}", type="negative")
+            if not is_multi:
+                await self._execute_sync_with_optional_dialog(src_dir, dest_path, isFullBackup)
         else:
-            self.progress_label.set_text(f"Backup interrupted!")
+            self._safe_ui(lambda: self.progress_label.set_text("Backup interrupted!"))
 
         return result
 
+    async def _execute_sync_with_optional_dialog(self, src_dir, dest_path, isFullBackup):
+        """Run the post-copy scan — with dialog if page is still open, silently if not."""
+        local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
+        if not local_Main_Dwarf_dir:
+            self._safe_ui(lambda: ui.notify("❌ Error accessing local Dwarf Directory", type="negative"))
+            self._set_progress('error', 0, 0, error="No local Dwarf directory")
+            return
+
+        # Try to create the scan dialog at root level — survives page navigation
+        try:
+            with ui.context.client.layout:
+                with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
+                    label   = ui.label(self.ScanningMessage)
+                    spinner = ui.spinner(size="lg")
+                    log     = ui.log(max_lines=25).classes('w-full').style('height: 450px;')
+                    ui.button('Close', on_click=dialog.close)
+            dialog.open()
+            await self.execute_sync_dwarf_sessions(src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner)
+        except RuntimeError:
+            # Page was navigated away — run scan silently without any UI
+            print("[Transfer] Page gone — running post-copy scan silently")
+            try:
+                await self.execute_sync_dwarf_sessions(src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup,
+                                                       label=None, log=None, spinner=None)
+            except Exception as e:
+                print(f"[Transfer] Silent scan error: {e}")
+
     async def execute_sync_dwarf_sessions(self, src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner):
 
+        def _ui(fn):
+            """Call UI function only if label/spinner exist (page may be gone)."""
+            try:
+                if fn: fn()
+            except Exception:
+                pass
+
         try:
-            ui.notify("Starting Local Sync ...")
+            _ui(lambda: ui.notify("Starting Local Sync ..."))
+            self._set_progress('scanning', 0, 0, current_file="🔄 Syncing session files...")
             session_name = ""
             dir_parent_session = ""
             dir_backup_session = ""
@@ -955,7 +987,8 @@ class TransferApp:
             # if session is a RESTACKED one will be copied in RESTACKED dir by sync_dwarf_sessions
             await run.io_bound (sync_dwarf_sessions, self.DwarfId, dir_parent_session, local_Main_Dwarf_dir,session_name,log)
 
-            ui.notify("Starting Analysis ...")
+            _ui(lambda: ui.notify("Starting Analysis ..."))
+            self._set_progress('scanning', 0, 0, current_file="🔍 Analysing backup drive...")
 
             local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.DwarfId)
             local_Dwarf_session = ""
@@ -974,23 +1007,108 @@ class TransferApp:
             # In Repair mode the backup drive is unchanged — skip backup scan
             if self.mode != "Repair" and self.mode != "Merge" and dir_backup_session is not None:
                 total_backup, deleted_backup, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
-                ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+                _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive"))
                 if rebuild_result["rebuilt"] > 0:
-                    ui.notify(f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked.", type="positive")
+                    _ui(lambda: ui.notify(f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked.", type="positive"))
                 if rebuild_result["skipped"] > 0:
-                    ui.notify(f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched.", type="warning", timeout=8000)
+                    _ui(lambda: ui.notify(f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched.", type="warning", timeout=8000))
             else:
                 total_backup, deleted_backup, rebuild_result = 0, 0, {"rebuilt": 0, "skipped": 0, "errors": 0}
 
-            spinner.visible = False
-            label.text = self.EndScanningMessage
-            ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive")
-            ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+            _ui(lambda: setattr(spinner, "visible", False) if spinner else None)
+            _ui(lambda: setattr(label, "text", self.EndScanningMessage) if label else None)
+            _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive"))
+            _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive"))
+            self._set_progress('done', 0, 0, current_file=f"✅ {total_dwarf} dwarf + {total_backup} backup sessions indexed")
 
         except Exception as e:
-            spinner.visible = False
-            ui.notify(f"❌ Error: {str(e)}", type="negative")
+            _ui(lambda: setattr(spinner, "visible", False) if spinner else None)
+            _ui(lambda: ui.notify(f"❌ Error: {str(e)}", type="negative"))
+            self._set_progress('error', 0, 0, error=str(e))
 
+
+    # ── Background transfer progress ──────────────────────────────────────────
+
+    def _set_progress(self, status, copied, total, current_file="", error=""):
+        """Write progress to general storage only — UI is updated by the polling timer."""
+        data = {
+            'status':       status,
+            'copied':       copied,
+            'total':        total,
+            'current_file': current_file,
+            'error':        error,
+        }
+        key = f'transfer_progress_{self._client_id}'
+        app.storage.general[key] = data
+
+    def _get_stored_progress(self):
+        """Read last known progress from general storage."""
+        key = f'transfer_progress_{self._client_id}'
+        return app.storage.general.get(key, None)
+
+    def _safe_ui(self, fn):
+        """Call a UI-updating lambda safely — swallow errors if page is gone."""
+        try:
+            fn()
+        except Exception:
+            pass
+
+    def _restore_transfer_state(self):
+        """Called on page load — restore last known transfer state."""
+        p = self._get_stored_progress()
+        if p:
+            self._show_bg_progress(True)
+            self._update_bg_progress_ui(p)
+
+    def _poll_transfer_progress(self):
+        """Called every second by ui.timer — syncs UI from storage on page return."""
+        try:
+            p = self._get_stored_progress()
+            if p:
+                self._update_bg_progress_ui(p)
+                if p['status'] in ('done', 'error', 'cancelled'):
+                    self._progress_timer.deactivate()
+        except Exception:
+            self._progress_timer.cancel()
+
+    def _show_bg_progress(self, visible):
+        self.bg_progress.visible = visible
+        self.bg_status_label.visible = visible
+
+    def _update_bg_progress_ui(self, p):
+        status  = p['status']
+        copied  = p['copied']
+        total   = p['total']
+        current = p.get('current_file', '')
+        error   = p.get('error', '')
+
+        if total > 0:
+            self.bg_progress.value = copied / total
+        fname = os.path.basename(current) if current else ""
+        if status == 'running':
+            self.bg_status_label.text = f"📦 Transferring: {copied}/{total} — {fname}"
+            self._show_bg_progress(True)
+            self.StartBackup.visible = False
+            self.cancel_btn.visible = True
+        elif status == 'scanning':
+            self.bg_status_label.text = current
+            self._show_bg_progress(True)
+            self.bg_progress.value = 0
+            self.StartBackup.visible = False
+            self.cancel_btn.visible = False
+        elif status == 'done':
+            self.bg_status_label.text = f"✅ {current}" if current else f"✅ Transfer complete: {copied}/{total} files"
+            self.bg_progress.value = 1.0
+            self.StartBackup.visible = True
+            self.cancel_btn.visible = False
+        elif status == 'cancelled':
+            self.bg_status_label.text = f"🚫 Transfer cancelled after {copied}/{total} files"
+            self.StartBackup.visible = True
+            self.cancel_btn.visible = False
+        elif status == 'error':
+            self.bg_status_label.text = f"❌ Error after {copied}/{total}: {error}"
+            self.StartBackup.visible = True
+            self.cancel_btn.visible = False
 
     @ui.refreshable
     def notify_me(self, msg: str | None) -> None:
@@ -1078,6 +1196,10 @@ class TransferApp:
         self.cancel_backup = False
         verified_files = 0
         result = False
+        total_files = len(all_files)
+        self._set_progress('running', 0, total_files)
+        self._show_bg_progress(True)
+        self._progress_timer.activate()
         try:
             total_files = len(all_files)
             #print (total_files)
@@ -1097,7 +1219,7 @@ class TransferApp:
             for i, (src_file, dest_file) in enumerate(all_files):
                 dest_file = win_long_path(dest_file)
                 if self.cancel_backup:
-                    self.notify_me.refresh("Backup cancelled.")
+                    self._safe_ui(lambda: self.notify_me.refresh("Backup cancelled."))
                     result = False
                     break
 
@@ -1125,24 +1247,29 @@ class TransferApp:
                     #        break
 
                 verified_files += 1
-                progress_bar.value = round(progress)
+                self._safe_ui(lambda: setattr(progress_bar, "value", round(progress)))
+                self._set_progress('running', verified_files, total_files, src_file)
 
 
-            if not self.cancel_backup and verified_files == total_files:
-                self.notify_me.refresh("✅ Backup complete and verified!")
+            if self.cancel_backup:
+                self._set_progress('cancelled', verified_files, total_files)
+            elif verified_files == total_files:
+                self._safe_ui(lambda: self.notify_me.refresh("✅ Backup complete and verified!"))
+                self._set_progress('done', verified_files, total_files)
                 result = True
-
-            elif not self.cancel_backup:
-                self.notify_me.refresh("⚠️ Backup incomplete due to verification failure.")
+            else:
+                self._safe_ui(lambda: self.notify_me.refresh("⚠️ Backup incomplete due to verification failure."))
+                self._set_progress('error', verified_files, total_files, error="Verification failure")
 
         except Exception as e:
             if isinstance(e, OSError) and getattr(e, 'winerror', None) == 112:
-                error_msg = f"❌ Disk full, failed to copy {src_file} → {dest_file}: {e}"
+                error_msg = f"Disk full: {os.path.basename(src_file)}"
             else:
-                error_msg = f"❌ Failed to copy {src_file} → {dest_file}: {e}"
-            self.notify_me.refresh(error_msg)
+                error_msg = f"{os.path.basename(src_file)}: {e}"
+            self._safe_ui(lambda: self.notify_me.refresh(f"❌ {error_msg}"))
+            self._set_progress('error', verified_files, total_files, error=error_msg)
             traceback.print_exc()
-            progress_bar.value = 0
+            self._safe_ui(lambda: setattr(progress_bar, "value", 0))
             result = False
 
         finally:
@@ -1153,14 +1280,16 @@ class TransferApp:
             #if sftp_ctx:
             #   sftp_ctx.__exit__(None, None, None)      
 
-        cancel_button.visible = False
-        self.StartBackup.visible = True
+        self._safe_ui(lambda: setattr(cancel_button, "visible", False))
+        self._safe_ui(lambda: setattr(self.StartBackup, "visible", True))
         return result
 
     def get_explore_url(self):
         if self.BackUrl and self.BackUrl != "/Mosaic":
-            # Generic back URL — use it directly (e.g. /DarkLibrary?LibraryId=1)
-            return self.BackUrl
+            # Generic back URL — decode if URL-encoded (e.g. from Explore)
+            import urllib.parse
+            decoded = urllib.parse.unquote(self.BackUrl)
+            return decoded
         if self.BackUrl == "/Mosaic":
             explore_url = f"{self.BackUrl}?"
             explore_url_data = ""
@@ -1176,13 +1305,13 @@ class TransferApp:
             else:
                 explore_url = explore_url + f"Mode={self.mode}"
         elif self.BackupId_Init:
-            back_url = f"/Backup?BackupId="
+            back_url = urllib.parse.quote(f"/Backup?BackupId=", safe='')
             if self.DwarfId:
                 explore_url = f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={self.DwarfId}&mode=backup&back_url={back_url}"
             else:
                 explore_url = f"/Explore?BackupDriveId={self.BackupDriveId}&mode=backup&back_url={back_url}"
         elif self.DwarfId:
-            back_url = f"/Dwarf?DwarfId="
+            back_url = urllib.parse.quote(f"/Dwarf?DwarfId=", safe='')
             explore_url = f"/Explore?DwarfId={self.DwarfId}&mode=dwarf&back_url={back_url}"
         else:
             explore_url = f"/Explore?mode=dwarf"

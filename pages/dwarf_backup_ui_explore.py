@@ -58,7 +58,7 @@ def safe_print(text):
         print(text.encode(sys.stdout.encoding, errors='replace').decode())
 
 @ui.page('/Explore/')
-async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None):
+async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None, only_on_dwarf: int = 0):
 
     menu("Explore")
     await ui.context.client.connected()
@@ -68,17 +68,19 @@ async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str =
     print(f" mode: {mode}")
 
     # Launch the GUI with the parameters
-    ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId)
+    ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId, OnlyOnDwarf=bool(only_on_dwarf))
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class ExploreApp:
-    def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None, SessionId=None):
+    def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None, SessionId=None, OnlyOnDwarf=False):
         self.database = database
         self.BackupDriveId = BackupDriveId
         self.BackupDriveId_Init = BackupDriveId
         self.DwarfId = DwarfId
         self.mode = mode
-        self.BackUrl = BackUrl
+        self.OnlyOnDwarf = OnlyOnDwarf
+        import urllib.parse as _up
+        self.BackUrl = _up.unquote(BackUrl) if BackUrl else BackUrl
         self.SessionId = SessionId
         self.AutoSelection_done = False
         self.only_on_dwarf = False
@@ -145,11 +147,11 @@ class ExploreApp:
                         with ui.grid(columns=nbcolumns):
                             if self.BackUrl:
                                 ui.button("🔙 Back", on_click=lambda: ui.navigate.to(f"{self.BackUrl}{self.BackupDriveId if self.BackupDriveId else self.BackupDriveId_Init}")).style('width: 100px')
-                            with ui.column():
+                            with ui.column() as self.backup_filter_col:
                                 ui.label("Backup Drive:")
                                 self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
 
-                            with ui.column():
+                            with ui.column() as self.dwarf_filter_col:
                                 ui.label("Dwarf:")
                                 self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
@@ -162,20 +164,20 @@ class ExploreApp:
                             with ui.grid(columns=2):
                                 ui.button("🔙 Back", on_click=lambda: ui.navigate.to(f"{self.BackUrl}{self.get_selected_dwarf_id() if self.get_selected_dwarf_id() else self.DwarfId}")).style('width: 100px')
 
-                                with ui.row().classes('w-full'):
+                                with ui.row().classes('w-full') as self.dwarf_filter_col:
                                     ui.label("Dwarf:")
                                     self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
                         else:
 
-                            with ui.row().classes('w-full'):
+                            with ui.row().classes('w-full') as self.dwarf_filter_col:
                                 ui.label("Dwarf:")
                                 self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
                         with ui.row().classes('w-full'):
                             with ui.card().tight().bind_visibility_from(self.dwarf_filter, "value", lambda value: value != ALL_DWARFS):
                                 ui.label("")
-                                self.only_on_dwarf = ui.checkbox("Only show sessions not yet backed up on selected Dwarf ",on_change = self.on_change_only_on_dwarf)
+                                self.only_on_dwarf = ui.checkbox("Only show sessions not yet backed up on selected Dwarf ", value=self.OnlyOnDwarf, on_change = self.on_change_only_on_dwarf)
                                 ui.label("")
                                 self.only_on_backup = ui.checkbox("Only show sessions already backed up on selected Dwarf ",on_change = self.on_change_only_on_backup)
 
@@ -210,7 +212,7 @@ class ExploreApp:
                             self.show_gallery_icon.visible = False
                             self.open_folder_icon = ui.button("🗁 Open", on_click=lambda: self.open_folder()).classes('h-16')
                             self.fullscreen_icon = ui.button("Show Fullscreen Image", on_click=self.show_fullscreen_image).classes('h-16')
-                            self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
+                            self.backup_session_icon = ui.button("Backup Session", on_click=lambda: self._navigate_backup()).classes('h-16')
                             self.backup_session_icon.visible = False
                             self.transfer_multi_btn = ui.button("📦 Backup Selected Sessions", on_click=lambda: ui.navigate.to(self.get_multi_transfer_url())).classes('h-16')
                             self.transfer_multi_btn.visible = False
@@ -267,17 +269,17 @@ class ExploreApp:
     def populate_backup_filter(self):
         print(f"backup_filter: {self.BackupDriveId}")
         self.backup_options = get_backupDrive_Names(self.conn)
-        names = [ALL_BACKUPS] + [name for _, name in self.backup_options]
 
-        # Set initial value
+        # Only add ALL_BACKUPS when there are multiple backup drives
+        if len(self.backup_options) > 1:
+            names = [ALL_BACKUPS] + [name for _, name in self.backup_options]
+        else:
+            names = [name for _, name in self.backup_options]
         initial_value = names[0] if names else None
-
-        # If self.BackupDriveId is set, try to find corresponding name
         if self.BackupDriveId:
             match = next((name for did, name in self.backup_options if did == self.BackupDriveId), None)
             if match:
                 initial_value = match
-
         self.backup_filter.set_options(names, value=initial_value)
 
     def on_backup_filter_change(self):
@@ -302,23 +304,23 @@ class ExploreApp:
         current_dwarf_id = self.get_selected_dwarf_id()
         print(f"dwarf_filter: {self.BackupDriveId}-{current_dwarf_id}")
         if self.BackupDriveId:
-            new_dwarf_id = get_backupDrive_dwarfId(self.conn, self.BackupDriveId)
             self.dwarf_options = get_backupDrive_dwarfNames(self.conn, self.BackupDriveId)
             names = [name for _, name in self.dwarf_options]
         else:
             self.dwarf_options = get_dwarf_Names(self.conn)
-            names = [ALL_DWARFS] + [name for _, name in self.dwarf_options]
-        print(names)
-        # Set initial value
-        initial_value = names[0] if names else None
+            names = [name for _, name in self.dwarf_options]
 
-        # If current_dwarf_id or self.DwarfId is set, try to find corresponding name
+        print(names)
+
+        # Only add ALL_DWARFS when there are multiple dwarfs
+        if not self.BackupDriveId and len(self.dwarf_options) > 1:
+            names = [ALL_DWARFS] + names
+        initial_value = names[0] if names else None
         matching_value = current_dwarf_id or self.DwarfId
-        if not self.BackupDriveId and matching_value:
+        if matching_value:
             match = next((name for did, name in self.dwarf_options if did == matching_value), None)
             if match:
                 initial_value = match
-
         self.dwarf_filter.set_options(names, value=initial_value)
 
     def get_selected_dwarf_id(self):
@@ -381,23 +383,36 @@ class ExploreApp:
  
     def auto_select_session(self):
         print(f"Auto-select session: {self.SessionId}")
-        sessions = None
 
-        # Step 1: find the matching row in DB
-        if self.SessionId: 
-            sessions = get_sessions_backup(
-                self.conn,
-                backup_drive_id=self.BackupDriveId,
-                dwarf_id=self.get_selected_dwarf_id(),
-                session_id=self.SessionId
-        )
+        if not self.SessionId:
+            return
+
+        # Search by session_id alone — BackupEntry.id is globally unique
+        sessions = get_sessions_backup(self.conn, session_id=self.SessionId)
 
         if not sessions:
             print("No session found for auto-selection")
             return
 
-        # Use ALL SESSIONS
-        print("Use ALL SESSIONS")
+        session = sessions[0]
+        # session[0]=id, cols include backup_drive_id via JOIN
+        # Ensure the correct backup drive is selected
+        try:
+            cursor = self.conn.cursor()
+            row = cursor.execute(
+                "SELECT backup_drive_id FROM BackupEntry WHERE id=?", (self.SessionId,)
+            ).fetchone()
+            if row and row[0]:
+                self.BackupDriveId = row[0]
+                # Update the backup filter to match
+                for bid, name in self.backup_options:
+                    if bid == self.BackupDriveId:
+                        self.backup_filter.set_value(name)
+                        break
+        except Exception as e:
+            print(f"[auto_select] could not set BackupDriveId: {e}")
+
+        print("Auto-selecting session via ALL_SESSIONS")
         self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
 
     def _update_expanded_nodes(self, expanded_keys: list[str]):
@@ -1009,12 +1024,13 @@ class ExploreApp:
         async def ok_confirm_restore_fits():
             self.cancel_restore = False  # reset cancel flag
 
-            with ui.dialog().props('persistent') as progress_dialog, ui.card():
-                ui.label("Restoring FITS files...")
-                self.progress = ui.circular_progress(max=100, show_value=True)
-                with ui.row():
-                    self.cancel_button = ui.button("Cancel", on_click=lambda: setattr(self, "cancel_restore", True))
-
+            with ui.context.client.layout:
+                with ui.dialog().props('persistent') as progress_dialog, ui.card():
+                    ui.label("Restoring FITS files...")
+                    self.progress = ui.circular_progress(max=100, show_value=True)
+                    with ui.row():
+                        self.cancel_button = ui.button("Cancel", on_click=lambda: setattr(self, "cancel_restore", True))
+    
             progress_dialog.open()
             ui.notify("Restoring FITS files...")
             try:
@@ -1546,7 +1562,7 @@ class ExploreApp:
     def update_gallery_icon(self):
         with self.icon_row:
             if not self.show_gallery_icon:
-                self.show_gallery_icon = ui.button("🖼️ Show Gallery", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
+                self.show_gallery_icon = ui.button("🖼️ Show Gallery", on_click=lambda: self._navigate_backup()).classes('h-16')
             elif len(self.all_files_rows) > 1 and not self.selected_path and self.get_slideshow_image_data():
                 self.show_gallery_icon.visible = True
                 self.show_gallery_icon.enable()
@@ -1593,7 +1609,7 @@ class ExploreApp:
                     self.preview_icons[fmt] = icon
 
             if not self.backup_session_icon:
-                self.backup_session_icon = ui.button("Backup Session", on_click=lambda: ui.navigate.to(self.get_backup_url())).classes('h-16')
+                self.backup_session_icon = ui.button("Backup Session", on_click=lambda: self._navigate_backup()).classes('h-16')
 
             # If multi-sessions are checked AND conditions match
             has_multi = (
@@ -1621,10 +1637,19 @@ class ExploreApp:
                 if self.transfer_multi_btn:
                     self.transfer_multi_btn.visible = False
                     self.transfer_multi_btn.disable()
+                # Refresh from DB so newly added drives are detected
+                self.backup_options = get_backupDrive_Names(self.conn)
+                has_backup_drives = bool(self.backup_options)
                 if self.mode != "backup" and self.only_on_dwarf.value and self.selected_path:
-                    self.backup_session_icon.set_text("Backup Session")
-                    self.backup_session_icon.visible = True
-                    self.backup_session_icon.enable()
+                    if has_backup_drives:
+                        self.backup_session_icon.set_text("Backup Session")
+                        self.backup_session_icon.visible = True
+                        self.backup_session_icon.enable()
+                    else:
+                        # No backup drive configured — show hint button instead
+                        self.backup_session_icon.set_text("⚠️ Create a Backup Drive first")
+                        self.backup_session_icon.visible = True
+                        self.backup_session_icon.enable()
                 elif self.mode == "backup" and self.BackupDriveId and self.only_on_backup.value and self.selected_path:
                     self.backup_session_icon.set_text("Restore Session")
                     self.backup_session_icon.visible = True
@@ -1896,77 +1921,78 @@ class ExploreApp:
         has_existing = os.path.isfile(pano_existing_jpg)
         mosaic_image = None
 
-        # --- Progress dialog ---
-        with ui.dialog().props('persistent') as progress_dialog, ui.card().classes("w-full max-w-screen-xl items-center gap-4 p-6"):
-            ui.label("⚙️ Stitching Mosaic...").classes("text-lg font-semibold")
-            ui.spinner(size="lg")
-            main_log = ui.log(max_lines=6).classes('w-full').style('height: 100px; overflow: hidden;')
-            log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
-
-        # --- FITS progress dialog ---
-        with ui.dialog().props('persistent') as fits_progress_dialog, ui.card().classes("items-center gap-4 p-6"):
-            ui.label("⚙️ Creating FITS Mosaic...").classes("text-lg font-semibold")
-            ui.spinner(size="lg")
-
-        # --- Error dialog ---
-        with ui.dialog().props('persistent') as error_dialog, ui.card().classes("p-6 gap-4 w-full max-w-2xl"):
-            ui.label("❌ Stitching Failed").classes("text-xl font-bold text-red-500")
-            error_message = ui.label("").classes("text-sm text-gray-300 whitespace-pre-wrap")
-
-            with ui.row().classes("justify-end gap-2 mt-4 w-full"):
-                def on_error_params():
-                    self.open_stitch_params()  # reuse the same params dialog
-
-                def on_error_retry():
-                    error_dialog.close()
-                    # re-trigger stitching — user changed params and wants to retry
-                    ui.timer(
-                        0,
-                        lambda: self.create_and_show_panorama(directory, panels, panels_png, panels_fits),
-                        once=True,
-                    )
-
-                ui.button("🗑️ Discard", on_click=error_dialog.close).props("flat color=negative")
-                ui.button("⚙️ Change Parameters", on_click=on_error_params).props("flat")
-                ui.button("🔄 Retry", on_click=on_error_retry).props("color=positive")
-
-        # --- Result dialog ---
-        with ui.dialog().props('maximized') as result_dialog, ui.card().classes("w-full h-full p-4 gap-2"):
-
-            # Title row
-            with ui.row().classes("w-full items-center justify-between mb-2"):
-                ui.label("🌅 Mosaic Result").classes("text-xl font-bold")
-                with ui.row().classes("gap-2"):
-                    btn_show_panels = ui.button(
-                        "🧩 Show Current Panels",
-                        on_click=lambda: self.open_gallery_dialog(directory, panels)
-                    ).props("flat")
-                    btn_discard = ui.button("🗑️ Discard").props("flat color=negative")
-                    btn_save    = ui.button("💾 Save").props("color=positive")
-                    btn_fits    = ui.button("🔭 Create FITS & Close").props("color=primary").classes("hidden")
-                    btn_close   = ui.button("✖️ Close").props("flat").classes("hidden")
-
-            # Images — side by side if original exists, full width otherwise
-            if has_existing:
-                with ui.row().classes("w-full gap-4 items-start"):
-                    with ui.column().classes("flex-1 items-center"):
-                        ui.label("📷 Original").classes("text-sm font-semibold text-gray-400 mb-1")
-                        ui.image(pano_existing_jpg) \
-                            .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
-                            .on('click', lambda: self.show_full_image(pano_existing_jpg))
-                    with ui.column().classes("flex-1 items-center"):
+        with ui.context.client.layout:
+            # --- Progress dialog ---
+            with ui.dialog().props('persistent') as progress_dialog, ui.card().classes("w-full max-w-screen-xl items-center gap-4 p-6"):
+                ui.label("⚙️ Stitching Mosaic...").classes("text-lg font-semibold")
+                ui.spinner(size="lg")
+                main_log = ui.log(max_lines=6).classes('w-full').style('height: 100px; overflow: hidden;')
+                log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
+    
+            # --- FITS progress dialog ---
+            with ui.dialog().props('persistent') as fits_progress_dialog, ui.card().classes("items-center gap-4 p-6"):
+                ui.label("⚙️ Creating FITS Mosaic...").classes("text-lg font-semibold")
+                ui.spinner(size="lg")
+    
+            # --- Error dialog ---
+            with ui.dialog().props('persistent') as error_dialog, ui.card().classes("p-6 gap-4 w-full max-w-2xl"):
+                ui.label("❌ Stitching Failed").classes("text-xl font-bold text-red-500")
+                error_message = ui.label("").classes("text-sm text-gray-300 whitespace-pre-wrap")
+    
+                with ui.row().classes("justify-end gap-2 mt-4 w-full"):
+                    def on_error_params():
+                        self.open_stitch_params()  # reuse the same params dialog
+    
+                    def on_error_retry():
+                        error_dialog.close()
+                        # re-trigger stitching — user changed params and wants to retry
+                        ui.timer(
+                            0,
+                            lambda: self.create_and_show_panorama(directory, panels, panels_png, panels_fits),
+                            once=True,
+                        )
+    
+                    ui.button("🗑️ Discard", on_click=error_dialog.close).props("flat color=negative")
+                    ui.button("⚙️ Change Parameters", on_click=on_error_params).props("flat")
+                    ui.button("🔄 Retry", on_click=on_error_retry).props("color=positive")
+    
+            # --- Result dialog ---
+            with ui.dialog().props('maximized') as result_dialog, ui.card().classes("w-full h-full p-4 gap-2"):
+    
+                # Title row
+                with ui.row().classes("w-full items-center justify-between mb-2"):
+                    ui.label("🌅 Mosaic Result").classes("text-xl font-bold")
+                    with ui.row().classes("gap-2"):
+                        btn_show_panels = ui.button(
+                            "🧩 Show Current Panels",
+                            on_click=lambda: self.open_gallery_dialog(directory, panels)
+                        ).props("flat")
+                        btn_discard = ui.button("🗑️ Discard").props("flat color=negative")
+                        btn_save    = ui.button("💾 Save").props("color=positive")
+                        btn_fits    = ui.button("🔭 Create FITS & Close").props("color=primary").classes("hidden")
+                        btn_close   = ui.button("✖️ Close").props("flat").classes("hidden")
+    
+                # Images — side by side if original exists, full width otherwise
+                if has_existing:
+                    with ui.row().classes("w-full gap-4 items-start"):
+                        with ui.column().classes("flex-1 items-center"):
+                            ui.label("📷 Original").classes("text-sm font-semibold text-gray-400 mb-1")
+                            ui.image(pano_existing_jpg) \
+                                .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
+                                .on('click', lambda: self.show_full_image(pano_existing_jpg))
+                        with ui.column().classes("flex-1 items-center"):
+                            ui.label("✨ New Stitch").classes("text-sm font-semibold text-green-400 mb-1")
+                            result_mosaic_image = ui.image() \
+                                .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
+                                .on('click', lambda: self.show_full_image(pano_tmp_path_jpg))
+                else:
+                    with ui.column().classes("w-full items-center"):
                         ui.label("✨ New Stitch").classes("text-sm font-semibold text-green-400 mb-1")
                         result_mosaic_image = ui.image() \
                             .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
                             .on('click', lambda: self.show_full_image(pano_tmp_path_jpg))
-            else:
-                with ui.column().classes("w-full items-center"):
-                    ui.label("✨ New Stitch").classes("text-sm font-semibold text-green-400 mb-1")
-                    result_mosaic_image = ui.image() \
-                        .classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80") \
-                        .on('click', lambda: self.show_full_image(pano_tmp_path_jpg))
-
-        # Run stitching
+    
+            # Run stitching
         progress_dialog.open()
         try:
             png_images_path = [path for _, path in panels_png]
@@ -2177,7 +2203,8 @@ class ExploreApp:
 
         if len(rows) == 1:
             # Single linked session — navigate directly
-            _go(rows[0][0], rows[0][22]) # row 0 is entry_id, row 22 is backup_entry_id
+            # col[0]=ManualSessionEntry.id, col[23]=backup_entry_id (FK to BackupEntry)
+            _go(rows[0][0], rows[0][23])
             return
 
         # Multiple linked sessions — show a picker dialog
@@ -2189,7 +2216,7 @@ class ExploreApp:
                 entry_id   = row[0]
                 name       = row[1] or "—"
                 stype      = row[2] or ""
-                backup_entry_id = row [22] or ""
+                backup_entry_id = row[23] or ""  # col[23]=backup_entry_id
                 date_str   = show_short_date_session(row[14])
                 label      = f"📁 {name}  |  {stype}  |  📅 {date_str}"
                 ui.button(
@@ -2199,6 +2226,22 @@ class ExploreApp:
             ui.separator()
             ui.button("Cancel", on_click=dialog.close).props("flat color=grey")
         dialog.open()
+
+    def _navigate_backup(self):
+        # Reload fresh from DB in case user just added a drive
+        self.backup_options = get_backupDrive_Names(self.conn)
+        if not self.backup_options:
+            with ui.dialog() as dlg, ui.card():
+                ui.label("No Backup Drive configured yet.").classes("text-lg font-bold")
+                ui.label("You need to add a Backup Drive before you can backup sessions.").classes("text-gray-600 mt-2")
+                with ui.row().classes("mt-4 gap-4"):
+                    ui.button("➕ Go to Backup Settings", on_click=lambda: (dlg.close(), ui.navigate.to("/Backup")))
+                    ui.button("Cancel", on_click=dlg.close)
+            dlg.open()
+            return
+        url = self.get_backup_url()
+        if url:
+            ui.navigate.to(url)
 
     def get_backup_url(self):
         ui.notify("Launch Backup Dwarf Data...")
@@ -2211,9 +2254,11 @@ class ExploreApp:
 
             elif self.selected_path:
                 session = os.path.basename(self.selected_path)
-                explore_url =  f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Archive&back_url=1"
+                back = urllib.parse.quote(f"/Explore?DwarfId={dwarf_id}&mode=dwarf", safe='')
+                explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Archive&back_url={back}"
             else:
-                explore_url =  f"/Transfer?DwarfId={dwarf_id}&mode=Archive&back_url=1"
+                back = urllib.parse.quote(f"/Explore?DwarfId={dwarf_id}&mode=dwarf", safe='')
+                explore_url = f"/Transfer?DwarfId={dwarf_id}&mode=Archive&back_url={back}"
 
         elif self.mode == "backup":
             if not self.BackupDriveId:
@@ -2227,12 +2272,14 @@ class ExploreApp:
 
                 elif self.selected_path:
                     session = self.selected_path
-                    explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+                    back = urllib.parse.quote(f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={dwarf_id}&mode=backup", safe='')
+                    explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url={back}"
                 else:
-                    explore_url = f"/Transfer?DwarfId={dwarf_id}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+                    back = urllib.parse.quote(f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={dwarf_id}&mode=backup", safe='')
+                    explore_url = f"/Transfer?DwarfId={dwarf_id}&mode=Restore&BackupId={self.BackupDriveId}&back_url={back}"
 
         print(explore_url)
-        return explore_url
+        return explore_url if explore_url else None
 
     def get_multi_transfer_url(self):
         """Build a Transfer URL with all selected sessions (multi-selection mode)."""
@@ -2277,9 +2324,11 @@ class ExploreApp:
         sessions_param = urllib.parse.quote("|".join(session_names))
 
         if self.mode == "backup":
-            explore_url = f"/Transfer?DwarfId={dwarf_id}&session={sessions_param}&mode=Restore&BackupId={self.BackupDriveId}&back_url=1"
+            back = urllib.parse.quote(f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={dwarf_id}&mode=backup", safe='')
+            explore_url = f"/Transfer?DwarfId={dwarf_id}&session={sessions_param}&mode=Restore&BackupId={self.BackupDriveId}&back_url={back}"
         else:
-            explore_url = f"/Transfer?DwarfId={dwarf_id}&session={sessions_param}&mode=Archive&back_url=1"
+            back = urllib.parse.quote(f"/Explore?DwarfId={dwarf_id}&mode=dwarf", safe='')
+            explore_url = f"/Transfer?DwarfId={dwarf_id}&session={sessions_param}&mode=Archive&back_url={back}"
 
         print(explore_url)
         return explore_url

@@ -1,3 +1,4 @@
+import urllib.parse
 import webview
 import sqlite3
 import os
@@ -260,6 +261,23 @@ class ConfigApp:
         print(f"id: {self.dwarf_name_to_id.get(selected_name)}")
         return self.dwarf_name_to_id.get(selected_name)
 
+    def _offer_backup_now(self, dwarf_id, backup_drive_id):
+        """After saving a new backup drive, offer to go straight to Explore."""
+        with ui.dialog() as dlg, ui.card().classes("p-4 gap-4"):
+            ui.label("✅ Backup Drive saved!").classes("text-lg font-bold")
+            ui.label(
+                "Would you like to go to Explore now to back up your Dwarf sessions? "
+                "Sessions not yet backed up will be shown automatically."
+            ).classes("text-gray-600")
+            with ui.row().classes("gap-4 mt-2"):
+                def go_explore():
+                    dlg.close()
+                    url = f"/Explore?DwarfId={dwarf_id}&BackupDriveId={backup_drive_id}&mode=dwarf&only_on_dwarf=1"
+                    ui.navigate.to(url)
+                ui.button("🔭 Go to Explore", on_click=go_explore).classes("bg-green-600 text-white")
+                ui.button("Stay here", on_click=dlg.close)
+        dlg.open()
+
     async def save_or_update_backup_drive(self):
         name = self.backupDrive_name.value
         desc = self.backupDrive_desc.value
@@ -285,6 +303,7 @@ class ConfigApp:
                 self.backupDrive_id = add_backupDrive_detail(self.conn, name, desc, location, astroDir, dwarf_id)
                 self.refresh_backupDrive_list()
                 ui.notify("Backup drive saved.", type="positive")
+                self._offer_backup_now(dwarf_id, self.backupDrive_id)
             except sqlite3.IntegrityError:
                 ui.notify("This folder is already registered.", type="negative")
 
@@ -574,7 +593,7 @@ class ConfigApp:
         if self.backupDrive_id is None:
             explore_url = f"/Explore?mode=backup"
         else:
-            back_url = f"/Backup?BackupId="
+            back_url = urllib.parse.quote(f"/Backup?BackupId=", safe='')
             explore_url = f"/Explore?BackupDriveId={self.backupDrive_id}&mode=backup&back_url={back_url}"
         if session_id:
             explore_url += f"&SessionId={session_id}"

@@ -72,7 +72,8 @@ class MosaicApp:
         self.secondary_source = 'Dwarf'
 
         self.session = Session          # primary session (pre-filled if coming from Explore)
-        self.BackUrl = BackUrl
+        import urllib.parse as _up
+        self.BackUrl = _up.unquote(BackUrl) if BackUrl else BackUrl
 
         # Directories
         self.primary_session_dir = ''   # Session to repair or merge INTO
@@ -999,72 +1000,73 @@ class MosaicApp:
 
             return pairs
 
-        # --- Progress dialog ---
-        with ui.dialog().props('persistent') as progress_dialog, ui.card().classes("w-full max-w-screen-xl items-center gap-4 p-6"):
-            ui.label("⚙️ Stitching Mosaic...").classes("text-lg font-semibold")
-            with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
-                self.action_progress_label = ui.label("Idle…")
-                self.action_progress = ui.circular_progress(max=100, show_value=True)
-                with ui.row():
-                    self.cancel_action_btn = ui.button("❌ Cancel", on_click=self.cancel)
-                    self.cancel_action_btn.visible = False
-                ui.separator()
-                self.action_log = ui.log(max_lines=30).classes('w-full').style('height: 400px; overflow: hidden;')
-
-        # --- Error dialog ---
-        with ui.dialog().props('persistent') as error_dialog, ui.card().classes("p-6 gap-4 w-full max-w-2xl"):
-            ui.label("❌ Stitching Failed").classes("text-xl font-bold text-red-500")
-            error_message = ui.label("").classes("text-sm text-gray-300 whitespace-pre-wrap")
-            with ui.row().classes("justify-end gap-2 mt-4 w-full"):
-                def on_error_params():
-                    self.open_stitch_params()
-                def on_error_retry():
-                    error_dialog.close()
-                    restore_merge_files(backed_up)
-                    cleanup_backup(backed_up)
-                    ui.timer(0, lambda: self.create_and_show_panorama(secondary, work_primary), once=True)
-                def on_error_discard():
-                    restore_merge_files(backed_up)
-                    cleanup_backup(backed_up)
-                    error_dialog.close()
-                    ui.notify("Mosaic discarded — files restored.", type="warning")
-                ui.button("🗑️ Discard", on_click=on_error_discard).props("flat color=negative")
-                ui.button("⚙️ Change Parameters", on_click=on_error_params).props("flat")
-                ui.button("🔄 Retry", on_click=on_error_retry).props("color=positive")
-
-        # --- Result dialog ---
-        with ui.dialog().props('maximized') as result_dialog, ui.card().classes("w-full h-full p-4 gap-2 overflow-auto"):
-
-            with ui.row().classes("w-full items-center justify-between mb-2"):
-                ui.label("🌅 Mosaic Result").classes("text-xl font-bold")
-                with ui.row().classes("gap-2"):
-                    btn_discard = ui.button("🗑️ Discard").props("flat color=negative")
-                    btn_accept  = ui.button("✅ Accept & Close").props("color=positive")
-
-            # Tabs: one per panel + final mosaic
-            with ui.tabs().classes("w-full") as tabs:
-                tab_mosaic = ui.tab("🌅 Final Mosaic")
-                tab_panels = ui.tab("📦 Panels")
-
-            with ui.tab_panels(tabs, value=tab_mosaic).classes("w-full"):
-
-                # ── Final mosaic before/after ──────────────────────────────
-                with ui.tab_panel(tab_mosaic):
-                    with ui.row().classes("w-full gap-4 items-start"):
-                        with ui.column().classes("flex-1 items-center"):
-                            ui.label("Before").classes("text-sm font-semibold text-gray-400 mb-1")
-                            before_mosaic = ui.image().classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")
-                        with ui.column().classes("flex-1 items-center"):
-                            ui.label("After").classes("text-sm font-semibold text-green-400 mb-1")
-                            after_mosaic = ui.image().classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")
-
-                # ── Per-panel before/after ─────────────────────────────────
-                with ui.tab_panel(tab_panels):
-                    panel_before_images = []  # filled after merge
-                    panel_after_images  = []
-                    panels_container = ui.column().classes("w-full gap-6")
-
-        # --- Run merge ---
+        with ui.context.client.layout:
+            # --- Progress dialog ---
+            with ui.dialog().props('persistent') as progress_dialog, ui.card().classes("w-full max-w-screen-xl items-center gap-4 p-6"):
+                ui.label("⚙️ Stitching Mosaic...").classes("text-lg font-semibold")
+                with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
+                    self.action_progress_label = ui.label("Idle…")
+                    self.action_progress = ui.circular_progress(max=100, show_value=True)
+                    with ui.row():
+                        self.cancel_action_btn = ui.button("❌ Cancel", on_click=self.cancel)
+                        self.cancel_action_btn.visible = False
+                    ui.separator()
+                    self.action_log = ui.log(max_lines=30).classes('w-full').style('height: 400px; overflow: hidden;')
+    
+            # --- Error dialog ---
+            with ui.dialog().props('persistent') as error_dialog, ui.card().classes("p-6 gap-4 w-full max-w-2xl"):
+                ui.label("❌ Stitching Failed").classes("text-xl font-bold text-red-500")
+                error_message = ui.label("").classes("text-sm text-gray-300 whitespace-pre-wrap")
+                with ui.row().classes("justify-end gap-2 mt-4 w-full"):
+                    def on_error_params():
+                        self.open_stitch_params()
+                    def on_error_retry():
+                        error_dialog.close()
+                        restore_merge_files(backed_up)
+                        cleanup_backup(backed_up)
+                        ui.timer(0, lambda: self.create_and_show_panorama(secondary, work_primary), once=True)
+                    def on_error_discard():
+                        restore_merge_files(backed_up)
+                        cleanup_backup(backed_up)
+                        error_dialog.close()
+                        ui.notify("Mosaic discarded — files restored.", type="warning")
+                    ui.button("🗑️ Discard", on_click=on_error_discard).props("flat color=negative")
+                    ui.button("⚙️ Change Parameters", on_click=on_error_params).props("flat")
+                    ui.button("🔄 Retry", on_click=on_error_retry).props("color=positive")
+    
+            # --- Result dialog ---
+            with ui.dialog().props('maximized') as result_dialog, ui.card().classes("w-full h-full p-4 gap-2 overflow-auto"):
+    
+                with ui.row().classes("w-full items-center justify-between mb-2"):
+                    ui.label("🌅 Mosaic Result").classes("text-xl font-bold")
+                    with ui.row().classes("gap-2"):
+                        btn_discard = ui.button("🗑️ Discard").props("flat color=negative")
+                        btn_accept  = ui.button("✅ Accept & Close").props("color=positive")
+    
+                # Tabs: one per panel + final mosaic
+                with ui.tabs().classes("w-full") as tabs:
+                    tab_mosaic = ui.tab("🌅 Final Mosaic")
+                    tab_panels = ui.tab("📦 Panels")
+    
+                with ui.tab_panels(tabs, value=tab_mosaic).classes("w-full"):
+    
+                    # ── Final mosaic before/after ──────────────────────────────
+                    with ui.tab_panel(tab_mosaic):
+                        with ui.row().classes("w-full gap-4 items-start"):
+                            with ui.column().classes("flex-1 items-center"):
+                                ui.label("Before").classes("text-sm font-semibold text-gray-400 mb-1")
+                                before_mosaic = ui.image().classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")
+                            with ui.column().classes("flex-1 items-center"):
+                                ui.label("After").classes("text-sm font-semibold text-green-400 mb-1")
+                                after_mosaic = ui.image().classes("w-full h-auto object-contain rounded-xl cursor-pointer hover:opacity-80")
+    
+                    # ── Per-panel before/after ─────────────────────────────────
+                    with ui.tab_panel(tab_panels):
+                        panel_before_images = []  # filled after merge
+                        panel_after_images  = []
+                        panels_container = ui.column().classes("w-full gap-6")
+    
+            # --- Run merge ---
         progress_dialog.open()
         try:
             result_path = await merge_mosaic(

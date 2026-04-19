@@ -295,12 +295,19 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
+CURRENT_DB_VERSION = 6
+
 def init_db(conn):
     try:
         cursor = conn.cursor()
 
-        # check if migration is needed
-        if not is_new_database(conn):
+        # Fresh DB: skip migrations, stamp latest version
+        # Existing DB: run any pending migrations
+        if is_new_database(conn):
+            # Will create all tables below — stamp version at the end
+            _is_fresh = True
+        else:
+            _is_fresh = False
             run_migrations(conn)
 
         cursor.execute(create_DsoCatalog_sql())
@@ -322,6 +329,8 @@ def init_db(conn):
             import_dso_catalog(conn)
 
         cursor.execute(create_AstroObject_sql())
+
+        cursor.execute(create_Settings_sql())
 
         cursor.execute(create_MtpDevices_sql())
 
@@ -374,6 +383,11 @@ def init_db(conn):
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_manualsessionentry_manual_session_id ON ManualSessionEntry(manual_session_id);
         """)
+
+        # Stamp current version so future startups skip migrations
+        if _is_fresh:
+            cursor.execute(f"PRAGMA user_version = {CURRENT_DB_VERSION}")
+            print(f"[DB] Fresh database created at version {CURRENT_DB_VERSION}")
 
         conn.commit()
 
