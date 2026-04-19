@@ -135,6 +135,11 @@ class ConfigApp:
 
         # Update the select options AND set a default value if needed
         if options:
+            # Auto-select if only one backup drive
+                self.backupDrive_selector.set_options(options, value=options[0])
+                self.backupDrive_id = self.backupDrives[0][0]
+                return
+
             selected_id = None
             try:
                 if self.backupDrive_selector.value:
@@ -370,10 +375,11 @@ class ConfigApp:
             error_label = ui.label().style('color: red')  # Empty label for future error messages
             close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
-            ui.spinner(size="lg")
+            spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
         dialog.open()  # show the dialog
+        spinner.set_visibility(True)
 
         try:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
@@ -381,6 +387,7 @@ class ConfigApp:
             ui.notify(f"🔍 Scanning: {location}-{astroDir}")
             total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)
             ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
+            spinner.set_visibility(False)
 
             # Report manual session re-linking that happened during the scan
             if rebuild_result["rebuilt"] > 0:
@@ -396,6 +403,7 @@ class ConfigApp:
                     timeout=8000,
                 )
         except Exception as e:
+            spinner.set_visibility(False)
             msg = f"❌ Error: {str(e)}"
             ui.notify(msg, type="negative")
             error_label.text = msg 
@@ -414,7 +422,7 @@ class ConfigApp:
         astroDir = self.backupDrive_astroDir.value or ""
 
         # Dialog to block interaction and show progress
-        with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 2600px; height: 800px; margin: auto"):
+        with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
             close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label(f"🔍 Scanning: {location}, please wait...")
@@ -422,6 +430,7 @@ class ConfigApp:
             log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
 
         dialog.open()  # show the dialog
+        spinner.set_visibility(True)
         error_found = False
 
         try:
@@ -431,7 +440,7 @@ class ConfigApp:
             ui.notify(f"🔍 Scanning: {location}-{astroDir}")
             self.errors = await run.io_bound (list_error_integrity, self.conn, backup_drive_id, self.backupDrive_location.value, session_list, log)
             ui.notify(f"✅ Analysis Complete: {len(self.errors)} sessions errors found", type="positive")
-            spinner.visible = False
+            spinner.set_visibility(False)
             self.results_container.clear()
             if len(self.errors) > 0:
                 error_found = True
@@ -452,6 +461,7 @@ class ConfigApp:
                         on_change=lambda e: self.selected_error.update({"value": e.value})
                     ).classes("w-full")
         except Exception as e:
+            spinner.set_visibility(False)
             msg = f"❌ Error: {str(e)}"
             ui.notify(msg, type="negative")
             error_label.text = msg 

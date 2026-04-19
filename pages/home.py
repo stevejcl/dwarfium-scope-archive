@@ -2,8 +2,10 @@ from nicegui import ui, app
 
 import os
 import subprocess
+import asyncio
 
-from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from api.dwarf_backup_db import DB_NAME, start_db, connect_db, close_db
+from api.dwarf_backup_db_api import insert_default_groups 
 from api.dwarf_backup_db_api import ensure_dwarf_local_path, get_dwarf_favorites, get_backup_favorites, get_manual_favorites
 
 from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session, get_root_manual_session_dir
@@ -12,8 +14,46 @@ from api.image_preview import set_base_folder, build_preview_url
 
 from components.menu import menu
 
+init_task = None
+is_app_started = False
+
+def init_db():
+    conn = start_db(DB_NAME)
+    if not conn:
+        raise RuntimeError('Database init failed')
+    insert_default_groups(conn)
+    close_db(conn)
+
+async def ensure_init():
+    global init_task, is_app_started
+
+    if is_app_started:
+        return
+
+    if init_task is None:
+        # first caller launches init
+        init_task = asyncio.create_task(asyncio.to_thread(init_db))
+
+    await init_task
+    is_app_started = True
+
+
 @ui.page('/')
 async def home_page():
+    if not is_app_started:
+        status = ui.label('Starting...')
+    spinner = ui.spinner(size='md')
+
+    async def run_init():
+        if is_app_started:
+            spinner.delete()
+            return
+        status.set_text('Initializing database...')
+        await ensure_init()
+        spinner.delete()
+        status.set_text('Ready ✅')
+
+    ui.timer(0.1, run_init, once=True)
 
     await ui.context.client.connected()
 

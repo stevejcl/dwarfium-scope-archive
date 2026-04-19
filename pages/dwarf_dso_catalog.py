@@ -67,7 +67,7 @@ class CatalogApp:
         self.data = await run.io_bound(_fetch_catalog_data, db)
         self.reload()
         if hasattr(self, 'loading_spinner'):
-            self.loading_spinner.visible = False
+            self.loading_spinner.set_visibility(False)
 
     # Export Button
     def on_export_click(self):

@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.0.9] - 2026-04-19
+
+### Add 
+    Refactor UI spinners, async flows and menu
+
+### BugFix# 
+    Improve UI responsiveness and async behavior across the app:
+    Modify Help
+
 ## [V3.0.8] - 2026-04-19
 
 ### Add 

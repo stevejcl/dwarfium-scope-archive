@@ -29,8 +29,6 @@ import pages.astro_settings
 import pages.dwarf_backup_ui_dark_library
 
 from api.image_preview import serve_preview
-from api.dwarf_backup_db import DB_NAME, start_db, close_db
-from api.dwarf_backup_db_api import insert_default_groups 
 
 app.native.settings['ALLOW_DOWNLOADS'] = True
 
@@ -48,15 +46,7 @@ def preview_image(file_path: str):
     return serve_preview(file_path)
 
 try:
-    conn = start_db(DB_NAME)
-    if not conn:
-        print("[FAIL] Application halted, fatal error Database.")
-        sys.exit(1)
-    else:
-        #verify default data
-        insert_default_groups(conn)
-    close_db(conn)
-
+    
     ui.run( title="Dwarfium Scope Archive",
             storage_secret='Dwarfiumscopearchive key to secure the browser session cookie',
             native=True, 
@@ -76,5 +66,5 @@ except Exception as e:
 except (SystemExit):
     print("Application closed.")
     pass
-
+finally:
     pass

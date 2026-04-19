@@ -238,7 +238,7 @@ class TransferApp:
         self.notify_me(None)
 
     def populate_dwarf_filter(self):
-        self.ftp_spinner.visible = False
+        self.ftp_spinner.set_visibility(False)
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
         self.dwarf_options = get_dwarf_Names(self.conn)
@@ -311,7 +311,7 @@ class TransferApp:
 
     async def on_dwarf_filter_change(self):
         print("on_dwarf_filter_change")
-        self.ftp_spinner.visible = False
+        self.ftp_spinner.set_visibility(False)
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
         selected_name = self.dwarf_filter.value
@@ -534,13 +534,13 @@ class TransferApp:
         status_text = ""
         try:
             if self.dwarf_ip_sta_mode:
-                self.ftp_spinner.visible = True
+                self.ftp_spinner.set_visibility(True)
                 status_text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode)
                 self.ftp_available = "Connected to" in status_text if status_text else False
         finally:
             # Update only if the IP has not changed
             if current_ip == self.dwarf_ip_sta_mode:
-                self.ftp_spinner.visible = False
+                self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
 
                 self.update_transfert_mode()
@@ -792,7 +792,7 @@ class TransferApp:
                             await  self.execute_sync_dwarf_sessions(single_src, single_dest, local_Main_Dwarf_dir, False, label, log, spinner)
                         except Exception as e:
                             label.text = "Error while synchronizing sessions!"
-                            spinner.visible = False
+                            spinner.set_visibility(False)
                             ui.notify(f"❌ Error: {str(e)}", type="negative")
                             break
 
@@ -1015,14 +1015,14 @@ class TransferApp:
             else:
                 total_backup, deleted_backup, rebuild_result = 0, 0, {"rebuilt": 0, "skipped": 0, "errors": 0}
 
-            _ui(lambda: setattr(spinner, "visible", False) if spinner else None)
+            _ui(lambda: spinner.set_visibility(False) if spinner else None)
             _ui(lambda: setattr(label, "text", self.EndScanningMessage) if label else None)
             _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive"))
             _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive"))
             self._set_progress('done', 0, 0, current_file=f"✅ {total_dwarf} dwarf + {total_backup} backup sessions indexed")
 
         except Exception as e:
-            _ui(lambda: setattr(spinner, "visible", False) if spinner else None)
+            _ui(lambda: spinner.set_visibility(False) if spinner else None)
             _ui(lambda: ui.notify(f"❌ Error: {str(e)}", type="negative"))
             self._set_progress('error', 0, 0, error=str(e))
 

@@ -173,7 +173,7 @@ class ConfigApp:
     def refresh_dwarf_list(self):
         """Refresh the list of dwarfs and update the selection dropdown."""
         self.dwarf_status = None
-        self.ftp_spinner.visible = False
+        self.ftp_spinner.set_visibility(False)
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
         self.dwarfs = get_dwarf_Names(self.conn)
@@ -185,19 +185,21 @@ class ConfigApp:
         print(f"initial:{self.dwarf_selector.value}")
         print(f"dwarf_id:{self.dwarf_id}")
         if display_names:
-            if self.dwarf_id and not self.dwarf_selector.value:
+            # Auto-select if only one dwarf or if dwarf_id is set
+            if len(self.dwarfs) == 1 and not self.dwarf_selector.value:
+                self.dwarf_selector.set_options(display_names, value=display_names[0])
+                self.dwarf_id = self.dwarfs[0][0]
+            elif self.dwarf_id and not self.dwarf_selector.value:
                 selected_value = next((name for id, name in self.dwarfs if id == self.dwarf_id), None)
                 print(selected_value)
                 selected_display = f"{self.dwarf_id} - {selected_value}" if selected_value else display_names[0]
                 self.dwarf_selector.set_options(display_names, value=selected_display)
             elif self.dwarf_id and self.dwarf_selector.value and self.dwarf_id != int(self.dwarf_selector.value.split(" - ")[0]):
-                # Find the display name that matches self.dwarf_id
                 selected_value = next((name for id, name in self.dwarfs if id == self.dwarf_id), None)
                 selected_display = f"{self.dwarf_id} - {selected_value}" if selected_value else display_names[0]
                 self.dwarf_selector.set_options(display_names, value=selected_display)
             else:
                 value = self.dwarf_selector.value
-                # force recharge
                 self.dwarf_selector.set_options(display_names, value=None)
                 self.dwarf_selector.set_options(display_names, value=value)
         else:
@@ -213,12 +215,12 @@ class ConfigApp:
         current_ip = self.dwarf_ip_sta_mode.value
         status_text = "❌ Unable to check status."  # valeur par défaut
         try:
-            self.ftp_spinner.visible = True
+            self.ftp_spinner.set_visibility(True)
             status_text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode.value)
         finally:
             # Update only if the IP has not changed
             if current_ip == self.dwarf_ip_sta_mode.value:
-                self.ftp_spinner.visible = False
+                self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
                 if not self.dwarf_status and status_text.startswith("✅ Connected"):
                     self.dwarf_status = "FTP"
@@ -457,14 +459,15 @@ class ConfigApp:
             return
 
         # Dialog to block interaction and show progress
-        with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
+        with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
             close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label("🔍 Scanning Dwarf drive, please wait...")
-            ui.spinner(size="lg")
-            log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
+            spinner = ui.spinner(size="lg")
+            log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
 
         dialog.open()  # show the dialog
+        spinner.set_visibility(True)
 
         try:
             local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
@@ -481,8 +484,10 @@ class ConfigApp:
                 ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
             else:
                ui.notify(f"❌ Error: can't create Local Dwarf Directory", type="negative")
+            spinner.set_visibility(False)
 
         except Exception as e:
+            spinner.set_visibility(False)
             msg = f"❌ Error: {str(e)}"
             ui.notify(msg, type="negative")
             error_label.text = msg 

@@ -1404,10 +1404,11 @@ class AddManualSession:
                 error_label = ui.label().style('color: red')  # Empty label for future error messages
                 close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
                 ui.label(f"🔍 Resolving Image, please wait...")
-                ui.spinner(size="lg")
+                spiner = ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
         dialog.open()  # show the dialog
+        spinner.set_visibility(True)
 
         # --- Resolving for fits files only.
         for file_info in fits_files:
@@ -1424,6 +1425,7 @@ class AddManualSession:
                     'DEC': file_info.get('dec',''),
                 }
 
+        spinner.set_visibility(False)
         ui.notify("✅ Resolution completed")
 
         dialog.close()  # close dialog 

@@ -2818,7 +2818,7 @@ def find_matching_bias_flat(location, cam_name, ir_filter, gain):
             "bias_dir": bias_dir, "flat_dir": flat_dir}
 
 
-def generate_siril_session_json(conn, row, backup_location, session_full_dir=""):
+async def generate_siril_session_json(conn, row, backup_location, session_full_dir=""):
     """Generate siril_session.json from a session row."""
     import os
     from pathlib import Path

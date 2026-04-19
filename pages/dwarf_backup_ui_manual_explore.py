@@ -175,7 +175,6 @@ class ManualExploreApp:
         self.linked_session_icon   = None
         self.edit_session_icon     = None
         self.delete_session_icon   = None
-        self.favorite_icon         = None
         self.classified_label      = None
 
         # Gallery / slideshow state
@@ -286,11 +285,6 @@ class ManualExploreApp:
                                 on_click=self.navigate_to_linked_session,
                             ).classes('h-16')
                             self.linked_session_icon.visible = False
-
-                            self.favorite_icon = ui.button(
-                                "☆ Favorite", on_click=self.toggle_favorite
-                            ).classes('h-16')
-                            self.favorite_icon.visible = False
 
                             # Edit session — open AddManualSession in update mode
                             self.edit_session_icon = ui.button(
@@ -661,8 +655,6 @@ class ManualExploreApp:
             self.fullscreen_icon.visible     = False
         if self.linked_session_icon:
             self.linked_session_icon.visible = False
-        if self.favorite_icon:
-            self.favorite_icon.visible       = False
         if self.edit_session_icon:
             self.edit_session_icon.visible   = False
         if self.delete_session_icon:
@@ -761,6 +753,70 @@ class ManualExploreApp:
         """Return the effective physical path: session_dir/tag if tag set, else session_dir."""
         return os.path.join(session_dir, session_tag) if session_tag else session_dir
 
+    def get_hover_class(self):
+        return 'hover:bg-gray-700' if app.storage.user.get('ui_mode', 0) == 'dark' else 'hover:bg-gray-300'
+
+    def toggle_favorite_ui_label(self, label_element):
+
+        # Call the API function directly
+        new_favorite = toggle_favorite_manual(self.conn, self.selected_entry_data.entry_id)
+        
+        # Update the favorite data row_file UI based on the new state
+        self.all_files_rows[0][17] = new_favorite
+        # Update the UI based on the new state
+        star_icon = '⭐ ' if new_favorite else '☆ '
+        label_text = label_element.text.split(' ', 1)[1]  # Remove existing star
+        label_element.set_text(f"{star_icon}{label_text}")
+        # Set the tooltip text based on the favorite state
+        tooltip_text = "Click to Remove from Favorites" if new_favorite else "Click to Add to Favorites"
+        # Add tooltip
+        label_element.props(f'title="{tooltip_text}"')
+        #label_element.classes('text-yellow-500' if new_favorite else 'text-gray-400')
+        label_element.update()
+        ui.notify("Favorite updated.", type="positive")
+
+        return new_favorite
+
+    def toggle_favorite_ui(self, label_element):
+        selected_value = self.file_list.value
+
+        if not selected_value:
+            return
+
+        # Do update only the label if only one option
+        if len(self.file_list.options) <= 1:
+            self.toggle_favorite_ui_label(label_element)
+            return
+
+        # Get the selected Index on the list
+        # the index begin at 0, but "Select a session" use it 
+        selection_index = self.label_to_index.get(selected_value)
+
+        # Call the API function directly
+        new_favorite = self.toggle_favorite_ui_label(label_element)
+
+        # Build new label with star icon
+        star_icon = '⭐ ' if new_favorite else '☆ '
+        select_text = selected_value.split(' ', 1)[-1]  # Remove old star if any
+        new_select_text = f"{star_icon}{select_text}"
+
+        # Update mapping
+        options = list(self.file_list.options)
+        if selection_index is not None:
+            # Add zero-width suffix if needed
+            count = 0
+            while new_select_text in self.label_to_index:
+                count += 1
+                new_select_text = new_select_text + ("\u200b" * count)
+
+            self.label_to_index[new_select_text] = selection_index
+
+            # Update the options list
+            # need to add +1 to the selected Index
+            # the index begin at 0, but not included "Select a session"
+            options[selection_index+1] = new_select_text
+            self.file_list.set_options(options, value=new_select_text)
+
     def _display_session(self, idx: int):
         """Render the detail panel for the ManualSession row at all_files_rows[idx]."""
         row = self.all_files_rows[idx]
@@ -794,6 +850,9 @@ class ManualExploreApp:
         dwarf_name          = row[25]   or "N/A"
         backup_drive_name   = row[26]   or "N/A"
 
+        star_icon    = '⭐ ' if is_favorite else '☆ '
+        details_files_text = f"{star_icon}{session_type} with 🔭 {dwarf_name} on 📅 {show_short_date_session(session_date)}"
+
         # Keep a reference for the action buttons
         self.selected_entry_data = ManualEntryData(
             entry_id=entry_id,
@@ -815,6 +874,14 @@ class ManualExploreApp:
         self.details_preview.clear()
 
         with self.details_files:
+            label = ui.item_label(f"{details_files_text}").props('header').classes('text-bold').props('clickable').classes(f'cursor-pointer {self.get_hover_class()} transition-colors duration-200 rounded')
+            # Set the tooltip text based on the favorite state
+            tooltip_text = "Click to Remove from Favorites" if is_favorite else "Click to Add to Favorites"
+            # Add tooltip
+            label.props(f'title="{tooltip_text}"')
+            # Make the label clickable to toggle favorite
+            label.on('click', lambda _, lbl=label: self.toggle_favorite_ui(lbl))
+            ui.separator()
 
             # Target / classification row
             description, _ = get_name_object(description_db)
@@ -926,11 +993,6 @@ class ManualExploreApp:
         has_dir = bool(session_dir) and os.path.exists(session_dir)
         if self.open_folder_icon:
             self.open_folder_icon.visible = has_dir
-
-        # Favorite toggle
-        if self.favorite_icon:
-            self.favorite_icon.set_text('⭐ Remove favorite' if is_favorite else '☆ Add favorite')
-            self.favorite_icon.visible = True
 
         # Edit session — navigate back to AddManualSession in edit mode
         if self.edit_session_icon:
@@ -1210,19 +1272,6 @@ class ManualExploreApp:
         url += f"&back_url={back_encoded}"
         print(f"URL: {url}")
         ui.navigate.to(url)
-
-    def toggle_favorite(self):
-        if not self.selected_entry_data:
-            return
-        new_val = toggle_favorite_manual(self.conn, self.selected_entry_data.entry_id)
-        star = '⭐ Remove favorite' if new_val else '☆ Add favorite'
-        if self.favorite_icon:
-            self.favorite_icon.set_text(star)
-        # Refresh the session list so the star icon updates in the dropdown
-        idx = self.label_to_index.get(self.file_list.value)
-        if idx is not None and idx < len(self.all_files_rows):
-            self.all_files_rows[idx][17] = new_val
-        ui.notify("Favorite updated.", type="positive")
 
     async def delete_directory(self):
         """

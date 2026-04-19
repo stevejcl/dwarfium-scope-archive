@@ -49,6 +49,14 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
 Scans the Dwarf's USB directory and indexes all sessions into the database.
 Run this after connecting the Dwarf by USB.
 
+## Show All Current Dwarf Data
+
+Opens the Explore page to view data stored on your Dwarf.
+You can then import it into your backup.
+Enable **Only show sessions not yet backed up** 
+This will display pending sessions and show the Backup button.
+Run this after running : **Analyze Dwarf Drive**.
+
 ## Tips
 
 - The USB path must be accessible when you click **Analyze Dwarf Drive**
@@ -86,7 +94,15 @@ Run this after copying new sessions from the Dwarf.
 
 ## Check Session Integrity
 
-Verifies that all indexed sessions still exist on disk.
+Compare the number of FITS files present to those registered in the session.
+The counts may differ if bad frames were removed on the Dwarf.
+
+## Show All Current Backup Data
+
+Opens the Explore page to view data stored on your drive.
+You can then restore them to your dwarf.
+Enable **Only show backed up sessions but deleted on selected Dwarf** 
+to list deleted sessions and display the Restore button..
 
 ## Delete Backup Entries
 
@@ -112,7 +128,10 @@ automatically from `shotsInfo.json` files when you re-analyze.
         'content': '''
 ## Purpose
 
-Browse and search all sessions indexed from your backup drives and Dwarfs.
+Browse and search all sessions indexed from your backup drives.
+To view the sessions currently stored on your Dwarf,
+use the Dwarf page, and
+click the “Show All Current Dwarf Data” button.
 
 ## Filters
 
@@ -135,11 +154,13 @@ Click a target in the left panel, then select a session from the
 - **Open** — open the session folder in Windows Explorer
 - **Show Fullscreen** — view the stacked image fullscreen
 - **View linked Manual Session** — jump to any Manual Session linked to this entry
-- **Add/Remove Favorite** — mark sessions you want to process
+- **Add/Remove Favorite** — Toggle the session title to show or hide it on the home page
 - **Show Details / Hide Details** — toggle file stats and directory info
 
 ## Tips
 
+- Use the **Only Show Sessonon Dwarf** / **Only on Backup** checkboxes to find sessions
+  that exist in one place but not the other
 - Use the **Only on Dwarf** / **Only on Backup** checkboxes to find sessions
   that exist in one place but not the other
 - The 🎯 badge shows dark match status — green = temp in range, orange = closest temp, red = no match
@@ -180,6 +201,7 @@ Selecting a session shows:
 
 ## Tips
 
+- To Backup a Dwarf session, selct the 
 - Sessions are grouped by target object in the left panel
 - The **manual** group contains sessions without a recognised DSO target
 - Use **Edit Session** to add Starless or Denoise variants after processing

@@ -105,6 +105,7 @@ class ExploreApp:
         self.backup_session_icon = {}
         self.linked_manual_session_icon = None  # button to jump to linked ManualSession
         self.delete_session_icon = {}
+        self.siril_json_icon = {}
         self.action_fits_files_icon = {}
         self.cleanup_fits_files_action  = True
         self.nb_fits_files = None
@@ -194,6 +195,8 @@ class ExploreApp:
                                 .props('flat round dense')
                                 .bind_visibility_from(self.object_filter, 'value', lambda v: bool(v))
                             )
+                            self.object_spinner = ui.spinner(size="lg")
+
                         self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
 
                 with ui.column().classes('w-full'):
@@ -253,6 +256,7 @@ class ExploreApp:
 
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
+        self.object_spinner.set_visibility(False)
 
         if self.mode == "backup":
             self.populate_backup_filter()
@@ -282,7 +286,7 @@ class ExploreApp:
                 initial_value = match
         self.backup_filter.set_options(names, value=initial_value)
 
-    def on_backup_filter_change(self):
+    async def on_backup_filter_change(self):
         current_dwarf_id = self.get_selected_dwarf_id()
         print(f"on_backup_filter_change: {self.BackupDriveId}-{current_dwarf_id}")
         current_backup_id = self.BackupDriveId
@@ -298,7 +302,7 @@ class ExploreApp:
 
         # reload objects if neccessary : new BackupDriveId and same dwarf_id
         if current_backup_id != self.BackupDriveId and current_dwarf_id == self.get_selected_dwarf_id():
-            self.load_objects()
+            await self.load_objects()
 
     def populate_dwarf_filter(self):
         current_dwarf_id = self.get_selected_dwarf_id()
@@ -332,24 +336,22 @@ class ExploreApp:
         else:
             return next((id_ for id_, name in self.dwarf_options if name == value), None)
 
-    def on_change_only_on_dwarf(self):
+    async def on_change_only_on_dwarf(self):
         if self.only_on_dwarf.value and self.only_on_backup.value:
             self.only_on_backup.value = False
-        self.load_objects()
+        await self.load_objects()
 
-    def on_change_only_on_backup(self):
+    async def on_change_only_on_backup(self):
         if self.only_on_dwarf.value and self.only_on_backup.value:
             self.only_on_dwarf.value = False
-        self.load_objects()
+        await self.load_objects()
       
-    def load_objects(self):
-        ui.run_javascript("document.body.style.cursor='wait'")
-        ui.timer(0.05, lambda: self._load_objects_work(), once=True)
- 
-    def _load_objects_work(self):
+    async def load_objects(self):
+
+        self.object_spinner.set_visibility(True)
         dwarf_id = self.get_selected_dwarf_id()
         self.clear_selected_object()
-
+        await asyncio.sleep(0.1)
         if self.mode == "backup":
             show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
@@ -374,14 +376,15 @@ class ExploreApp:
         self.selected_object_description = None
         self.selected_object_is_group = False
         self.load_objects_ui()
-        ui.run_javascript("document.body.style.cursor='default'")
+        self.object_spinner.set_visibility(False)
 
         # ✅ Auto-select session if provided and at first
         if not self.AutoSelection_done and self.SessionId:
             self.AutoSelection_done = True
-            ui.timer(0.2, lambda: self.auto_select_session(), once=True)
+            self.object_spinner.set_visibility(True)
+            await self.auto_select_session()
  
-    def auto_select_session(self):
+    async def auto_select_session(self):
         print(f"Auto-select session: {self.SessionId}")
 
         if not self.SessionId:
@@ -413,7 +416,7 @@ class ExploreApp:
             print(f"[auto_select] could not set BackupDriveId: {e}")
 
         print("Auto-selecting session via ALL_SESSIONS")
-        self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
+        await self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
 
     def _update_expanded_nodes(self, expanded_keys: list[str]):
         self.expanded_nodes = set(expanded_keys)
@@ -659,10 +662,10 @@ class ExploreApp:
 
         self.object_list.update()
         ui.update()
-        ui.run_javascript("document.body.style.cursor='default'")
+        self.object_spinner.set_visibility(False)
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id = None):
-        ui.run_javascript("document.body.style.cursor='wait'")
+        self.object_spinner.set_visibility(True)
         self.selected_object = name 
         self.selected_object_description = desc 
         self.selected_object_is_group = is_group
@@ -671,7 +674,7 @@ class ExploreApp:
     def _handle_object_click_work(self, oid, dso_id, is_group, session_id = None):
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
-        ui.run_javascript("document.body.style.cursor='default'")
+        self.object_spinner.set_visibility(False)
 
     def clear_selected_object(self):
         self.fullscreen_image.visible = False
@@ -936,7 +939,7 @@ class ExploreApp:
             ui.notify(f"Folder does not exist:\n{folder_path}", color="negative")
             return
 
-        def ok_confirm_delete_session():
+        async def ok_confirm_delete_session():
             try:
                 shutil.rmtree(folder_path)
                 ui.notify(f"Folder deleted:\n{folder_path}", color="positive")
@@ -950,7 +953,7 @@ class ExploreApp:
             except Exception as e:
                 ui.notify(f"Error deleting folder:\n{e}", color="negative")
             finally:
-                self.load_objects()
+                await self.load_objects()
 
         # Ask for confirmation
         await self.WinLog.show(
@@ -992,7 +995,7 @@ class ExploreApp:
             except Exception as e:
                 ui.notify(f"Error cleanup folder:\n{e}", color="negative")
             finally:
-                self.load_objects()
+                await self.load_objects()
 
         # Ask for confirmation
         await self.WinLog.show(
@@ -1044,7 +1047,7 @@ class ExploreApp:
                 ui.notify(f"Error restoring files:\n{e}", color="negative")
             finally:
                 progress_dialog.close()
-                self.load_objects()
+                await self.load_objects()
 
         # Ask for confirmation
         await self.WinLog.show(
@@ -1325,6 +1328,7 @@ class ExploreApp:
         #label_element.classes('text-yellow-500' if new_favorite else 'text-gray-400')
         if update:
             label_element.update()
+        ui.notify("Favorite updated.", type="positive")
 
         return new_favorite
 
@@ -1549,6 +1553,7 @@ class ExploreApp:
         self.backup_session_icon.visible = False
         self.delete_session_icon.disable()
         self.delete_session_icon.visible = False
+        self.siril_json_icon.visible = False
         self.action_fits_files_icon.disable()
         if self.linked_manual_session_icon:
             self.linked_manual_session_icon.visible = False
@@ -1702,7 +1707,7 @@ class ExploreApp:
             if hasattr(self, 'siril_json_icon') and self.siril_json_icon:
                 if (self.mode == "backup"
                         and self.current_session_row is not None
-                        and self.selected_path
+                        and self.selected_path and os.path.isdir(self.selected_path)
                         and not self.selected_sessions_multi):  # hidden on multi-selection
                     self.siril_json_icon.visible = True
                     self.siril_json_icon.enable()
@@ -2116,9 +2121,9 @@ class ExploreApp:
         import json, webview, os
         from pathlib import Path
 
-        ui.run_javascript("document.body.style.cursor='wait'")
+        self.object_spinner.set_visibility(True)
         try:
-            data = generate_siril_session_json(
+            data = await generate_siril_session_json(
                 self.conn,
                 self.current_session_row,
                 self.current_backup_location or "",
@@ -2126,9 +2131,9 @@ class ExploreApp:
             )
         except Exception as e:
             ui.notify(f"❌ Failed to generate JSON: {e}", type="negative")
-            ui.run_javascript("document.body.style.cursor='default'")
+            self.object_spinner.set_visibility(False)
             return
-        ui.run_javascript("document.body.style.cursor='default'")
+        self.object_spinner.set_visibility(False)
 
         json_str = json.dumps(data, indent=2, ensure_ascii=False)
 
