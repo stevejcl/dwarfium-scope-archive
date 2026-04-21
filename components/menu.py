@@ -36,10 +36,8 @@ def menu(title):
 
         def _check_transfer():
             try:
-                # Scan general storage for any transfer keyed by this client
-                client_id = ui.context.client.id
-                key = f'transfer_progress_{client_id}'
-                p = app.storage.general.get(key, None)
+                # Use fixed key — no longer client-specific
+                p = app.storage.general.get('transfer_progress', None)
                 if p and p['status'] == 'running':
                     total  = p.get('total', 0)
                     copied = p.get('copied', 0)

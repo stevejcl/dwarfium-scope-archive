@@ -136,6 +136,7 @@ class ConfigApp:
         # Update the select options AND set a default value if needed
         if options:
             # Auto-select if only one backup drive
+            if len(self.backupDrives) == 1 and not self.backupDrive_selector.value:
                 self.backupDrive_selector.set_options(options, value=options[0])
                 self.backupDrive_id = self.backupDrives[0][0]
                 return

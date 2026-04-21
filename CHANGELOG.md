@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.1.0] - 2026-04-21
+**Test version (published to test branches)**
+
+### Add 
+    Background transfers and persistent progress
+
+### BugFix# 
+    Dark Library better management
+
 ## [V3.0.9] - 2026-04-19
 
 ### Add 

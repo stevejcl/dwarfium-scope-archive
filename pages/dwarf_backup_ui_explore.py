@@ -350,6 +350,10 @@ class ExploreApp:
 
         self.object_spinner.set_visibility(True)
         dwarf_id = self.get_selected_dwarf_id()
+        # Save current selection — restore it after reload if still in list
+        saved_object      = self.selected_object
+        saved_description = self.selected_object_description
+        saved_is_group    = self.selected_object_is_group
         self.clear_selected_object()
         await asyncio.sleep(0.1)
         if self.mode == "backup":
@@ -372,10 +376,30 @@ class ExploreApp:
         print (f"Total matching sessions: {count}")
         print (f"Total objects: {len(self.objects)}")
         print (f"Total objects: {[f'{oid} - {name} {dso_id} {"G" if is_group else ""}' for oid, name, dso_id, is_group in self.objects]}")
-        self.selected_object = None
-        self.selected_object_description = None
-        self.selected_object_is_group = False
-        self.load_objects_ui()
+
+        # Restore previous selection if it still exists in the new list
+        visible_names = [name for _, name, _, _ in self.objects]
+        if saved_object == ALL_SESSIONS:
+            # ALL_SESSIONS is always available — restore and re-trigger
+            self.selected_object             = saved_object
+            self.selected_object_description = saved_description
+            self.selected_object_is_group    = saved_is_group
+            self.load_objects_ui()
+            ui.timer(0.1, lambda: self._handle_object_click_work(None, None, True), once=True)
+        elif saved_object and saved_object in visible_names:
+            self.selected_object             = saved_object
+            self.selected_object_description = saved_description
+            self.selected_object_is_group    = saved_is_group
+            for oid, name, dso_id, is_group in self.objects:
+                if name == saved_object:
+                    self.load_objects_ui()
+                    ui.timer(0.1, lambda o=oid, d=dso_id, g=is_group: self._handle_object_click_work(o, d, g), once=True)
+                    break
+        else:
+            self.selected_object = None
+            self.selected_object_description = None
+            self.selected_object_is_group = False
+            self.load_objects_ui()
         self.object_spinner.set_visibility(False)
 
         # ✅ Auto-select session if provided and at first
