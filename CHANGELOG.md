@@ -1,6 +1,6 @@
 # Changelog
 
-## [V3.0.9] - 2026-04-19
+## [V3.0.9b] - 2026-04-19
 
 ### Add 
     Refactor UI spinners, async flows and menu
