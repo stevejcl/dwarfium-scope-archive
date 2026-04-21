@@ -53,8 +53,8 @@ jobs:
     name: 🚀 Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'  # pas de release en manual debug
-
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    
     steps:
       - name: 🔄 Checkout code
         uses: actions/checkout@v5
