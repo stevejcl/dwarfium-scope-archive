@@ -1,4 +1,4 @@
-name: Build Dwarfium Scope Archive
+name: Build Dwarfium Scope Archive Test
 
 on:
   push:
