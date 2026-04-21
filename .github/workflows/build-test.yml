@@ -1,0 +1,80 @@
+name: Build Dwarfium Scope Archive
+
+on:
+  push:
+    branches: [evolution-test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v5
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 Install base requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: List pages folder contents
+        run: ls -l pages/
+        
+      - name: 📦 Install Windows-specific requirements
+        if: runner.os == 'Windows'
+        run: |
+          pip install -r requirements-windows.txt
+
+      - name: ⚙️ Run build script
+        run: |
+          python buildDwarfiumScopeArchive.py
+
+      - name: 📤 Upload dist ZIP files
+        uses: actions/upload-artifact@v4
+        with:
+          name: zip-${{ runner.os }}
+          path: DwarfiumScopeArchive-${{ runner.os }}.zip
+
+  release:
+    name: 🚀 Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Get version from CHANGELOG.md
+        id: get_version
+        run: |
+          VERSION=$(grep -m 1 -o '\[.*\]' CHANGELOG.md | sed 's/\[\(.*\)\]/\1/')
+          echo "RVERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: 📥 Download all ZIP artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloads
+
+      - name: 🚀 Release with ncipollo/release-action
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: downloads/**/*.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
+          skipIfReleaseExists: true
+          tag: v${{ env.RVERSION }}
+          name: Release v${{ env.RVERSION }}
