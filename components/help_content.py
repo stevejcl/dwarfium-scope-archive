@@ -20,10 +20,12 @@ Dwarfium Scope Archive helps you back up, organise and explore your Dwarf telesc
 ## Typical workflow
 
 1. Configure your Dwarf on the **Dwarf** page
+2. Use **Analyze Dwarf Data** to index the sessions on your Dwarf
 2. Configure your backup drive on the **Backup** page
-3. Use the **Transfer** page to copy sessions from the Dwarf to your backup
-4. Use **Analyze Current Drive** on the Backup page to index the sessions
+3. Use **Analyze Current Drive** on the Backup page to index the sessions
+4. Use the **Transfer** page to copy sessions from the Dwarf to your backup
 5. Browse everything on the **Explore** page
+6. The **Explore** page allows also to Backup directly a selected session
 '''
     },
 
@@ -40,9 +42,22 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
 1. Click **➕ Add New Dwarf**
 2. Enter a name (e.g. `Dwarf Mini New`)
 3. Set the **Astronomy Directory** — the full path to the `Astronomy` folder on
-   the Dwarf's SD card when connected by USB (e.g. `I:\\Astronomy`)
-4. Set the **IP Address STA Mode** if you want WiFi/FTP transfer
-5. Click **Save / Update Dwarf**
+   the Dwarf's Disk when connected by USB (e.g. `I:\\Astronomy`)
+4. If you are using the Dwarf 2, a direct USB connection is not available.
+   You should use one of the following methods:
+   1. FTP Connection: Setup the Dwarf in STA Mode with the DwarfLab Mobile App
+      1. Find the IP address of the Dwarf and enter it on this page
+      2. You can then use all the function available on this page.
+   2. MTP Mode, this mode is specific to Windows
+      But you can still register your Dwarf in the Settings
+      1. Connect the Dwarf 2 by USB
+      2. Turn on the Dwarf 2 and connect to it using the Dwarflab mobile app
+      3. In the app, go to to **Advanced Settings** to enable MTP
+      4. On this page, click **Scan for MTP Devices**
+      5. You can then register your Dwarf, but the scan function will not be available
+      6. To transfer a session, you must use the MTP Page
+5. Set the **IP Address STA Mode** if you want WiFi/FTP transfer
+6. Click **Save / Update Dwarf**
 
 ## Analyze Dwarf Drive
 
@@ -129,9 +144,8 @@ automatically from `shotsInfo.json` files when you re-analyze.
 ## Purpose
 
 Browse and search all sessions indexed from your backup drives.
-To view the sessions currently stored on your Dwarf,
-use the Dwarf page, and
-click the “Show All Current Dwarf Data” button.
+To view sessions currently stored on your Dwarf, go to the Dwarf page
+ and click the "Show All Current Dwarf Data" button.
 
 ## Filters
 
@@ -153,6 +167,11 @@ Click a target in the left panel, then select a session from the
 
 - **Open** — open the session folder in Windows Explorer
 - **Show Fullscreen** — view the stacked image fullscreen
+- **Backup/Restore** — Allows you to perform actions on the selected session.
+- **Availability** — Depends on the selected checkboxes. See tips for more details.
+- **Delete Session (Backup Drive)** — Permanently removes all session data from the backup drive.
+- **Delete Session (Dwarf)** — Available only if a backup exists.
+    Access it via the **"Show All Current Dwarf Data"** button in the Dwarf Settings page.
 - **View linked Manual Session** — jump to any Manual Session linked to this entry
 - **Add/Remove Favorite** — Toggle the session title to show or hide it on the home page
 - **Show Details / Hide Details** — toggle file stats and directory info
@@ -402,13 +421,13 @@ fields that are stitched together into a single wide-field image.
         'content': '''
 ## Purpose
 
-Connect to a Dwarf telescope via MTP (Media Transfer Protocol) —
-useful when the Dwarf appears as a camera/phone device rather than
-a USB drive.
+Connect to a Dwarf 2 telescope via MTP (Media Transfer Protocol) —
 
 ## Workflow
 
-1. Connect the Dwarf by USB
+1. Connect the Dwarf 2 by USB
+2. Turn on the Dwarf2 and connect to it using the Dwarflab mobile app
+3 .In the app, go to to **Advanced Settings** to enable MTP
 2. On this page, click **Scan for MTP Devices**
 3. Select the detected Dwarf from the list
 4. Use **Browse** to navigate the device file system

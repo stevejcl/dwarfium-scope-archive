@@ -2540,9 +2540,9 @@ def get_or_create_DarkLibrary(conn, location, backup_drive_id, name=None):
             return row[0]
         effective_name = name or os.path.basename(location) or location
         cursor.execute("""
-            INSERT INTO DarkLibrary (name, location, backup_drive_id, last_scan_date)
-            VALUES (?, ?, ?, ?)
-        """, (effective_name, location, backup_drive_id, now))
+            INSERT INTO DarkLibrary (name, location, backup_drive_id)
+            VALUES (?, ?, ?)
+        """, (effective_name, location, backup_drive_id))
         new_id = cursor.lastrowid
         commit_db(conn)
         return new_id

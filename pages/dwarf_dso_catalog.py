@@ -14,9 +14,12 @@ async def dwarf_catalog():
 
     menu("Catalog Edition")
     await ui.context.client.connected()
-    ui.context.catalog_app = CatalogApp(DB_NAME)
-    # Defer load after page is fully connected — avoids drawer JS timeout
-    ui.timer(0.5, ui.context.catalog_app.load_data, once=True)
+    try:
+        ui.context.catalog_app = CatalogApp(DB_NAME)
+        # Defer load after page is fully connected — avoids drawer JS timeout
+        ui.timer(0.5, ui.context.catalog_app.load_data, once=True)
+    except Exception as e:
+        print(f"[Catalog] load Catalog error: {e}")
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 def _fetch_catalog_data(database):

@@ -69,6 +69,7 @@ class SettingsApp:
                 "Choose a drive with enough free space."
             ).classes("text-sm text-orange-600 mt-2")
             if current_path == "Not Defined":
+                self.InitDwarfLocal = False
                 ui.notify('Select a directory to store Dwarf data locally for offline use.', type='warning')
                 current_path = "."
 
@@ -127,9 +128,16 @@ class SettingsApp:
 
                     ui.button("Browse...", on_click=self.choose_folder).classes("mt-2")
 
-                    ui.button('Close', on_click=dialog.close)
+                    ui.button('Close', on_click=_close_dialog_InitDwarfLocal(dialog))
             dialog.open()
             info_dwarf_local.update()
+            
+    def _close_dialog_InitDwarfLocal(self, dialog):
+        dialog.close()
+        if not self.InitDwarfLocal:
+            # Redirect to Dwarf Setup Page 
+            ui.notify("First run detected. Redirecting to Dwarf setup...", type="info")
+            ui.timer(1.5, lambda: ui.navigate.to("/Dwarf?FirstInit=True"), once=True)
 
     def check_solve_field(self):
         return shutil.which("solve-field") is not None

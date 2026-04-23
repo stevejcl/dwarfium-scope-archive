@@ -46,9 +46,11 @@ class ConfigApp:
         self.conn = connect_db(self.database)
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
-            with ui.grid(columns=2).classes('items-start'):
+            #with ui.grid(columns=2):
+            with ui.row().classes("w-full justify-between"):
                 ui.button("Show All Current Backup Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
                 ui.button("Analyze Current Drive", on_click=self.analyze_drive)
+            with ui.grid(columns=2):
                 ui.button("Check Session Integrity", on_click=self.check_integrity_drive)
                 self.button_explore_session = ui.button("🔎 Open in Explorer", on_click=self.open_in_explore)
             with ui.row().classes('col-span-2 items-start gap-4'):  
@@ -280,7 +282,7 @@ class ConfigApp:
                     dlg.close()
                     url = f"/Explore?DwarfId={dwarf_id}&BackupDriveId={backup_drive_id}&mode=dwarf&only_on_dwarf=1"
                     ui.navigate.to(url)
-                ui.button("🔭 Go to Explore", on_click=go_explore).classes("bg-green-600 text-white")
+                ui.button("🔭 Go to Explore", on_click=go_explore)
                 ui.button("Stay here", on_click=dlg.close)
         dlg.open()
 

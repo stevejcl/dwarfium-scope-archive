@@ -1,4 +1,4 @@
-from nicegui import ui, app
+from nicegui import ui, app, context
 
 from components.help_content import help_content
 
@@ -10,12 +10,18 @@ def register_drawer():
 
     help_drawer = ui.right_drawer().classes('w-96')
 
-    help_drawer.value = app.storage.user.get('help_open', False)
+    if not app.storage.user.get('help_open', False):
+        help_drawer.value = False
+    else:
+        help_drawer.value = True
 
     timer_drawer =  ui.timer(0.3, lambda: refresh_if_open(), once=True)
 
 def refresh_if_open():
     global help_drawer, timer_drawer
+
+    if not context.client.connected:
+        return
 
     if help_drawer and help_drawer.value:
         build_help()
@@ -23,8 +29,10 @@ def refresh_if_open():
 def build_help():
     global help_drawer
 
-    path = ui.context.client.page.path
+    if help_drawer is None or not context.client.connected:
+        return
 
+    path = ui.context.client.page.path
     # Try exact match first, then strip/add trailing slash
     data = help_content.get(path) or help_content.get(path.rstrip('/')) or help_content.get(path + '/') or {
         'title': 'Help',
@@ -45,15 +53,18 @@ def build_help():
         .help-content pre, .help-content code { white-space: pre-wrap; word-break: break-all; font-size: 0.78rem; }
     """)
 
-def open_help():
+def open_help(force_open = False):
     global help_drawer
 
     if help_drawer is None:
         return
 
     # toggle state
-    new_state = not help_drawer.value
-    app.storage.user['help_open'] = new_state
+    current = app.storage.user.get('help_open', False)
+    new_state = force_open or not help_drawer.value
+
+    if current != new_state:
+        app.storage.user['help_open'] = new_state
 
     if new_state:
         build_help()

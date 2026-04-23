@@ -28,6 +28,8 @@ class DarkLibraryApp:
         self.database  = database
         self.library_id = LibraryId   # pre-selected library id from URL
         self.WinLog    = WinLog()
+        self.current_location = None
+        self.current_backupId = None
         self.build_ui()
 
     # =========================================================================
@@ -84,6 +86,7 @@ class DarkLibraryApp:
                         options=[],
                         label="Backup Drive",
                     ).props('stack-label outlined').classes('w-60')
+                    self.backup_selector.on_value_change(self.on_backup_change)
 
                     with ui.row().classes('items-center gap-4'):
                         self.location_input = (
@@ -164,15 +167,20 @@ class DarkLibraryApp:
         """Populate form fields from a get_DarkLibrary_list row."""
         self.library_id      = row[0]
         self.library_name.value  = row[1] or ""
-        self.location_input.value = row[2] or ""
         self.last_scan_label.text = row[4] or ""
 
         # Set Dwarf selector then populate BackupDrives
         dwarf_name = row[7]
+        self.current_backupId = row[3]
+        self.current_location  = row[2] or ""
+        self.location_input.value = self.current_location 
+        print(self.current_location)
+
         if dwarf_name and dwarf_name in self.dwarf_name_to_id:
             self.dwarf_selector.set_value(dwarf_name)
             self._populate_backup_drives(self.dwarf_name_to_id[dwarf_name],
-                                          preselect_bd_id=row[3])
+                                          preselect_bd_id=self.current_backupId )
+
 
     def set_new_library(self):
         self.library_id = None
@@ -210,10 +218,26 @@ class DarkLibraryApp:
             for label, (bid, _) in self.backup_data.items():
                 if bid == preselect_bd_id:
                     self.backup_selector.set_value(label)
+                    self.location_input.set_value(self.current_location)
                     break
         elif options:
             self.backup_selector.set_value(options[0])
+            bid, location = self.backup_data[options[0]]
+            if (bid == self.current_backupId):
+                self.location_input.set_value(self.current_location)
+            else:
+                self.location_input.set_value(location or "")
 
+    def on_backup_change(self, e):
+        label = e.value
+        if label in self.backup_data:
+            bid, location = self.backup_data[label]
+            if bid == self.current_backupId:
+                # original db value
+                self.location_input.set_value(self.current_location or location or "")
+            else: 
+                self.location_input.set_value(location or "")
+        
     def _get_selected_backup(self):
         """Return (backup_drive_id, backup_location) or (None, None)."""
         label = self.backup_selector.value
@@ -302,7 +326,7 @@ class DarkLibraryApp:
 
     def navigate_to_download(self):
         location = self.location_input.value.strip()
-        if not location:
+        if not location or not self.library_id:
             ui.notify("Save the library first to set the CALI_FRAME location.", type="warning")
             return
 
@@ -319,7 +343,7 @@ class DarkLibraryApp:
         # The transfer will create CALI_FRAME as a subfolder (non-full-backup mode).
         params = {
             "mode":          "Archive",
-            "dest_override": bd_location or location,
+            "dest_override":location or bd_location,
         }
         if dwarf_id:
             params["DwarfId"] = dwarf_id
@@ -339,7 +363,7 @@ class DarkLibraryApp:
 
     def scan_library(self):
         location = self.location_input.value.strip()
-        if not location:
+        if not location or not self.library_id:
             ui.notify("Please set a CALI_FRAME location first.", type="warning")
             return
         if not os.path.isdir(location):

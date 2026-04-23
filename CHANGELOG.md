@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.0.9c] - 2026-04-24
+
+### Add 
+    Improve help, onboarding, and UI behaviors
+    Guide the user to configure the UI at initial Startup
+    Add Sample Image to Favorite page when none exist
+
+### BugFix# 
+    Home page: wait for client connection
+    Modify Help
+    Dark Library page : link between location db value improve
+
 ## [V3.0.9b] - 2026-04-19
 
 ### Add 
