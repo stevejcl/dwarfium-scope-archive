@@ -2472,6 +2472,75 @@ def insert_ManualSession(conn: sqlite3.Connection, session_name, session_tag, se
         print(f"[DB ERROR] Failed to insert or fetch ManualSession: {e}")
         return None, None
 
+def update_manual_session(conn: sqlite3.Connection, manual_session_id: int,
+                          session_name, session_tag, session_type, jpeg_path,
+                          modification_time, thumbnail_path, file_size, description,
+                          dec, ra, exp_time, IR_filter, maxTemp, minTemp,
+                          stacked_png_path, stacked_fits_path, stacked_fits_md5) -> bool:
+    """Update an existing ManualSession by id — used in edit mode.
+
+    Unlike insert_ManualSession (which uses ON CONFLICT on session_name),
+    this always updates the specific row regardless of name changes.
+    """
+    try:
+        conn.execute("""
+            UPDATE ManualSession SET
+                session_name      = ?,
+                session_tag       = ?,
+                session_type      = ?,
+                jpeg_path         = ?,
+                modification_time = ?,
+                thumbnail_path    = ?,
+                file_size         = ?,
+                description       = ?,
+                dec               = ?,
+                ra                = ?,
+                exp_time          = ?,
+                ircut             = ?,
+                maxTemp           = ?,
+                minTemp           = ?,
+                stacked_png_path  = ?,
+                stacked_fits_path = ?,
+                stacked_fits_md5  = ?
+            WHERE id = ?
+        """, (session_name, session_tag, session_type, jpeg_path,
+              modification_time, thumbnail_path, file_size, description,
+              dec, ra, exp_time, IR_filter, maxTemp, minTemp,
+              stacked_png_path, stacked_fits_path, stacked_fits_md5,
+              manual_session_id))
+        commit_db(conn)
+        print(f"[DB] ManualSession {manual_session_id} updated.")
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] update_manual_session: {e}")
+        return False
+
+def update_manual_session_image(conn: sqlite3.Connection, manual_session_id: int,
+                                jpeg_path: str, thumbnail_path: str | None = None) -> bool:
+    """Update jpeg_path (and optionally thumbnail_path) for an existing ManualSession.
+
+    Called when the explore page finds an image on disk via fallback scan but the DB
+    entry has no jpeg_path recorded (e.g. session imported from a Stellar Studio zip
+    before the zip-extraction fix).
+    """
+    try:
+        if thumbnail_path:
+            conn.execute(
+                "UPDATE ManualSession SET jpeg_path = ?, thumbnail_path = ? WHERE id = ?",
+                (jpeg_path, thumbnail_path, manual_session_id)
+            )
+        else:
+            conn.execute(
+                "UPDATE ManualSession SET jpeg_path = ? WHERE id = ?",
+                (jpeg_path, manual_session_id)
+            )
+        commit_db(conn)
+        print(f"[DB] ManualSession {manual_session_id} jpeg_path updated: {jpeg_path}")
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] update_manual_session_image: {e}")
+        return False
+
 def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive_id=None):
     try:
         # Insert entry in BackupEntry

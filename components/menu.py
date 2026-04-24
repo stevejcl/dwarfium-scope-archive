@@ -43,6 +43,9 @@ def menu(title):
                     copied = p.get('copied', 0)
                     badge.text = f"📦 {copied}/{total}"
                     badge.visible = True
+                elif p and p['status'] == 'copy_done':
+                    badge.text = "🔄 Syncing DB..."
+                    badge.visible = True
                 elif p and p['status'] == 'scanning':
                     badge.text = p.get('current_file', '🔍 Scanning...')
                     badge.visible = True

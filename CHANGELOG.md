@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.0.9d] - 2026-04-24
+
+### Add 
+    Add DB update helpers and improve manual session import/edit UX.
+
+### BugFix# 
+    Mosaic Manual Session : Fits File in db have .zip extension
+    Function files_are_different use  default False for check_md5
+
 ## [V3.0.9c] - 2026-04-24
 
 ### Add 

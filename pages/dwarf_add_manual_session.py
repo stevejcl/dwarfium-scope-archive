@@ -22,7 +22,7 @@ from api.dwarf_backup_fct import (
     show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id, get_or_create_ManualSessionDrive
+from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id, get_or_create_ManualSessionDrive, update_manual_session
 from api.astrometry_resolver import auto_resolve, get_fits_center_coordinates
 
 from components.win_log import WinLog
@@ -119,7 +119,9 @@ class AddManualSession:
         self.linked_data = {
             "session_id": None,
             "session_full_name": "",
-            "astro_object_id": ""
+            "astro_object_id": "",
+            "session_ra": None,   # RA from the original linked session (fallback)
+            "session_dec": None,  # DEC from the original linked session (fallback)
         }
 
         self.links = []
@@ -413,6 +415,19 @@ class AddManualSession:
             except Exception as e:
                 print(f"⚠️ Error resolution {path}: {e}")
                 ra, dec = None, None
+
+        # If still no coordinates — propose the original session's RA/DEC as fallback
+        if ra is None or dec is None:
+            fallback_ra  = self.linked_data.get("session_ra")
+            fallback_dec = self.linked_data.get("session_dec")
+            if fallback_ra is not None and fallback_dec is not None:
+                print(f"[ManualSession] No coordinates in FITS — proposing fallback from original session: RA={fallback_ra} DEC={fallback_dec}")
+                ra  = fallback_ra
+                dec = fallback_dec
+                file_info['ra_from_fallback'] = True  # flag so UI can inform the user
+            else:
+                print("[ManualSession] No coordinates in FITS and no original session selected — coordinates will be empty.")
+
         file_info['ra'] = ra
         file_info['dec'] = dec
 
@@ -775,9 +790,15 @@ class AddManualSession:
         r"""
         Replace ':' with '-' and remove other invalid characters for directories.
         Forbidden chars on Windows: <>:"/\|?*
+        Also strip known file extensions that should never appear in a session name.
         """
         if not name:
             return ""
+        # Strip known file extensions (e.g. from Stellar Studio zip exports)
+        for ext in (".zip", ".fits", ".fit", ".fts", ".jpg", ".jpeg", ".png"):
+            if name.lower().endswith(ext):
+                name = name[:-len(ext)]
+                break
         # Replace colon with dash
         name = name.replace(":", "-")
         # Remove other invalid characters
@@ -824,6 +845,9 @@ class AddManualSession:
                     self.thumbnail.visible = True
                 else:
                     self.thumbnail.visible = False
+                # Store original session coordinates as fallback for FITS without RA/DEC
+                self.linked_data["session_ra"]  = details_session[0][15]  # DwarfData.ra
+                self.linked_data["session_dec"] = details_session[0][14]  # DwarfData.dec
             else:
                 self.detail_session_name.text = ""
                 self.detail_session.text = ""
@@ -931,7 +955,7 @@ class AddManualSession:
             self.track_temp_file(tmp_path)
         
         # Append to uploaded_files (keep for later resolution)
-        file_type = "fits" if suffix == ".fits" or suffix == ".fit" or suffix == ".fts" else "image"
+        file_type = "fits" if suffix in (".fits", ".fit", ".fts") else "image"
 
         # To DO - Add Astro Resolution - Ignore File => delete from the widget (not working yet) 
         if file_type == "fits":
@@ -1281,6 +1305,9 @@ class AddManualSession:
                     ui.item(f"Session taken on {date_obs} for a total exposure time of {exposure_time}").classes('text-indigo-600')
 
                     with ui.row():
+                        # Offer resolution when RA or DEC is missing from the FITS header
+                        if not self.meta_info.get('RA') or not self.meta_info.get('DEC'):
+                            ui.button("🪐 Resolve File", on_click=resolve_and_refresh)
                         ui.button('Confirm', on_click=confirm)
                         ui.button('Ignore', on_click=close_dialog_fits)
 
@@ -1426,7 +1453,18 @@ class AddManualSession:
                 }
 
         spinner.set_visibility(False)
-        ui.notify("✅ Resolution completed")
+
+        # Check if any file used the fallback coordinates from the original session
+        fallback_used = any(f.get('ra_from_fallback') for f in fits_files)
+        if fallback_used:
+            ui.notify(
+                "⚠️ No coordinates found in the FITS file — "
+                "coordinates from the original linked session were used as fallback.",
+                type="warning",
+                timeout=8000,
+            )
+        else:
+            ui.notify("✅ Resolution completed")
 
         dialog.close()  # close dialog 
 
@@ -1467,7 +1505,15 @@ class AddManualSession:
             }
         self.current_file_info['meta'] = self.meta_info
 
-        ui.notify("✅ Resolution completed")
+        if self.current_file_info.get('ra_from_fallback'):
+            ui.notify(
+                "⚠️ No coordinates found in the FITS file — "
+                "coordinates from the original linked session were used as fallback.",
+                type="warning",
+                timeout=8000,
+            )
+        else:
+            ui.notify("✅ Resolution completed")
 
         dialog.close()  # close dialog 
 
@@ -1659,8 +1705,12 @@ class AddManualSession:
             if not self.cancel_backup and verified_files == total_files:
                 result = True
                 ui.notify("✅ Backup completed successfully!", type="positive")
+            elif not self.cancel_backup and verified_files > 0:
+                result = True
+                ui.notify(f"⚠️ Backup partially completed ({verified_files}/{total_files} files copied).", type="warning")
 
-                # --- Register in database ---
+            # --- Register in database (as long as at least one file was copied) ---
+            if not self.cancel_backup and verified_files > 0:
                 try:
                     # Gather metadata from the first FITS file (if any)
                     meta = self.main_meta_info or {}
@@ -1709,13 +1759,26 @@ class AddManualSession:
                                 mtime = file_mtime
 
                     thumbnail_path = jpeg_path.replace("stacked.jpg", "stacked_thumbnail.jpg") if jpeg_path else None
-                    session_name   = self.selected_session_name or self.session_dirname.value.strip()
+
+                    # Fallback: no JPG was uploaded — check if stacked.jpg already exists
+                    # in the destination (e.g. from a previous import or linked session copy)
+                    if not jpeg_path:
+                        for candidate in ("stacked.jpg", "stacked.jpeg", "stacked.png"):
+                            candidate_path = os.path.join(dest_path, candidate)
+                            if os.path.isfile(candidate_path):
+                                jpeg_path = candidate_path
+                                thumb_candidate = candidate_path.replace("stacked.jpg", "stacked_thumbnail.jpg").replace("stacked.jpeg", "stacked_thumbnail.jpg")
+                                if os.path.isfile(thumb_candidate):
+                                    thumbnail_path = thumb_candidate
+                                print(f"[ManualSession] jpeg_path fallback from disk: {jpeg_path}")
+                                break
+                    session_name   = self.sanitize_session_name(self.selected_session_name or self.session_dirname.value.strip())
                     session_tag    = (self.session_tag.value or "").strip()
                     session_type   = self.mode
-                    print("before insert")
-                    # 1. Insert / upsert the ManualSession record
-                    manual_session_id, _ = insert_ManualSession(
-                        self.conn,
+                    print("before insert/update")
+
+                    # Build shared kwargs for insert or update
+                    _db_kwargs = dict(
                         session_name      = session_name,
                         session_tag       = session_tag,
                         session_type      = session_type,
@@ -1734,6 +1797,16 @@ class AddManualSession:
                         stacked_fits_path = get_session_file_ref(dest_path, stacked_fits_path),
                         stacked_fits_md5  = stacked_fits_md5,
                     )
+
+                    # 1. In edit mode, UPDATE by id — avoids creating a duplicate when
+                    #    session_name changed (e.g. .zip stripped from name).
+                    #    In create mode, use the normal upsert by (name, tag, type).
+                    if self.edit_mode and self.existing_session_row:
+                        existing_id = self.existing_session_row[0]
+                        ok = update_manual_session(self.conn, existing_id, **_db_kwargs)
+                        manual_session_id = existing_id if ok else None
+                    else:
+                        manual_session_id, _ = insert_ManualSession(self.conn, **_db_kwargs)
 
                     if manual_session_id:
                         # 2. Determine astro_group_id (Manual group)
