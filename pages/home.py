@@ -69,6 +69,7 @@ async def home_page():
     spinner.delete()
     if not curent_init and status:
         status.set_text('Ready ✅')
+        ui.timer(3.0, lambda: status.delete(), once=True)
 
     ON_AIR = app.storage.general.get('ON_AIR', False)
     title = "Dwarfium Scope Archive"
@@ -221,7 +222,7 @@ class HomeApp:
             if image_data:
                 slideshow_image = ui.image("").classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
                 image_info = ui.label("").classes("text-center mt-2 text-lg font-semibold")
-                image_detail = ui.label("").classes("text-center mt-2 text-md")
+                image_detail = ui.label("").classes("text-center mt-0 text-md")
 
                 def show_image():
                     if not ui.context.client.connected:
@@ -269,7 +270,7 @@ class HomeApp:
                 # Automatic slideshow with 10s interval
                 self.gallery_timer = ui.timer(interval=10, callback=next_image)
 
-                with ui.row().classes("gap-4 mb-2"):
+                with ui.row().classes("gap-4 mb-0"):
                     ui.button("Previous", on_click=prev_image)
                     ui.button("Next", on_click=next_image)
             else:
