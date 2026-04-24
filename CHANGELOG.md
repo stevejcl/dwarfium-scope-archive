@@ -11,6 +11,7 @@
     Home page: wait for client connection
     Modify Help
     Dark Library page : link between location db value improve
+    First Launch: Correction in Setting Page
 
 ## [V3.0.9b] - 2026-04-19
 

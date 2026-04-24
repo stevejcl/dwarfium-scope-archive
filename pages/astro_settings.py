@@ -28,7 +28,7 @@ class SettingsApp:
         self.path_input = None
         self.build_ui()
 
-    async def choose_folder(self):
+    async def choose_folder(self, target_input=None):
         """Open folder selection dialog."""
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
@@ -36,7 +36,7 @@ class SettingsApp:
             folder_mode = webview.FOLDER_DIALOG
 
         # Use current value as starting dir only if it's a real existing directory
-        current = self.path_input.value.strip()
+        current = target_input.value.strip()
         if current and current != "Not Defined" and os.path.isdir(current):
             start_dir = current
         else:
@@ -49,95 +49,114 @@ class SettingsApp:
             folder_mode, allow_multiple=False, directory=start_dir
         )
         if folder:
-            self.path_input.set_value(os.path.normpath(folder[0]))
+            target_input.set_value(os.path.normpath(folder[0]))
         # If cancelled, leave current value unchanged
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        current_path = None
 
         with ui.column().classes("w-full max-w-2xl mx-auto gap-4 mt-4"):
 
-         ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
+            ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
 
-         with ui.card().classes("w-full p-4") as info_dwarf_local:
-            current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
-            self.path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
-            ui.label(
-                "⚠️ This folder stores a local index of your sessions — stacked results only "
-                "(FITS, PNG, JPG) not the individual raw frames. "
-                "Depending on the number of sessions this can still reach 10 GB or more. "
-                "Choose a drive with enough free space."
-            ).classes("text-sm text-orange-600 mt-2")
-            if current_path == "Not Defined":
-                self.InitDwarfLocal = False
-                ui.notify('Select a directory to store Dwarf data locally for offline use.', type='warning')
-                current_path = "."
+            with ui.card().classes("w-full p-4") as info_dwarf_local:
+                current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
+                self.path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
+                ui.label(
+                    "⚠️ This folder stores a local index of your sessions\n"
+                    "— stacked results only (FITS, PNG, JPG) not the individual raw frames.\n"
+                    "Depending on the number of sessions this can still reach 10 GB or more.\n"
+                    "Choose a drive with enough free space."
+                ).classes("text-sm text-orange-600 mt-2").style('white-space: pre-wrap;')
+                if current_path == "Not Defined":
+                    self.InitDwarfLocal = False
+                    ui.notify('Select a directory to store Dwarf data locally for offline use.', type='warning')
+                    current_path = "."
 
-            ui.button("Browse...", on_click=self.choose_folder).classes("mt-2")
+                ui.button("📂 Browse", on_click= lambda: self.choose_folder(target_input=self.path_input)).classes("mt-2")
 
-            def save_path():
-                new_path = self.path_input.value.strip()
+                def save_path():
+                    new_path = self.path_input.value.strip()
 
-                if not new_path or not os.path.isdir(new_path):
-                    ui.notify("Please select a valid existing directory.", type='warning')
-                    return
+                    if not new_path or not os.path.isdir(new_path):
+                        ui.notify("Please select a valid existing directory.", type='warning')
+                        return
 
-                set_setting_text(self.conn, "DWARF_LOCAL_PATH", new_path)
+                    set_setting_text(self.conn, "DWARF_LOCAL_PATH", new_path)
 
-                ui.notify(f"Dwarf Local Parent path saved: {new_path}", type='positive', position='top')
+                    ui.notify(f"Dwarf Local Parent path saved: {new_path}", type='positive', position='top')
 
-            ui.button("Save", on_click=save_path).classes("mt-4")
-     
-         ui.label("🔭 Configuration of NOVA Astrometry").classes("text-xl font-bold")
+                ui.button("Save", on_click=save_path).classes("mt-4")
+         
+            ui.label("🔭 Configuration of NOVA Astrometry").classes("text-xl font-bold")
 
-         ui.label(f"Detected System : {platform.system()}")
+            ui.label(f"Detected System : {platform.system()}")
 
-         with ui.card().classes("w-full"):
-            ui.label("🌐 Online mode (Astrometry.net)")
-            ui.button("Create an API key on Astrometry.net",
-                      on_click=lambda: ui.open('https://nova.astrometry.net/api_help'))
-            api_key = get_setting_text(self.conn, "NOVA_ASTRO_API") or ""
-            api_input = ui.input("API key", value=api_key, password=True)
+            with ui.card().classes("w-full"):
+                ui.label("🌐 Online mode (Astrometry.net)")
+                ui.button("Create an API key on Astrometry.net",
+                          on_click=lambda: ui.open('https://nova.astrometry.net/api_help'))
+                api_key = get_setting_text(self.conn, "NOVA_ASTRO_API") or ""
+                api_input = ui.input("API key", value=api_key, password=True)
 
-            def save_api_key():
-                set_setting_text(self.conn, "NOVA_ASTRO_API", api_input.value.strip())
-                ui.notify("API key saved successfully!", type='positive')
+                def save_api_key():
+                    set_setting_text(self.conn, "NOVA_ASTRO_API", api_input.value.strip())
+                    ui.notify("API key saved successfully!", type='positive')
 
-            ui.button("💾 Save key", on_click=save_api_key)
+                ui.button("💾 Save key", on_click=save_api_key)
 
-         with ui.card().classes("w-full"):
-            ui.label("💻 Local Mode (solve-field)")
+            with ui.card().classes("w-full"):
+                ui.label("💻 Local Mode (solve-field)")
 
-            if self.check_solve_field():
-                ui.label("✅ solve-field is not available on this system.")
-            else:
-                ui.label("❌ solve-field not found.")
-                ui.button("Install solve-field localy", on_click=self.install_local_astrometry)
+                if self.check_solve_field():
+                    ui.label("✅ solve-field is not available on this system.")
+                else:
+                    ui.label("❌ solve-field not found.")
+                    ui.button("Install solve-field localy", on_click=self.install_local_astrometry)
 
-         with ui.card().classes("w-full"):
-            ui.label("🔭 Mosaic & Stitch Parameters").classes("text-xl font-bold")
-            StitchParamsEditor(self.conn)  # no on_change → Save button
+            with ui.card().classes("w-full"):
+                ui.label("🔭 Mosaic & Stitch Parameters").classes("text-xl font-bold")
+                StitchParamsEditor(self.conn)  # no on_change → Save button
 
         if not self.InitDwarfLocal:
-            ui.notify(f"Configured path not found", type='warning')
-            with ui.dialog().props('persistent')  as dialog, ui.card():
-                # Create the GUI with NiceGUI
-                with ui.card().style('width: 400px; padding: 20px;'):
-                    ui.label("Select a directory to store Dwarf data locally for offline use:").style('font-size: 16px; margin-bottom: 10px;')
-                    path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
+            with ui.dialog().props('persistent') as dialog, ui.card().classes("w-[500px] p-6"):
 
-                    ui.button("Browse...", on_click=self.choose_folder).classes("mt-2")
+                ui.label("🚀 First Setup Required").classes("text-xl font-bold")
 
-                    ui.button('Close', on_click=_close_dialog_InitDwarfLocal(dialog))
-            dialog.open()
-            info_dwarf_local.update()
-            
-    def _close_dialog_InitDwarfLocal(self, dialog):
-        dialog.close()
-        if not self.InitDwarfLocal:
-            # Redirect to Dwarf Setup Page 
-            ui.notify("First run detected. Redirecting to Dwarf setup...", type="info")
-            ui.timer(1.5, lambda: ui.navigate.to("/Dwarf?FirstInit=True"), once=True)
+                ui.label(
+                    "Before using Dwarfium Scope Archive, you need to select a folder to store your local session index.\n"
+                    "This folder will contain processed images (FITS, JPG, PNG) and metadata.\n"
+                    "Make sure you choose a location with enough free space (can exceed 10GB)."
+                ).classes("text-sm text-gray-600").style('white-space: pre-wrap;')
+
+                self.first_path_input = ui.input(
+                    "Select a folder",
+                    placeholder="Choose a directory..."
+                ).props("readonly").classes("w-full")
+
+                ui.button("📂 Browse", on_click=lambda: self.choose_folder(target_input=self.first_path_input)).classes("mt-2")
+
+                def validate_and_continue():
+                    path = (self.first_path_input.value or "").strip()
+
+                    if not path or not os.path.isdir(path):
+                        ui.notify("Please select a valid directory.", type="warning")
+                        return
+
+                    set_setting_text(self.conn, "DWARF_LOCAL_PATH", path)
+                    self.InitDwarfLocal = True
+
+                    ui.notify("Path saved successfully!", type="positive")
+                    dialog.close()
+
+                    # redirect
+                    ui.timer(0.5, lambda: ui.navigate.to("/Dwarf?FirstInit=True"), once=True)
+
+                ui.button("✅ Save and continue", on_click=validate_and_continue)\
+                    .classes("mt-4 w-full")
+
+            dialog.open()  
 
     def check_solve_field(self):
         return shutil.which("solve-field") is not None
