@@ -61,6 +61,12 @@ for png_file in IMAGE_DIR.glob("*.png"):
     print(f"Copying {png_file} to {dest}")
     shutil.copy2(png_file, dest)
 
+# Copy all .jpg files from the current folder to dist/image
+for jpg_file in IMAGE_DIR.glob("*.jpg"):
+    dest = DIST_IMAGE_DIR / jpg_file.name
+    print(f"Copying {jpg_file} to {dest}")
+    shutil.copy2(jpg_file, dest)
+
 # Copy the dso_catalog.json file into dist/db
 src_json = Path("db") / "dso_catalog.json"
 dest_json = DIST_DB_DIR / "dso_catalog.json"

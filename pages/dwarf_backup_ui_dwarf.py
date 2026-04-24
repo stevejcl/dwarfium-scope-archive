@@ -15,20 +15,22 @@ from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entr
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+from components.help_system import open_help
 
 
 @ui.page('/Dwarf')
-async def dwarf_settings(DwarfId:int = None):
+async def dwarf_settings(DwarfId:int = None, FirstInit=False):
 
     menu("Dwarf Configuration")
     await ui.context.client.connected()
     # Launch the GUI
-    ConfigApp(DB_NAME, DwarfId=DwarfId)
+    ConfigApp(DB_NAME, DwarfId=DwarfId, FirstInit=FirstInit)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
     
 
 class ConfigApp:
-    def __init__(self, database, DwarfId=None):
+    def __init__(self, database, DwarfId=None, FirstInit=False):
+        self.FirstInit = FirstInit
         self.database = database
         self.dwarfs = []
         self.dwarf_id = DwarfId
@@ -57,7 +59,8 @@ class ConfigApp:
         self.dwarf_type_name_to_id = {v: k for k, v in self.dwarf_type_map.items()}
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
-            with ui.grid(columns=2):
+            #with ui.grid(columns=2).classes("w-full"):
+            with ui.row().classes("w-full justify-between"):
                 ui.button("Show All Current Dwarf Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
                 ui.button("Analyze Dwarf Drive", on_click=self.analyze_usb_drive)
 
@@ -204,6 +207,12 @@ class ConfigApp:
                 self.dwarf_selector.set_options(display_names, value=value)
         else:
             self.dwarf_selector.set_options([], value=None)
+            self.FirstInit = True
+
+        if self.FirstInit:
+            ui.notify("First run detected. Connect your Dwarf via USB, then follow the Help panel to register it.", type="info")
+            ui.timer(1.5, lambda: open_help(True), once=True)
+
 
         # Update the dictionary mapping
         self.dwarf_name_to_id = {f"{id} - {name}": id for id, name in self.dwarfs}
@@ -351,7 +360,7 @@ class ConfigApp:
         else:
             print("MTP is not available.")
 
-    def set_new_dwarf(self):
+    async def set_new_dwarf(self):
         """Reset the form for adding a new dwarf."""
         self.dwarf_id = None
         self.dwarf_name.value = ""
@@ -360,6 +369,10 @@ class ConfigApp:
         self.dwarf_type_var.value = self.dwarf_type_map[2]  # Default to Dwarf3
         self.dwarf_ip_sta_mode.value = ""
         self.dwarf_scan_date.text = ""
+        self.dwarf_status = None
+        self.ftp_status_label.text = ""
+        self.usb_status_label.text = ""
+        await self.detect_mtp_devices()
 
     async def select_dwarf_folder(self):
         """Open folder selection dialog."""
@@ -513,13 +526,13 @@ class ConfigApp:
             self.ok_confirm_and_delete_dwarf
         )
 
-    def ok_confirm_and_delete_dwarf(self):
+    async def ok_confirm_and_delete_dwarf(self):
         # Delete the Dwarf
         del_dwarf(self.conn, self.dwarf_id)
 
         print(f"Deleted Dwarf {self.dwarf_id}.")
         self.refresh_dwarf_list()
-        self.set_new_dwarf()
+        await self.set_new_dwarf()
         ui.notify("Dwarf deleted.", type="positive")
 
     async def confirm_and_delete_dwarf_entries(self):
@@ -540,8 +553,12 @@ class ConfigApp:
  
     def get_explore_url(self):
         if self.dwarf_id:
+            if self.FirstInit:
+                mode_dwarf = "dwarf&only_on_dwarf=1"
+            else:
+                mode_dwarf = "dwarf"
             back_url = urllib.parse.quote(f"/Dwarf?DwarfId=", safe='')
-            explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode=dwarf&back_url={back_url}"
+            explore_url = f"/Explore?DwarfId={self.dwarf_id}&mode={mode_dwarf}&back_url={back_url}"
         else:
             explore_url = f"/Explore?mode=dwarf"
         print(explore_url)
@@ -571,11 +588,11 @@ class ConfigApp:
             self.ok_confirm_and_delete_dwarf_archive
         )
 
-    def ok_confirm_and_delete_dwarf_archive(self):
+    async def ok_confirm_and_delete_dwarf_archive(self):
         # Delete the Archive
         empty_local_archive_dwarf_dir(self.dwarf_id)
 
         print(f"Deleted Dwarf {self.dwarf_id}.")
         self.refresh_dwarf_list()
-        self.set_new_dwarf()
+        await self.set_new_dwarf()
         ui.notify("Dwarf deleted.", type="positive")

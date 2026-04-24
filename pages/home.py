@@ -40,22 +40,36 @@ async def ensure_init():
 
 @ui.page('/')
 async def home_page():
+    status = None
+    curent_init = is_app_started
     if not is_app_started:
         status = ui.label('Starting...')
     spinner = ui.spinner(size='md')
 
-    async def run_init():
-        if is_app_started:
-            spinner.delete()
-            return
-        status.set_text('Initializing database...')
-        await ensure_init()
-        spinner.delete()
-        status.set_text('Ready ✅')
+    await ui.context.client.connected()
 
-    ui.timer(0.1, run_init, once=True)
+    # 👇 laisse le temps au rendu UI
+    await asyncio.sleep(0)
+
+    if not is_app_started and status:
+        status.set_text('Initializing database...')
+    await ensure_init()
 
     await ui.context.client.connected()
+
+    # Check settings and handle directory setup
+    conn = connect_db(DB_NAME)
+    if not ensure_dwarf_local_path(conn):
+        spinner.delete()
+        if status:
+            status.set_text('Redirecting to settings...')
+        ui.timer(0.1, lambda: ui.navigate.to("/Settings?InitDwarfLocal=False"), once=True)
+        return
+
+    spinner.delete()
+    if not curent_init and status:
+        status.set_text('Ready ✅')
+        ui.timer(3.0, lambda: status.delete(), once=True)
 
     ON_AIR = app.storage.general.get('ON_AIR', False)
     title = "Dwarfium Scope Archive"
@@ -80,10 +94,6 @@ class HomeApp:
         self.image_detail_click_set = False
         self.conn = connect_db(self.database)
         self.gallery_timer = None
-        # Check settings and handle directory setup
-        if not ensure_dwarf_local_path(self.conn):
-            ui.timer(0.1, lambda: ui.navigate.to("/Settings?InitDwarfLocal=False"), once=True)
-            return
         self.build_ui()
 
     def get_name_object(self, name, desc):
@@ -135,6 +145,7 @@ class HomeApp:
                     "file_path": full_path,
                     "base_folder": base_folder
                 })
+        
         # ── Manual Session favorites ──────────────────────────────────────────
         for row in get_manual_favorites(self.conn):
             # [0]id [1]date [2]session_name [3]jpeg_path [4]dwarf [5]drive_name
@@ -184,6 +195,21 @@ class HomeApp:
 
         close_db(self.conn)
 
+        # display Sample if no image yet
+        if len(image_data) == 0 :
+            base_folder = os.getcwd() 
+            image_path = "image/sample_favorite.jpg"
+            full_path = os.path.join(base_folder, image_path)
+            url_path = build_preview_url("image/sample_favorite.jpg")
+            image_data.append({
+                "url": url_path,
+                "object_name": "🛰️ Rosette Nebula",
+                "dwarf_name": f"🔭 Dwarf3",
+                "session_date": f"📅 2025.11.21 07:47",
+                "file_path": full_path,
+                "base_folder": base_folder
+            })
+
         # UI - Slideshow
         self.first_image = True
         self.current_index = 0  # Index for slideshow
@@ -196,7 +222,7 @@ class HomeApp:
             if image_data:
                 slideshow_image = ui.image("").classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
                 image_info = ui.label("").classes("text-center mt-2 text-lg font-semibold")
-                image_detail = ui.label("").classes("text-center mt-2 text-md")
+                image_detail = ui.label("").classes("text-center mt-0 text-md")
 
                 def show_image():
                     if not ui.context.client.connected:
@@ -244,7 +270,7 @@ class HomeApp:
                 # Automatic slideshow with 10s interval
                 self.gallery_timer = ui.timer(interval=10, callback=next_image)
 
-                with ui.row().classes("gap-4 mb-2"):
+                with ui.row().classes("gap-4 mb-0"):
                     ui.button("Previous", on_click=prev_image)
                     ui.button("Next", on_click=next_image)
             else:
