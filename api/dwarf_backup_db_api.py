@@ -392,9 +392,13 @@ def delete_unused_astro_objects(conn: sqlite3.Connection) -> bool:
                 UNION
                 SELECT astro_object_id FROM DwarfEntry WHERE astro_object_id IS NOT NULL
                 UNION
+                SELECT astro_object_id FROM ManualSessionEntry WHERE astro_object_id IS NOT NULL
+                UNION
                 SELECT astro_group_id FROM BackupEntry WHERE astro_group_id IS NOT NULL
                 UNION
                 SELECT astro_group_id FROM DwarfEntry WHERE astro_group_id IS NOT NULL
+                UNION
+                SELECT astro_group_id FROM ManualSessionEntry WHERE astro_group_id IS NOT NULL
             )
         """)
         commit_db(conn)
@@ -408,8 +412,10 @@ def can_delete_astro_object(conn: sqlite3.Connection, astro_id: int) -> bool:
     for table, column in [
         ('BackupEntry', 'astro_object_id'),
         ('DwarfEntry', 'astro_object_id'),
+        ('ManualSessionEntry', 'astro_object_id'),
         ('BackupEntry', 'astro_group_id'),
         ('DwarfEntry', 'astro_group_id'),
+        ('ManualSessionEntry', 'astro_group_id'),
     ]:
         query = f"SELECT 1 FROM {table} WHERE {column} = ? LIMIT 1"
         if conn.execute(query, (astro_id,)).fetchone():

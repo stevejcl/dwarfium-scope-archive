@@ -12,6 +12,7 @@
     Modify Help
     Dark Library page : link between location db value improve
     First Launch: Correction in Setting Page
+    Include ManualSessionEntry in astro deletions
 
 ## [V3.0.9b] - 2026-04-19
 
