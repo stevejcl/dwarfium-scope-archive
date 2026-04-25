@@ -55,14 +55,15 @@ class ConfigApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        sizeBTN='w-56'
 
         self.dwarf_type_name_to_id = {v: k for k, v in self.dwarf_type_map.items()}
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
             #with ui.grid(columns=2).classes("w-full"):
             with ui.row().classes("w-full justify-between"):
-                ui.button("Show All Current Dwarf Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
-                ui.button("Analyze Dwarf Drive", on_click=self.analyze_usb_drive)
+                ui.button("🗂️ Show Dwarf Data", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
+                ui.button("🔍 Analyze Dwarf Drive", on_click=self.analyze_usb_drive).classes(sizeBTN)
 
             ui.separator()
 
@@ -70,7 +71,7 @@ class ConfigApp:
 
                 # Left: Add New button
                 with ui.column().classes('items-start pt-8'):
-                    ui.button("➕ Add New Dwarf", on_click=self.set_new_dwarf)
+                    ui.button("➕ Add New Dwarf", on_click=self.set_new_dwarf).classes(sizeBTN)
 
                 # Right: form fields
                 with ui.column().classes('items-start flex-1'):
@@ -86,7 +87,7 @@ class ConfigApp:
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_name = ui.input("Dwarf Name").classes('w-55')
                         ui.button("🗑️ Delete Dwarf",
-                                  on_click=self.confirm_and_delete_Dwarf).props("color=red")
+                                  on_click=self.confirm_and_delete_Dwarf).props("color=red").classes(sizeBTN)
 
                     self.dwarf_desc = ui.input("Description").classes('w-55')
 
@@ -100,9 +101,15 @@ class ConfigApp:
 
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_astroDir = ui.input("Astronomy Directory").classes('w-55')
-                        ui.button("Select USB Folder", on_click=self.select_dwarf_folder)
+                        ui.button("Select USB Folder", on_click=self.select_dwarf_folder).classes(sizeBTN)
 
-                    self.usb_status_label = ui.label("").classes('pb-2')
+                    with ui.row().classes('items-center m-4 gap-2'):
+                        self.usb_status_label = ui.label("").classes('pb-2')
+                        self.refresh_btn = (
+                            ui.button(icon='refresh', on_click=self.check_dir_dwarf)
+                            .props('flat round dense')
+                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == "❌ Path not detected."))
+                        )
 
                     with ui.grid(columns=2) as self.mtp_column:
                         self.render_mtp_section()
@@ -127,15 +134,15 @@ class ConfigApp:
             # ── Bottom: action buttons ────────────────────────────────────────
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
-                ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf)
+                ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf).classes(sizeBTN)
                 ui.button("🗑️ Delete Dwarf Entries",
-                          on_click=self.confirm_and_delete_dwarf_entries).props("color=red")
+                          on_click=self.confirm_and_delete_dwarf_entries).props("color=red").classes(sizeBTN)
 
             ui.separator()
 
             with ui.row().classes('w-full gap-8 items-start') as self.local_info: 
                 with ui.column():
-                    ui.button("🗑️ Empty Local Archive", on_click=self.confirm_and_delete_dwarf_archive).props("color=red")
+                    ui.button("🗑️ Empty Local Archive", on_click=self.confirm_and_delete_dwarf_archive).props("color=red").classes(sizeBTN)
 
                 with ui.column():
                     with ui.card().tight():
@@ -362,6 +369,8 @@ class ConfigApp:
 
     async def set_new_dwarf(self):
         """Reset the form for adding a new dwarf."""
+        self.dwarf_selector.value = ""
+        self.local_info.visible = False
         self.dwarf_id = None
         self.dwarf_name.value = ""
         self.dwarf_desc.value = ""
@@ -370,6 +379,7 @@ class ConfigApp:
         self.dwarf_ip_sta_mode.value = ""
         self.dwarf_scan_date.text = ""
         self.dwarf_status = None
+        self.ftp_spinner.set_visibility(False)
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
         await self.detect_mtp_devices()

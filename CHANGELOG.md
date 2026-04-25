@@ -1,5 +1,21 @@
 # Changelog
 
+## [V3.0.9e] - 2026-04-25
+
+### Add 
+    Add UI improvements for background transfers
+    update DB API to support editing ManualSession entries
+    RA/DEC as fallback when FITS lacks coordinates, surface update_manual_session in edit mode to avoid duplicate rows.
+    UI: harmonize button sizing across pages, 
+    Add transfer history panel (reads transfer_journal.json) in backup UI
+    Add fallback preview image scanning in manual explore.
+
+### BugFix# 
+    Adjust file utilities (files_are_different default, extract_core_name session remove .zip handling)
+    small help text fixes
+    - Misc: small help text fixes,
+    - Change link to Astrometry open in a new tab
+
 ## [V3.0.9d] - 2026-04-24
 
 ### Add 

@@ -167,6 +167,8 @@ class TransferApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        sizeBTN='w-56'
+
         nbcol = 3 if self.BackUrl else 1
 
         with ui.card().classes("w-full p-4 mt-2 items-center") as self.main_ui:
@@ -184,17 +186,23 @@ class TransferApp:
                     ui.label("🔧 Merge Transfer (Temp → Dwarf)").classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
 
             with ui.grid(columns=2):
-                with ui.column():
+                with ui.column().classes('w-50 items-center'):
                     ui.label("Select Dwarf:").classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
-                    self.usb_status_label = ui.label("").classes('pb-2')
+                    with ui.row().classes('items-center gap-2'):
+                        self.usb_status_label = ui.label("").classes('pb-2')
+                        self.refresh_btn = (
+                            ui.button(icon='refresh', on_click=self.check_status_dwarf)
+                            .props('flat round dense')
+                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == "❌ Path not detected."))
+                        )
                     with ui.element('div').classes('pt-0 pb-0 relative w-fit h-fit'):
                         self.ftp_status_label = ui.label("").classes('pt-0 pb-2')
                         self.ftp_spinner = (
                             ui.spinner(size="2em")
                             .style('position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10')
                         )
-                with ui.column():
+                with ui.column().classes('w-50 items-center'):
                     ui.label("Backup Drive:").classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
@@ -203,19 +211,19 @@ class TransferApp:
 
             self.SourceDirectory = ui.label("Source: Dwarf USB Drive").classes("text-lg font-semibold")
             self.input_src_dir = ui.select(label="Source Directory:", value = self.src_dir, options=[self.src_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            ui.button("Select Source", on_click=lambda : self.select_source_folder())
+            ui.button("Select Source", on_click=lambda : self.select_source_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-1 items-center"):
             self.DestinationDirectory = ui.label("Destination: Backup Drive").classes("text-lg font-semibold")
             self.input_dest_dir = ui.select(label="Destination Directory:", value = self.dest_dir, options=[self.dest_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            ui.button("Select Destination", on_click=lambda : self.select_destination_folder())
+            ui.button("Select Destination", on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
             self.progress_label = ui.label("Idle...")
             self.progress = ui.circular_progress(max=100, show_value=True)
-            self.CancelBackup = self.cancel_btn = ui.button('Cancel Backup', on_click=lambda: self.cancel())
+            self.CancelBackup = self.cancel_btn = ui.button('Cancel Backup', on_click=lambda: self.cancel()).classes(sizeBTN)
             self.cancel_btn.visible = False
-            self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup())
+            self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup()).classes(sizeBTN)
             self.cancel_backup = False
             ui.label(
                 "⚠️ Do not close or navigate away from this window during a transfer — "
@@ -799,6 +807,10 @@ class TransferApp:
             self.cancel_btn.visible = False
             self.StartBackup.visible = True
 
+            # Write journal for multi-session transfer
+            session_names = ', '.join(os.path.basename(os.path.normpath(s)) for s in all_src_dirs)
+            self._write_transfer_journal_multi(dest_dir, session_names, result_backup, total_copied, total_files)
+
             return
 
         # Check is Full Backup : the Astro Directory is used only
@@ -902,6 +914,7 @@ class TransferApp:
         if result:
             self._safe_ui(lambda: self.progress_label.set_text("End of Backup"))
             self._safe_ui(lambda: ui.notify("✅ Backup complete and verified!"))
+            self._write_transfer_journal(dest_path, src_dir, result=True)
 
             # Dark download mode: just a file copy — no session scan needed
             if self.dest_override:
@@ -911,6 +924,7 @@ class TransferApp:
                 await self._execute_sync_with_optional_dialog(src_dir, dest_path, isFullBackup)
         else:
             self._safe_ui(lambda: self.progress_label.set_text("Backup interrupted!"))
+            self._write_transfer_journal(dest_path, src_dir, result=False)
 
         return result
 
@@ -1019,7 +1033,13 @@ class TransferApp:
             _ui(lambda: setattr(label, "text", self.EndScanningMessage) if label else None)
             _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive"))
             _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive"))
-            self._set_progress('done', 0, 0, current_file=f"✅ {total_dwarf} dwarf + {total_backup} backup sessions indexed")
+            # Retrieve copy totals saved separately (scanning status overwrites copied/total)
+            totals = app.storage.general.get('transfer_copy_totals', {})
+            prev_copied = totals.get('copied', 0)
+            prev_total  = totals.get('total', 0)
+            app.storage.general.pop('transfer_copy_totals', None)
+            self._set_progress('done', prev_copied, prev_total,
+                               current_file=f"✅ {prev_copied}/{prev_total} files — {total_dwarf} dwarf + {total_backup} backup sessions indexed")
 
         except Exception as e:
             _ui(lambda: spinner.set_visibility(False) if spinner else None)
@@ -1038,13 +1058,20 @@ class TransferApp:
             'current_file': current_file,
             'error':        error,
         }
-        key = f'transfer_progress_{self._client_id}'
-        app.storage.general[key] = data
+        # Use fixed key — client_id changes on navigation so don't use it
+        try:
+            app.storage.general['transfer_progress'] = data
+        except Exception as e:
+            print(f"[Transfer] Storage write error: {e}")
+        # UI updates are handled by the polling timer — no with self.client: needed
+        # (entering client context triggers drawer JS requests which timeout)
 
     def _get_stored_progress(self):
         """Read last known progress from general storage."""
-        key = f'transfer_progress_{self._client_id}'
-        return app.storage.general.get(key, None)
+        try:
+            return app.storage.general.get('transfer_progress', None)
+        except Exception:
+            return None
 
     def _safe_ui(self, fn):
         """Call a UI-updating lambda safely — swallow errors if page is gone."""
@@ -1059,17 +1086,140 @@ class TransferApp:
         if p:
             self._show_bg_progress(True)
             self._update_bg_progress_ui(p)
+            # Clear final states after showing to user
+            if p.get('status') in ('done', 'error', 'cancelled'):
+                ui.timer(5.0, lambda: app.storage.general.pop('transfer_progress', None), once=True)
 
     def _poll_transfer_progress(self):
         """Called every second by ui.timer — syncs UI from storage on page return."""
         try:
             p = self._get_stored_progress()
             if p:
+                self._show_bg_progress(True)
                 self._update_bg_progress_ui(p)
                 if p['status'] in ('done', 'error', 'cancelled'):
                     self._progress_timer.deactivate()
+                elif p['status'] == 'copy_done':
+                    pass  # keep timer running — sync phase still to come
         except Exception:
             self._progress_timer.cancel()
+
+    def _write_transfer_journal_multi(self, dest_dir: str, session_names: str, result: bool, copied: int, total: int):
+        """Write journal for a multi-session transfer — overrides progress-based counts."""
+        import json as _json
+        from datetime import datetime as _dt
+        try:
+            journal_dir = self.backup_path if self.backup_path and os.path.isdir(self.backup_path) else dest_dir
+            if not journal_dir or not os.path.isdir(journal_dir):
+                return
+            journal_path = os.path.join(journal_dir, "transfer_journal.json")
+            history = []
+            if os.path.isfile(journal_path):
+                try:
+                    with open(journal_path, encoding='utf-8') as f:
+                        data = _json.load(f)
+                    history = data if isinstance(data, list) else [data]
+                except Exception:
+                    history = []
+            dwarf_name  = next((name for did, name in self.dwarf_options  if did == self.DwarfId),  str(self.DwarfId))
+            backup_name = next((name for bid, name, *_ in self.backup_options if bid == self.BackupId), str(self.BackupId))
+            entry = {
+                "timestamp":    _dt.now().isoformat(timespec='seconds'),
+                "result":       "ok" if result else "interrupted",
+                "session":      session_names,
+                "src":          dest_dir,
+                "dest":         dest_dir,
+                "copied":       copied,
+                "total":        total,
+                "error":        "" if result else f"Interrupted after {copied}/{total} files",
+                "mode":         f"{self.mode} (multi)",
+                "dwarf_id":     self.DwarfId,
+                "dwarf_name":   dwarf_name,
+                "backup_id":    self.BackupId,
+                "backup_name":  backup_name,
+            }
+            history.insert(0, entry)
+            history = history[:50]
+            with open(journal_path, 'w', encoding='utf-8') as f:
+                _json.dump(history, f, indent=2)
+            print(f"[Transfer] Multi journal updated: {journal_path}")
+        except Exception as e:
+            print(f"[Transfer] Multi journal write error: {e}")
+
+    def _write_transfer_journal(self, dest_path: str, src_dir: str, result: bool):
+        """Append to transfer_journal.json at the root of the backup drive.
+
+        The journal is a list of the last 50 transfers — newest first.
+        Always written to the backup drive:
+          - Archive / Darks  : backup_path or dest_path
+          - Restore / Merge  : backup_path or src_dir
+        """
+        import json as _json
+        from datetime import datetime as _dt
+        try:
+            p = app.storage.general.get('transfer_progress', {}) or {}
+
+            # Determine journal directory — always the backup root
+            journal_dir = self.backup_path if self.backup_path and os.path.isdir(self.backup_path) else None
+            if not journal_dir:
+                if self.mode in ('Archive', 'Darks'):
+                    journal_dir = dest_path
+                else:
+                    journal_dir = src_dir
+            if not journal_dir or not os.path.isdir(journal_dir):
+                print(f"[Transfer] Journal: no valid backup dir found, skipping.")
+                return
+
+            journal_path = os.path.join(journal_dir, "transfer_journal.json")
+
+            # Load existing history
+            history = []
+            if os.path.isfile(journal_path):
+                try:
+                    with open(journal_path, encoding='utf-8') as f:
+                        data = _json.load(f)
+                        # Support both old single-entry format and new list format
+                        history = data if isinstance(data, list) else [data]
+                except Exception:
+                    history = []
+
+            # Prepend new entry
+            dwarf_name  = next((name for did, name in self.dwarf_options  if did == self.DwarfId),  str(self.DwarfId))
+            backup_name = next((name for bid, name, *_ in self.backup_options if bid == self.BackupId), str(self.BackupId))
+            # Determine session name — more descriptive than just basename(src_dir)
+            src_basename = os.path.basename(src_dir.rstrip('/\\'))
+            if src_dir == self.src_main_dir or src_dir == self.dest_main_dir:
+                session_name = f"(Full Backup — {src_basename})"
+            elif src_basename:
+                session_name = src_basename
+            else:
+                session_name = src_dir
+
+            entry = {
+                "timestamp":    _dt.now().isoformat(timespec='seconds'),
+                "result":       "ok" if result else "interrupted",
+                "session":      session_name,
+                "src":          src_dir,
+                "dest":         dest_path,
+                "copied":       p.get('copied', 0),
+                "total":        p.get('total', 0),
+                "error":        p.get('error', '') if not result else '',
+                "mode":         self.mode,
+                "dwarf_id":     self.DwarfId,
+                "dwarf_name":   dwarf_name,
+                "backup_id":    self.BackupId,
+                "backup_name":  backup_name,
+            }
+            history.insert(0, entry)
+
+            # Keep only last 50
+            history = history[:50]
+
+            with open(journal_path, 'w', encoding='utf-8') as f:
+                _json.dump(history, f, indent=2)
+            print(f"[Transfer] Journal updated: {journal_path} ({len(history)} entries)")
+        except Exception as e:
+            print(f"[Transfer] Journal write error: {e}")
 
     def _show_bg_progress(self, visible):
         self.bg_progress.visible = visible
@@ -1086,10 +1236,16 @@ class TransferApp:
             self.bg_progress.value = copied / total
         fname = os.path.basename(current) if current else ""
         if status == 'running':
-            self.bg_status_label.text = f"📦 Transferring: {copied}/{total} — {fname}"
+            pct = f" ({round(copied/total*100)}%)" if total > 0 else ""
+            self.bg_status_label.text = f"📦 Transferring: {copied}/{total}{pct} — {fname}"
             self._show_bg_progress(True)
             self.StartBackup.visible = False
             self.cancel_btn.visible = True
+        elif status == 'copy_done':
+            self.bg_status_label.text = f"🔄 Copy complete ({copied}/{total} files) — Syncing database..."
+            self.bg_progress.value = 1.0
+            self.StartBackup.visible = False
+            self.cancel_btn.visible = False
         elif status == 'scanning':
             self.bg_status_label.text = current
             self._show_bg_progress(True)
@@ -1097,7 +1253,7 @@ class TransferApp:
             self.StartBackup.visible = False
             self.cancel_btn.visible = False
         elif status == 'done':
-            self.bg_status_label.text = f"✅ {current}" if current else f"✅ Transfer complete: {copied}/{total} files"
+            self.bg_status_label.text = f"✅ Transfer complete: {copied}/{total} files copied successfully"
             self.bg_progress.value = 1.0
             self.StartBackup.visible = True
             self.cancel_btn.visible = False

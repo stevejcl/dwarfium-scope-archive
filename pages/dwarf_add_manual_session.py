@@ -1416,8 +1416,29 @@ class AddManualSession:
         # --- Add files from links ---
         api_key = get_setting_text(self.conn, "NOVA_ASTRO_API")
         if not api_key:
-            ui.notify("No API key found. Register a NOVA_ASTRO_API key in the database.", type="warning")
-            ui.notify("Go to the Settings Tab to register one.", type="info")
+            ui.notify("⚠️ No Astrometry API key — NOVA astrometry resolution skipped.", type="warning")
+            ui.notify("Go to Settings to register a NOVA_ASTRO_API key.", type="info")
+            # Still apply session fallback coordinates if available
+            fits_files = [f for f in self.client.storage.uploaded_files if f["type"] == "fits"]
+            for file_info in fits_files:
+                if not file_info.get('ra') or not file_info.get('dec'):
+                    fallback_ra  = self.linked_data.get("session_ra")
+                    fallback_dec = self.linked_data.get("session_dec")
+                    if fallback_ra is not None and fallback_dec is not None:
+                        file_info['ra'] = fallback_ra
+                        file_info['dec'] = fallback_dec
+                        file_info['ra_from_fallback'] = True
+                        if self.meta_info:
+                            self.meta_info['RA'] = fallback_ra
+                            self.meta_info['DEC'] = fallback_dec
+            if any(f.get('ra_from_fallback') for f in fits_files):
+                ui.notify(
+                    "⚠️ Coordinates from the original linked session were used as fallback.",
+                    type="warning", timeout=8000,
+                )
+            elif fits_files:
+                ui.notify("❌ No coordinates available — link a session first or add an API key.", type="negative", timeout=8000)
+            self.refresh_info_session()
             return
 
         # Process only FITS files
@@ -1476,8 +1497,27 @@ class AddManualSession:
 
         api_key = get_setting_text(self.conn, "NOVA_ASTRO_API")
         if not api_key:
-            ui.notify("No API key found. Register a NOVA_ASTRO_API key in the database.", type="warning")
-            ui.notify("Go to the Settings Tab to register one.", type="info")
+            ui.notify("⚠️ No Astrometry API key — NOVA astrometry resolution skipped.", type="warning")
+            ui.notify("Go to Settings to register a NOVA_ASTRO_API key.", type="info")
+            # Still apply session fallback if available
+            file_info = self.current_file_info
+            if not file_info.get('ra') or not file_info.get('dec'):
+                fallback_ra  = self.linked_data.get("session_ra")
+                fallback_dec = self.linked_data.get("session_dec")
+                if fallback_ra is not None and fallback_dec is not None:
+                    file_info['ra'] = fallback_ra
+                    file_info['dec'] = fallback_dec
+                    file_info['ra_from_fallback'] = True
+                    if self.meta_info:
+                        self.meta_info['RA'] = fallback_ra
+                        self.meta_info['DEC'] = fallback_dec
+                    ui.notify(
+                        "⚠️ Coordinates from the original linked session were used as fallback.",
+                        type="warning", timeout=8000,
+                    )
+                else:
+                    ui.notify("❌ No coordinates available — link a session first or add an API key.", type="negative", timeout=8000)
+            self.refresh_info_session()
             return
 
         with ui.dialog().props('persistent') as dialog:

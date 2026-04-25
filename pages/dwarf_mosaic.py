@@ -114,6 +114,9 @@ class MosaicApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        sizeBTN='w-56'
+        sizeBTN2='w-64'
+
         nbcol = 3 if self.BackUrl else 1
         # parameter for stitch params
         self.stitch_params = get_stitch_params(self.conn)
@@ -133,11 +136,17 @@ class MosaicApp:
 
             # Dwarf + Backup selector row
             with ui.grid(columns=2):
-                with ui.column():
+                with ui.column().classes('w-50 items-center'):
                     ui.label("Select Dwarf:").classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
-                    self.usb_status_label = ui.label("").classes('pb-2')
-                with ui.column():
+                    with ui.row().classes('items-center gap-2'):
+                        self.usb_status_label = ui.label("").classes('pb-2')
+                        self.refresh_btn = (
+                            ui.button(icon='refresh', on_click=self.check_dir_dwarf)
+                            .props('flat round dense')
+                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == "❌ Path not detected."))
+                        )
+                with ui.column().classes('w-50 items-center'):
                     ui.label("Backup Drive:").classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
@@ -161,7 +170,7 @@ class MosaicApp:
                 .props('stack-label outlined')
                 .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
             )
-            ui.button("📁 Select Primary Session", on_click=self.select_primary_folder)
+            ui.button("📁 Select Primary Session", on_click=self.select_primary_folder).classes(sizeBTN2)
 
             with ui.row().classes('w-full items-start'):
                 # LEFT COLUMN
@@ -193,7 +202,7 @@ class MosaicApp:
                 .props('stack-label outlined')
                 .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
             )
-            ui.button("📁 Select Secondary Session", on_click=self.select_secondary_folder)
+            ui.button("📁 Select Secondary Session", on_click=self.select_secondary_folder).classes(sizeBTN2)
 
             with ui.row().classes('w-full items-start'):
                 # LEFT COLUMN
@@ -222,8 +231,8 @@ class MosaicApp:
             )
             self.copy_intermediate_files = ui.checkbox("Copy Fits/JPG Session Files, Check it to do Megastack on Dwarf")
             with ui.row():
-                ui.button("📁 Select Output Folder", on_click=self.select_output_folder)
-                ui.button("🗂️ Create Temp Folder", on_click=self.create_temp_folder)
+                ui.button("📁 Select Output Folder", on_click=self.select_output_folder).classes(sizeBTN)
+                ui.button("🗂️ Create Temp Folder", on_click=self.create_temp_folder).classes(sizeBTN)
 
         # ── Action card ──────────────────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
@@ -231,10 +240,10 @@ class MosaicApp:
             self.progress = ui.circular_progress(max=100, show_value=True)
 
             with ui.row():
-                self.cancel_btn = ui.button("❌ Cancel", on_click=self.cancel)
+                self.cancel_btn = ui.button("❌ Cancel", on_click=self.cancel).classes(sizeBTN)
                 self.cancel_btn.visible = False
 
-                self.action_button = ui.button("🔀 Start Merge", on_click=self.verify_process)
+                self.action_button = ui.button("🔀 Start Merge", on_click=self.verify_process).classes(sizeBTN)
 
             ui.separator()
             self.log_ui = ui.log(max_lines=30).classes('w-full').style('height: 300px;')

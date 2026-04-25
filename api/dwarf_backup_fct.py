@@ -1996,7 +1996,8 @@ def list_error_integrity(conn,  backup_drive_id, backupDrive_location, session_l
 
         else : 
             print_log(f"  Ignoring session:{session[1]} no stacked jpg and fits path", log)
-        
+
+    print_log(f"End of Test", log)
     return errors            
     
 

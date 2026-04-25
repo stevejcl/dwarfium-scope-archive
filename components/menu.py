@@ -14,10 +14,10 @@ def menu(title):
     dark = ui.dark_mode()
     if app.storage.user.get('ui_mode',0) == 'dark' :
         dark.enable()
-        ui.query('body').style(f'background-color: {'#262608'}')
+        ui.query('body').style(f'background-color: {"#262608"}')
     else:
         dark.disable()
-        ui.query('body').style(f'background-color: {'#f5f5e6'}')
+        ui.query('body').style(f'background-color: {"#f5f5e6"}')
 
     ui.button('↑ Top', on_click=lambda: ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"})')) \
         .props('round color=primary') \
@@ -25,19 +25,21 @@ def menu(title):
 
     register_drawer()
 
-    with ui.row().classes('w-full items-center'):
-        ui.label(title).classes("text-2xl font-bold my-2 mr-auto")
+    with ui.row().classes('relative w-full items-center'):
+        ui.label(title).classes("text-2xl font-bold my-2")
 
         # Transfer progress badge — shown on any page when a transfer is running
+        # Centered badge
         badge = ui.label("").classes(
-            "text-sm font-semibold px-2 py-1 rounded bg-green-100 text-green-800 cursor-pointer"
+            "text-sm font-semibold px-2 py-1 rounded bg-green-100 text-green-800 cursor-pointer "
+            "absolute left-1/2 -translate-x-1/2 animate-pulse"
         ).on('click', lambda: ui.navigate.to('/Transfer'))
         badge.visible = False
 
         def _check_transfer():
             try:
-                # Use fixed key — no longer client-specific
                 p = app.storage.general.get('transfer_progress', None)
+                is_active = p and p['status'] in ('running', 'copy_done', 'scanning')
                 if p and p['status'] == 'running':
                     total  = p.get('total', 0)
                     copied = p.get('copied', 0)
@@ -57,6 +59,7 @@ def menu(title):
                     badge.visible = True
                 else:
                     badge.visible = False
+                    is_active = False
             except Exception:
                 _badge_timer.cancel()
 
