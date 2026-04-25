@@ -3,6 +3,28 @@ import platform
 import shutil
 import subprocess
 import os
+import re
+
+def _get_app_version():
+    """Read version from version.py (built executable) or CHANGELOG.md (dev mode)."""
+    # Production: version.py generated at build time
+    try:
+        from version import APP_VERSION
+        return APP_VERSION
+    except ImportError:
+        pass
+    # Dev mode: read directly from CHANGELOG.md
+    try:
+        changelog = os.path.join(os.path.dirname(os.path.dirname(__file__)), "CHANGELOG.md")
+        with open(changelog, "r", encoding="utf-8") as f:
+            for line in f:
+                m = re.search(r"\[V?([\d.]+[a-z]?)\]", line)
+                if m:
+                    return m.group(1)
+    except Exception:
+        pass
+    return "Unknown"
+
 
 import webview
 from nicegui import ui, app
@@ -57,6 +79,10 @@ class SettingsApp:
         current_path = None
 
         with ui.column().classes("w-full max-w-2xl mx-auto gap-4 mt-4"):
+
+            with ui.card().classes("w-full p-4"):
+                ui.label("ℹ️ Application Info").classes("text-xl font-bold mb-2")
+                ui.label(f"Version : {_get_app_version()}").classes("text-sm text-gray-600")
 
             ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
 

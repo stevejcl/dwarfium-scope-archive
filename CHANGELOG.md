@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.0.9f] - 2026-04-26
+
+### Add 
+    Add Version Number in Settings
+
+### BugFix# 
+    move freeze_support into a __main__ guard
+    wrap ui.run in proper exception handling for cleaner app startup/exit.
+
 ## [V3.0.9e] - 2026-04-25
 
 ### Add 

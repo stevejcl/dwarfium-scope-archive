@@ -1,18 +1,16 @@
 # macOS packaging support
 from multiprocessing import freeze_support  # noqa
-freeze_support()  # noqa
 
 from nicegui import native, app, ui
 
 import sys
+import asyncio
+import logging
 
 # Global flag for app mode
 ON_AIR = False
-
-# Make it accessible everywhere
 app.storage.general['ON_AIR'] = ON_AIR
 
-# Encoding changed to UTF-8
 # Import page content (each file registers its own route)
 import pages.dwarf_backup_ui_dwarf
 import pages.home
@@ -32,9 +30,6 @@ from api.image_preview import serve_preview
 
 app.native.settings['ALLOW_DOWNLOADS'] = True
 
-import asyncio
-import logging
-
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -45,26 +40,23 @@ logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 def preview_image(file_path: str):
     return serve_preview(file_path)
 
-try:
-    
-    ui.run( title="Dwarfium Scope Archive",
-            storage_secret='Dwarfiumscopearchive key to secure the browser session cookie',
-            native=True, 
-            window_size=(1200, 1024),
-            port=native.find_open_port(),
-            reconnect_timeout=20,
-#            host="0.0.0.0",
-            reload=False)
+if __name__ == '__main__':
+    freeze_support()   # must be first statement in main guard
+    try:
+        ui.run( title="Dwarfium Scope Archive",
+                storage_secret='Dwarfiumscopearchive key to secure the browser session cookie',
+                native=True, 
+                window_size=(1200, 1024),
+                port=native.find_open_port(),
+                reconnect_timeout=20,
+    #            host="0.0.0.0",
+                reload=False)
 
-except (KeyboardInterrupt):
-    print("Application closed by user.")
-    pass
+    except (KeyboardInterrupt):
+        print("Application closed by user.")
 
-except Exception as e:
-    print(f"Application closed error detected {e}.")
-    
-except (SystemExit):
-    print("Application closed.")
-    pass
-finally:
-    pass
+    except (SystemExit):
+        print("Application closed.")
+
+    except Exception as e:
+        print(f"Application closed error detected {e}.")
