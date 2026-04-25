@@ -14,10 +14,10 @@ def menu(title):
     dark = ui.dark_mode()
     if app.storage.user.get('ui_mode',0) == 'dark' :
         dark.enable()
-        ui.query('body').style(f'background-color: {'#262608'}')
+        ui.query('body').style(f'background-color: {"#262608"}')
     else:
         dark.disable()
-        ui.query('body').style(f'background-color: {'#f5f5e6'}')
+        ui.query('body').style(f'background-color: {"#f5f5e6"}')
 
     ui.button('↑ Top', on_click=lambda: ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"})')) \
         .props('round color=primary') \
@@ -25,23 +25,28 @@ def menu(title):
 
     register_drawer()
 
-    with ui.row().classes('w-full items-center'):
-        ui.label(title).classes("text-2xl font-bold my-2 mr-auto")
+    with ui.row().classes('relative w-full items-center'):
+        ui.label(title).classes("text-2xl font-bold my-2")
 
         # Transfer progress badge — shown on any page when a transfer is running
+        # Centered badge
         badge = ui.label("").classes(
-            "text-sm font-semibold px-2 py-1 rounded bg-green-100 text-green-800 cursor-pointer"
+            "text-sm font-semibold px-2 py-1 rounded bg-green-100 text-green-800 cursor-pointer "
+            "absolute left-1/2 -translate-x-1/2 animate-pulse"
         ).on('click', lambda: ui.navigate.to('/Transfer'))
         badge.visible = False
 
         def _check_transfer():
             try:
-                # Use fixed key — no longer client-specific
                 p = app.storage.general.get('transfer_progress', None)
+                is_active = p and p['status'] in ('running', 'copy_done', 'scanning')
                 if p and p['status'] == 'running':
                     total  = p.get('total', 0)
                     copied = p.get('copied', 0)
                     badge.text = f"📦 {copied}/{total}"
+                    badge.visible = True
+                elif p and p['status'] == 'copy_done':
+                    badge.text = "🔄 Syncing DB..."
                     badge.visible = True
                 elif p and p['status'] == 'scanning':
                     badge.text = p.get('current_file', '🔍 Scanning...')
@@ -54,6 +59,8 @@ def menu(title):
                     badge.visible = True
                 else:
                     badge.visible = False
+                    is_active = False
+                close_warning.visible = bool(is_active)
             except Exception:
                 _badge_timer.cancel()
 
@@ -84,6 +91,22 @@ def menu(title):
                 ui.menu_item('🌙 Dark Mode', on_click=lambda: dark_mode()).classes('whitespace-nowrap')
                 ui.menu_item('☀️ Light Mode', on_click=lambda: light_mode()).classes('whitespace-nowrap')
                 ui.menu_item('❓ Help', on_click=open_help)
+
+    # Warning banner — visible on ALL pages when a transfer is running
+    def _stop_transfer():
+        app.storage.general['transfer_cancel_requested'] = True
+        ui.notify("🛑 Transfer cancellation requested...", type="warning")
+
+    with ui.element('div').classes('w-full') as close_warning:
+        with ui.row().classes("relative w-full items-center bg-red-50 border border-red-300 rounded px-3 py-1"):
+            # Centered button (absolute)
+            ui.button("🛑 Stop Transfer", on_click=_stop_transfer) \
+                .props("flat dense color=negative") \
+                .classes("text-xs absolute left-1/2 -translate-x-1/2")
+            # Right-aligned text
+            ui.label("⚠️ Transfer in progress — closing the app will stop the transfer.") \
+                .classes("ml-auto text-sm font-semibold text-red-600 text-right")
+    close_warning.visible = False
     setStyle()
 
 def dark_mode():

@@ -946,7 +946,22 @@ class ManualExploreApp:
                 ui.item(f"📂 Folder: {session_dir}").classes('text-gray-400 text-xs')
 
         # --- Preview image ---
-        preview_path = jpeg_path or stacked_png_path or thumbnail_path 
+        preview_path = jpeg_path or stacked_png_path or thumbnail_path
+
+        # Fallback: DB has no image path — scan the session folder on disk
+        if not preview_path and session_dir and os.path.isdir(session_dir):
+            for candidate in ("stacked.jpg", "stacked.jpeg", "stacked.png"):
+                candidate_path = os.path.join(session_dir, candidate)
+                if os.path.isfile(candidate_path):
+                    preview_path = candidate_path
+                    break
+            if not preview_path:
+                # Last resort: first JPG or PNG found in the folder
+                for fname in os.listdir(session_dir):
+                    if fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                        preview_path = os.path.join(session_dir, fname)
+                        break
+
         self._update_preview(preview_path)
 
         # --- Action buttons ---
@@ -956,6 +971,10 @@ class ManualExploreApp:
         """Display the preview image if the file exists."""
         self.preview_image.visible    = False
         self.fullscreen_image.visible = False
+
+        if not image_path:
+            self.details_preview.append("No preview image available for this session.")
+            return
 
         full_path = os.path.join(self.selected_path, os.path.basename(image_path))
         print(f"full image_path : {full_path}")

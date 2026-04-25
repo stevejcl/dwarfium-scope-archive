@@ -34,7 +34,7 @@ class ConfigApp:
         self.backupDrives = []
         self.backupDrive_id = BackupId
         self.backup_scan_date = None
-
+        self.history_log = None
         self.backup_integrity_done = False
         self.backup_integrity_list = None
         self.errors = None
@@ -44,24 +44,29 @@ class ConfigApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        sizeBTN='w-56'
+        sizeBTN2='w-58'
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
-            #with ui.grid(columns=2):
-            with ui.row().classes("w-full justify-between"):
-                ui.button("Show All Current Backup Data", on_click=lambda: ui.navigate.to(self.get_explore_url()))
-                ui.button("Analyze Current Drive", on_click=self.analyze_drive)
+            with ui.row().classes("w-full mt-2 mb-2 justify-between gap-8"):
+                ui.button("🗂️ Show Backup Data", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
+                self.history_log = ui.button("📋 Transfer History Log", on_click=self._toggle_history).classes(sizeBTN)
+                ui.button("🔍 Analyze Current Drive", on_click=self.analyze_drive).classes(sizeBTN)
             with ui.grid(columns=2):
-                ui.button("Check Session Integrity", on_click=self.check_integrity_drive)
-                self.button_explore_session = ui.button("🔎 Open in Explorer", on_click=self.open_in_explore)
+                ui.button("Check Session Integrity", on_click=self.check_integrity_drive).classes(sizeBTN)
+                self.button_explore_session = ui.button("🔎 Open in Explorer", on_click=self.open_in_explore).classes(sizeBTN)
             with ui.row().classes('col-span-2 items-start gap-4'):  
                self.results_container = ui.column().classes('flex-1')
+            # Transfer history — hidden by default, shown on demand
+            self.history_container = ui.column().classes('w-full')
+            self.history_container.visible = False
             ui.separator()
 
             with ui.row().classes('w-full gap-8 items-start'):
 
                 # Left: Add New button aligned with form top
                 with ui.column().classes('items-start pt-8'):
-                    ui.button("➕ Add New BackupDrive", on_click=self.set_new_BackupDrive)
+                    ui.button("➕ Add New BackupDrive", on_click=self.set_new_BackupDrive).classes(sizeBTN)
 
                 # Right: form fields
                 with ui.column().classes('items-start flex-1'):
@@ -77,7 +82,7 @@ class ConfigApp:
                     with ui.row().classes('items-center gap-4'):
                         self.backupDrive_name = ui.input("Backup Drive Name").classes('w-55')
                         ui.button("🗑️ Delete Backup Drive",
-                                  on_click=self.confirm_and_delete_BackupDrive).props("color=red")
+                                  on_click=self.confirm_and_delete_BackupDrive).props("color=red").classes(sizeBTN)
 
                     self.backupDrive_desc = ui.input("Drive Description").classes('w-55')
 
@@ -87,11 +92,11 @@ class ConfigApp:
                             .classes("overflow-x-auto whitespace-nowrap")
                             .style("min-width: 260px; max-width: 400px;")
                         )
-                        ui.button("Select Folder", on_click=self.select_folder)
+                        ui.button("Select Folder", on_click=self.select_folder).classes('w-46')
 
                     with ui.row().classes('items-center gap-4'):
                         self.backupDrive_astroDir = ui.input("Astronomy Directory").classes('w-55') or ""
-                        ui.button("Select Sub Folder", on_click=self.select_subfolder)
+                        ui.button("Select Sub Folder", on_click=self.select_subfolder).classes(sizeBTN)
 
                     # Dwarf selection
                     self.dwarf_list = get_dwarf_Names(self.conn)
@@ -112,14 +117,15 @@ class ConfigApp:
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
                 ui.button("Save / Update Backup Drive",
-                          on_click=self.save_or_update_backup_drive)
+                          on_click=self.save_or_update_backup_drive).classes(sizeBTN2)
                 ui.button("🗑️ Delete Backup Entries",
-                          on_click=self.confirm_and_delete_entries).props("color=red")
+                          on_click=self.confirm_and_delete_entries).props("color=red").classes(sizeBTN2)
                 ui.button("🗑️ Delete Manual Entries",
-                          on_click=self.confirm_and_delete_manual_entries).props("color=red")
+                          on_click=self.confirm_and_delete_manual_entries).props("color=red").classes(sizeBTN2)
 
         # need this button don't change if not
         setStyle()
+        self.history_log.visible = False
         self.resetIntegrity()
         self.refresh_backupDrive_list()
 
@@ -164,6 +170,59 @@ class ConfigApp:
         else:
             self.backupDrive_selector.set_options([], value=None)
 
+    def _toggle_history(self):
+        """Show/hide transfer history panel."""
+        self.history_container.visible = not self.history_container.visible
+
+    def _load_transfer_history(self, backup_path: str):
+        """Read transfer_journal.json and display history in history_container."""
+        import json as _json
+        self.history_container.clear()
+        self.history_container.visible = False  # reset visibility on drive change
+
+        journal_path = os.path.join(backup_path, "transfer_journal.json")
+        if not os.path.isfile(journal_path):
+            return
+
+        try:
+            with open(journal_path, encoding='utf-8') as f:
+                data = _json.load(f)
+            history = data if isinstance(data, list) else [data]
+        except Exception as e:
+            with self.history_container:
+                ui.label(f"⚠️ Could not read transfer journal: {e}").classes("text-red-500")
+            return
+
+        if not history:
+            return
+
+        with self.history_container:
+            ui.label("📋 Transfer History").classes("text-base font-bold mt-2 mb-1")
+            for entry in history:
+                ok      = entry.get('result', '') == 'ok'
+                ts      = entry.get('timestamp', '')[:16].replace('T', ' ')
+                mode    = entry.get('mode', '')
+                dwarf   = entry.get('dwarf_name') or f"Dwarf #{entry.get('dwarf_id','?')}"
+                backup  = entry.get('backup_name') or f"Backup #{entry.get('backup_id','?')}"
+                session = entry.get('session', '')
+                copied  = entry.get('copied', 0)
+                total   = entry.get('total', 0)
+                card_color = 'border-l-4 border-green-500 bg-green-50' if ok else 'border-l-4 border-red-400 bg-red-50'
+                with ui.card().classes(f'w-full {card_color} mb-1 py-1'):
+                    with ui.row().classes('w-full items-center gap-2 flex-wrap'):
+                        ui.label('✅' if ok else '⚠️').classes('text-sm')
+                        ui.label(ts).classes('text-sm text-gray-600')
+                        ui.label(mode).classes('text-sm font-semibold')
+                        ui.label(f"🔭 {dwarf}").classes('text-sm')
+                        ui.label(f"💾 {backup}").classes('text-sm')
+                        ui.label(f"{copied}/{total} files").classes(
+                            'text-sm font-bold ml-auto ' + ('text-green-700' if ok else 'text-red-600')
+                        )
+                    ui.label(session).classes('text-xs text-gray-500 truncate w-full')
+                    error = entry.get('error', '')
+                    if error:
+                        ui.label(f"❌ {error}").classes('text-xs text-red-600 font-semibold')
+
     def resetIntegrity(self):
         # reset Integrity 
         self.errors = None
@@ -174,12 +233,15 @@ class ConfigApp:
     def load_selected_backupDrive(self, _):
         value = self.backupDrive_selector.value
         if not value:
+            self.history_log.visible = False
             return
         if value in self.backupDrive_map:
             self.backupDrive_id, path = self.backupDrive_map[value]
             self.resetIntegrity()
+            self.history_log.visible = True
         else:
             ui.notify("Invalid backup Drive selection.", type="negative")
+            self.history_log.visible = False
             return
 
         row = get_backupDrive_detail(self.conn, self.backupDrive_id)
@@ -192,6 +254,9 @@ class ConfigApp:
             self.dwarf_selector.value = row[4]
             self.backup_scan_date.text = row[5]
             self._resize_location_input()
+            # Load transfer history from journal file
+            backup_path = os.path.join(row[2], row[3]) if row[3] else row[2]
+            self._load_transfer_history(backup_path)
 
     def _resize_location_input(self):
         """Auto-resize the location input to fit its content."""
@@ -212,6 +277,7 @@ class ConfigApp:
 
     def set_new_BackupDrive(self):
         self.resetIntegrity()
+        self.backupDrive_selector.value = ""
         self.backupDrive_id = None
         self.backupDrive_name.value = ""
         self.backupDrive_desc.value = ""

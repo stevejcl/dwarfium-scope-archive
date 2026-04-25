@@ -78,6 +78,7 @@ class TransferAppUSB:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        sizeBTN='w-56'
 
         with ui.card().classes("w-full p-4 mt-4 items-center") as self.main_ui:
             self.mode_toggle = ui.toggle(['Archive', 'Restore'], value='Archive', on_change=self.switch_mode)
@@ -86,8 +87,14 @@ class TransferAppUSB:
                 with ui.column():
                     ui.label("Select Dwarf:").classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
-                    self.usb_status_label = ui.label("").classes('pb-2')
-
+                    with ui.row().classes('items-center m-4 gap-2'):
+                        self.usb_status_label = ui.label("").classes('pb-2')
+                        self.refresh_btn = (
+                            ui.button(icon='refresh', on_click=self.check_dir_dwarf)
+                            .props('flat round dense')
+                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == "❌ Path not detected."))
+                        )
+        
                 with ui.column():
                     ui.label("Backup Drive:").classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
@@ -95,19 +102,19 @@ class TransferAppUSB:
 
             self.SourceDirectory = ui.label("Source: Dwarf USB Drive")
             self.input_src_dir = ui.input("Source Directory:", value = self.src_dir).classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
-            ui.button("Select Source", on_click=lambda : self.select_source_folder())
+            ui.button("Select Source", on_click=lambda : self.select_source_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             self.DestinationDirectory = ui.label("Destination: Backup Drive")
             self.input_dest_dir = ui.input("Destination Directory:", value = self.dest_dir).classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
-            ui.button("Select Destination", on_click=lambda : self.select_destination_folder())
+            ui.button("Select Destination", on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             self.progress_label = ui.label("Idle...")
             self.progress = ui.circular_progress(max=100, show_value=True)
-            self.cancel_btn = ui.button('Cancel Backup', on_click=lambda: self.cancel())
+            self.cancel_btn = ui.button('Cancel Backup', on_click=lambda: self.cancel()).classes(sizeBTN)
             self.cancel_btn.visible = False
-            self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup())
+            self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup()).classes(sizeBTN)
             self.cancel_backup = False
 
         self.populate_dwarf_filter()

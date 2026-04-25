@@ -96,7 +96,7 @@ class SettingsApp:
             with ui.card().classes("w-full"):
                 ui.label("🌐 Online mode (Astrometry.net)")
                 ui.button("Create an API key on Astrometry.net",
-                          on_click=lambda: ui.open('https://nova.astrometry.net/api_help'))
+                          on_click=lambda:ui.navigate.to('https://nova.astrometry.net/api_help', new_tab=True))
                 api_key = get_setting_text(self.conn, "NOVA_ASTRO_API") or ""
                 api_input = ui.input("API key", value=api_key, password=True)
 

@@ -38,13 +38,15 @@ class DarkLibraryApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        sizeBTN='w-56'
+        sizeBTN2='w-58'
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
 
             # ── Top buttons ──────────────────────────────────────────────────
             with ui.row().classes('items-start gap-4'):
                 ui.button("📋 Show All Libraries",
-                          on_click=self.refresh_library_list)
+                          on_click=self.refresh_library_list).classes(sizeBTN)
 
             ui.separator()
 
@@ -53,7 +55,7 @@ class DarkLibraryApp:
 
                 with ui.column().classes('items-start pt-8'):
                     ui.button("➕ Add New Library",
-                              on_click=self.set_new_library)
+                              on_click=self.set_new_library).classes(sizeBTN)
 
                 with ui.column().classes('items-start flex-1'):
                     ui.label("Select Existing Dark Library").classes(
@@ -68,7 +70,7 @@ class DarkLibraryApp:
                     with ui.row().classes('items-center gap-4'):
                         self.library_name = ui.input("Library Name").classes('w-55')
                         ui.button("🗑️ Delete Library",
-                                  on_click=self.confirm_and_delete_library).props("color=red")
+                                  on_click=self.confirm_and_delete_library).props("color=red").classes(sizeBTN)
 
                     # Dwarf selector — filters which BackupDrives are shown
                     self.dwarf_list = get_dwarf_Names(self.conn)
@@ -95,7 +97,7 @@ class DarkLibraryApp:
                             .style("min-width: 260px; max-width: 400px;")
                         )
                         ui.button("Select Folder",
-                                  on_click=self.select_folder)
+                                  on_click=self.select_folder).classes(sizeBTN2)
 
                     with ui.card().tight():
                         ui.colors(brand='#A1A0A1')
@@ -107,12 +109,11 @@ class DarkLibraryApp:
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
                 ui.button("Save / Update Library",
-                          on_click=self.save_or_update_library)
-                with ui.row().classes("gap-4"):
-                    ui.button("📥 Download Darks",
-                              on_click=self.navigate_to_download).props("color=indigo")
-                    ui.button("🔍 Scan Library",
-                              on_click=self.scan_library).props("color=teal")
+                          on_click=self.save_or_update_library).classes(sizeBTN)
+                ui.button("📥 Download Darks",
+                          on_click=self.navigate_to_download).props("color=indigo").classes(sizeBTN)
+                ui.button("🔍 Scan Library",
+                          on_click=self.scan_library).props("color=teal").classes(sizeBTN)
 
         # ── Inventory card (shown after scan) ────────────────────────────────
         with ui.card().classes("w-full max-w-3xl mx-auto mt-4") as self.inventory_card:
@@ -183,6 +184,9 @@ class DarkLibraryApp:
 
 
     def set_new_library(self):
+        self.library_selector.value = ""
+        self.dwarf_selector.value = ""
+        self.backup_selector.value = ""
         self.library_id = None
         self.library_name.value   = ""
         self.location_input.value = ""

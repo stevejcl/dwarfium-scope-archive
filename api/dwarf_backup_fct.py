@@ -96,7 +96,7 @@ def compute_md5(filepath):
 
     return hash_md5.hexdigest()
 
-def files_are_different(src, dst, check_md5):
+def files_are_different(src, dst, check_md5=False):
     if not os.path.exists(dst):
         safe_print("files_are_different 1")
         return True
@@ -1084,6 +1084,8 @@ def extract_core_name(path: str) -> str:
 
     # Remove extension
     filename_no_ext = filename.replace('.fits', '')
+    # For Mosaic ext is zip
+    filename_no_ext = filename_no_ext.replace('.zip', '')
 
     # Extract part after "stacked-XX_"
     m = re.search(r'stacked-\d+_(.+)', filename_no_ext)
@@ -1994,7 +1996,8 @@ def list_error_integrity(conn,  backup_drive_id, backupDrive_location, session_l
 
         else : 
             print_log(f"  Ignoring session:{session[1]} no stacked jpg and fits path", log)
-        
+
+    print_log(f"End of Test", log)
     return errors            
     
 

@@ -64,7 +64,7 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
 Scans the Dwarf's USB directory and indexes all sessions into the database.
 Run this after connecting the Dwarf by USB.
 
-## Show All Current Dwarf Data
+## Show Dwarf Data
 
 Opens the Explore page to view data stored on your Dwarf.
 You can then import it into your backup.
@@ -107,6 +107,7 @@ Each backup drive is linked to one Dwarf.
 Scans the backup drive and indexes all sessions into the database.
 Run this after copying new sessions from the Dwarf.
 
+Show the History of Session Transfer with date, session and status.
 ## Check Session Integrity
 
 Compare the number of FITS files present to those registered in the session.
@@ -145,7 +146,7 @@ automatically from `shotsInfo.json` files when you re-analyze.
 
 Browse and search all sessions indexed from your backup drives.
 To view sessions currently stored on your Dwarf, go to the Dwarf page
- and click the "Show All Current Dwarf Data" button.
+ and click the "Show Dwarf Data" button.
 
 ## Filters
 
@@ -171,7 +172,7 @@ Click a target in the left panel, then select a session from the
 - **Availability** — Depends on the selected checkboxes. See tips for more details.
 - **Delete Session (Backup Drive)** — Permanently removes all session data from the backup drive.
 - **Delete Session (Dwarf)** — Available only if a backup exists.
-    Access it via the **"Show All Current Dwarf Data"** button in the Dwarf Settings page.
+    Access it via the **"Show Dwarf Data"** button in the Dwarf Settings page.
 - **View linked Manual Session** — jump to any Manual Session linked to this entry
 - **Add/Remove Favorite** — Toggle the session title to show or hide it on the home page
 - **Show Details / Hide Details** — toggle file stats and directory info

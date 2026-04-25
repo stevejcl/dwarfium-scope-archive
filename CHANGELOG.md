@@ -1,5 +1,23 @@
 # Changelog
 
+## [V3.1.1] - 2026-04-25
+**Test version (published to test branches)**
+
+### Add 
+    Add UI improvements for background transfers
+    update DB API to support editing ManualSession entries
+    App lifecycle: robust storage shutdown cleanup with atomic write and removal of transient transfer keys to avoid corruption on shutdown.
+    RA/DEC as fallback when FITS lacks coordinates, surface update_manual_session in edit mode to avoid duplicate rows.
+    UI: harmonize button sizing across pages, center transfer progress badge in menu, add visible Stop Transfer warning banner with cancel action
+    Add transfer history panel (reads transfer_journal.json) in backup UI
+    Add fallback preview image scanning in manual explore.
+
+### BugFix# 
+    Adjust file utilities (files_are_different default, extract_core_name session remove .zip handling)
+    small help text fixes
+    - Misc: small help text fixes,
+    - Change link to Astrometry open in a new tab
+
 ## [V3.1.0] - 2026-04-21
 **Test version (published to test branches)**
 
