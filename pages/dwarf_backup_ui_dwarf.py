@@ -2,6 +2,7 @@ import urllib.parse
 import webview
 from nicegui import native, app, run, ui
 import os
+import subprocess
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive,  get_directory_size_format, empty_local_archive_dwarf_dir
@@ -12,6 +13,7 @@ from api.dwarf_backup_mtp_handler import MTPManager
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
 from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entries_and_dwarf_data, del_dwarf
+from api.dwarf_backup_db_api import get_dwarf_sessions_error
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
@@ -34,6 +36,8 @@ class ConfigApp:
         self.database = database
         self.dwarfs = []
         self.dwarf_id = DwarfId
+        self.error_sessions_container = None
+        self.btn_error_sessions = None
         self.dwarf_type_map = {
             1: "Dwarf2",
             2: "Dwarf3",
@@ -63,7 +67,15 @@ class ConfigApp:
             #with ui.grid(columns=2).classes("w-full"):
             with ui.row().classes("w-full justify-between"):
                 ui.button("🗂️ Show Dwarf Data", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
+                self.btn_error_sessions = ui.button(
+                    "⚠️ Sessions in Error",
+                    on_click=self._toggle_error_sessions
+                ).classes(sizeBTN).props("color=orange")
+                self.btn_error_sessions.set_visibility(False)
                 ui.button("🔍 Analyze Dwarf Drive", on_click=self.analyze_usb_drive).classes(sizeBTN)
+
+            self.error_sessions_container = ui.column().classes("w-full")
+            self.error_sessions_container.visible = False
 
             ui.separator()
 
@@ -220,7 +232,6 @@ class ConfigApp:
             ui.notify("First run detected. Connect your Dwarf via USB, then follow the Help panel to register it.", type="info")
             ui.timer(1.5, lambda: open_help(True), once=True)
 
-
         # Update the dictionary mapping
         self.dwarf_name_to_id = {f"{id} - {name}": id for id, name in self.dwarfs}
 
@@ -268,9 +279,66 @@ class ConfigApp:
             self.dwarf_ip_sta_mode.value = row[5]
             self.dwarf_mtp_id = row[6]
             self.modif_dwarf_type()
+            self.refresh_error_sessions_btn()
             await self.show_local_data()
             await self.check_status_dwarf()
 
+
+    def _toggle_error_sessions(self):
+        """Show/hide the error sessions panel."""
+        self.error_sessions_container.visible = not self.error_sessions_container.visible
+        if self.error_sessions_container.visible:
+            self._load_error_sessions()
+
+    def _load_error_sessions(self):
+        """Render error sessions list inside the container."""
+        self.error_sessions_container.clear()
+        if not self.dwarf_id:
+            return
+        rows = get_dwarf_sessions_error(self.conn, self.dwarf_id)
+        with self.error_sessions_container:
+            if not rows:
+                ui.label("✅ No Sessions in error.").classes("text-green-600")
+                return
+            with ui.card().classes("w-full p-3"):
+                ui.label("Sessions in Error").classes("text-base font-semibold mb-1")
+                for row in rows:
+                    # row: id, dwarf_id, session_date, session_dir, session_dir_master, status
+                    _, _, session_date, session_dir, session_dir_master, status = row
+                    status_color = "text-green-600" if status == "REPAIRED" else "text-orange-500"
+                    status_icon  = "✅" if status == "REPAIRED" else "⚠️"
+                    with ui.row().classes("items-center gap-2 w-full py-1 border-b"):
+                        ui.label(f"{status_icon}").classes("text-base")
+                        with ui.column().classes("gap-0 flex-1"):
+                            ui.label(session_dir).classes("font-mono text-sm")
+                            if session_date:
+                                ui.label(f"📅 {session_date}").classes("text-xs text-gray-500")
+                            ui.label(f"Status: {status}").classes(f"text-xs {status_color}")
+                            if session_dir_master:
+                                ui.label(f"Repaired from: {session_dir_master}").classes("text-xs text-gray-400")
+                        sd = session_dir  # capture for lambda
+                        ui.button("📂", on_click=lambda s=sd: self._open_session_folder(s))                             .props("flat dense").tooltip("Open folder in explorer")
+
+    def _open_session_folder(self, session_dir: str):
+        """Open the session folder in the OS file explorer (same logic as explore open_folder)."""
+        base = self.dwarf_astroDir.value.strip() if self.dwarf_astroDir.value else ""
+        full_path = os.path.normpath(os.path.join(base, session_dir) if base else session_dir)
+        if not os.path.exists(full_path):
+            ui.notify(f"Folder not found: {full_path}", type="warning")
+            return
+        if os.name == "nt":  # Windows
+            subprocess.Popen(f'explorer "{full_path}"')
+        elif os.name == "posix":  # macOS or Linux
+            subprocess.Popen(["open", full_path])
+
+    def refresh_error_sessions_btn(self):
+        """Show/hide the error sessions button depending on whether errors exist."""
+        if not self.dwarf_id or not self.btn_error_sessions:
+            return
+        rows = get_dwarf_sessions_error(self.conn, self.dwarf_id)
+        self.btn_error_sessions.set_visibility(len(rows) > 0)
+        if self.error_sessions_container.visible:
+            self._load_error_sessions()
 
     def modif_dwarf_type(self):
         # Set mtp_visible based on the selected type
@@ -516,8 +584,13 @@ class ConfigApp:
             error_label.text = msg 
             close_button.visible = True
         else:
-            dialog.close()  # close dialog 
-            await self.load_selected_dwarf(None)
+            ui.timer(5, lambda: self.end_analyze_usb_drive(dialog), once=True)
+
+    async def end_analyze_usb_drive(self, dialog):
+        dialog.close()
+        await self.load_selected_dwarf(None)
+        self.refresh_error_sessions_btn()
+
 
     async def confirm_and_delete_Dwarf(self):
         if self.dwarf_id is None:

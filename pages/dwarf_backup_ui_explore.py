@@ -23,6 +23,7 @@ from api.dwarf_backup_db_api import (
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
     has_related_manual_sessions, get_ManualSession_by_backup_entry_id,
     find_matching_darks, generate_siril_session_json,
+    get_dwarf_session_error_by_dir,
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
@@ -1180,6 +1181,7 @@ class ExploreApp:
             astro_group_id = row[17]
             descriptionDB = row[18]
             # row[19]=backup_drive_id  row[20]=dwarf_id  row[21]=binning
+            dwarf_id = row[20]
             _binning_raw = row[21] if len(row) > 21 else None
             try:
                 binning = int(str(_binning_raw).split("*")[0]) if _binning_raw else 1
@@ -1269,12 +1271,11 @@ class ExploreApp:
                 ui.item(f"📊 {stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
 
                 # --- Dark match badge ---
-                _dwarf_id = self.get_selected_dwarf_id()
-                if _dwarf_id and exp_time and gainDB:
+                if dwarf_id and exp_time and gainDB:
                     try:
                         _dark = find_matching_darks(
                             self.conn,
-                            dwarf_id = _dwarf_id,
+                            dwarf_id = dwarf_id,
                             exp_s    = float(exp_time),
                             gain     = int(gainDB),
                             binning  = binning,
@@ -1289,6 +1290,35 @@ class ExploreApp:
                             ui.item("❌ No matching darks found").classes('text-red-500')
                     except Exception as _e:
                         print(f"[dark match] {_e}")
+
+                # --- Repair badge ---
+                if dwarf_id:
+                    repair_row = get_dwarf_session_error_by_dir(self.conn, dwarf_id, session_dir)
+                    if repair_row and repair_row["status"] == "REPAIRED":
+                        with ui.item():
+                            with ui.row().classes("items-center gap-2"):
+                                ui.badge("🔧 REPAIRED", color="green").classes("text-sm")
+                                if repair_row["session_dir_master"]:
+                                    ui.item(f"Repaired from: {repair_row['session_dir_master']}").classes("text-xs text-gray-500")
+
+                # --- Merge in progress badge (from repairInfo.json on disk) ---
+                repair_info_path = os.path.join(os.path.dirname(full_path), "repairInfo.json")
+                if os.path.exists(repair_info_path):
+                    try:
+                        import json as _json
+                        with open(repair_info_path, "r", encoding="utf-8") as _f:
+                            repair_info = _json.load(_f)
+                        if repair_info.get("type") == "MERGE":
+                            sessions_list = repair_info.get("sessions", [])
+                            with ui.item():
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.badge("🔀 MERGE IN PROGRESS", color="orange").classes("text-sm")
+                                with ui.column().classes("gap-0 ml-2"):
+                                    ui.label("Sessions merged:").classes("text-xs text-gray-500")
+                                    for s in sessions_list:
+                                        ui.label(f"  • {s}").classes("text-xs font-mono text-gray-600")
+                    except Exception:
+                        pass
 
                 # add Mosaic Panel Info
                 #for data_detail in details:

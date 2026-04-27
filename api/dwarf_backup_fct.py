@@ -22,6 +22,7 @@ from api.dwarf_backup_db import connect_db, close_db, commit_db
 from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord, get_db_local_dwarf_dir
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
 from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId, rebuild_manual_session_entries, write_missing_shotsInfo
+from api.dwarf_backup_db_api import insert_dwarf_session_error, update_dwarf_session_error_repaired, get_dwarf_sessions_error
 
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import VerifyError
@@ -1794,6 +1795,20 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                 log,
             )
 
+    # --- Log Mosaic error sessions detected during this scan ---
+    error_session_count = 0
+    if dwarf_id and not backup_drive_id:
+        error_sessions = get_dwarf_sessions_error(conn, dwarf_id, status="ERROR")
+        error_session_count = len(error_sessions)
+        if error_sessions:
+            print_log(f"⚠️ {error_session_count} Mosaic session(s) in error (no stacked found):", log, style="text-orange")
+            safe_print(f"[ERROR SESSIONS] {error_session_count} Mosaic session(s) in error:")
+            for row in error_sessions:
+                print_log(f"   • {row[3]}", log, style="text-orange")  # session_dir
+                safe_print(f"   • {row[3]}")
+        else:
+            print_log("✅ No Mosaic sessions in error.", log)
+
     commit_db(conn)
     close_db(conn)
     return total_added, deleted, rebuild_result
@@ -1808,27 +1823,71 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
 
     safe_print(f"process_dwarf_folder - dwarf_path {dwarf_path} ")
 
+    # --- Step 1 : find stacked file (jpg priority over png) ---
+    # A Merge/Megastack deposits a stacked.png alongside the existing stacked.jpg,
+    # which would otherwise create a duplicate DwarfData entry on the next rescan.
+    stacked_file = None
     for filename in os.listdir(dwarf_path):
-        if not filename.lower().endswith(("stacked.jpg", "stacked.png")):
-            continue
-        safe_print(f"process_dwarf_folder - filename  {filename}")
-        full_file_path = os.path.join(dwarf_path, filename)
-        dwarf_data_id, data_id = insert_dwarf_data(conn, backup_root, full_file_path, astro_object_id, new_data)
-        session_dt_str = session_date.strftime("%Y-%m-%d %H:%M:%S.%f")
-        session_dir = os.path.basename(os.path.normpath(dwarf_path))
+        if filename.lower().endswith("stacked.jpg"):
+            stacked_file = filename
+            break  # jpg found — stop immediately, highest priority
+        if filename.lower().endswith("stacked.png"):
+            stacked_file = filename  # png candidate — keep looking for a jpg
 
-        if dwarf_data_id:
-            if backup_drive_id:
-                # Insert entry in BackupEntry
-                new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
-                added += 1 if new_id != 0 else 0
-                safe_print(f"insert_BackupEntry : id : {new_id}")
-            else:
-                # Insert entry in DwarfEntry
-                new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
-                added += 1 if new_id != 0 else 0
-        if data_id:
-            data_ids.add(data_id)
+    # --- Step 2 : no stacked found → check for Mosaic error session ---
+    if not stacked_file:
+        shots_info_path = os.path.join(dwarf_path, "shotsInfo.json")
+        if os.path.exists(shots_info_path):
+            # shotsInfo.json present but no stacked → Mosaic session in error
+            session_dir = os.path.basename(os.path.normpath(dwarf_path))
+            inserted = insert_dwarf_session_error(conn, dwarf_id, session_date, session_dir)
+            if inserted:
+                safe_print(f"[ERROR SESSION] Registered Mosaic error session: {session_dir}")
+        return added, data_ids
+
+    # --- Step 3 : stacked found → check repairInfo.json ---
+    repair_info_path = os.path.join(dwarf_path, "repairInfo.json")
+    if os.path.exists(repair_info_path):
+        try:
+            with open(repair_info_path, "r", encoding="utf-8") as f:
+                repair_info = json.load(f)
+            repair_type = repair_info.get("type", "")
+            if repair_type == "MERGE":
+                # Session used as base for a Merge/Repair — ignore, RESTACKED_ is the real entry
+                safe_print(f"[MERGE] Skipping base session (MERGE marker found): {dwarf_path}")
+                return added, data_ids
+            elif repair_type == "REPAIR":
+                # Session_OK was used as repair base for source_session (Session_Error).
+                # Ignored at scan — already in DB as the original reference session.
+                # Update DwarfSessionsError for source_session if not already REPAIRED.
+                session_dir = os.path.basename(os.path.normpath(dwarf_path))
+                source_session = repair_info.get("source_session", "")
+                if source_session:
+                    update_dwarf_session_error_repaired(conn, dwarf_id, source_session, session_dir)
+                    safe_print(f"[REPAIR] DwarfSessionsError updated: {source_session} repaired from {session_dir}")
+                safe_print(f"[REPAIR] Skipping repaired base session: {dwarf_path}")
+                return added, data_ids
+        except Exception as e:
+            safe_print(f"[WARN] repairInfo.json read error in {dwarf_path}: {e}")
+
+    safe_print(f"process_dwarf_folder - filename  {stacked_file}")
+    full_file_path = os.path.join(dwarf_path, stacked_file)
+    dwarf_data_id, data_id = insert_dwarf_data(conn, backup_root, full_file_path, astro_object_id, new_data)
+    session_dt_str = session_date.strftime("%Y-%m-%d %H:%M:%S.%f")
+    session_dir = os.path.basename(os.path.normpath(dwarf_path))
+
+    if dwarf_data_id:
+        if backup_drive_id:
+            # Insert entry in BackupEntry
+            new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
+            added += 1 if new_id != 0 else 0
+            safe_print(f"insert_BackupEntry : id : {new_id}")
+        else:
+            # Insert entry in DwarfEntry
+            new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
+            added += 1 if new_id != 0 else 0
+    if data_id:
+        data_ids.add(data_id)
     return added, data_ids
 
 

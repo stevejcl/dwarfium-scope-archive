@@ -7,15 +7,14 @@ import re
 
 def _get_app_version():
     """Read version from version.py (built executable) or CHANGELOG.md (dev mode)."""
-    # Production: version.py generated at build time
     try:
         from version import APP_VERSION
         return APP_VERSION
     except ImportError:
         pass
-    # Dev mode: read directly from CHANGELOG.md
     try:
-        changelog = os.path.join(os.path.dirname(os.path.dirname(__file__)), "CHANGELOG.md")
+        import pathlib
+        changelog = pathlib.Path(__file__).parent.parent / "CHANGELOG.md"
         with open(changelog, "r", encoding="utf-8") as f:
             for line in f:
                 m = re.search(r"\[V?([\d.]+[a-z]?)\]", line)

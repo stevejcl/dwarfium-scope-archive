@@ -1,5 +1,4 @@
-# macOS packaging support
-from multiprocessing import freeze_support  # noqa
+from multiprocessing import freeze_support
 
 from nicegui import native, app, ui
 
@@ -41,11 +40,11 @@ def preview_image(file_path: str):
     return serve_preview(file_path)
 
 if __name__ == '__main__':
-    freeze_support()   # must be first statement in main guard
+    freeze_support()  # must be first statement in main guard
     try:
         ui.run( title="Dwarfium Scope Archive",
                 storage_secret='Dwarfiumscopearchive key to secure the browser session cookie',
-                native=True, 
+                native=True,
                 window_size=(1200, 1024),
                 port=native.find_open_port(),
                 reconnect_timeout=20,
@@ -55,7 +54,7 @@ if __name__ == '__main__':
     except (KeyboardInterrupt):
         print("Application closed by user.")
 
-    except (SystemExit):
+    except SystemExit:
         print("Application closed.")
 
     except Exception as e:

@@ -72,6 +72,16 @@ Enable **Only show sessions not yet backed up**
 This will display pending sessions and show the Backup button.
 Run this after running : **Analyze Dwarf Drive**.
 
+## Sessions with Errors
+
+Opens sessions without a final stacked file.
+
+**Possible reasons:**
+
+    1. No frames recorded → Normal (session stopped early)
+    2. Mosaic session → Frames exist but no final stack
+       → Repair it from the Mosaic page
+
 ## Tips
 
 - The USB path must be accessible when you click **Analyze Dwarf Drive**

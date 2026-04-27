@@ -17,7 +17,7 @@ from scipy.ndimage import distance_transform_edt, binary_dilation
 
 from nicegui import ui, run, Client
 
-from api.dwarf_backup_fct import print_log, win_long_path, files_are_different, _err_path
+from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path
 
 from api.dwarf_backup_fct_mosaic_algo import ( infer_mosaic_info_from_images, subsample_for_alignment, crop_to_active_region, equalize_background, detect_panel_position)
 
@@ -1158,12 +1158,12 @@ def _find_transform_sync(src_gray, ref_gray, detection_sigma = 5, max_control_po
             print(f"  ↻ max_pts={max_pts} failed: {e}")
     return None
     
-def save_transforms(transforms: list, path: str = "./work/transforms.npy"):
+def save_transforms(transforms: list, path: str = TRANSFORM_AUTO_SAVE_PATH):
     """
     Save a list of 3×3 numpy arrays to a .npy file.
  
     Usage — add this right after your transform loop:
-        save_transforms(transforms, "./transforms.npy")
+        save_transforms(transforms, TRANSFORM_AUTO_SAVE_PATH)
     """
     arr = np.stack(transforms, axis=0)   # shape (N, 3, 3)
 
@@ -1385,7 +1385,7 @@ async def stitch_with_astroalign(images: list,
             if i not in failed:
                 failed.append(i + 1)
 
-    save_transforms(transforms, "./transforms.npy")
+    save_transforms(transforms, TRANSFORM_AUTO_SAVE_PATH)
 
     # =========================================================
     # COMPUTE CANVAS SIZE (ROTATION SAFE)
@@ -1696,9 +1696,8 @@ def rename_failed(name, target):
 
 
 def extract_temp(name):
-    m = re.search(r'_(-?\d+)C', name)
+    m = re.search(r'_(\-?\d+)C\.(fits|fit)$', name, re.IGNORECASE)
     return int(m.group(1)) if m else None
-
 
 # --------------
 # REPAIR ACTION
@@ -1798,7 +1797,7 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
         old_info = old_path / "shotsInfo.json"
         new_info = new_path / "shotsInfo.json"
         if old_info.exists():
-            if files_are_different(str(old_info), str(new_info), file_name == "shotsInfo.json"):
+            if files_are_different(str(old_info), str(new_info), True):
                 await run.io_bound(shutil.copy2, str(old_info), str(new_info))   # replace content, keep name
             else:
                 safe_print(f"Skipping {new_info.name} (unchanged)")
@@ -2066,11 +2065,20 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
             for key in ["shotsStacked", "shotsTaken", "shotsToTake"]:
                 new_info[key] += old_info.get(key, 0)
 
-            temps = [extract_temp(f) for f in final_files if extract_temp(f) is not None]
-            if temps:
-                new_info["minTemp"] = min(temps)
-                new_info["maxTemp"] = max(temps)
+            # Merge min/max temps from both sessions' JSON
+            new_min = new_info.get("minTemp")
+            old_min = old_info.get("minTemp")
+            new_max = new_info.get("maxTemp")
+            old_max = old_info.get("maxTemp")
 
+            all_mins = [t for t in [new_min, old_min] if t is not None]
+            all_maxs = [t for t in [new_max, old_max] if t is not None]
+
+            if all_mins:
+                new_info["minTemp"] = min(all_mins)
+            if all_maxs:
+                new_info["maxTemp"] = max(all_maxs)
+    
             with open(str(new_json), "w") as f:
                 json.dump(new_info, f, indent=2)
 

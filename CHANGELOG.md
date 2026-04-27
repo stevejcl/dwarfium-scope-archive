@@ -1,5 +1,24 @@
 # Changelog
 
+## [V3.0.9g] - 2026-04-27
+
+### Add 
+    Add DwarfSessionsError schema, migration (v7) and DB API to record mosaic sessions missing a final stacked file.
+    Integrate detection into the backup scanner: register sessions with shotsInfo.json but no stacked image
+    ignore MERGE/REPAIR bases, and mark sessions REPAIRED when repair completes.
+
+    Enhance mosaic/repair logic to write repairInfo.json (MERGE/REPAIR)
+    copy repaired artifacts back to the Dwarf, and update error status.
+    let users browse/open them, and pre-fill secondary session for repair.
+    
+    Extract app version from CHANGELOG in build scrip
+
+### BugFix# 
+    Avoid duplicating data in DB when using MERGE/REPAIR functionnality and MOSAIC creation
+    Exclude session-origin fields from rescan updates to avoid overwriting original session metadata.
+    Small fixes in mosaic algorithms (transform save path, temp extraction, FITS loading) and JSON merging of min/max temps.
+    Fix some missing include and varaible typo
+
 ## [V3.0.9f] - 2026-04-26
 
 ### Add 

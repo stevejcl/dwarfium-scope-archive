@@ -234,6 +234,20 @@ def create_ManualSessionEntry_sql():
         )
         """
 
+def create_DwarfSessionsError_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS DwarfSessionsError (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            dwarf_id            INTEGER NOT NULL,
+            session_date        TEXT,
+            session_dir         TEXT NOT NULL,
+            session_dir_master  TEXT,
+            status              TEXT DEFAULT 'ERROR',
+            UNIQUE(dwarf_id, session_dir),
+            FOREIGN KEY (dwarf_id) REFERENCES Dwarf(id)
+        )
+        """
+
 SCHEMAS = {
     "DsoCatalog": create_DsoCatalog_sql,
     "AstroObject": create_AstroObject_sql,
@@ -248,6 +262,7 @@ SCHEMAS = {
     "ManualSessionDrive": create_ManualSessionDrive_sql,
     "ManualSession": create_ManualSession_sql,
     "ManualSessionEntry": create_ManualSessionEntry_sql,
+    "DwarfSessionsError" : create_DwarfSessionsError_sql,
 }
 
 # Sanity check — catch wrong mappings at import time, not at runtime
@@ -382,6 +397,12 @@ def init_db(conn):
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_manualsessionentry_manual_session_id ON ManualSessionEntry(manual_session_id);
+        """)
+
+        cursor.execute(create_DwarfSessionsError_sql())
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dwarfsessionserror_session_dir ON DwarfSessionsError(session_dir);
         """)
 
         # Stamp current version so future startups skip migrations
@@ -634,6 +655,21 @@ def migrate_v6(conn):
         print(f"[DB ERROR] Failed to migrate DB v6: {e}")
         return []
 
+def migrate_v7(conn):
+    try:
+        print("Migrating Database to V7...")
+        cursor = conn.cursor()
+        cursor.execute(create_DwarfSessionsError_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dwarfsessionserror_session_dir ON DwarfSessionsError(session_dir);
+        """)
+        conn.commit()
+        print("Migration v7 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v7: {e}")
+        return []
+
+
 
 MIGRATIONS = {
     1: migrate_v1,
@@ -642,6 +678,7 @@ MIGRATIONS = {
 #   4: migrate_v4,  removed
     5: migrate_v5,
     6: migrate_v6,
+    7: migrate_v7,
     # Add more later...
 }
 
