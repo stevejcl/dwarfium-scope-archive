@@ -100,6 +100,47 @@ class SettingsApp:
                     ui.label(f"📡 LAN access: http://{ip}:{port}").classes("text-sm text-blue-600 mt-1")
                 else:
                     ui.label("📡 LAN access: disabled").classes("text-sm text-gray-400 mt-1")
+                ui.separator().classes("my-2")
+                self._last_report_path = None
+                export_status = ui.label("").classes("text-sm text-gray-500 mt-1")
+
+                def open_report():
+                    if not self._last_report_path or not os.path.exists(self._last_report_path):
+                        ui.notify("No report generated yet", type="warning")
+                        return
+                    try:
+                        import subprocess, platform
+                        if platform.system() == "Windows":
+                            os.startfile(self._last_report_path)
+                        elif platform.system() == "Darwin":
+                            subprocess.Popen(["open", self._last_report_path])
+                        else:
+                            subprocess.Popen(["xdg-open", self._last_report_path])
+                    except Exception as e:
+                        ui.notify(f"Cannot open file: {e}", type="negative")
+
+                def export_pdf_report():
+                    try:
+                        import sys
+                        tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools")
+                        if tools_path not in sys.path:
+                            sys.path.insert(0, tools_path)
+                        from db_report_pdf import generate_report
+                        out = generate_report(self.database)
+                        self._last_report_path = out
+                        export_status.set_text(f"✅ {os.path.basename(out)}")
+                        open_btn.visible = True
+                        ui.notify(f"Report saved: {os.path.basename(out)}", type="positive")
+                    except Exception as e:
+                        export_status.set_text(f"❌ Error: {e}")
+                        ui.notify(f"Export failed: {e}", type="negative")
+
+                with ui.row().classes("mt-2 gap-2 items-center"):
+                    ui.button("📄 Export PDF Report", on_click=export_pdf_report) \
+                        .props("outlined")
+                    open_btn = ui.button("📂 Open", on_click=open_report) \
+                        .props("outlined")
+                    open_btn.visible = False
 
             ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
 

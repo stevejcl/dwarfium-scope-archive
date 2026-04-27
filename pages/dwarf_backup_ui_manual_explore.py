@@ -185,6 +185,9 @@ class ManualExploreApp:
         self.gallery_timer_anim    = None
  
         self.WinLog = WinLog()
+        self.mobile_panel = 0
+        self.mobile_left_col = None
+        self.mobile_right_col = None
         self.build_ui()
 
     # -----------------------------------------------------------------------
@@ -200,11 +203,31 @@ class ManualExploreApp:
             with open(SKY_CATALOG_FILE, "r", encoding="utf-8") as f:
                 self.dso_catalog = json.load(f)
 
+        # Mobile nav bar
+        with ui.row().classes('w-full items-center gap-2 mobile-nav-bar'):
+            self.mobile_back_btn = ui.button('← Back', on_click=self._mobile_go_left) \
+                .props('flat dense').classes('text-sm')
+
+        # Force initial mobile layout
+        ui.run_javascript('''
+            function initMobileLayout() {
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
+                }
+            }
+            if (document.readyState === "complete") { initMobileLayout(); }
+            else { window.addEventListener("load", initMobileLayout); }
+            setTimeout(initMobileLayout, 300);
+            setTimeout(initMobileLayout, 1000);
+        ''')
+
         with ui.row().classes('w-full items-start'):
-            with ui.grid(columns='1fr 2fr').classes('w-full items-start'):
+            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid'):
 
                 # ---- LEFT COLUMN: filters + object list -------------------
-                with ui.column().classes('w-full'):
+                with ui.column().classes('w-full mobile-left-col') as self.mobile_left_col:
                     nbcolumns = 3 if self.BackUrl else 2
                     with ui.grid(columns=nbcolumns):
                     # Back button (optional)
@@ -250,7 +273,7 @@ class ManualExploreApp:
                         self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
 
                 # ---- RIGHT COLUMN: session selector + detail panel --------
-                with ui.column().classes('w-full'):
+                with ui.column().classes('w-full mobile-right-col') as self.mobile_right_col:
 
                     # Fullscreen dialog (maximised image viewer)
                     with ui.dialog().props('maximized') as self.image_dialog, \
@@ -628,10 +651,31 @@ class ManualExploreApp:
         self.object_list.update()
         ui.update()
 
+    def _mobile_go_right(self):
+        if self.mobile_left_col and self.mobile_right_col:
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="flex");
+                }
+            ''')
+
+    def _mobile_go_left(self):
+        if self.mobile_left_col and self.mobile_right_col:
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
+                }
+            ''')
+
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
         self.selected_object             = name
         self.selected_object_description = desc
         self.selected_object_is_group    = is_group
+        self._mobile_go_right()
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
 
@@ -662,6 +706,26 @@ class ManualExploreApp:
             self.edit_session_icon.visible   = False
         if self.delete_session_icon:
             self.delete_session_icon.visible = False
+
+    def _mobile_go_right(self):
+        if self.mobile_left_col and self.mobile_right_col:
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="flex");
+                }
+            ''')
+
+    def _mobile_go_left(self):
+        if self.mobile_left_col and self.mobile_right_col:
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
+                }
+            ''')
 
     def select_object(self, object_id, dso_id, is_group, session_id=None):
         """Load session rows for the selected AstroObject and populate the file list."""
@@ -1234,7 +1298,6 @@ class ManualExploreApp:
     def show_fullscreen_image(self):
         if self.fullscreen_image.visible:
             self.image_dialog.open()
-            ui.notify("Press ESC to close the image", position="top", type="info")
 
     def open_folder(self):
         folder = self.selected_path

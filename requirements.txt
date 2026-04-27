@@ -11,3 +11,4 @@ asyncssh
 requests
 portalocker
 astroalign
+reportlab

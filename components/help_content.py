@@ -493,6 +493,8 @@ Configure global application settings.
 
 ## Options
 
+- **Version** — show current version
+- **Report** - export PDF report of Sessions / Disks Usage  
 - **Theme** — switch between light and dark mode
 - **Storage paths** — configure where local session data is cached
 - **API Keys** — set astrometry.net key for automatic target resolution

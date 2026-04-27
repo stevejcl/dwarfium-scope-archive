@@ -29,3 +29,6 @@ image/image-fits.psd
 /.venv
 /debug_masks
 /Dwarf_Local1
+/db
+/reports
+/work

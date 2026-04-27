@@ -37,6 +37,7 @@ class CatalogApp:
     def __init__(self, database):
         self.database = database
         self.data = []
+        self._preloaded_rows = None
         self.build_ui()
         self.current_dso_assign = None
 
@@ -52,11 +53,11 @@ class CatalogApp:
             self.loading_spinner = ui.spinner(size='lg').classes('m-4')
 
             columns=[
-                {'name': 'id', 'label': 'ID', 'field': 'id', 'sortable': True},
-                {'name': 'name', 'label': 'Name', 'field': 'name', 'sortable': True},
-                {'name': 'description', 'label': 'Description', 'field': 'description', 'sortable': True},
-                {'name': 'dso', 'label': 'DSO', 'field': 'dso', 'sortable': True},
-                {'name': 'actions', 'label': 'Actions', 'field': 'actions'},
+                {'name': 'id',          'label': 'ID',          'field': 'id',          'sortable': True,  'style': 'width: 60px'},
+                {'name': 'name',        'label': 'Name',        'field': 'name',        'sortable': True,  'style': 'width: 180px; white-space: normal; word-break: break-word'},
+                {'name': 'description', 'label': 'Description', 'field': 'description', 'sortable': True,  'style': 'width: 320px; white-space: normal; word-break: break-word'},
+                {'name': 'dso',         'label': 'DSO',         'field': 'dso',         'sortable': True,  'style': 'width: 120px'},
+                {'name': 'actions',     'label': 'Actions',     'field': 'actions',                        'style': 'width: 140px'},
             ]
 
             # Create the table
@@ -66,8 +67,22 @@ class CatalogApp:
     async def load_data(self):
         """Load catalog data in a thread so spinner renders first."""
         from nicegui import run
-        db = self.database
-        self.data = await run.io_bound(_fetch_catalog_data, db)
+        def _fetch():
+            from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
+            import sqlite3 as _sq
+            c = _sq.connect(self.database)
+            placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
+            rows = c.execute(f"""
+                SELECT AO.id, AO.name, AO.description,
+                       COALESCE(DSO.designation, '') AS dso_name
+                FROM AstroObject AO
+                LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
+                WHERE AO.name NOT IN ({placeholders})
+                ORDER BY AO.name
+            """, DEFAULT_GROUP_NAMES).fetchall()
+            c.close()
+            return rows
+        self._preloaded_rows = await run.io_bound(_fetch)
         self.reload()
         if hasattr(self, 'loading_spinner'):
             self.loading_spinner.set_visibility(False)
@@ -86,16 +101,16 @@ class CatalogApp:
             self.ok_confirm_and_delete
         )
 
-    def ok_confirm_and_delete(self):
-        if delete_unused_astro_objects(self.conn):
+    async def ok_confirm_and_delete(self):
+        from nicegui import run
+        ok = await run.io_bound(delete_unused_astro_objects, self.conn)
+        if ok:
             ui.notify('AstroObject data have been purged!')
         else:
             ui.notify('Error occurs during AstroObject purge!')
         # recreate default if need
-        insert_default_groups(self.conn)
-
+        await run.io_bound(insert_default_groups, self.conn)
         self.reload()
-        ui.update()  # refresh page/table
 
     def get_row_by_id(self, ao_id):
         for ao in self.data:
@@ -107,18 +122,25 @@ class CatalogApp:
     @ui.refreshable
     def reload(self):
         self.table.rows.clear()
-        if not self.data:
-            self.data = get_astro_objects(self.conn)
-
-        for ao in self.data:
-            self.table.rows = [{
-                'id': ao[0],
-                'name': ao[1],
-                'description': ao[2],
-                'dso': get_dso_name(self.conn, ao[3]),
-                'actions': '',
-            }
-            for ao in self.data
+        # Use preloaded rows if available (from async load_data), else query directly
+        if hasattr(self, '_preloaded_rows') and self._preloaded_rows is not None:
+            rows = self._preloaded_rows
+            self._preloaded_rows = None
+        else:
+            from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
+            placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
+            rows = self.conn.execute(f"""
+                SELECT AO.id, AO.name, AO.description,
+                       COALESCE(DSO.designation, '') AS dso_name
+                FROM AstroObject AO
+                LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
+                WHERE AO.name NOT IN ({placeholders})
+                ORDER BY AO.name
+            """, DEFAULT_GROUP_NAMES).fetchall()
+        self.data = [(r[0], r[1], r[2], None) for r in rows]
+        self.table.rows = [
+            {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3], 'actions': ''}
+            for r in rows
         ]
         self.table.update()
 
@@ -129,10 +151,10 @@ class CatalogApp:
                 <q-td key="id" :props="props">
                   {{ props.row.id }}
                 </q-td>
-                <q-td key="name" :props="props">
+                <q-td key="name" :props="props" style="white-space: normal; word-break: break-word; max-width: 180px">
                   {{ props.row.name }}
                 </q-td>
-                <q-td key="description" :props="props">
+                <q-td key="description" :props="props" style="white-space: normal; word-break: break-word; max-width: 320px; font-size: 0.85em">
                   {{ props.row.description }}
                 </q-td>
                 <q-td key="dso" :props="props">
@@ -151,12 +173,30 @@ class CatalogApp:
 
         ui.update() 
 
+    def update_row(self, ao_id: int):
+        """Refresh only the row that was just modified — no full reload."""
+        from api.dwarf_backup_db_api import get_astro_object_by_id
+        ao = get_astro_object_by_id(self.conn, ao_id)
+        if ao is None:
+            return
+        # Update in-memory data
+        for i, row in enumerate(self.data):
+            if row[0] == ao_id:
+                self.data[i] = ao
+                break
+        # Update table row in place
+        for row in self.table.rows:
+            if row['id'] == ao_id:
+                row['description'] = ao[2]
+                row['dso'] = get_dso_name(self.conn, ao[3])
+                break
+        self.table.update()
+
     def on_assign_dso(self, msg: Dict):
         ao_id = msg.args
         ao = self.get_row_by_id(ao_id)
-        print(ao)
         if ao:
-            show_assign_dialog(self.conn, ao, on_done=lambda: (self.reload(),ui.update()))
+            show_assign_dialog(self.database, ao, on_done=lambda: self.update_row(ao_id))
 
     def show_assign_dialog_local(self, astro_object_row):
         with ui.dialog() as dialog, ui.card().style('width: 600px; max-width: none'):
@@ -220,17 +260,6 @@ class CatalogApp:
 
                     update_astro_object_dso(self.conn, astro_object_row[0], int(dso_select.value), final_description)
 
-                    ui.notify('DSO assigned/updated!')
-                    dialog.close()
-                    self.reload()
-
-                else:
-                    ui.notify('Please select a DSO first.', color='red')
-
-
-            def confirm():
-                if dso_select.value:
-                    update_astro_object_dso(self.conn, astro_object_row[0], int(dso_select.value), custom_dso_input.value)
                     ui.notify('DSO assigned/updated!')
                     dialog.close()
                     self.reload()

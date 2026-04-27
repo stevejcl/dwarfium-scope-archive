@@ -1,5 +1,15 @@
 # Changelog
 
+## [V3.1.3] - 2026-04-28
+
+### Add 
+    Add Report and DB tools, DSO assign UI and mobile fixes
+    Cmd Line DB Tools add on
+
+### BugFix# 
+    Resolve UI threading/UX issues when assigning DSOs
+    UI improvment in the app on mobile.
+
 ## [V3.1.2] - 2026-04-27
 **Test version (published to test branches)**
 

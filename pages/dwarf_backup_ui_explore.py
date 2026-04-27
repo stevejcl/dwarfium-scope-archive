@@ -298,7 +298,6 @@ class ExploreApp:
     def show_fullscreen_image(self):
         if self.fullscreen_image.visible: 
             self.image_dialog.open()
-            ui.notify("Press ESC to close the image", position="top", type="info")
 
     def populate_backup_filter(self):
         print(f"backup_filter: {self.BackupDriveId}")
@@ -1143,8 +1142,10 @@ class ExploreApp:
         with ui.dialog().props('maximized') as full_dialog:
             with ui.card().classes("w-full h-full justify-center items-center bg-black"):
                 ui.image(path).classes('w-full max-h-full object-contain')
+                ui.button('✕', on_click=full_dialog.close) \
+                    .props('round flat') \
+                    .classes('absolute top-2 right-2 z-10 bg-black text-white opacity-70')
         full_dialog.open()
-        ui.notify("Press ESC to close the image", position="top", type="info")
 
     def open_gallery_dialog(self, mosaic_dir: str, panels):
 
