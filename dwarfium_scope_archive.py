@@ -1,6 +1,4 @@
-# macOS packaging support
-from multiprocessing import freeze_support  # noqa
-freeze_support()  # noqa
+from multiprocessing import freeze_support
 
 # Repair corrupted or empty storage BEFORE NiceGUI loads it
 import pathlib, json as _json
@@ -22,10 +20,25 @@ from nicegui import native, app, ui, background_tasks
 import sys
 import asyncio
 import logging
+import argparse
+
+# -------------------------
+# CLI CONFIG
+# -------------------------
+parser = argparse.ArgumentParser()
+parser.add_argument('--lan', action='store_true', help='Enable LAN access (binds to 0.0.0.0)')
+parser.add_argument('--port', type=int, default=None, help='Port (default: auto in local, 8080 in LAN)')
+args, _ = parser.parse_known_args()
+
+LAN_MODE = args.lan
+HOST = "0.0.0.0" if LAN_MODE else "127.0.0.1"
+PORT = args.port if args.port else native.find_open_port()
 
 # Global flag for app mode
 ON_AIR = False
 app.storage.general['ON_AIR'] = ON_AIR
+app.storage.general['LAN_MODE'] = LAN_MODE
+app.storage.general['LAN_PORT'] = PORT
 
 # Import page content (each file registers its own route)
 import pages.dwarf_backup_ui_dwarf
@@ -80,35 +93,25 @@ def _safe_storage_write(snapshot: dict) -> None:
         print(f"[App] Safe storage write error: {e}")
 
 async def _on_app_shutdown():
-    """Called on shutdown — clean up transient transfer keys and write storage safely.
+    """Called on shutdown — write cleaned storage directly to disk.
 
-    Problem: each pop() on app.storage.general triggers create_lazy() individually.
-    Multiple pops in quick succession discard each other, leaving the file empty.
-    Fix: single clear()+update() — one create_lazy trigger — then an immediate
-    synchronous write while still inside the async shutdown sequence (file unlocked).
-
-    We do NOT use the finally block of ui.run() because _on_app_shutdown runs
-    asynchronously and may complete AFTER finally has already executed.
+    We bypass app.storage.general modifications entirely to avoid triggering
+    NiceGUI's async create_lazy() which would overwrite our file with an empty one.
+    Instead we read the current state, filter transient keys, and write directly.
     """
     try:
         p = app.storage.general.get('transfer_progress', None)
         if p and p.get('status') in ('running', 'copy_done', 'scanning'):
             print("[App] Transfer in progress during shutdown — state will be cleared.")
 
-        # Capture cleaned snapshot in memory
+        # Capture cleaned snapshot WITHOUT touching app.storage.general
+        # (any modification triggers NiceGUI async write that races with ours)
         snapshot = {k: v for k, v in app.storage.general.items()
                     if k not in _TRANSFER_KEYS}
 
-        # Single atomic dict replacement: one _handle_change -> one create_lazy trigger
-        app.storage.general.clear()
-        if snapshot:
-            app.storage.general.update(snapshot)
-
         print("[App] Storage cleanup complete.")
 
-        # Write synchronously NOW — we are still inside NiceGUI's shutdown sequence,
-        # the event loop is running, and storage.on_shutdown (registered before us)
-        # has already released the file handle.
+        # Write directly to disk — do NOT call clear()/update() on storage
         _safe_storage_write(snapshot)
 
     except Exception as e:
@@ -116,23 +119,65 @@ async def _on_app_shutdown():
 
 app.on_shutdown(_on_app_shutdown)
 
-try:
-    ui.run( title="Dwarfium Scope Archive",
-            storage_secret='Dwarfiumscopearchive key to secure the browser session cookie',
-            native=True,
-            window_size=(1200, 1024),
-            port=native.find_open_port(),
-            reconnect_timeout=20,
-            reload=False)
+# Mobile responsive
+ui.add_css('''
+    /* Landscape mobile only — reduce font size */
+    @media (max-width: 768px) and (orientation: landscape) {
+        * { font-size: 85% !important; }
+        .q-btn { min-height: 36px !important; }
+    }
+    /* Desktop: always show both columns, hide mobile nav bar */
+    @media (min-width: 769px) {
+        .mobile-nav-bar { display: none !important; }
+        .mobile-left-col { display: flex !important; flex: 1 !important; }
+        .mobile-right-col { display: flex !important; flex: 2 !important; }
+    }
+    /* Mobile: full width single column layout */
+    @media (max-width: 768px) {
+        .mobile-explore-grid {
+            grid-template-columns: 1fr !important;
+        }
+        .mobile-left-col, .mobile-right-col {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0;
+            grid-column: 1 / -1 !important;
+            overflow-x: hidden !important;
+        }
+        /* Text overflow prevention */
+        * { 
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+        /* Fixed-width elements → full width on mobile */
+        .w-32, .w-40, .w-46, .w-50, .w-55,
+        .w-56, .w-58, .w-60, .w-64, .w-80, .w-96,
+        .w-500, .w-700,
+        [class*="min-w-["] {
+            min-width: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+''', shared=True)
 
-except (KeyboardInterrupt):
-    print("Application closed by user.")
+if __name__ == '__main__':
+    freeze_support()  # must be first statement in main guard
+    try:
+        ui.run( title="Dwarfium Scope Archive",
+                storage_secret='Dwarfiumscopearchive key to secure the browser session cookie',
+                native=True,
+                window_size=(1200, 1024),
+                host=HOST,
+                port=PORT,
+                reconnect_timeout=20,
+                reload=False)
 
-except Exception as e:
-    print(f"Application closed error detected {e}.")
+    except (KeyboardInterrupt):
+        print("Application closed by user.")
 
-except (SystemExit):
-    print("Application closed.")
-    pass
-finally:
-    pass
+    except SystemExit:
+        print("Application closed.")
+
+    except Exception as e:
+        print(f"Application closed error detected {e}.")

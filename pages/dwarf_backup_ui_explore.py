@@ -23,6 +23,7 @@ from api.dwarf_backup_db_api import (
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
     has_related_manual_sessions, get_ManualSession_by_backup_entry_id,
     find_matching_darks, generate_siril_session_json,
+    get_dwarf_session_error_by_dir,
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
@@ -127,6 +128,9 @@ class ExploreApp:
         self.dso_catalog = False
         self.label_to_index = {}
         self.WinLog = WinLog()
+        self.mobile_panel = 0  # 0=left, 1=right — used for mobile navigation
+        self.mobile_left_col = None
+        self.mobile_right_col = None
         self.build_ui()
 
     def build_ui(self):
@@ -140,9 +144,32 @@ class ExploreApp:
         # parameter for stitch params
         self.stitch_params = get_stitch_params(self.conn)
 
+        # Mobile nav bar - hidden initially, shown when on right panel
+        with ui.row().classes('w-full items-center gap-2 mobile-nav-bar') as self.mobile_nav:
+            self.mobile_back_btn = ui.button('← Back', on_click=self._mobile_go_left) \
+                .props('flat dense').classes('text-sm')
+
+        # Force initial mobile layout
+        ui.run_javascript('''
+            function initMobileLayout() {
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
+                }
+            }
+            if (document.readyState === "complete") {
+                initMobileLayout();
+            } else {
+                window.addEventListener("load", initMobileLayout);
+            }
+            setTimeout(initMobileLayout, 300);
+            setTimeout(initMobileLayout, 1000);
+        ''')
+
         with ui.row().classes('w-full items-start'):
-            with ui.grid(columns='1fr 2fr').classes('w-full items-start'):
-                with ui.column().classes('w-full'):
+            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid'):
+                with ui.column().classes('w-full mobile-left-col') as self.mobile_left_col:
                     if self.mode == "backup":
                         nbcolumns = 3 if self.BackUrl else 2
                         with ui.grid(columns=nbcolumns):
@@ -199,10 +226,13 @@ class ExploreApp:
 
                         self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
 
-                with ui.column().classes('w-full'):
+                with ui.column().classes('w-full mobile-right-col') as self.mobile_right_col:
                     # Create the dialog that simulates fullscreen
                     with ui.dialog().props('maximized') as self.image_dialog, ui.card().classes("w-full h-full no-padding"):
                         self.fullscreen_image = ui.image().classes('w-full h-auto object-contain')
+                        ui.button('✕', on_click=self.image_dialog.close) \
+                            .props('round flat') \
+                            .classes('absolute top-2 right-2 z-10 bg-black text-white opacity-70')
 
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):
@@ -713,10 +743,39 @@ class ExploreApp:
         if self.transfer_multi_btn:
             self.transfer_multi_btn.visible = False
 
+    def _is_mobile(self):
+        """Returns True if screen width <= 768px (evaluated client-side via JS)."""
+        # We rely on the mobile_back_btn visibility as proxy —
+        # on desktop the CSS hides the nav bar anyway so no visual impact.
+        return True  # always call, CSS on desktop hides the nav bar
+
+    def _mobile_go_right(self):
+        """On mobile only: hide left column, show right column."""
+        if self.mobile_left_col and self.mobile_right_col:
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="flex");
+                }
+            ''')
+
+    def _mobile_go_left(self):
+        """On mobile only: show left column, hide right column."""
+        if self.mobile_left_col and self.mobile_right_col:
+            ui.run_javascript('''
+                if (window.innerWidth <= 768) {
+                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
+                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
+                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
+                }
+            ''')
+
     def select_object(self, object_id, dso_id, is_group, session_id = None):
         dwarf_id = self.get_selected_dwarf_id()
         details = []
         self.clear_selected_object()
+        self._mobile_go_right()  # slide to right panel on mobile
 
         if self.mode == "backup":
             show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
@@ -1180,6 +1239,7 @@ class ExploreApp:
             astro_group_id = row[17]
             descriptionDB = row[18]
             # row[19]=backup_drive_id  row[20]=dwarf_id  row[21]=binning
+            dwarf_id = row[20]
             _binning_raw = row[21] if len(row) > 21 else None
             try:
                 binning = int(str(_binning_raw).split("*")[0]) if _binning_raw else 1
@@ -1269,12 +1329,11 @@ class ExploreApp:
                 ui.item(f"📊 {stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
 
                 # --- Dark match badge ---
-                _dwarf_id = self.get_selected_dwarf_id()
-                if _dwarf_id and exp_time and gainDB:
+                if dwarf_id and exp_time and gainDB:
                     try:
                         _dark = find_matching_darks(
                             self.conn,
-                            dwarf_id = _dwarf_id,
+                            dwarf_id = dwarf_id,
                             exp_s    = float(exp_time),
                             gain     = int(gainDB),
                             binning  = binning,
@@ -1289,6 +1348,35 @@ class ExploreApp:
                             ui.item("❌ No matching darks found").classes('text-red-500')
                     except Exception as _e:
                         print(f"[dark match] {_e}")
+
+                # --- Repair badge ---
+                if dwarf_id:
+                    repair_row = get_dwarf_session_error_by_dir(self.conn, dwarf_id, session_dir)
+                    if repair_row and repair_row["status"] == "REPAIRED":
+                        with ui.item():
+                            with ui.row().classes("items-center gap-2"):
+                                ui.badge("🔧 REPAIRED", color="green").classes("text-sm")
+                                if repair_row["session_dir_master"]:
+                                    ui.item(f"Repaired from: {repair_row['session_dir_master']}").classes("text-xs text-gray-500")
+
+                # --- Merge in progress badge (from repairInfo.json on disk) ---
+                repair_info_path = os.path.join(os.path.dirname(full_path), "repairInfo.json")
+                if os.path.exists(repair_info_path):
+                    try:
+                        import json as _json
+                        with open(repair_info_path, "r", encoding="utf-8") as _f:
+                            repair_info = _json.load(_f)
+                        if repair_info.get("type") == "MERGE":
+                            sessions_list = repair_info.get("sessions", [])
+                            with ui.item():
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.badge("🔀 MERGE IN PROGRESS", color="orange").classes("text-sm")
+                                with ui.column().classes("gap-0 ml-2"):
+                                    ui.label("Sessions merged:").classes("text-xs text-gray-500")
+                                    for s in sessions_list:
+                                        ui.label(f"  • {s}").classes("text-xs font-mono text-gray-600")
+                    except Exception:
+                        pass
 
                 # add Mosaic Panel Info
                 #for data_detail in details:

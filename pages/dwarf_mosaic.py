@@ -22,6 +22,7 @@ from api.dwarf_mosaic_check import (
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, get_backupDrive_detail, get_sessions_dwarf, get_sessions_backup, get_session_dwarf_details, get_session_backup_details
+from api.dwarf_backup_db_api import get_dwarf_sessions_error
 from components.win_log import WinLog
 from api.repair_session_manager import RepairSessionManager
 from components.repair_history_dialog import check_and_show_history
@@ -105,6 +106,8 @@ class MosaicApp:
         # RepairSessionManager is initialised lazily once output_dir is known
         self.repair_mgr: RepairSessionManager | None = None
         self._current_entry_id: str | None = None   # ID of the running action
+        # Error sessions (Mosaic only) — populated when Dwarf is selected in Repair mode
+        self.error_sessions: list = []
 
         self.build_ui()
 
@@ -216,6 +219,26 @@ class MosaicApp:
                                      .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
                                      .on('click', lambda: self._show_full_image(self.session_select_image_secondary))
 
+        # ── Error sessions card (Repair mode only) ──────────────────────
+        with ui.card().classes("w-full p-4 mt-1 items-center") as self.error_sessions_card:
+            with ui.row().classes("items-center gap-2"):
+                ui.label("🔴 Mosaic Sessions in Error").classes("text-lg font-semibold")
+                ui.label("(no stacked found on Dwarf)").classes("text-sm text-gray-500")
+            self.error_session_select = (
+                ui.select(
+                    label="Select a session to repair:",
+                    options=[],
+                    on_change=lambda: None,
+                )
+                .props("stack-label outlined")
+                .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
+            )
+            ui.button(
+                "🔧 Use as Secondary Session",
+                on_click=self.use_error_session_as_secondary,
+            ).classes("w-64")
+        self.error_sessions_card.set_visibility(self.mode == "Repair")
+
         # ── Output / temp directory card ─────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
             ui.label("📤 Output (Temporary) Directory").classes("text-lg font-semibold")
@@ -277,6 +300,8 @@ class MosaicApp:
 
     def switch_mode(self):
         self.mode = self.mode_toggle.value
+        self.error_sessions_card.set_visibility(self.mode == "Repair")
+        self.refresh_error_sessions()
         if self.mode == "Repair":
             self.main_label.text = "Primary = reference mosaic (small but correct). Secondary = session to repair. Result goes to the work directory."
             self.action_button.text = "🔧 Start Repair"
@@ -293,6 +318,33 @@ class MosaicApp:
     # ------------------------------------------------------------------ #
     #  DWARF SELECTOR                                                      #
     # ------------------------------------------------------------------ #
+
+    def refresh_error_sessions(self):
+        """Reload DwarfSessionsError list for the selected Dwarf (Repair mode only)."""
+        if not self.DwarfId or self.mode != "Repair":
+            self.error_sessions = []
+            self.error_session_select.set_options([], value=None)
+            return
+        rows = get_dwarf_sessions_error(self.conn, self.DwarfId, status="ERROR")
+        self.error_sessions = rows
+        options = [row[3] for row in rows]  # session_dir
+        self.error_session_select.set_options(options, value=options[0] if options else None)
+
+    def use_error_session_as_secondary(self):
+        """Pre-fill the Secondary session field with the selected error session."""
+        selected_dir = self.error_session_select.value
+        if not selected_dir:
+            ui.notify("No error session selected.", type="warning")
+            return
+        # Force source to Dwarf
+        self.secondary_source_toggle.value = "Dwarf"
+        self.on_secondary_source_change()
+        # Build full path from dwarf astro dir
+        full_path = os.path.join(self.dwarf_astroDir, selected_dir) if self.dwarf_astroDir else selected_dir
+        self.secondary_session_dir = full_path
+        self.input_secondary_dir.set_options([full_path], value=full_path)
+        self.on_secondary_dir_change()
+        ui.notify(f"Secondary session set to: {selected_dir}", type="positive")
 
     def populate_dwarf_filter(self):
         self.usb_status_label.text = ""
@@ -382,6 +434,7 @@ class MosaicApp:
             self.dwarf_type = row[3] or None
             self.check_dir_dwarf()
             self.update_session_directories()
+            self.refresh_error_sessions()
 
     def check_dir_dwarf(self):
         if self.dwarf_astroDir:
@@ -934,6 +987,94 @@ class MosaicApp:
             # ── Step 3: mark success and offer copy to Dwarf ───────────────
             self.repair_mgr.update_action_status(self._current_entry_id, "success")
             entry["status"] = "success"
+
+            # ── Step 3b: write repairInfo.json + copy missing files ────────
+            import json as _json
+
+            if self.mode == "Repair":
+                secondary_name_repair = os.path.basename(os.path.normpath(secondary))
+
+                # repairInfo.json in work_primary → type=REPAIR so the Dwarf scan ignores
+                # ignores Session_OK after transfer (already in DB as original session).
+
+                repair_info_data = {
+                    "type": "REPAIR",
+                    "source_session": secondary_name_repair,
+                }
+                repair_info_path = os.path.join(work_primary, "repairInfo.json")
+                try:
+                    with open(repair_info_path, "w", encoding="utf-8") as f:
+                        _json.dump(repair_info_data, f, indent=2)
+                    print_log(f"✅ repairInfo.json (REPAIR) written in {work_primary}", self.log_ui)
+                except Exception as e:
+                    print_log(f"⚠️ Could not write repairInfo.json: {e}", self.log_ui)
+
+                # Copy the missing files produced by repair into Session_Error on the Dwarf.
+                # Session_Error = secondary (already on the Dwarf, path known).
+                # Files to copy: stacked.jpg, stacked_thumbnail.jpg, stacked-16_*.zip
+                # After this copy Session_Error will be visible to the next scan and
+                # registered in DwarfData. DwarfSessionsError status is updated here.
+                if os.path.exists(secondary):
+                    import glob as _glob
+                    files_to_copy = []
+                    for name in ["stacked.jpg", "stacked_thumbnail.jpg"]:
+                        src = os.path.join(work_primary, name)
+                        if os.path.exists(src):
+                            files_to_copy.append((src, os.path.join(secondary, name)))
+                    for zip_src in _glob.glob(os.path.join(work_primary, "stacked-16_*.zip")):
+                        files_to_copy.append((zip_src, os.path.join(secondary, os.path.basename(zip_src))))
+
+                    copied = 0
+                    for src, dst in files_to_copy:
+                        try:
+                            shutil.copy2(src, dst)
+                            copied += 1
+                        except Exception as e:
+                            print_log(f"⚠️ Could not copy {os.path.basename(src)} to Session_Error: {e}", self.log_ui)
+                    print_log(f"✅ {copied}/{len(files_to_copy)} file(s) copied to repaired session: {secondary_name}", self.log_ui)
+
+                    # Update DwarfSessionsError status to REPAIRED
+                    from api.dwarf_backup_db_api import update_dwarf_session_error_repaired
+                    update_dwarf_session_error_repaired(self.conn, self.DwarfId, secondary_name, primary_name)
+                    print_log(f"✅ DwarfSessionsError status updated to REPAIRED for {secondary_name}", self.log_ui)
+                    self.refresh_error_sessions()
+                else:
+                    print_log(f"⚠️ Secondary session path not found on Dwarf — missing files not copied: {secondary}", self.log_ui)
+
+            elif self.mode == "Merge":
+                # repairInfo.json in work_primary → type=MERGE so the Dwarf scan
+                # ignores this base session after transfer (the RESTACKED_ Megastack
+                # is the real entry to register).
+                # Accumulate sessions across multiple merges on the same primary.
+                secondary_name_merge = os.path.basename(os.path.normpath(secondary))
+                merge_info_path = os.path.join(work_primary, "repairInfo.json")
+
+                # Read existing sessions if file already present
+                existing_sessions = [primary_name]
+                if os.path.exists(merge_info_path):
+                    try:
+                        with open(merge_info_path, "r", encoding="utf-8") as f:
+                            existing = _json.load(f)
+                            if existing.get("type") == "MERGE":
+                                existing_sessions = existing.get("sessions", [primary_name])
+                    except Exception:
+                        pass
+
+                # Append new secondary if not already listed
+                if secondary_name_merge not in existing_sessions:
+                    existing_sessions.append(secondary_name_merge)
+
+                merge_info_data = {
+                    "type": "MERGE",
+                    "sessions": existing_sessions,
+                }
+                try:
+                    with open(merge_info_path, "w", encoding="utf-8") as f:
+                        _json.dump(merge_info_data, f, indent=2)
+                    print_log(f"✅ repairInfo.json (MERGE) written — {len(existing_sessions)} session(s): {existing_sessions}", self.log_ui)
+                except Exception as e:
+                    print_log(f"⚠️ Could not write repairInfo.json for Merge: {e}", self.log_ui)
+
             await self._offer_copy_after_process(entry)
         else:
             status = "failed" if error else "partial"

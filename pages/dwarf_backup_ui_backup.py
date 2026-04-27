@@ -478,8 +478,11 @@ class ConfigApp:
             error_label.text = msg 
             close_button.visible = True
         else:
-            dialog.close()  # close dialog 
-            self.load_selected_backupDrive(None)
+            ui.timer(5, lambda: self.end_analyze_drive(dialog), once=True)
+
+    async def end_analyze_drive(self, dialog):
+        dialog.close()
+        self.load_selected_backupDrive(None)
 
 
     async def check_integrity_drive(self):

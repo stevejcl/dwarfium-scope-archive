@@ -2311,12 +2311,7 @@ def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path,
                 format = excluded.format,
                 exp_time = excluded.exp_time,
                 gain = excluded.gain,
-                shotsToTake = excluded.shotsToTake,
-                shotsTaken = excluded.shotsTaken,
-                shotsStacked = excluded.shotsStacked,
                 ircut = excluded.ircut,
-                maxTemp = excluded.maxTemp,
-                minTemp = excluded.minTemp,
                 width = excluded.width,
                 height = excluded.height,
                 media_type = excluded.media_type,
@@ -2324,6 +2319,10 @@ def insert_DwarfData(conn: sqlite3.Connection, file_path, mtime, thumbnail_path,
                 stacked_fits_md5 = excluded.stacked_fits_md5
             WHERE excluded.modification_time > DwarfData.modification_time
                OR excluded.target != DwarfData.target
+            -- shotsToTake, shotsTaken, shotsStacked, maxTemp, minTemp
+            -- intentionally excluded from UPDATE : these belong to the original
+            -- session and must never be overwritten by a rescan (e.g. after a
+            -- Merge/Megastack replaces the stacked.jpg and shotsInfo.json)
         """, (
             file_path, mtime, thumbnail_path, file_size,
             dec, ra, target, binning, format, exp_time, gain,
@@ -3625,3 +3624,101 @@ def get_mtp_device(conn: sqlite3.Connection, mtp_id):
     except Exception as e:
         print(f"[DB ERROR] Failed to fetch MtpDevices: {e}")
         return []
+
+#########################
+# DwarfSessionsError
+#########################
+
+def insert_dwarf_session_error(conn: sqlite3.Connection, dwarf_id, session_date, session_dir) -> bool:
+    """
+    Insert a Mosaic session in error (no stacked.jpg but shotsInfo.json present).
+    Uses INSERT OR IGNORE on (dwarf_id, session_dir) — safe to call on every scan,
+    never overwrites an existing REPAIRED status.
+    Returns True if a new row was inserted.
+    """
+    try:
+        session_dt_str = session_date.strftime("%Y-%m-%d %H:%M:%S.%f") if session_date else None
+        cursor = conn.execute("""
+            INSERT INTO DwarfSessionsError (dwarf_id, session_date, session_dir, status)
+            VALUES (?, ?, ?, 'ERROR')
+            ON CONFLICT(dwarf_id, session_dir) DO NOTHING
+        """, (dwarf_id, session_dt_str, session_dir))
+        if cursor.lastrowid:
+            commit_db(conn)
+            return True
+        return False
+    except Exception as e:
+        print(f"[DB ERROR] insert_dwarf_session_error: {e}")
+        return False
+
+
+def update_dwarf_session_error_repaired(conn: sqlite3.Connection, dwarf_id, session_dir, session_dir_master) -> bool:
+    """
+    Mark a session error as REPAIRED and record the master session used.
+    Called when a repairInfo.json is detected during scan.
+    """
+    try:
+        cursor = conn.execute("""
+            UPDATE DwarfSessionsError
+            SET status = 'REPAIRED', session_dir_master = ?
+            WHERE dwarf_id = ? AND session_dir = ?
+        """, (session_dir_master, dwarf_id, session_dir))
+        if cursor.rowcount > 0:
+            commit_db(conn)
+            return True
+        return False
+    except Exception as e:
+        print(f"[DB ERROR] update_dwarf_session_error_repaired: {e}")
+        return False
+
+
+def get_dwarf_sessions_error(conn: sqlite3.Connection, dwarf_id, status=None) -> list:
+    """
+    Return sessions in error for a given Dwarf.
+    Optionally filter by status ('ERROR', 'REPAIRED').
+    """
+    try:
+        if status:
+            rows = conn.execute("""
+                SELECT id, dwarf_id, session_date, session_dir, session_dir_master, status
+                FROM DwarfSessionsError
+                WHERE dwarf_id = ? AND status = ?
+                ORDER BY session_date DESC
+            """, (dwarf_id, status)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT id, dwarf_id, session_date, session_dir, session_dir_master, status
+                FROM DwarfSessionsError
+                WHERE dwarf_id = ?
+                ORDER BY session_date DESC
+            """, (dwarf_id,)).fetchall()
+        return rows if rows else []
+    except Exception as e:
+        print(f"[DB ERROR] get_dwarf_sessions_error: {e}")
+        return []
+
+
+def get_dwarf_session_error_by_dir(conn: sqlite3.Connection, dwarf_id, session_dir) -> dict | None:
+    """
+    Return a single DwarfSessionsError row by (dwarf_id, session_dir).
+    Used in Explore to check if a session is a REPAIR.
+    """
+    try:
+        row = conn.execute("""
+            SELECT id, dwarf_id, session_date, session_dir, session_dir_master, status
+            FROM DwarfSessionsError
+            WHERE dwarf_id = ? AND session_dir = ?
+        """, (dwarf_id, session_dir)).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "dwarf_id": row[1],
+            "session_date": row[2],
+            "session_dir": row[3],
+            "session_dir_master": row[4],
+            "status": row[5],
+        }
+    except Exception as e:
+        print(f"[DB ERROR] get_dwarf_session_error_by_dir: {e}")
+        return None

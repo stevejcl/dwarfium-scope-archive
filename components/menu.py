@@ -1,7 +1,8 @@
 # components/menu.py
 from nicegui import ui, app
-
 from components.help_system import register_drawer, open_help
+
+
 
 def setStyle(color_primary = '#00ae83'):
 

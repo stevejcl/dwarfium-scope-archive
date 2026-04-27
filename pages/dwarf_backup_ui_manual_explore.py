@@ -256,6 +256,9 @@ class ManualExploreApp:
                     with ui.dialog().props('maximized') as self.image_dialog, \
                             ui.card().classes("w-full h-full no-padding"):
                         self.fullscreen_image = ui.image().classes('w-full h-auto object-contain')
+                        ui.button('✕', on_click=self.image_dialog.close) \
+                            .props('round flat') \
+                            .classes('absolute top-2 right-2 z-10 bg-black text-white opacity-70')
 
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):

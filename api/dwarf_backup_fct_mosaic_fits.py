@@ -269,6 +269,8 @@ def stitch_fits_from_transforms(fits_paths: list,
     transforms_path  : path to the .npy file saved by save_transforms()
     """
 
+    output_fits = win_long_path(output_fits)
+
     # ── Load transforms ──
     transforms = load_transforms(transforms_path)
     assert len(transforms) == len(fits_paths), \
@@ -278,7 +280,8 @@ def stitch_fits_from_transforms(fits_paths: list,
     print_log("\n── Loading FITS panels ──", log)
     panels, headers = [], []
     for p in fits_paths:
-        data, hdr = load_fits_data(p, hdu_index)
+        print(f"Loading: {p}")
+        data, hdr = load_fits_data(win_long_path(p), hdu_index)
         panels.append(data)
         headers.append(hdr)
         print(f"  {os.path.basename(p)} → shape {data.shape}  dtype {data.dtype}")

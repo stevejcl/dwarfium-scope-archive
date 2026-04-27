@@ -35,6 +35,23 @@ for folder in [DIST_DIR, BUILD_DIR]:
         print(f"Removing {folder}...")
         shutil.rmtree(folder)
 
+# Step 1b – Extract version from CHANGELOG.md and write version.py
+import re
+version_str = "Unknown"
+try:
+    with open("CHANGELOG.md", "r", encoding="utf-8") as f:
+        for line in f:
+            m = re.search(r"\[V?([\d.]+[a-z]?)\]", line)
+            if m:
+                version_str = m.group(1)
+                break
+except Exception:
+    pass
+
+with open("version.py", "w", encoding="utf-8") as f:
+    f.write(f'APP_VERSION = "{version_str}"\n')
+print(f"Version extracted: {version_str}")
+
 # Step 2 – Run nicegui-pack
 print("Building executable...")
 

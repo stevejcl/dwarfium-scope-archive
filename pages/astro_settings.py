@@ -3,6 +3,38 @@ import platform
 import shutil
 import subprocess
 import os
+import re
+import socket
+
+def _get_app_version():
+    """Read version from version.py (built executable) or CHANGELOG.md (dev mode)."""
+    try:
+        from version import APP_VERSION
+        return APP_VERSION
+    except ImportError:
+        pass
+    try:
+        import pathlib
+        changelog = pathlib.Path(__file__).parent.parent / "CHANGELOG.md"
+        with open(changelog, "r", encoding="utf-8") as f:
+            for line in f:
+                m = re.search(r"\[V?([\d.]+[a-z]?)\]", line)
+                if m:
+                    return m.group(1)
+    except Exception:
+        pass
+    return "Unknown"
+
+def _get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
 
 import webview
 from nicegui import ui, app
@@ -57,6 +89,17 @@ class SettingsApp:
         current_path = None
 
         with ui.column().classes("w-full max-w-2xl mx-auto gap-4 mt-4"):
+
+            with ui.card().classes("w-full p-4"):
+                from nicegui import app as nicegui_app
+                ui.label("ℹ️ Application Info").classes("text-xl font-bold mb-2")
+                ui.label(f"Version : {_get_app_version()}").classes("text-sm text-gray-600")
+                if nicegui_app.storage.general.get('LAN_MODE', False):
+                    ip = _get_local_ip()
+                    port = nicegui_app.storage.general.get('LAN_PORT', 8080)
+                    ui.label(f"📡 LAN access: http://{ip}:{port}").classes("text-sm text-blue-600 mt-1")
+                else:
+                    ui.label("📡 LAN access: disabled").classes("text-sm text-gray-400 mt-1")
 
             ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
 
