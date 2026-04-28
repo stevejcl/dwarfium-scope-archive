@@ -17,7 +17,7 @@ from scipy.ndimage import distance_transform_edt, binary_dilation
 
 from nicegui import ui, run, Client
 
-from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path
+from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path, safe_copy2
 
 from api.dwarf_backup_fct_mosaic_algo import ( infer_mosaic_info_from_images, subsample_for_alignment, crop_to_active_region, equalize_background, detect_panel_position)
 
@@ -76,7 +76,7 @@ def load_image(path: str) -> np.ndarray | None:
 
     if ext in ("fit", "fits", "fts"):
         if not HAS_ASTROPY:
-            print(f"  ERROR : astropy is required to read FITS files (pip install astropy)")
+            print_log(f"  ERROR : astropy is required to read FITS files (pip install astropy)")
             return None
         try:
             with astropy_fits.open(safe) as hdul:
@@ -87,7 +87,7 @@ def load_image(path: str) -> np.ndarray | None:
                         data = hdu.data
                         break
                 if data is None:
-                    print(f"  ERROR : no image data in {path}")
+                    print_log(f"  ERROR : no image data in {path}")
                     return None
 
                 # FITS can be (H,W), (1,H,W), (3,H,W), (H,W,3)
@@ -112,7 +112,7 @@ def load_image(path: str) -> np.ndarray | None:
                     return cv2.merge(channels)
 
         except Exception as e:
-            print(f"  ERROR reading FITS files '{path}' : {e}")
+            print_log(f"  ERROR reading FITS files '{path}' : {e}")
             return None
 
     else:
@@ -145,7 +145,7 @@ def save_image(path: str, img: np.ndarray) -> bool:
         success =  cv2.imwrite(full_path, img)
 
     if not success:
-        print(f"❌ Failed to save image: {full_path}")
+        print_log(f"❌ Failed to save image: {full_path}")
 
     return success
     
@@ -246,7 +246,7 @@ def crop_black_borders(image, tolerance=5):
         return image[y:y + rh, x:x + rw]
 
     except Exception as e:
-        print(f"  Crop error: {e}")
+        print_log(f"  Crop error: {e}")
         return image
 
 
@@ -300,9 +300,9 @@ def get_mosaic_panels(mosaic_dir: str, img_type: str = "jpg") -> list[tuple[str,
             panels.append((subdir, img_file))
 
     except FileNotFoundError as e:
-        print(f"Mosaic Directory not found: {e}")
+        print_log(f"Mosaic Directory not found: {e}")
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print_log(f"Unexpected error: {e}")
 
     return panels
 
@@ -316,28 +316,28 @@ def load_mosaic_info(image_path: str) -> dict | None:
     try:
         mosaic_dir = Path(image_path).parent.parent  # up 2 levels
         json_path = mosaic_dir / "shotsInfo.json"
-        print(json_path)
+        print_log(json_path)
         
         if not json_path.exists():
-            print(f"  ⚠️ shotsInfo.json not found in {mosaic_dir}")
+            print_log(f"  ⚠️ shotsInfo.json not found in {mosaic_dir}")
             return None
         
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            print(f"mosaicInfo: {data.get("mosaicInfo", None)}")
+            print_log(f"mosaicInfo: {data.get("mosaicInfo", None)}")
 
         mosaic_info = data.get("mosaicInfo", None)
-        print(f"mosaicInfo: {mosaic_info}")
+        print_log(f"mosaicInfo: {mosaic_info}")
 
         # ── Rebuild if missing ─────────────────────────────────────────
         if mosaic_info is None:
-            print(f"  ℹ️ mosaicInfo missing → attempting rebuild from images")
+            print_log(f"  ℹ️ mosaicInfo missing → attempting rebuild from images")
             mosaic_info = rebuild_mosaic_info(str(mosaic_dir))
 
         return mosaic_info
     
     except Exception as e:
-        print(f"  ⚠️ Failed to load mosaic info: {e}")
+        print_log(f"  ⚠️ Failed to load mosaic info: {e}")
         return None
 
 
@@ -362,20 +362,20 @@ def rebuild_mosaic_info(mosaic_dir: str) -> dict | None:
         json_path  = mosaic_dir / "shotsInfo.json"
 
         if not json_path.exists():
-            print(f"  ⚠️ No shotsInfo.json in {mosaic_dir}")
+            print_log(f"  ⚠️ No shotsInfo.json in {mosaic_dir}")
             return None
 
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         if data.get("mosaicInfo"):
-            print(f"  ℹ️ mosaicInfo already present — skipping rebuild")
+            print_log(f"  ℹ️ mosaicInfo already present — skipping rebuild")
             return data["mosaicInfo"]
 
         # ── Read mosaic + panel sizes ──────────────────────────────────
         root_jpg = mosaic_dir / "stacked.jpg"
         if not root_jpg.exists():
-            print(f"  ⚠️ No root stacked.jpg")
+            print_log(f"  ⚠️ No root stacked.jpg")
             return None
 
         mosaic_img = cv2.imread(str(root_jpg))
@@ -390,13 +390,13 @@ def rebuild_mosaic_info(mosaic_dir: str) -> dict | None:
         ])
 
         if not panel_dirs:
-            print(f"  ⚠️ No panel subdirs found")
+            print_log(f"  ⚠️ No panel subdirs found")
             return None
 
         # Get panel size from first panel
         panel_jpg = panel_dirs[0] / "stacked.jpg"
         if not panel_jpg.exists():
-            print(f"  ⚠️ No stacked.jpg in first panel")
+            print_log(f"  ⚠️ No stacked.jpg in first panel")
             return None
 
         panel_img = cv2.imread(str(panel_jpg))
@@ -411,7 +411,7 @@ def rebuild_mosaic_info(mosaic_dir: str) -> dict | None:
         cols = max(1, math.ceil(scale_x))
         rows = max(1, math.ceil(scale_y))
 
-        print(f"  Rebuilt: mosaic={mosaic_w}x{mosaic_h} "
+        print_log(f"  Rebuilt: mosaic={mosaic_w}x{mosaic_h} "
               f"panel={panel_w}x{panel_h} "
               f"scale=({scale_x:.2f},{scale_y:.2f}) "
               f"grid={cols}x{rows}")
@@ -449,12 +449,12 @@ def rebuild_mosaic_info(mosaic_dir: str) -> dict | None:
         data["mosaicInfo"] = mosaic_info
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"  ✅ mosaicInfo rebuilt and saved → {json_path}")
+        print_log(f"  ✅ mosaicInfo rebuilt and saved → {json_path}")
 
         return mosaic_info
 
     except Exception as e:
-        print(f"  ⚠️ rebuild_mosaic_info failed: {e}")
+        print_log(f"  ⚠️ rebuild_mosaic_info failed: {e}")
         return None
 
 
@@ -477,7 +477,7 @@ def detect_dwarf_device(image_path: str, json_data: dict | None = None) -> str:
         if json_data:
             binning = json_data.get("binning", "1*1")
 
-        print(f"  Device detect: {w}x{h} bin={binning}")
+        print_log(f"  Device detect: {w}x{h} bin={binning}")
 
         # ── DWARF 3 bin1 ───────────────────────────────────────────────
         if w == 3856 and h == 2180:
@@ -503,11 +503,11 @@ def detect_dwarf_device(image_path: str, json_data: dict | None = None) -> str:
                 return "DWARF_MINI"
             return "DWARF2"  # conservative default
 
-        print(f"  ⚠️ Unknown resolution {w}x{h} — defaulting to DWARF3")
+        print_log(f"  ⚠️ Unknown resolution {w}x{h} — defaulting to DWARF3")
         return "DWARF3"
 
     except Exception as e:
-        print(f"  ⚠️ detect_dwarf_device failed: {e}")
+        print_log(f"  ⚠️ detect_dwarf_device failed: {e}")
         return "DWARF3"
 
 def detect_stitch_mode(image_paths: list[str]) -> StitchMode:
@@ -520,12 +520,12 @@ def detect_stitch_mode(image_paths: list[str]) -> StitchMode:
     mosaic_info = load_mosaic_info(win_long_path(image_paths[0]))
     
     if mosaic_info is None:
-        print(f"  📐 No mosaicInfo found → check panels dirs")
+        print_log(f"  📐 No mosaicInfo found → check panels dirs")
         mosaic_dir = Path(win_long_path(image_paths[0])).parent.parent
-        print(f"mosaic_dir: {mosaic_dir}")
+        print_log(f"mosaic_dir: {mosaic_dir}")
         n_panels = get_mosaic_panels(mosaic_dir)
         if len(n_panels) > 1:
-            print(f"  📐 {n_panels}-panel mosaicInfo found → MOSAIC mode")
+            print_log(f"  📐 {n_panels}-panel mosaicInfo found → MOSAIC mode")
             return StitchMode.MOSAIC
 
         return StitchMode.STACK
@@ -533,10 +533,10 @@ def detect_stitch_mode(image_paths: list[str]) -> StitchMode:
     n_panels = len(mosaic_info.get("subviewInfo", []))
     
     if n_panels <= 1:
-        print(f"  📐 Single panel mosaicInfo → STACK mode")
+        print_log(f"  📐 Single panel mosaicInfo → STACK mode")
         return StitchMode.STACK
 
-    print(f"  📐 {n_panels}-panel mosaicInfo found → MOSAIC mode")
+    print_log(f"  📐 {n_panels}-panel mosaicInfo found → MOSAIC mode")
     return StitchMode.MOSAIC
 
 # not used
@@ -572,7 +572,7 @@ def get_panel_id_from_path(image_path: str) -> int | None:
     match = re.search(r'\((\d+)\)', subdir)
     if match:
         return int(match.group(1))
-    print(f"  ⚠️ Could not extract panel id from: {subdir}")
+    print_log(f"  ⚠️ Could not extract panel id from: {subdir}")
     return None
 
 
@@ -591,10 +591,10 @@ def get_coords_for_images(image_paths: list[str], mosaic_info: dict) -> list[tup
         panel_id = get_panel_id_from_path(path)
         if panel_id and panel_id in id_to_coord:
             coord = id_to_coord[panel_id]
-            print(f"  Panel {panel_id} -> coord {coord} ({Path(path).parent.name})")
+            print_log(f"  Panel {panel_id} -> coord {coord} ({Path(path).parent.name})")
             coords.append(coord)
         else:
-            print(f"  ⚠️ Panel id {panel_id} not found in mosaicInfo, using None")
+            print_log(f"  ⚠️ Panel id {panel_id} not found in mosaicInfo, using None")
             coords.append(None)
     
     return coords
@@ -671,13 +671,13 @@ def assign_coords_from_content(image_paths: list[str]) -> dict[str, tuple[int, i
             continue
         gray = bright_mask(to_gray(img))
         coord = detect_panel_position(gray)
-        print(f"  Auto-coord {Path(path).parent.name} → {coord}")
+        print_log(f"  Auto-coord {Path(path).parent.name} → {coord}")
         coord_map[path] = coord
 
     # Sanity check — warn if duplicate coords detected
     coords = list(coord_map.values())
     if len(set(coords)) < len(coords):
-        print(f"  ⚠️ Duplicate coords detected: {coords} — content detection may be unreliable")
+        print_log(f"  ⚠️ Duplicate coords detected: {coords} — content detection may be unreliable")
 
     return coord_map
     
@@ -713,7 +713,7 @@ def get_mosaic_overlap_params_fallback(
         if n not in fallback_coords_V1:
             #Detect coords from image content — don't trust directory sort order
             coord_map = assign_coords_from_content(image_paths)
-            print(f"  ⚠️ No mosaicInfo — content-detected coords: "
+            print_log(f"  ⚠️ No mosaicInfo — content-detected coords: "
                 f"{[(Path(p).parent.name, c) for p, c in coord_map.items()]}")
         else:
             if (cols == "2" or rows == "1") and n == 2:
@@ -730,7 +730,7 @@ def get_mosaic_overlap_params_fallback(
             raise ValueError(f"Unsupported panel count: {n}")
         coord_map = {path: fallback_coords_V1[n][i] for i, path in enumerate(image_paths)}
 
-    print(f"  ⚠️ No mosaicInfo — inferred coords: {list(coord_map.values())} "
+    print_log(f"  ⚠️ No mosaicInfo — inferred coords: {list(coord_map.values())} "
           f"overlap=({overlap_x:.3f},{overlap_y:.3f})")
 
     return overlap_x, overlap_y, coord_map
@@ -758,7 +758,7 @@ def get_mosaic_overlap_params(
         overlap_x = min(geo_overlap_x + align_pad, 0.50)
         overlap_y = min(geo_overlap_y + align_pad, 0.50)
 
-        print(f"  scale=({scale_x},{scale_y}) grid={cols}x{rows} "
+        print_log(f"  scale=({scale_x},{scale_y}) grid={cols}x{rows} "
               f"→ geo=({geo_overlap_x:.3f},{geo_overlap_y:.3f}) "
               f"align=({overlap_x:.3f},{overlap_y:.3f})")
           
@@ -774,7 +774,7 @@ def get_mosaic_overlap_params(
             if panel_id is None or panel_id not in id_to_coord:
                 raise ValueError(f"Could not match panel id {panel_id} to mosaicInfo: {path}")
             coord_map[path] = id_to_coord[panel_id]
-            print(f"  Panel {panel_id} → coord {coord_map[path]}")
+            print_log(f"  Panel {panel_id} → coord {coord_map[path]}")
 
         return overlap_x, overlap_y, coord_map
 
@@ -860,7 +860,7 @@ def prepare_for_alignment(img: np.ndarray,
         new_w = int(w * scale)
         new_h = int(h * scale)
         img8 = cv2.resize(img8, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        print(f"  Downsampled for alignment: {w}x{h} → {new_w}x{new_h}")
+        print_log(f"  Downsampled for alignment: {w}x{h} → {new_w}x{new_h}")
     
 
     # 4. Asinh stretch per channel
@@ -883,7 +883,7 @@ def prepare_for_alignment(img: np.ndarray,
     correction = np.clip(correction, 0, 1)
     img8 = (img8.astype(np.float32) * correction[..., None]).astype(np.uint8)
 
-    print(f"  end of prepare_for_alignment")
+    print_log(f"  end of prepare_for_alignment")
 
     # Final guarantee: (H, W, 3) uint8 contiguous
     # return np.ascontiguousarray(img8, dtype=np.uint8)
@@ -954,7 +954,7 @@ async def stack_same_panel_aligned(images: list,
                                            asinh_factor=asinh_factor,
                                            bg_blur_ksize=bg_blur_ksize)
             
-            print(f"Trying alignment {'with' if use_stretch else 'without'} stretch...")
+            print_log(f"Trying alignment {'with' if use_stretch else 'without'} stretch...")
             
             try:
                 print_log(f"  Trying find Transform ", log)
@@ -962,12 +962,12 @@ async def stack_same_panel_aligned(images: list,
                 transf = await run.cpu_bound(_find_transform_sync, src_gray, ref_gray, detection_sigma=detection_sigma, max_control_points = max_control_points)
 
                 if transf is not None:
-                    print(f"✅ Found transform {'with' if use_stretch else 'without'} stretch")
+                    print_log(f"✅ Found transform {'with' if use_stretch else 'without'} stretch")
                     break
                 else:
-                    print(f"❌ Failed {'with' if use_stretch else 'without'} stretch, trying next...")
+                    print_log(f"❌ Failed {'with' if use_stretch else 'without'} stretch, trying next...")
             except Exception :
-                print(f"❌ Failed {'with' if use_stretch else 'without'} stretch, trying next...")
+                print_log(f"❌ Failed {'with' if use_stretch else 'without'} stretch, trying next...")
  
 
         if transf is None:
@@ -1021,13 +1021,13 @@ async def stack_same_panel_aligned(images: list,
         valid_pixels = cube[i][valid[i]]
         mean_b = valid_pixels.mean() if valid_pixels.size > 0 else 0.0
         brightness.append(mean_b)
-        print(f"  Image {i+1} brightness: {mean_b:.1f}")
+        print_log(f"  Image {i+1} brightness: {mean_b:.1f}")
 
     brightness = np.array(brightness)  # ← must be np.array before argmax
 
     base_idx  = int(np.argmax(brightness))
     other_idx = 1 - base_idx
-    print(f"  base=Image {base_idx+1} (mean={brightness[base_idx]:.1f})")
+    print_log(f"  base=Image {base_idx+1} (mean={brightness[base_idx]:.1f})")
 
     result = cube[base_idx].copy()
     missing = ~valid[base_idx]
@@ -1049,7 +1049,7 @@ def stack_images(images_f: list, transforms: list,
     # =========================================================
     src_dtype = images_f[0].dtype
     max_val   = 65535.0 if src_dtype == np.uint16 else 255.0
-    print(f"  {label}Input dtype: {src_dtype} max_val: {max_val}")
+    print_log(f"  {label}Input dtype: {src_dtype} max_val: {max_val}")
 
     h, w = canvas_shape
     # Collect all warped images into a cube
@@ -1065,7 +1065,7 @@ def stack_images(images_f: list, transforms: list,
                                 flags=cv2.INTER_LINEAR,
                                 borderValue=0)
         warped_stack.append(warped)
-        print(f"  Warped image {idx+1}/{len(images_f)}")
+        print_log(f"  Warped image {idx+1}/{len(images_f)}")
 
     # =========================================================
     # CHOOSE METHOD
@@ -1082,18 +1082,18 @@ def stack_images(images_f: list, transforms: list,
         valid_pixels = cube[i][valid[i]]
         mean_b = valid_pixels.mean() if valid_pixels.size > 0 else 0.0
         brightness.append(mean_b)
-        print(f"  Image {i+1} brightness: {mean_b:.1f}")
+        print_log(f"  Image {i+1} brightness: {mean_b:.1f}")
 
     brightness = np.array(brightness)  # ← must be np.array before argmax
 
     # For N=2, use mean without sigma-clip
     n = len(images_f)
     if n == 2:
-        print(f"  Only 2 images — using brightness (no sigma-clip)")
+        print_log(f"  Only 2 images — using brightness (no sigma-clip)")
 
         base_idx  = int(np.argmax(brightness))
         other_idx = 1 - base_idx
-        print(f"  N=2: base=Image {base_idx+1} (mean={brightness[base_idx]:.1f})")
+        print_log(f"  N=2: base=Image {base_idx+1} (mean={brightness[base_idx]:.1f})")
 
         result = cube[base_idx].copy()
         missing = ~valid[base_idx]
@@ -1133,7 +1133,7 @@ def sigma_clip_stack(cube: np.ndarray, sigma: float = 2.5, log=None) -> np.ndarr
     result = np.sum(cube * mask, axis=0) / count
 
     clipped = np.sum(~mask)
-    print(f"  Sigma-clip: {clipped} pixels rejected (σ={sigma})")
+    print_log(f"  Sigma-clip: {clipped} pixels rejected (σ={sigma})")
 
     return result
 
@@ -1149,13 +1149,13 @@ def _find_transform_sync(src_gray, ref_gray, detection_sigma = 5, max_control_po
 
     for max_pts in [max_control_points, max_control_points//2, max_control_points//3]:
         try:
-            print(f"  Trying find_transform max_pts={max_pts}")
+            print_log(f"  Trying find_transform max_pts={max_pts}")
             transf, _ = aa.find_transform(src_gray, ref_gray, detection_sigma = detection_sigma,
                                            max_control_points=max_pts, min_area= min_area)
-            print(f"  ✅ Found transform max_pts={max_pts}")
+            print_log(f"  ✅ Found transform max_pts={max_pts}")
             return transf
         except Exception as e:
-            print(f"  ↻ max_pts={max_pts} failed: {e}")
+            print_log(f"  ↻ max_pts={max_pts} failed: {e}")
     return None
     
 def save_transforms(transforms: list, path: str = TRANSFORM_AUTO_SAVE_PATH):
@@ -1169,13 +1169,13 @@ def save_transforms(transforms: list, path: str = TRANSFORM_AUTO_SAVE_PATH):
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     np.save(path, arr)
-    print(f"  ✅ Transforms saved → {path}  (shape {arr.shape})")
+    print_log(f"  ✅ Transforms saved → {path}  (shape {arr.shape})")
 
 def load_transforms(path: str = TRANSFORM_AUTO_SAVE_PATH) -> list:
     """Load transforms saved by save_transforms()."""
     arr = np.load(path)                  # shape (N, 3, 3)
     transforms = [arr[i] for i in range(arr.shape[0])]
-    print(f"  ✅ Transforms loaded ← {path}  ({len(transforms)} matrices)")
+    print_log(f"  ✅ Transforms loaded ← {path}  ({len(transforms)} matrices)")
     return transforms
 
 # =========================================================
@@ -1203,7 +1203,7 @@ async def stitch_with_astroalign(images: list,
     print_log(f"  Mode used: {mode}", log)
     src_dtype = images[0].dtype
     max_val   = 65535.0 if src_dtype == np.uint16 else 255.0
-    print(f"  {label}Input dtype: {src_dtype} max_val: {max_val}")
+    print_log(f"  {label}Input dtype: {src_dtype} max_val: {max_val}")
 
     failed   = []
     images_f = images
@@ -1220,7 +1220,7 @@ async def stitch_with_astroalign(images: list,
     alignment_pairs = get_alignment_order(coords) if coords else \
                       [((0, i), None) for i in range(1, len(images_f))]
 
-    print(f"  alignment_pairs: {alignment_pairs}")
+    print_log(f"  alignment_pairs: {alignment_pairs}")
     transforms = [None] * len(images_f)
     transforms[ref_panel_idx] = np.eye(3)
 
@@ -1252,10 +1252,10 @@ async def stitch_with_astroalign(images: list,
                                                   asinh_factor=asinh_factor,
                                                   bg_blur_ksize=bg_blur_ksize)
   
-                #print(f"  ref_gray: shape={ref_gray.shape} dtype={ref_gray.dtype} "
+                #print_log(f"  ref_gray: shape={ref_gray.shape} dtype={ref_gray.dtype} "
                 #      f"contiguous={ref_gray.flags['C_CONTIGUOUS']} "
                 #      f"min={ref_gray.min()} max={ref_gray.max()}")
-                #print(f"  src_gray: shape={src_gray.shape} dtype={src_gray.dtype} "
+                #print_log(f"  src_gray: shape={src_gray.shape} dtype={src_gray.dtype} "
                 #      f"contiguous={src_gray.flags['C_CONTIGUOUS']} "
                 #      f"min={src_gray.min()} max={src_gray.max()}")
 
@@ -1289,7 +1289,7 @@ async def stitch_with_astroalign(images: list,
                     )
                     ref_gray = apply_overlap_mask(ref_gray, ref_mask)
                     src_gray = apply_overlap_mask(src_gray, src_mask)
-                    print(f"  Overlap mask applied: ref={ref_mask.sum()} src={src_mask.sum()} active pixels")
+                    print_log(f"  Overlap mask applied: ref={ref_mask.sum()} src={src_mask.sum()} active pixels")
 
                     debug_dir = Path("./debug_masks")
                     debug_dir.mkdir(exist_ok=True)
@@ -1297,7 +1297,7 @@ async def stitch_with_astroalign(images: list,
                                 (ref_gray / ref_gray.max() * 255).astype(np.uint8) if ref_gray.max() > 0 else ref_gray)
                     cv2.imwrite(str(debug_dir / f"ref_{a_ref_idx}_src_{a_src_idx}_src.png"),
                                 (src_gray / src_gray.max() * 255).astype(np.uint8) if src_gray.max() > 0 else src_gray)
-                    print(f"  💾 Debug masks saved → {debug_dir}")
+                    print_log(f"  💾 Debug masks saved → {debug_dir}")
 
                 # ── Adaptive retry loop ────────────────────────────────
                 # NOTE: do NOT reset transf=None here — it's set by outer loop
@@ -1380,7 +1380,7 @@ async def stitch_with_astroalign(images: list,
     # =========================================================
     for i in range(len(transforms)):
         if transforms[i] is None:
-            print(f"  Transform {i+1} is None — using identity")
+            print_log(f"  Transform {i+1} is None — using identity")
             transforms[i] = np.eye(3)
             if i not in failed:
                 failed.append(i + 1)
@@ -1458,7 +1458,7 @@ async def stitch_with_astroalign(images: list,
 
 def _blend_panels_sync(images_f, transforms, feather_size, max_val, base_x, base_y, canvas_w, canvas_h):
     # All your Pass 1 / Pass 2 blending code here
-    # No NiceGUI, no log element — plain print() only
+    # No NiceGUI, no log element — plain print_log() only
     # =========================================================
     # BLENDING
     # =========================================================
@@ -1487,7 +1487,7 @@ def _blend_panels_sync(images_f, transforms, feather_size, max_val, base_x, base
     # =========================================================
     # PASS 2 : blend with distance-to-edge feather
     # =========================================================
-    print(f"  Blending Panels - Pass 2")
+    print_log(f"  Blending Panels - Pass 2")
 
     canvas  = np.zeros((canvas_h, canvas_w, 3), dtype=np.float64)
 
@@ -1505,7 +1505,7 @@ def _blend_panels_sync(images_f, transforms, feather_size, max_val, base_x, base
 
         feathers.append(feather)
 
-    print(f"  Final Pass")
+    print_log(f"  Final Pass")
 
     # Global weight sum — guaranteed no gaps at intersections
     total_weight = np.sum(feathers, axis=0)
@@ -1597,8 +1597,8 @@ async def generate_panorama(image_paths, images, output_path = False, jpg_path =
     
             # Convert coord_map to ordered list matching image_paths
             coords = [coord_map[p] for p in image_paths]
-            print(f"  coords: {coords}")
-            print(f"  overlap_x={overlap_x:.3f} overlap_y={overlap_y:.3f}")
+            print_log(f"  coords: {coords}")
+            print_log(f"  overlap_x={overlap_x:.3f} overlap_y={overlap_y:.3f}")
 
             # ── If all panels have the same coord → same FOV → use STACK ──────────
             if len(set(coords)) == 1:
@@ -1618,8 +1618,8 @@ async def generate_panorama(image_paths, images, output_path = False, jpg_path =
                     print_log(f"  ⚠️ Panel size mismatch — cropping all to {min_w}x{min_h}", log)
                     images = [img[:min_h, :min_w] for img in images]
 
-                print(f"  coords: {coords}")
-                print(f"  overlap_x={overlap_x:.3f} overlap_y={overlap_y:.3f}")
+                print_log(f"  coords: {coords}")
+                print_log(f"  overlap_x={overlap_x:.3f} overlap_y={overlap_y:.3f}")
 
                 pano, failed = await stitch_with_astroalign(
                     images, mode=mode,
@@ -1665,12 +1665,12 @@ async def generate_panorama(image_paths, images, output_path = False, jpg_path =
             else:
                 await run.io_bound(save_image, str(jpg), pano_crop)
 
-        print(" Panorama generated")
+        print_log(" Panorama generated")
         print_log(" ✔️ Panorama generated", main_log)
         return status, pano_crop, pano  # ← return the result
 
     except Exception as e:
-        print(f"Panorama error: {e}")
+        print_log(f"Panorama error: {e}")
         return False, None, None
 
 # =========================================================
@@ -1715,7 +1715,7 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
 
         safe_progress(progress_bar, 40)
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         print_log( "ℹ️ Replacing FITS files...", log)
@@ -1743,9 +1743,11 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
             for old_file in old_panel.glob("*.fits"):
                 if not old_file.name.startswith("stacked-16"):
                     if files_are_different(str(old_file), str(new_panel / old_file.name)):
-                        await run.io_bound(shutil.copy2, str(old_file), str(new_panel / old_file.name))
+                        result_copy = await run.io_bound(safe_copy2, str(old_file), str(new_panel / old_file.name))
+                        if not result_copy:
+                            raise Exception(f"Copy failed without exception: {str(src_file)}")
                     else:
-                        safe_print(f"Skipping {old_file.name} (unchanged)")
+                        safe_print_log(f"Skipping {old_file.name} (unchanged)")
 
             safe_progress(progress_bar, 48 + 12 *(panel_index/len(old_panels)))
             if cancel_event.is_set():
@@ -1763,9 +1765,11 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
             print_log( f"ℹ️ Replacing PNGs for panel {panel_index}...", log)
             for old_file, new_file in zip(old_pngs, new_pngs):
                 if files_are_different(str(old_file), str(new_file)):
-                    await run.io_bound(shutil.copy2, str(old_file), str(new_file))   # replace content, keep name
+                    result_copy = await run.io_bound(safe_copy2, str(old_file), str(new_file))   # replace content, keep name
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {str(old_file)}")
                 else:
-                    safe_print(f"Skipping {new_file.name} (unchanged)")
+                    safe_print_log(f"Skipping {new_file.name} (unchanged)")
 
             safe_progress(progress_bar, 60 + 4 *(panel_index/len(old_panels)))
             if cancel_event.is_set():
@@ -1780,16 +1784,18 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
             print_log( f"ℹ️ Copying old stacked-16 FITS files for panel {panel_index}...", log)
             for old_file, new_file in zip(old_stacked, new_stacked):
                 if files_are_different(str(old_file), str(new_file)):
-                    await run.io_bound(shutil.copy2, str(old_file), str(new_file))   # replace content, keep name
+                    result_copy = await run.io_bound(safe_copy2, str(old_file), str(new_file))   # replace content, keep name
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {str(old_file)}")
                 else:
-                    safe_print(f"Skipping {new_file.name} (unchanged)")
+                    safe_print_log(f"Skipping {new_file.name} (unchanged)")
 
             safe_progress(progress_bar, 64 + 4 *(panel_index/len(old_panels)))
             if cancel_event.is_set():
                 break
 
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         # ── Post-loop: shotsInfo, ZIP, panorama ───────────────────────────
@@ -1798,17 +1804,19 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
         new_info = new_path / "shotsInfo.json"
         if old_info.exists():
             if files_are_different(str(old_info), str(new_info), True):
-                await run.io_bound(shutil.copy2, str(old_info), str(new_info))   # replace content, keep name
+                result_copy = await run.io_bound(safe_copy2, str(old_info), str(new_info))   # replace content, keep name
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(old_info)}")
             else:
-                safe_print(f"Skipping {new_info.name} (unchanged)")
+                safe_print_log(f"Skipping {new_info.name} (unchanged)")
 
         safe_progress(progress_bar, 75)
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         print_log( "ℹ️ Rebuilding ZIP stacked-16_*.zip...", log)
-        print("ℹ️ Rebuilding ZIP stacked-16_*.zip...")
+        print_log("ℹ️ Rebuilding ZIP stacked-16_*.zip...")
         zip_files = list(new_path.glob("stacked-16_*.zip"))
         if zip_files:
             zip_path = zip_files[0]
@@ -1823,11 +1831,11 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
 
         safe_progress(progress_bar, 80)
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         print_log( "ℹ️ Generating stacked.jpg and stacked_thumbnail.jpg...", log)
-        print("ℹ️ Generating stacked.jpg and stacked_thumbnail.jpg...")
+        print_log("ℹ️ Generating stacked.jpg and stacked_thumbnail.jpg...")
         png_images = []
         png_images_path = []
         for subdir in sorted(new_path.iterdir()):
@@ -1843,11 +1851,11 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
 
         safe_progress(progress_bar, 90)
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         final_status= True
-        print(f"png_images: {len(png_images)}")
+        print_log(f"png_images: {len(png_images)}")
 
         if not png_images:
             print_log( "⚠️ No PNG images for panorama, stacked.jpg not generated.", log)
@@ -1863,15 +1871,15 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
 
             if final_status : 
                 print_log( "✅ Mosaic session repaired successfully!", log)
-                print("✅ Mosaic session repaired successfully!")
+                print_log("✅ Mosaic session repaired successfully!")
             else : 
                 print_log( "✅ Mosaic session repaired with some errors!", log)
-                print("✅ Mosaic session repaired with some errors!")
+                print_log("✅ Mosaic session repaired with some errors!")
 
         return _err_path(stacked_path) if not final_status else stacked_path
 
     except Exception as error:
-        print(f"Repair error: {error}")
+        print_log(f"Repair error: {error}")
         return None
 
 
@@ -1879,7 +1887,7 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
 # MERGE LOGIC (backup helper)
 # =========================================================
 
-def backup_merge_files(work_primary: str) -> dict | None:
+async def backup_merge_files(work_primary: str) -> dict | None:
     """
     Backup all files that merge_mosaic will overwrite.
     Returns a dict mapping original_path -> backup_path, or None on failure.
@@ -1894,7 +1902,9 @@ def backup_merge_files(work_primary: str) -> dict | None:
             src = work_path / name
             if src.exists():
                 dst = backup_dir / name
-                shutil.copy2(str(src), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(src), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(src)}")
                 backed_up[str(src)] = str(dst)
 
         # Per-panel files
@@ -1908,32 +1918,38 @@ def backup_merge_files(work_primary: str) -> dict | None:
             jpg = panel_dir / "stacked.jpg"
             if jpg.exists():
                 dst = panel_backup / "stacked.jpg"
-                shutil.copy2(str(jpg), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(jpg), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(jpg)}")
                 backed_up[str(jpg)] = str(dst)
 
             # stacked-16*.png
             for png in panel_dir.glob("stacked-16*.png"):
                 dst = panel_backup / png.name
-                shutil.copy2(str(png), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(png), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(png)}")
                 backed_up[str(png)] = str(dst)
 
-        print(f"  ✅ Backed up {len(backed_up)} files → {backup_dir}")
+        print_log(f"  ✅ Backed up {len(backed_up)} files → {backup_dir}")
         return backed_up
 
     except Exception as e:
-        print(f"  ⚠️ Backup failed: {e}")
+        print_log(f"  ⚠️ Backup failed: {e}")
         shutil.rmtree(str(backup_dir), ignore_errors=True)
         return None
 
 
-def restore_merge_files(backed_up: dict) -> None:
+async def restore_merge_files(backed_up: dict) -> None:
     """Restore all backed-up files to their original locations."""
     for original, backup in backed_up.items():
         try:
-            shutil.copy2(backup, original)
-            print(f"  ✅ Restored {Path(original).name}")
+            result_copy = await run.io_bound(safe_copy2, backup, original)
+            if not result_copy:
+                raise Exception(f"Copy failed without exception: {backup}")
+            print_log(f"  ✅ Restored {Path(original).name}")
         except Exception as e:
-            print(f"  ⚠️ Restore failed for {original}: {e}")
+            print_log(f"  ⚠️ Restore failed for {original}: {e}")
 
 
 def cleanup_backup(backed_up: dict) -> None:
@@ -1944,7 +1960,7 @@ def cleanup_backup(backed_up: dict) -> None:
     backup_dirs = set(str(Path(v).parent) for v in backed_up.values())
     for d in backup_dirs:
         shutil.rmtree(d, ignore_errors=True)
-        print(f"  🗑️ Backup cleaned up: {d}")
+        print_log(f"  🗑️ Backup cleaned up: {d}")
 
 # =========================================================
 # MERGE LOGIC (FULL)
@@ -1954,8 +1970,8 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
     try:
         old_path = Path(win_long_path(old_path_str))
         new_path = Path(win_long_path(new_path_str))
-        print(f"old_path : {old_path}")
-        print(f"new_path : {new_path}")
+        print_log(f"old_path : {old_path}")
+        print_log(f"new_path : {new_path}")
 
         if not old_path.exists() or not new_path.exists():
             print_log( "❌ Session not found", log)
@@ -1963,7 +1979,7 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
 
         safe_progress(progress_bar, 40)
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         new_panels = sorted([d for d in new_path.iterdir() if d.is_dir()])
@@ -1973,11 +1989,11 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
             old_panels = []
             # Debug
             actual_folders = [d.name for d in old_path.iterdir() if d.is_dir()]
-            print(f"  actual folders in old_path: {actual_folders}")
+            print_log(f"  actual folders in old_path: {actual_folders}")
             
             for p in panel_paths_b:
                 panel_name = Path(p).name
-                print(f"  looking for: '{panel_name}'")
+                print_log(f"  looking for: '{panel_name}'")
                 candidate = old_path / panel_name
                 if candidate.exists():
                     old_panels.append(candidate)
@@ -2026,9 +2042,11 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
                     dst = new_panel / new_name
 
                     if files_are_different(f, dst):
-                        await run.io_bound(shutil.copy2, str(f), str(dst))
+                        result_copy = await run.io_bound(safe_copy2, str(f), str(dst))
+                        if not result_copy:
+                            raise Exception(f"Copy failed without exception: {str(f)}")
                     else:
-                        safe_print(f"Skipping {new_name} (unchanged)")
+                        safe_print_log(f"Skipping {new_name} (unchanged)")
 
                     final_files.append(dst.name)
                     done_files += 1
@@ -2047,7 +2065,7 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
                 break
 
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         # JSON merge
@@ -2084,7 +2102,7 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
 
         safe_progress(progress_bar, 65)
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         # Build panel images
@@ -2152,7 +2170,7 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
                 break
 
         if cancel_event.is_set():
-            print("Process Canceled")
+            print_log("Process Canceled")
             return None
 
         stacked = new_path / "stacked.png"
@@ -2168,7 +2186,7 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
         return stacked
 
     except Exception as e:
-        print(f"Merge error: {e}")
+        print_log(f"Merge error: {e}")
         return None
 
 async def reset_panel_images(primary_path_str, new_path_str, log, progress_bar, cancel_event):
@@ -2193,20 +2211,24 @@ async def reset_panel_images(primary_path_str, new_path_str, log, progress_bar, 
                 print_log(f"⚠️ Panel {i}: no stacked PNG found in primary", log)
             for f in primary_pngs:
                 dst = new_panel / f.name
-                await run.io_bound(shutil.copy2, str(f), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(f), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(f)}")
                 print_log(f"  ✔️ Restored {f.name}", log)
 
             # stacked.jpg in subdir
             primary_jpg = primary_panel / "stacked.jpg"
             if primary_jpg.exists():
-                await run.io_bound(shutil.copy2, str(primary_jpg), str(new_panel / "stacked.jpg"))
+                result_copy = await run.io_bound(safe_copy2, str(primary_jpg), str(new_panel / "stacked.jpg"))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(primary_jpg)}")
                 print_log(f"  ✔️ Restored stacked.jpg in panel {i}", log)
             else:
                 print_log(f"  ⚠️ No stacked.jpg in primary panel {i}", log)
 
             safe_progress(progress_bar, int(round(i / len(primary_panels) * 80)))
             if cancel_event.is_set():
-                print("Process Canceled")
+                print_log("Process Canceled")
                 return None
 
         # ── Root: stacked.jpg + stacked_thumbnail.jpg + shotsInfo.json ───
@@ -2214,7 +2236,9 @@ async def reset_panel_images(primary_path_str, new_path_str, log, progress_bar, 
         for filename in ["stacked.jpg", "stacked_thumbnail.jpg", "shotsInfo.json"]:
             src = primary_path / filename
             if src.exists():
-                await run.io_bound(shutil.copy2, str(src), str(new_path / filename))
+                result_copy = await run.io_bound(safe_copy2, str(src), str(new_path / filename))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(src)}")
                 print_log(f"  ✔️ Restored {filename}", log)
             else:
                 print_log(f"  ⚠️ {filename} not found in primary", log)
@@ -2224,5 +2248,5 @@ async def reset_panel_images(primary_path_str, new_path_str, log, progress_bar, 
         return new_path
 
     except Exception as e:
-        print(f"Reset error: {e}")
+        print_log(f"Reset error: {e}")
         return None

@@ -1,3 +1,4 @@
+from components.i18n import t
 import webview
 import os
 
@@ -45,7 +46,7 @@ class DarkLibraryApp:
 
             # ── Top buttons ──────────────────────────────────────────────────
             with ui.row().classes('items-start gap-4'):
-                ui.button("📋 Show All Libraries",
+                ui.button(t("show_all_libraries"),
                           on_click=self.refresh_library_list).classes(sizeBTN)
 
             ui.separator()
@@ -54,22 +55,22 @@ class DarkLibraryApp:
             with ui.row().classes('w-full gap-8 items-start'):
 
                 with ui.column().classes('items-start pt-8'):
-                    ui.button("➕ Add New Library",
+                    ui.button(t("add_library"),
                               on_click=self.set_new_library).classes(sizeBTN)
 
                 with ui.column().classes('items-start flex-1'):
-                    ui.label("Select Existing Dark Library").classes(
+                    ui.label(t("select_existing_lib")).classes(
                         "text-lg font-semibold")
 
                     self.library_selector = ui.select(
                         options=[],
                         on_change=self.load_selected_library,
-                        label="Please select",
+                        label=t("please_select"),
                     ).props('stack-label outlined').classes('w-60')
 
                     with ui.row().classes('items-center gap-4'):
-                        self.library_name = ui.input("Library Name").classes('w-55')
-                        ui.button("🗑️ Delete Library",
+                        self.library_name = ui.input(t("library_name")).classes('w-55')
+                        ui.button(t("delete_library"),
                                   on_click=self.confirm_and_delete_library).props("color=red").classes(sizeBTN)
 
                     # Dwarf selector — filters which BackupDrives are shown
@@ -92,11 +93,11 @@ class DarkLibraryApp:
 
                     with ui.row().classes('items-center gap-4'):
                         self.location_input = (
-                            ui.input("CALI_FRAME Location")
+                            ui.input(t("cali_frame_location"))
                             .classes("overflow-x-auto whitespace-nowrap")
                             .style("min-width: 260px; max-width: 400px;")
                         )
-                        ui.button("Select Folder",
+                        ui.button(t("select_folder"),
                                   on_click=self.select_folder).classes(sizeBTN2)
 
                     with ui.card().tight():
@@ -108,16 +109,16 @@ class DarkLibraryApp:
             # ── Bottom buttons ───────────────────────────────────────────────
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
-                ui.button("Save / Update Library",
+                ui.button(t("save_update_library"),
                           on_click=self.save_or_update_library).classes(sizeBTN)
-                ui.button("📥 Download Darks",
+                ui.button(t("download_darks"),
                           on_click=self.navigate_to_download).props("color=indigo").classes(sizeBTN)
-                ui.button("🔍 Scan Library",
+                ui.button(t("scan_library"),
                           on_click=self.scan_library).props("color=teal").classes(sizeBTN)
 
         # ── Inventory card (shown after scan) ────────────────────────────────
         with ui.card().classes("w-full max-w-3xl mx-auto mt-4") as self.inventory_card:
-            ui.label("Dark Inventory").classes("text-lg font-semibold mb-2")
+            ui.label(t("dark_inventory")).classes("text-lg font-semibold mb-2")
             self.inventory_container = ui.column().classes('w-full')
         self.inventory_card.visible = False
 
@@ -285,12 +286,12 @@ class DarkLibraryApp:
     def save_or_update_library(self):
         location = self.location_input.value.strip()
         if not location:
-            ui.notify("Please set a CALI_FRAME location.", type="warning")
+            ui.notify(t("set_cali_loc"), type="warning")
             return
 
         backup_drive_id, _ = self._get_selected_backup()
         if not backup_drive_id:
-            ui.notify("Please select a Backup Drive.", type="warning")
+            ui.notify(t("select_backup_drive"), type="warning")
             return
 
         name = self.library_name.value.strip() or os.path.basename(location)
@@ -300,14 +301,14 @@ class DarkLibraryApp:
         )
         if lib_id:
             self.library_id = lib_id
-            ui.notify("✅ Dark Library saved.", type="positive")
+            ui.notify(t("dark_lib_saved"), type="positive")
             self.refresh_library_list()
         else:
-            ui.notify("❌ Failed to save library.", type="negative")
+            ui.notify(t("dark_lib_failed"), type="negative")
 
     async def confirm_and_delete_library(self):
         if not self.library_id:
-            ui.notify("No library selected.", type="warning")
+            ui.notify(t("no_library_selected"), type="warning")
             return
         await self.WinLog.show(
             "Confirm Delete",
@@ -318,11 +319,11 @@ class DarkLibraryApp:
 
     def _do_delete_library(self):
         if delete_DarkLibrary(self.conn, self.library_id):
-            ui.notify("Dark Library deleted.", type="positive")
+            ui.notify(t("dark_library_deleted"), type="positive")
             self.set_new_library()
             self.refresh_library_list()
         else:
-            ui.notify("❌ Delete failed.", type="negative")
+            ui.notify(t("delete_failed"), type="negative")
 
     # =========================================================================
     # Download (navigate to Transfer page with forced CALI_FRAME destination)
@@ -331,7 +332,7 @@ class DarkLibraryApp:
     def navigate_to_download(self):
         location = self.location_input.value.strip()
         if not location or not self.library_id:
-            ui.notify("Save the library first to set the CALI_FRAME location.", type="warning")
+            ui.notify(t("save_lib_first"), type="warning")
             return
 
         backup_drive_id, _ = self._get_selected_backup()
@@ -368,7 +369,7 @@ class DarkLibraryApp:
     def scan_library(self):
         location = self.location_input.value.strip()
         if not location or not self.library_id:
-            ui.notify("Please set a CALI_FRAME location first.", type="warning")
+            ui.notify(t("set_cali_first"), type="warning")
             return
         if not os.path.isdir(location):
             ui.notify(f"❌ Folder not found: {location}", type="negative")
@@ -396,7 +397,7 @@ class DarkLibraryApp:
 
         with self.inventory_container:
             if total == 0:
-                ui.label("⚠️ No dark files found matching the naming convention.").classes(
+                ui.label(t("no_dark_files")).classes(
                     "text-orange-600")
                 ui.label(
                     "Expected format: dark_exp_15.0_gain_80_bin_1_14C.fits"

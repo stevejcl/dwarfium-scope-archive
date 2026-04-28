@@ -1,3 +1,4 @@
+from components.i18n import t
 """
 dwarf_backup_ui_manual_explore.py
 ----------------------------------
@@ -26,6 +27,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from nicegui import ui, app
+from components.session_notes import session_notes_widget
 from api.dwarf_backup_db import DB_NAME, connect_db
 from api.dwarf_backup_db_api import (
     get_dwarf_Names,
@@ -205,7 +207,7 @@ class ManualExploreApp:
 
         # Mobile nav bar
         with ui.row().classes('w-full items-center gap-2 mobile-nav-bar'):
-            self.mobile_back_btn = ui.button('← Back', on_click=self._mobile_go_left) \
+            self.mobile_back_btn = ui.button(t("back"), on_click=self._mobile_go_left) \
                 .props('flat dense').classes('text-sm')
 
         # Force initial mobile layout
@@ -238,20 +240,20 @@ class ManualExploreApp:
                             ).style('width: 100px')
 
                         with ui.column():
-                            ui.label("Backup Drive:")
+                            ui.label(t("backup_drive"))
                             self.backup_filter = ui.select(
                                 options=[],
                                 on_change=self.on_backup_filter_change,
                             ).props('outlined')
 
                         with ui.column():
-                            ui.label("Dwarf:")
+                            ui.label(t("dwarf_device"))
                             self.dwarf_filter = ui.select(
                                 options=[],
                                 on_change=self.load_objects,
                             ).props('outlined')
 
-                    self.count_label = ui.label("Total matching sessions: 0")
+                    self.count_label = ui.label(t("total_sessions_zero"))
 
                     with ui.card().tight().classes('w-full'):
                         with ui.row().classes('items-center m-4 gap-2'):
@@ -285,7 +287,7 @@ class ManualExploreApp:
 
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):
-                            ui.label('Session list')
+                            ui.label(t("session_list"))
                             self.file_list = (
                                 ui.select(options=[], on_change=self.on_file_selected)
                                 .props('outlined')
@@ -651,31 +653,10 @@ class ManualExploreApp:
         self.object_list.update()
         ui.update()
 
-    def _mobile_go_right(self):
-        if self.mobile_left_col and self.mobile_right_col:
-            ui.run_javascript('''
-                if (window.innerWidth <= 768) {
-                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="none");
-                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="flex");
-                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="flex");
-                }
-            ''')
-
-    def _mobile_go_left(self):
-        if self.mobile_left_col and self.mobile_right_col:
-            ui.run_javascript('''
-                if (window.innerWidth <= 768) {
-                    document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
-                    document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
-                    document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
-                }
-            ''')
-
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
         self.selected_object             = name
         self.selected_object_description = desc
         self.selected_object_is_group    = is_group
-        self._mobile_go_right()
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
 
@@ -840,7 +821,7 @@ class ManualExploreApp:
         label_element.props(f'title="{tooltip_text}"')
         #label_element.classes('text-yellow-500' if new_favorite else 'text-gray-400')
         label_element.update()
-        ui.notify("Favorite updated.", type="positive")
+        ui.notify(t("favorite_updated"), type="positive")
 
         return new_favorite
 
@@ -1004,13 +985,16 @@ class ManualExploreApp:
             if len(self.gallery_image_data) > 1:
                 ui.label(f'📦 {len(self.gallery_image_data)} images found').classes('text-lg m-4')
 
-            ui.button("🖼️ Show Gallery", on_click=lambda: self.show_gallery()).classes("m-4")
+            ui.button(t("show_gallery"), on_click=lambda: self.show_gallery()).classes("m-4")
 
             ui.item(f"🔭 Dwarf: {dwarf_name}").classes('text-gray-600')
             ui.item(f"💾 Drive: {backup_drive_name}").classes('text-gray-600')
 
             if session_dir:
                 ui.item(f"📂 Folder: {session_dir}").classes('text-gray-400 text-xs')
+
+            # --- Session Notes ---
+            session_notes_widget(self.conn, manual_session_id=manual_session_id)
 
         # --- Preview image ---
         preview_path = jpeg_path or stacked_png_path or thumbnail_path
@@ -1164,7 +1148,7 @@ class ManualExploreApp:
         session in the dropdown.
         """
         if not self.gallery_image_data:
-            ui.notify("No images found for this object.", type="info")
+            ui.notify(t("no_images_object"), type="info")
             return
  
         # Stop any previously running timers from an earlier gallery open
@@ -1186,7 +1170,7 @@ class ManualExploreApp:
                     ui.label(
                         f"🖼️ Gallery — {len(self.gallery_image_data)} image(s)"
                     ).classes("text-lg font-semibold")
-                    ui.button("Close", on_click=dialog.close).classes("ml-auto")
+                    ui.button(t("close"), on_click=dialog.close).classes("ml-auto")
  
                 with ui.column().classes("w-full items-center"):
  
@@ -1274,9 +1258,9 @@ class ManualExploreApp:
  
                     # Controls row
                     with ui.row().classes("gap-4 mt-2 mb-4 items-center"):
-                        ui.button("⬅ Previous", on_click=_on_prev)
-                        ui.button("☑ Select this session", on_click=_on_select)
-                        ui.button("Next ➡", on_click=_on_next)
+                        ui.button(t("previous_arrow"), on_click=_on_prev)
+                        ui.button(t("select_this_session"), on_click=_on_select)
+                        ui.button(t("next_arrow"), on_click=_on_next)
  
                     # Start auto-advance timer (first tick shows the first image)
                     self.gallery_timer = ui.timer(10, _next_auto, immediate=False, once=False)
@@ -1298,11 +1282,12 @@ class ManualExploreApp:
     def show_fullscreen_image(self):
         if self.fullscreen_image.visible:
             self.image_dialog.open()
+            ui.notify(t("press_esc"), position="top", type="info")
 
     def open_folder(self):
         folder = self.selected_path
         if not folder or not os.path.exists(folder):
-            ui.notify("Folder not found!", color="negative")
+            ui.notify(t("folder_not_found"), color="negative")
             return
         folder = os.path.normpath(folder)
         if os.name == 'nt':
@@ -1332,7 +1317,7 @@ class ManualExploreApp:
             print(f"URL: {url}")
             ui.navigate.to(url)
         else:
-            ui.notify("No linked Dwarf session for this import.", type="info")
+            ui.notify(t("no_linked_dwarf"), type="info")
 
     def navigate_to_edit_session(self):
         """
@@ -1341,7 +1326,7 @@ class ManualExploreApp:
         The DwarfId and BackupDriveId are forwarded so the form selectors are pre-set.
         """
         if not self.selected_entry_data:
-            ui.notify("No session selected.", type="warning")
+            ui.notify(t("no_session_selected"), type="warning")
             return
         eid = self.selected_entry_data.entry_id
         bid = self.selected_entry_data.backup_drive_id or ""
@@ -1364,7 +1349,7 @@ class ManualExploreApp:
         ManualSessionEntry (and ManualSession if it becomes orphaned).
         """
         if not self.selected_entry_data:
-            ui.notify("No session selected.", color="negative")
+            ui.notify(t("no_session_selected"), color="negative")
             return
 
         # Use the effective path (base/tag) for the physical deletion already in database
@@ -1387,9 +1372,9 @@ class ManualExploreApp:
             # 2. Remove the DB entry (and parent ManualSession if orphaned)
             ok = delete_manual_session_entry(self.conn, entry_id)
             if ok:
-                ui.notify("Session removed from database.", type="positive")
+                ui.notify(t("session_removed"), type="positive")
             else:
-                ui.notify("DB removal failed.", type="warning")
+                ui.notify(t("db_removal_failed"), type="warning")
 
             # 3. Reload the object list
             self.load_objects()

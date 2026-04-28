@@ -270,26 +270,30 @@ def show_assign_dialog(db_path_or_conn, astro_object_row, on_done=None):
     with ui.dialog() as dialog, ui.card().style('width: 600px; max-width: none'):
         ui.label(f"Assign DSO to: {astro_object_row[1]}")
 
-        search_input         = ui.input(label=t("search_dso")).classes('w-full')
-        constellation_filter = ui.input(label=t("constellation_exact")).classes('w-full')
-        type_filter          = ui.input(label=t("type_exact")).classes('w-full')
-        dso_select           = ui.select({}, label=t("select_dso")).classes('w-full')
-        custom_dso_input     = ui.input(label=t("custom_description"),
-                                        value=astro_object_row[2] or '').classes('w-full')
+        search_input = ui.input(label='Search (designation, name, constellation, type)', on_change=lambda e: update_dso_list()).classes('w-full')
+        constellation_filter = ui.input(label='Constellation (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
+        type_filter = ui.input(label='Type (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
+        dso_select = ui.select({}, label='Select DSO', on_change=lambda e: update_dso_value(current_dso_assign)).classes('w-full')
+        
+        custom_dso_input = ui.input(label='Edit or enter custom description', value=astro_object_row[2]).classes('w-full')
 
-        _user_is_searching = [False]
+        def update_dso_value(current_dso_assign):
+            if dso_select.value and dso_select.value != current_dso_assign:
+                print(f"description updated")
+                custom_dso_input.value = get_dso_description(conn, dso_select.value)
+                current_dso_assign = dso_select.value
 
-        async def update_dso_list(auto_select=False):
-            def _fetch():
-                c = _open()
-                result = get_dso_filtered(c,
-                    search=search_input.value,
-                    constellation=constellation_filter.value or None,
-                    dso_type=type_filter.value or None)
-                c.close()
-                return result
-            filtered = await run.io_bound(_fetch)
-            options = {str(d[0]): f"{d[2]} ({d[3]}, {d[4]})" for d in filtered}
+        def update_dso_list():
+            filtered = get_dso_filtered(
+                conn,
+                search=search_input.value,
+                constellation=constellation_filter.value or None,
+                dso_type=type_filter.value or None
+            )
+            options = {str(dso[0]): f"{dso[2]} ({dso[3]}, {dso[4]})" for dso in filtered}
+            dso_select.set_options(options)
+
+        def update_dso_data():
             dso_select.set_options(options)
             # Auto-select first result only when user typed something
             if auto_select and options:

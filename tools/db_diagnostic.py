@@ -119,8 +119,8 @@ def count(conn, table, where=""):
 def check_version(conn):
     section("DB Version & Schema")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    info(f"DB user_version = {version}  (expected: 7)")
-    if version < 7:
+    info(f"DB user_version = {version}  (expected: 8)")
+    if version < 8:
         warn(f"DB is at version {version} — pending migrations exist (run app to apply)")
     else:
         ok("DB version is up to date")
@@ -136,7 +136,7 @@ def check_version(conn):
         "DsoCatalog", "Dwarf", "DwarfData", "DwarfEntry",
         "DwarfSessionsError",
         "ManualSession", "ManualSessionDrive", "ManualSessionEntry",
-        "MtpDevices", "Settings"
+        "MtpDevices", "SessionNotes", "Settings"
     ]
     for t in expected:
         if t in tables:
@@ -888,6 +888,41 @@ def check_full_drive_files(conn):
     else:
         ok("No missing files on connected drives")
 
+
+def check_empty_astro_objects(conn):
+    section("AstroObjects with No Sessions (candidates for cleanup)")
+
+    rows = conn.execute("""
+        SELECT AO.id, AO.name, AO.description, AO.is_group
+        FROM AstroObject AO
+        WHERE AO.id NOT IN (
+            SELECT astro_object_id FROM BackupEntry WHERE astro_object_id IS NOT NULL
+            UNION
+            SELECT astro_object_id FROM DwarfEntry WHERE astro_object_id IS NOT NULL
+            UNION
+            SELECT astro_object_id FROM ManualSessionEntry WHERE astro_object_id IS NOT NULL
+            UNION
+            SELECT astro_group_id FROM BackupEntry WHERE astro_group_id IS NOT NULL
+            UNION
+            SELECT astro_group_id FROM DwarfEntry WHERE astro_group_id IS NOT NULL
+            UNION
+            SELECT astro_group_id FROM ManualSessionEntry WHERE astro_group_id IS NOT NULL
+        )
+        ORDER BY AO.name
+    """).fetchall()
+
+    if not rows:
+        ok("No unused AstroObjects — catalog is clean")
+        return
+
+    warn(f"{len(rows)} AstroObject(s) with no linked sessions:")
+    for ao_id, name, desc, is_group in rows:
+        label = _clean_obj_name(name, desc)
+        kind  = "group" if is_group else "object"
+        print(f"    id={ao_id:4}  [{kind}]  {label}")
+
+    info("Use the Catalog page in the app to reassign or delete these.")
+
 def main():
     parser = argparse.ArgumentParser(
         description="Dwarfium Scope Archive — DB Diagnostic Tool"
@@ -924,6 +959,7 @@ def main():
     check_drive_stats(conn)
     check_settings(conn)
     check_dso_catalog(conn)
+    check_empty_astro_objects(conn)
     check_recent_activity(conn)
     if not args.skip_files and not args.full_check:
         check_files_on_disk(conn)

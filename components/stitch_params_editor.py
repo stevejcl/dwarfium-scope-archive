@@ -1,3 +1,4 @@
+from components.i18n import t
 from nicegui import ui
 from api.dwarf_backup_db_api import get_setting_text, set_setting_text
 import json
@@ -62,7 +63,7 @@ class StitchParamsEditor:
         s = p["stacking"]
 
         with ui.card().classes("p-4 gap-3 w-full"):
-            ui.label("🔭 Stitch Parameters").classes("text-lg font-semibold")
+            ui.label(t("stitch_params")).classes("text-lg font-semibold")
 
             # --- Alignment ---
             with ui.expansion("🎯 Alignment", value=True).classes("w-full"):
@@ -93,13 +94,13 @@ class StitchParamsEditor:
 
             # --- Buttons ---
             with ui.row().classes("justify-end gap-2 mt-2"):
-                ui.button("↺ Reset defaults", on_click=self.reset_defaults).props("flat")
+                ui.button(t("reset_defaults"), on_click=self.reset_defaults).props("flat")
                 if self.on_change:
                     # Dialog mode — Apply button
-                    ui.button("✅ Apply", on_click=self.apply).props("color=positive")
+                    ui.button(t("apply"), on_click=self.apply).props("color=positive")
                 else:
                     # Settings page mode — Save to DB
-                    ui.button("💾 Save", on_click=self.save).props("color=positive")
+                    ui.button(t("save"), on_click=self.save).props("color=positive")
 
     def _collect(self) -> dict:
         """Read current UI values into params dict."""
@@ -127,13 +128,13 @@ class StitchParamsEditor:
         self.params = self._collect()
         if self.on_change:
             self.on_change(self.params)
-        ui.notify("✅ Parameters applied for this run", type="positive")
+        ui.notify(t("params_applied"), type="positive")
 
     def save(self):
         """Settings mode — persist to DB."""
         self.params = self._collect()
         save_stitch_params(self.conn, self.params)
-        ui.notify("✅ Stitch parameters saved", type="positive")
+        ui.notify(t("stitch_params_saved"), type="positive")
 
     def reset_defaults(self):
         """Reset UI to default values."""
@@ -148,4 +149,4 @@ class StitchParamsEditor:
         self.crop_tolerance.value     = d["blending"]["crop_tolerance"]
         self.stack_method.value       = d["stacking"]["method"]
         self.sigma.value              = d["stacking"]["sigma"]
-        ui.notify("↺ Reset to defaults", type="info")
+        ui.notify(t("reset_defaults"), type="info")

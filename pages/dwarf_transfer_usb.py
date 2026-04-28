@@ -1,3 +1,4 @@
+from components.i18n import t
 import webview
 from nicegui import ui, app, run
 
@@ -7,7 +8,7 @@ import asyncio
 import hashlib
 import traceback
 from components.menu import menu
-from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
+from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir, safe_copy2
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
@@ -85,7 +86,7 @@ class TransferAppUSB:
 
             with ui.grid(columns=2):
                 with ui.column():
-                    ui.label("Select Dwarf:").classes("text-lg font-semibold")
+                    ui.label(t("select_dwarf")).classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
                     with ui.row().classes('items-center m-4 gap-2'):
                         self.usb_status_label = ui.label("").classes('pb-2')
@@ -96,25 +97,25 @@ class TransferAppUSB:
                         )
         
                 with ui.column():
-                    ui.label("Backup Drive:").classes("text-lg font-semibold")
+                    ui.label(t("backup_drive")).classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
 
-            self.SourceDirectory = ui.label("Source: Dwarf USB Drive")
-            self.input_src_dir = ui.input("Source Directory:", value = self.src_dir).classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
-            ui.button("Select Source", on_click=lambda : self.select_source_folder()).classes(sizeBTN)
+            self.SourceDirectory = ui.label(t("source_usb"))
+            self.input_src_dir = ui.input(t("source_directory"), value = self.src_dir).classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
+            ui.button(t("select_source"), on_click=lambda : self.select_source_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
-            self.DestinationDirectory = ui.label("Destination: Backup Drive")
-            self.input_dest_dir = ui.input("Destination Directory:", value = self.dest_dir).classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
-            ui.button("Select Destination", on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
+            self.DestinationDirectory = ui.label(t("backup_destination"))
+            self.input_dest_dir = ui.input(t("destination_dir"), value = self.dest_dir).classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
+            ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
-            self.progress_label = ui.label("Idle...")
+            self.progress_label = ui.label(t("idle"))
             self.progress = ui.circular_progress(max=100, show_value=True)
-            self.cancel_btn = ui.button('Cancel Backup', on_click=lambda: self.cancel()).classes(sizeBTN)
+            self.cancel_btn = ui.button(t("cancel_backup"), on_click=lambda: self.cancel()).classes(sizeBTN)
             self.cancel_btn.visible = False
-            self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup()).classes(sizeBTN)
+            self.StartBackup = ui.button(t("start_backup"), on_click=lambda:self.start_backup()).classes(sizeBTN)
             self.cancel_backup = False
 
         self.populate_dwarf_filter()
@@ -312,8 +313,8 @@ class TransferAppUSB:
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
             ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
             with ui.row():
-                ui.button("Yes", on_click=lambda: dialog.submit('Yes'))
-                ui.button("No", on_click=lambda: dialog.submit('No'))
+                ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
+                ui.button(t("no"), on_click=lambda: dialog.submit('No'))
 
         result = await dialog
         if result == 'Yes':
@@ -335,20 +336,20 @@ class TransferAppUSB:
             return
         else:
             self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files...")
-        ui.notify("Starting...")
+        ui.notify(t("starting"))
 
         #result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
         result = await self.copy_with_progress_async(list_files, self.progress, self.cancel_btn)
 
         if result:
             self.progress_label.set_text(f"End of Backup")
-            ui.notify("✅ Backup complete and verified!")
+            ui.notify(t("backup_verified"))
 
             with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
                 label = ui.label(self.ScanningMessage)
                 spinner = ui.spinner(size="lg")
                 log = ui.log(max_lines=40).classes('w-full').style('height: 600px;')
-                ui.button('Close', on_click=dialog.close)
+                ui.button(t("close"), on_click=dialog.close)
             dialog.open()  # show the dialog
 
             source_dwarf_astro_dir = self.dwarf_astroDir
@@ -362,7 +363,7 @@ class TransferAppUSB:
                     spinner.visible = False
                     ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
                 else:
-                    ui.notify("Starting Local Sync ...")
+                    ui.notify(t("starting_sync"))
                     session_name = ""
                     dir_parent_session = ""
                     dir_backup_session = ""
@@ -381,7 +382,7 @@ class TransferAppUSB:
                     # if session is a RESTACKED one will be copied in RESTACKED dir by sync_dwarf_sessions
                     await run.io_bound (sync_dwarf_sessions, self.DwarfId, dir_parent_session, local_Main_Dwarf_dir,session_name,log)
 
-                    ui.notify("Starting Analysis ...")
+                    ui.notify(t("starting_analysis"))
 
                     local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.DwarfId)
                     local_Dwarf_session = os.path.join(local_Dwarf_dir, session_name) 
@@ -451,7 +452,9 @@ class TransferAppUSB:
                 progress = round((i + 1) / total_files * 100)
 
                 os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                shutil.copy2(src_file, dest_file)
+                result_copy = safe_copy2(src_file, dest_file)
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {src_file}")
 
                 # 🔎 Step 1: Size check
                 if os.path.getsize(src_file) != os.path.getsize(dest_file):

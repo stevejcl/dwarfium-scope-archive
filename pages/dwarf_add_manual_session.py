@@ -1,5 +1,7 @@
+from components.i18n import t
 import webview
-from nicegui import ui, app, run, Client
+from nicegui import ui, app, Client
+from components.session_notes import session_notes_widget
 
 import os
 import requests
@@ -19,7 +21,7 @@ from astropy.wcs import WCS
 from components.menu import menu
 from api.dwarf_backup_fct import ( 
     hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
-    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref
+    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref, safe_copy2
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id, get_or_create_ManualSessionDrive, update_manual_session
@@ -154,11 +156,18 @@ class AddManualSession:
         """
         rows = get_ManualSession_by_entry_id(self.conn, self.ManualEntryId)
         if not rows:
-            ui.notify("Session not found in database.", type="warning")
+            ui.notify(t("session_not_found_db"), type="warning")
             return
 
         row = rows[0]
         self.existing_session_row = row
+        manual_session_id = row[0]
+
+        # --- Show notes widget in edit mode ---
+        if hasattr(self, '_notes_container'):
+            self._notes_container.clear()
+            with self._notes_container:
+                session_notes_widget(self.conn, manual_session_id=manual_session_id)
 
         # --- Unpack the row (same column layout as get_ObjectSelect_manual) ---
         session_name    = row[1]
@@ -352,7 +361,7 @@ class AddManualSession:
                 self.main_meta_info = None
                 self.meta_info = None
                 self.details_files.clear()
-                ui.notify("Primary FITS deleted — please upload a replacement.", type="info")
+                ui.notify(t("primary_fits_deleted"), type="info")
 
         # Refresh the panel
         self._render_existing_files_panel.refresh()
@@ -459,12 +468,12 @@ class AddManualSession:
 
             with ui.grid(columns=2):
                 with ui.column():
-                    ui.label("Select Dwarf:").classes("text-lg font-semibold")
+                    ui.label(t("select_dwarf")).classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
                     self.usb_status_label = ui.label("").classes('pb-2')
 
                 with ui.column():
-                    ui.label("Backup Drive:").classes("text-lg font-semibold")
+                    ui.label(t("backup_drive")).classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
 
@@ -473,11 +482,11 @@ class AddManualSession:
 
                 # --- SESSION SELECTION ---
                 with ui.row().classes("items-center mb-4"):
-                    ui.label("Select Backup Session:")
+                    ui.label(t("select_backup_session"))
                     self.session_dropdown = ui.select(options=[], on_change=self.on_session_select).classes("w-auto min-w-[250px]")
-                    ui.label("Session:")
+                    ui.label(t("session_name"))
                     self.session_dirname = ui.input(self.session_select_status_label, value="", placeholder="Enter new session name", on_change=self.on_check_session_dirname).classes("min-w-[550px] w-auto overflow-x-auto whitespace-nowrap")
-                    ui.label("Tag:").tooltip("Tag is Optional. The files will be saved in a sub-folder: session_name / tag")
+                    ui.label(t("tag")).tooltip("Tag is Optional. The files will be saved in a sub-folder: session_name / tag")
                     self.session_tag = (
                         ui.input(self.session_select_tag_label, value="", placeholder="optional — e.g. v2, Siril",
                                  on_change=self.on_check_session_tag)
@@ -505,7 +514,7 @@ class AddManualSession:
                 # --- LOCAL FILES SELECTION ---
                 with ui.grid(columns=3).classes("w-full"):
                     with ui.column().classes("items-center justify-center text-center w-full"):
-                        ui.label("Select Local JPG Files (optional)").classes("mt-2 font-medium")
+                        ui.label(t("select_local_jpg")).classes("mt-2 font-medium")
                         self.file_picker_jpg = ui.upload(
                             label="Upload JPG",
                             auto_upload=True,
@@ -514,7 +523,7 @@ class AddManualSession:
                         ).props('accept="image/jpeg"').classes("mb-4")
 
                     with ui.column().classes("items-center justify-center text-center w-full"):
-                        ui.label("Select Local PNG Files (optional)").classes("mt-2 font-medium")
+                        ui.label(t("select_local_png")).classes("mt-2 font-medium")
                         self.file_picker_png = ui.upload(
                             label="Upload PNG",
                             auto_upload=True,
@@ -524,7 +533,7 @@ class AddManualSession:
 
                     with ui.column().classes("items-center justify-center text-center w-full"):
                         with ui.row().classes("items-center gap-1"):
-                            ui.label("Select Local FITS Files (optional)").classes("mt-2 font-medium")
+                            ui.label(t("select_local_fits")).classes("mt-2 font-medium")
                             ui.icon("info").classes("text-gray-400 cursor-help mt-2").tooltip(
                                 "First FITS → renamed to stacked-16_{session}.fits\n"
                                 "Additional FITS → original filename kept\n"
@@ -538,7 +547,7 @@ class AddManualSession:
                         ).props('accept=".fit,.fits,.fts"').classes("mb-4")
                 self.file_picker_fit_id = self.file_picker_fit.id
 
-                self.remove_button = ui.button("🗑️ Remove all files", on_click=self.cleanup_temp_files).props("color=red")
+                self.remove_button = ui.button(t("remove_all_files"), on_click=self.cleanup_temp_files).props("color=red")
 
 
                 # Use on_rejected + validation BEFORE the file hits the queue
@@ -570,29 +579,37 @@ class AddManualSession:
                         "Suffix added to the filename for Stellar Studio files. "
                         "Leave empty for the first/main stack."
                     )
-                    self.add_button = ui.button("Add", on_click=self.add_or_remove_file)
+                    self.add_button = ui.button(t("add"), on_click=self.add_or_remove_file)
 
                 with ui.card().tight().classes('w-full'):
                     # List on the side
-                    ui.label("Added FITS files list").classes("ml-2 mt-2 font-medium")
+                    ui.label(t("fits_files_list")).classes("ml-2 mt-2 font-medium")
                     self.details_fits_files = ui.list().classes('w-full h-50 overflow-y-auto')
 
                 # --- EXISTING FILES (edit mode only) ---
                 # This card is always created so the reference is valid, but it is hidden
                 # in add mode and populated by load_existing_session() in edit mode.
                 with ui.card().tight().classes('w-full') as self.existing_files_card:
-                    ui.label("Files already in session (edit mode)").classes("ml-2 mt-2 font-medium text-orange-600")
+                    ui.label(t("files_already_session")).classes("ml-2 mt-2 font-medium text-orange-600")
                     self.existing_files_list = ui.list().classes('w-full overflow-y-auto')
                 self.existing_files_card.visible = False
 
                 with ui.card().tight().classes('w-full'):
-                    ui.label("Main File Session Information (From First Fits file uploaded)").classes("ml-2 mt-2 mb-2 font-medium")
+                    ui.label(t("main_file_info")).classes("ml-2 mt-2 mb-2 font-medium")
                     self.details_files = ui.list().classes('w-full h-50 overflow-y-auto')
  
-                self.DestinationDirectory = ui.label("Destination: Backup Drive").classes("mt-2 font-medium")
+                # --- Observations ---
+                with ui.expansion("📋 Observations (optionnel)", icon="notes").classes("w-full mt-2"):
+                    self._notes_manual_session_id = None  # filled after save
+                    self._notes_container = ui.column().classes("w-full")
+                    with self._notes_container:
+                        ui.label("Les observations pourront être ajoutées après l'import de la session.") \
+                            .classes("text-sm text-gray-400 italic")
+
+                self.DestinationDirectory = ui.label(t("backup_destination")).classes("mt-2 font-medium")
                 with ui.row().classes("w-full items-center gap-2"):
                     self.input_dest_dir = ui.input("Destination Directory:", value = self.dest_dir).classes("w-[80%] overflow-x-auto whitespace-nowrap")
-                    ui.button("Select Destination", on_click=lambda : self.select_destination_folder())
+                    ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder())
 
             # --- ACTION BUTTONS ---
             with ui.row().classes("mt-4 gap-4 items-center"):
@@ -607,9 +624,9 @@ class AddManualSession:
                 self.view_session_button.visible = False
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
-            self.progress_label = ui.label("Idle...")
+            self.progress_label = ui.label(t("idle"))
             self.progress = ui.circular_progress(max=100, show_value=True)
-            self.cancel_btn = ui.button('Cancel Import', on_click=lambda: self.cancel())
+            self.cancel_btn = ui.button(t("cancel_import"), on_click=lambda: self.cancel())
             self.cancel_btn.visible = False
             self.cancel_backup = False
 
@@ -633,7 +650,7 @@ class AddManualSession:
     def show_full_image(self, e):
         with ui.dialog() as dialog, ui.card().classes("w-full h-auto max-w-screen-xl"):
             ui.image(self.session_select_image).classes('w-full h-auto object-contain rounded-xl')
-            ui.button('Close', on_click=dialog.close)
+            ui.button(t("close"), on_click=dialog.close)
 
         dialog.open()
 
@@ -1029,7 +1046,7 @@ class AddManualSession:
             self.fits_file_list.clear()
         with self.fits_file_list:
             if not self.client.storage.uploaded_files:
-                ui.label("No files loaded").classes("text-gray-400 text-sm")
+                ui.label(t("no_files_loaded")).classes("text-gray-400 text-sm")
                 return
             for f in self.client.storage.uploaded_files:
                 meta = f.get("meta", {}) or {}
@@ -1066,7 +1083,7 @@ class AddManualSession:
 
         # Prevent removing the main file while others exist
         if self.selected_file == self.uploaded_fits_files[0] and len(self.uploaded_fits_files) > 1:
-            ui.notify("Cannot remove main FITS while others are present!", type='warning')
+            ui.notify(t("notif_cannot_remove_fits"), type='warning')
             return
 
         try:
@@ -1117,12 +1134,12 @@ class AddManualSession:
 
         url = self.link_input.value.strip()
         if not url or not url.lower().endswith((".fits", ".fit", ".fts")):
-            ui.notify("Not a FITS file URL", type='warning')
+            ui.notify(t("not_fits_url"), type='warning')
             return
 
         ui.run_javascript("document.body.style.cursor='wait'")
         with ui.dialog().props('persistent') as dialog_fits:
-            ui.label("⏳ Downloading FITS file...")
+            ui.label(t("downloading_fits"))
             try:
                 dialog_fits.open()
 
@@ -1245,11 +1262,11 @@ class AddManualSession:
             card_dialog.clear()
 
             with card_dialog:
-                ui.label("🔍 Analysing Fits Image...")
+                ui.label(t("analyzing_fits"))
 
                 # --- CASE 1: no FITS metadata yet ---
                 if not self.meta_info:
-                    ui.notify("No info found in FITS file!", type='negative')
+                    ui.notify(t("no_info_fits"), type='negative')
 
                     self.current_file_info = {
                         "path": tmp_path,
@@ -1267,8 +1284,8 @@ class AddManualSession:
                     ui.item("Dwarf Target: UNRESOLVED").classes('text-green-600')
 
                     with ui.row():
-                        ui.button("🪐 Resolve File", on_click=resolve_and_refresh)
-                        ui.button('Ignore File', on_click=close_dialog_fits)
+                        ui.button(t("resolve_file"), on_click=resolve_and_refresh)
+                        ui.button(t("ignore_file"), on_click=close_dialog_fits)
 
                 # --- CASE 2: FITS metadata available ---
                 else:
@@ -1307,9 +1324,9 @@ class AddManualSession:
                     with ui.row():
                         # Offer resolution when RA or DEC is missing from the FITS header
                         if not self.meta_info.get('RA') or not self.meta_info.get('DEC'):
-                            ui.button("🪐 Resolve File", on_click=resolve_and_refresh)
-                        ui.button('Confirm', on_click=confirm)
-                        ui.button('Ignore', on_click=close_dialog_fits)
+                            ui.button(t("resolve_file"), on_click=resolve_and_refresh)
+                        ui.button(t("confirm"), on_click=confirm)
+                        ui.button(t("ignore"), on_click=close_dialog_fits)
 
         # first display
         await show_fits_dialog()
@@ -1349,7 +1366,7 @@ class AddManualSession:
                 with ui.row().classes('w-full gap-8 items-start'):
                     ui.item(f"Dwarf Target: {self.meta_info.get('OBJECT')}").classes('text-green-600')
                     if self.dso_catalog:
-                        ui.button("🖼️ Identify Target", on_click=lambda: self.on_identify_target_click(dwarf_data, ""))
+                        ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(dwarf_data, ""))
 
                 self.classified_label = ui.label().classes('text-gray-500').classes("m-4")
                 classified_text, descriptiondb = self.update_classified_label(dwarf_data.astro_object_id, dwarf_data.target, "", True)
@@ -1382,7 +1399,7 @@ class AddManualSession:
             with self.details_files:
                 with ui.row().classes('w-full gap-8 items-start'):
                     ui.item(f"Dwarf Target: UNRESOLVED").classes('text-green-600')
-                    ui.button("🪐 Resolve Files", on_click=self.resolve_files_action)
+                    ui.button(t("resolve_files"), on_click=self.resolve_files_action)
 
         self.details_files.update();
 
@@ -1416,8 +1433,8 @@ class AddManualSession:
         # --- Add files from links ---
         api_key = get_setting_text(self.conn, "NOVA_ASTRO_API")
         if not api_key:
-            ui.notify("⚠️ No Astrometry API key — NOVA astrometry resolution skipped.", type="warning")
-            ui.notify("Go to Settings to register a NOVA_ASTRO_API key.", type="info")
+            ui.notify(t("nova_no_key"), type="warning")
+            ui.notify(t("nova_go_settings"), type="info")
             # Still apply session fallback coordinates if available
             fits_files = [f for f in self.client.storage.uploaded_files if f["type"] == "fits"]
             for file_info in fits_files:
@@ -1437,20 +1454,20 @@ class AddManualSession:
                     type="warning", timeout=8000,
                 )
             elif fits_files:
-                ui.notify("❌ No coordinates available — link a session first or add an API key.", type="negative", timeout=8000)
+                ui.notify(t("no_coords"), type="negative", timeout=8000)
             self.refresh_info_session()
             return
 
         # Process only FITS files
         fits_files = [f for f in self.client.storage.uploaded_files if f["type"] == "fits"]
         if not fits_files:
-            ui.notify("No FITS files to resolve.", type="info")
+            ui.notify(t("no_fits_resolve"), type="info")
             return
 
         with ui.dialog().props('persistent') as dialog:
             with ui.card().style('width: 800px; max-width: none'):
                 error_label = ui.label().style('color: red')  # Empty label for future error messages
-                close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+                close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
                 ui.label(f"🔍 Resolving Image, please wait...")
                 spiner = ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
@@ -1485,7 +1502,7 @@ class AddManualSession:
                 timeout=8000,
             )
         else:
-            ui.notify("✅ Resolution completed")
+            ui.notify(t("resolution_complete"))
 
         dialog.close()  # close dialog 
 
@@ -1497,8 +1514,8 @@ class AddManualSession:
 
         api_key = get_setting_text(self.conn, "NOVA_ASTRO_API")
         if not api_key:
-            ui.notify("⚠️ No Astrometry API key — NOVA astrometry resolution skipped.", type="warning")
-            ui.notify("Go to Settings to register a NOVA_ASTRO_API key.", type="info")
+            ui.notify(t("nova_no_key"), type="warning")
+            ui.notify(t("nova_go_settings"), type="info")
             # Still apply session fallback if available
             file_info = self.current_file_info
             if not file_info.get('ra') or not file_info.get('dec'):
@@ -1516,14 +1533,14 @@ class AddManualSession:
                         type="warning", timeout=8000,
                     )
                 else:
-                    ui.notify("❌ No coordinates available — link a session first or add an API key.", type="negative", timeout=8000)
+                    ui.notify(t("no_coords"), type="negative", timeout=8000)
             self.refresh_info_session()
             return
 
         with ui.dialog().props('persistent') as dialog:
             with ui.card().style('width: 800px; max-width: none'):
                 error_label = ui.label().style('color: red')  # Empty label for future error messages
-                close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+                close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
                 ui.label(f"🔍 Resolving Image, please wait...")
                 ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
@@ -1553,7 +1570,7 @@ class AddManualSession:
                 timeout=8000,
             )
         else:
-            ui.notify("✅ Resolution completed")
+            ui.notify(t("resolution_complete"))
 
         dialog.close()  # close dialog 
 
@@ -1568,7 +1585,7 @@ class AddManualSession:
 
         session_dirname = self.session_dirname.value.strip()
         if not session_dirname:
-            ui.notify("Please provide or select a session name.", type="warning")
+            ui.notify(t("please_session_name"), type="warning")
             return
 
         # _get_effective_dest_path includes the tag sub-folder when set
@@ -1593,8 +1610,8 @@ class AddManualSession:
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
             ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
             with ui.row():
-                ui.button("Yes", on_click=lambda: dialog.submit('Yes'))
-                ui.button("No", on_click=lambda: dialog.submit('No'))
+                ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
+                ui.button(t("no"), on_click=lambda: dialog.submit('No'))
 
         result = await dialog
         if result == 'Yes':
@@ -1631,7 +1648,7 @@ class AddManualSession:
             return
         else:
             self.progress_label.set_text(f"Starting copying {total_files} files...")
-        ui.notify("Starting...")
+        ui.notify(t("starting"))
 
         result = await self.import_files(dest_path, self.progress, self.cancel_btn)
 
@@ -1681,7 +1698,7 @@ class AddManualSession:
         try:
             for i, file_info in enumerate(self.client.storage.uploaded_files, start=1):
                 if self.cancel_backup:
-                    ui.notify("❌ Backup cancelled by user.", type="warning")
+                    ui.notify(t("backup_cancelled"), type="warning")
                     break
 
                 try:
@@ -1726,7 +1743,10 @@ class AddManualSession:
                         counter += 1
 
                     # Copy the file to destination
-                    shutil.copy2(src_path, dest_file_path)
+                    result_copy = safe_copy2(src_path, dest_file_path)
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {src_path}")
+                        
                     
                     #thumbnail for first jpeg
                     if (file_ext.lower() == ".jpg" or file_ext.lower() == ".jpeg" ) and counter == 1:
@@ -1744,7 +1764,7 @@ class AddManualSession:
             # --- Final result ---
             if not self.cancel_backup and verified_files == total_files:
                 result = True
-                ui.notify("✅ Backup completed successfully!", type="positive")
+                ui.notify(t("backup_complete"), type="positive")
             elif not self.cancel_backup and verified_files > 0:
                 result = True
                 ui.notify(f"⚠️ Backup partially completed ({verified_files}/{total_files} files copied).", type="warning")
@@ -1884,7 +1904,7 @@ class AddManualSession:
                             astro_group_id    = astro_group_id,
                             manual_session_drive_id = manual_session_drive_id,
                         )
-                        ui.notify("✅ Session registered in database.", type="positive")
+                        ui.notify(t("session_registered"), type="positive")
 
                         # Show "View Session" button linking to ManualExplore
                         import urllib.parse
@@ -1908,14 +1928,14 @@ class AddManualSession:
                             session_dir_for_refresh = dest_path
                             self._load_existing_files_panel(session_dir_for_refresh)
                     else:
-                        ui.notify("⚠️ Files saved but database registration failed.", type="warning")
+                        ui.notify(t("db_saved_failed"), type="warning")
 
                 except Exception as db_err:
                     ui.notify(f"⚠️ Database error: {db_err}", type="warning")
                     print(f"[DB ERROR] Manual session registration failed: {db_err}")
 
             elif not self.cancel_backup:
-                ui.notify("⚠️ Backup incomplete due to failures.", type="warning")
+                ui.notify(t("backup_incomplete"), type="warning")
 
         except Exception as e:
             ui.notify(f"❌ Unexpected error during backup: {e}", type="error")

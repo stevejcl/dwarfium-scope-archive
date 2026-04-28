@@ -3730,3 +3730,62 @@ def get_dwarf_session_error_by_dir(conn: sqlite3.Connection, dwarf_id, session_d
     except Exception as e:
         print(f"[DB ERROR] get_dwarf_session_error_by_dir: {e}")
         return None
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SessionNotes API
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_session_note(conn, backup_entry_id=None, manual_session_id=None):
+    """Return the SessionNote for a BackupEntry or ManualSession, or None."""
+    if backup_entry_id:
+        with conn:
+            return conn.execute(
+                "SELECT * FROM SessionNotes WHERE backup_entry_id=?",
+                (backup_entry_id,)
+            ).fetchone()
+    elif manual_session_id:
+        with conn:
+            return conn.execute(
+                "SELECT * FROM SessionNotes WHERE manual_session_id=?",
+                (manual_session_id,)
+            ).fetchone()
+    return None
+
+
+def save_session_note(conn, summary, note, location, moon_phase, seeing,
+                      backup_entry_id=None, manual_session_id=None, note_id=None):
+    """Create or update a SessionNote. Returns the note id."""
+    with conn:
+        if note_id:
+            conn.execute("""
+                UPDATE SessionNotes
+                SET summary=?, note=?, location=?, moon_phase=?, seeing=?,
+                    updated_at=datetime('now')
+                WHERE id=?
+            """, (summary, note, location, moon_phase, seeing, note_id))
+            return note_id
+        else:
+            cur = conn.execute("""
+                INSERT INTO SessionNotes
+                    (backup_entry_id, manual_session_id, summary, note,
+                     location, moon_phase, seeing)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (backup_entry_id, manual_session_id, summary, note,
+                  location, moon_phase, seeing))
+            return cur.lastrowid
+
+
+def delete_session_note(conn, note_id):
+    """Delete a SessionNote by id."""
+    with conn:
+        conn.execute("DELETE FROM SessionNotes WHERE id=?", (note_id,))
+
+
+def get_backup_entry_id_by_dwarf_data(conn, dwarf_data_id):
+    """Get BackupEntry.id from DwarfData.id."""
+    with conn:
+        row = conn.execute(
+            "SELECT id FROM BackupEntry WHERE dwarf_data_id=? LIMIT 1",
+            (dwarf_data_id,)
+        ).fetchone()
+        return row[0] if row else None

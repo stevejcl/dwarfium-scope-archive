@@ -1,3 +1,4 @@
+from components.i18n import t
 import urllib.parse
 import webview
 from nicegui import native, app, run, ui
@@ -66,13 +67,13 @@ class ConfigApp:
         with ui.card().classes("w-full max-w-3xl mx-auto"):
             #with ui.grid(columns=2).classes("w-full"):
             with ui.row().classes("w-full justify-between"):
-                ui.button("🗂️ Show Dwarf Data", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
+                ui.button(t("show_dwarf_data"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
                 self.btn_error_sessions = ui.button(
                     "⚠️ Sessions in Error",
                     on_click=self._toggle_error_sessions
                 ).classes(sizeBTN).props("color=orange")
                 self.btn_error_sessions.set_visibility(False)
-                ui.button("🔍 Analyze Dwarf Drive", on_click=self.analyze_usb_drive).classes(sizeBTN)
+                ui.button(t("analyze_dwarf_drive"), on_click=self.analyze_usb_drive).classes(sizeBTN)
 
             self.error_sessions_container = ui.column().classes("w-full")
             self.error_sessions_container.visible = False
@@ -83,37 +84,37 @@ class ConfigApp:
 
                 # Left: Add New button
                 with ui.column().classes('items-start pt-8'):
-                    ui.button("➕ Add New Dwarf", on_click=self.set_new_dwarf).classes(sizeBTN)
+                    ui.button(t("add_dwarf"), on_click=self.set_new_dwarf).classes(sizeBTN)
 
                 # Right: form fields
                 with ui.column().classes('items-start flex-1'):
-                    ui.label("Select Existing Dwarf").classes("text-lg font-semibold")
+                    ui.label(t("select_existing_dwarf")).classes("text-lg font-semibold")
 
                     # Dwarf Selection
                     self.dwarf_selector = ui.select(
                         options=[],
                         on_change=self.load_selected_dwarf,
-                        label="Please select"
+                        label=t("please_select")
                     ).props('stack-label').props('outlined').classes('w-60')
 
                     with ui.row().classes('items-center gap-4'):
-                        self.dwarf_name = ui.input("Dwarf Name").classes('w-55')
-                        ui.button("🗑️ Delete Dwarf",
+                        self.dwarf_name = ui.input(t("dwarf_name_label")).classes('w-55')
+                        ui.button(t("delete_dwarf"),
                                   on_click=self.confirm_and_delete_Dwarf).props("color=red").classes(sizeBTN)
 
-                    self.dwarf_desc = ui.input("Description").classes('w-55')
+                    self.dwarf_desc = ui.input(t("description")).classes('w-55')
 
                     # Dwarf Type selection
                     self.dwarf_type_var = ui.select(
                         options=list(self.dwarf_type_map.values()),
                         value="Dwarf3",
-                        label="Type",
+                        label=t("type_label"),
                         on_change=self.modif_dwarf_type
                     ).props('stack-label').props('outlined').classes('w-60')
 
                     with ui.row().classes('items-center gap-4'):
-                        self.dwarf_astroDir = ui.input("Astronomy Directory").classes('w-55')
-                        ui.button("Select USB Folder", on_click=self.select_dwarf_folder).classes(sizeBTN)
+                        self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')
+                        ui.button(t("select_usb_folder"), on_click=self.select_dwarf_folder).classes(sizeBTN)
 
                     with ui.row().classes('items-center m-4 gap-2'):
                         self.usb_status_label = ui.label("").classes('pb-2')
@@ -131,7 +132,7 @@ class ConfigApp:
 
                     with ui.grid(columns=2):
                         self.dwarf_ip_sta_mode = ui.input(
-                            "Ip Address STA Mode",
+                            t("ip_sta_mode"),
                             validation={'Invalid IP address': lambda value: self.is_valid_ip(value)}
                         ).classes('w-55')
                         with ui.row().classes("gap-4 mt-4"):
@@ -140,21 +141,21 @@ class ConfigApp:
 
                     with ui.card().tight():
                         ui.colors(brand='#A1A0A1')
-                        ui.item_label('Last Scan on:').props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
+                        ui.item_label(t("last_scan")).props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
                         self.dwarf_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
 
             # ── Bottom: action buttons ────────────────────────────────────────
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
-                ui.button("Save / Update Dwarf", on_click=self.save_or_update_dwarf).classes(sizeBTN)
-                ui.button("🗑️ Delete Dwarf Entries",
+                ui.button(t("save_update_dwarf"), on_click=self.save_or_update_dwarf).classes(sizeBTN)
+                ui.button(t("delete_dwarf_entries"),
                           on_click=self.confirm_and_delete_dwarf_entries).props("color=red").classes(sizeBTN)
 
             ui.separator()
 
             with ui.row().classes('w-full gap-8 items-start') as self.local_info: 
                 with ui.column():
-                    ui.button("🗑️ Empty Local Archive", on_click=self.confirm_and_delete_dwarf_archive).props("color=red").classes(sizeBTN)
+                    ui.button(t("empty_archive"), on_click=self.confirm_and_delete_dwarf_archive).props("color=red").classes(sizeBTN)
 
                 with ui.column():
                     with ui.card().tight():
@@ -179,7 +180,7 @@ class ConfigApp:
         if not value:
             return True
         if self.show_info_ftp:
-            ui.notify("Enter the Dwarf IP Address , you can found it on the My Device Page on the Dwarflab App.", type="info")
+            ui.notify(t("dwarf_ip_long"), type="info")
             self.show_info_ftp = False
         ip_pattern = r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
         return re.match(ip_pattern, value) is not None
@@ -229,7 +230,7 @@ class ConfigApp:
             self.FirstInit = True
 
         if self.FirstInit:
-            ui.notify("First run detected. Connect your Dwarf via USB, then follow the Help panel to register it.", type="info")
+            ui.notify(t("first_run"), type="info")
             ui.timer(1.5, lambda: open_help(True), once=True)
 
         # Update the dictionary mapping
@@ -266,7 +267,7 @@ class ConfigApp:
         try:
             self.dwarf_id = int(value.split(" - ")[0])  # Extracts "1" from "1 - Dwarf3"
         except (IndexError, ValueError):
-            ui.notify("Invalid dwarf selection", type="negative")
+            ui.notify(t("invalid_dwarf"), type="negative")
             return
 
         row = get_dwarf_detail(self.conn, self.dwarf_id)
@@ -298,10 +299,10 @@ class ConfigApp:
         rows = get_dwarf_sessions_error(self.conn, self.dwarf_id)
         with self.error_sessions_container:
             if not rows:
-                ui.label("✅ No Sessions in error.").classes("text-green-600")
+                ui.label(t("no_sessions_error")).classes("text-green-600")
                 return
             with ui.card().classes("w-full p-3"):
-                ui.label("Sessions in Error").classes("text-base font-semibold mb-1")
+                ui.label(t("sessions_error_title")).classes("text-base font-semibold mb-1")
                 for row in rows:
                     # row: id, dwarf_id, session_date, session_dir, session_dir_master, status
                     _, _, session_date, session_dir, session_dir_master, status = row
@@ -388,7 +389,7 @@ class ConfigApp:
                     on_change=lambda: self.on_mtp_selected(device_map)
                 ).props('stack-label').props('outlined').classes('w-40')
                 with ui.row().classes("w-full pt-4"):
-                    ui.button("Detect MTP Dwarf", on_click=self.detect_mtp_devices)
+                    ui.button(t("detect_mtp"), on_click=self.detect_mtp_devices)
 
             self.refesh_mtp_status(self.device_path)
 
@@ -454,7 +455,7 @@ class ConfigApp:
 
     async def select_dwarf_folder(self):
         """Open folder selection dialog."""
-        ui.notify("Please select the Astronomy directory within the mapped USB drive.", type="info")
+        ui.notify(t("please_astro_dir"), type="info")
         dwarf_location = self.dwarf_astroDir.value
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
@@ -479,13 +480,13 @@ class ConfigApp:
         with ui.dialog().props('persistent')  as dialog, ui.card():
             # Create the GUI with NiceGUI
             with ui.card().style('width: 400px; padding: 20px;'):
-                ui.label("Enter Dwarf IP Address:").style('font-size: 16px; margin-bottom: 10px;')
+                ui.label(t("dwarf_ip")).style('font-size: 16px; margin-bottom: 10px;')
                 ip_input = ui.input().style('width: 100%; margin-bottom: 20px; padding: 10px; font-size: 14px;')
 
-                connect_button = ui.button('Connect', on_click=lambda: connect_to_dwarf(ip_input.value.strip(), status_label))
+                connect_button = ui.button(t("connect"), on_click=lambda: connect_to_dwarf(ip_input.value.strip(), status_label))
 
                 status_label = ui.label().style('font-size: 14px; color: #FF5722; margin-top: 20px;')
-                ui.button('Close', on_click=dialog.close)
+                ui.button(t("close"), on_click=dialog.close)
         dialog.open()
 
     async def save_or_update_dwarf(self):
@@ -499,7 +500,7 @@ class ConfigApp:
         mtp_id = self.dwarf_mtp_id
 
         if not name:
-            ui.notify("Name is required", type="negative")
+            ui.notify(t("name_required"), type="negative")
             return
 
         if self.dwarf_id:  # Update
@@ -514,21 +515,21 @@ class ConfigApp:
     async def analyze_usb_drive(self):
         """Analyze the Dwarf drive and scan files."""
         if not self.dwarf_id:
-            ui.notify("No Dwarf selected", type="negative")
+            ui.notify(t("no_dwarf_selected"), type="negative")
             return
 
         if not self.dwarf_status:
-            ui.notify("Dwarf Device not connected", type="negative")
+            ui.notify(t("dwarf_not_connected"), type="negative")
             return
 
         ftp = None
         if self.dwarf_status == "USB":
             dwarf_location = self.dwarf_astroDir.value.strip()
             if not dwarf_location:
-                ui.notify("No USB location selected", type="negative")
+                ui.notify(t("no_usb_location"), type="negative")
                 return
             if not os.path.isdir(dwarf_location):
-                ui.notify("USB Directory is inaccessible.", type="negative")
+                ui.notify(t("usb_inaccessible"), type="negative")
                 return
         elif self.dwarf_status == "FTP":
             if str(self.dwarf_type_var.value) == "Dwarf2":
@@ -538,22 +539,22 @@ class ConfigApp:
             elif str(self.dwarf_type_var.value) == "Dwarf Mini":
                 dwarf_location = DWARF3_FTP_PATH
             else:
-                ui.notify("Unsupported Device", type="negative")
+                ui.notify(t("unsupported_device"), type="negative")
                 return
             ftp_ctx = ftp_conn(self.dwarf_ip_sta_mode.value) if self.dwarf_ip_sta_mode.value else None
             ftp = ftp_ctx.__enter__() if ftp_ctx else None
             if not ftp:
-                ui.notify("FTP disconnected", type="negative")
+                ui.notify(t("ftp_disconnected"), type="negative")
                 return
         else:
-            ui.notify("Unsupported connection mode", type="negative")
+            ui.notify(t("unsupported_conn"), type="negative")
             return
 
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
-            close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
-            ui.label("🔍 Scanning Dwarf drive, please wait...")
+            close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+            ui.label(t("scanning_dwarf"))
             spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
 
@@ -563,14 +564,14 @@ class ConfigApp:
         try:
             local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
             if local_Main_Dwarf_dir:
-                ui.notify("Starting Local Sync ...")
+                ui.notify(t("starting_sync"))
                 if self.dwarf_status == "USB":
                     await run.io_bound (sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
                 if self.dwarf_status == "FTP":
                     await run.io_bound (ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
                 local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
                 print(local_Dwarf_dir)
-                ui.notify("Starting Analysis ...")
+                ui.notify(t("starting_analysis"))
                 total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log)
                 ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
             else:
@@ -594,7 +595,7 @@ class ConfigApp:
 
     async def confirm_and_delete_Dwarf(self):
         if self.dwarf_id is None:
-            ui.notify("No Dwarf selected", type="negative")
+            ui.notify(t("no_dwarf_selected"), type="negative")
             return
 
         if has_related_dwarf_entries(self.conn, self.dwarf_id):
@@ -616,11 +617,11 @@ class ConfigApp:
         print(f"Deleted Dwarf {self.dwarf_id}.")
         self.refresh_dwarf_list()
         await self.set_new_dwarf()
-        ui.notify("Dwarf deleted.", type="positive")
+        ui.notify(t("dwarf_deleted"), type="positive")
 
     async def confirm_and_delete_dwarf_entries(self):
         if self.dwarf_id is None:
-            ui.notify("No Dwarf selected", type="negative")
+            ui.notify(t("no_dwarf_selected"), type="negative")
             return
 
         await self.WinLog.show(
@@ -632,7 +633,7 @@ class ConfigApp:
     def ok_confirm_and_delete_dwarf_entries(self):
         delete_dwarf_entries_and_dwarf_data(self.conn, self.dwarf_id)
         self.dwarf_scan_date.text = ""
-        ui.notify("DwarfData entries deleted.", type="positive")
+        ui.notify(t("dwarf_data_deleted"), type="positive")
  
     def get_explore_url(self):
         if self.dwarf_id:
@@ -662,7 +663,7 @@ class ConfigApp:
     async def confirm_and_delete_dwarf_archive(self):
 
         if self.dwarf_id is None:
-            ui.notify("No Dwarf selected", type="negative")
+            ui.notify(t("no_dwarf_selected"), type="negative")
             return
 
         await self.WinLog.show(
@@ -678,4 +679,4 @@ class ConfigApp:
         print(f"Deleted Dwarf {self.dwarf_id}.")
         self.refresh_dwarf_list()
         await self.set_new_dwarf()
-        ui.notify("Dwarf deleted.", type="positive")
+        ui.notify(t("dwarf_deleted"), type="positive")

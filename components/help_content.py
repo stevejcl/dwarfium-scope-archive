@@ -1,6 +1,7 @@
+from components.i18n import t
 from nicegui import ui, app
 
-help_content = {
+help_content_en = {
     '/': {
         'title': 'Home — Dwarfium Scope Archive',
         'content': '''
@@ -493,8 +494,6 @@ Configure global application settings.
 
 ## Options
 
-- **Version** — show current version
-- **Report** - export PDF report of Sessions / Disks Usage  
 - **Theme** — switch between light and dark mode
 - **Storage paths** — configure where local session data is cached
 - **API Keys** — set astrometry.net key for automatic target resolution
@@ -506,3 +505,55 @@ Configure global application settings.
 '''
     },
 }
+
+# ── French help content ───────────────────────────────────────────────────────
+# Translate progressively — falls back to English if key not present in FR
+help_content_fr = {
+    '/': {
+        'title': 'Accueil — Dwarfium Scope Archive',
+        'content': '''
+## Bienvenue
+
+Dwarfium Scope Archive vous aide à sauvegarder, organiser et explorer vos sessions avec votre télescope Dwarf.
+
+## Fonctionnalités principales
+
+- **Dwarf** — configurer vos appareils Dwarf (chemin USB, adresse IP, type)
+- **Sauvegarde** — configurer vos disques de sauvegarde et scanner les nouvelles sessions
+- **Explorer** — parcourir et rechercher toutes les sessions sauvegardées
+- **Sessions Manuelles** — importer des fichiers FITS/PNG/JPG personnalisés depuis n'importe quel outil
+- **Bibliothèque Darks** — gérer les images de calibration (darks) pour le traitement Siril
+- **Transfert** — copier des sessions entre le Dwarf et un disque de sauvegarde
+
+## Workflow typique
+
+1. Configurer votre Dwarf sur la page **Dwarf**
+2. Utiliser **Analyser le lecteur Dwarf** pour indexer les sessions
+3. Configurer votre disque de sauvegarde sur la page **Sauvegarde**
+4. Utiliser **Analyser le disque actuel** sur la page Sauvegarde
+5. Utiliser la page **Transfert** pour copier les sessions du Dwarf vers la sauvegarde
+6. Parcourir tout sur la page **Explorer**
+'''
+    },
+}
+
+
+def get_help(route: str) -> dict:
+    """Return help content for the given route in the current language."""
+    lang = "fr"
+    try:
+        from nicegui import app as _app
+        lang = _app.storage.general.get("language", "en")
+    except Exception:
+        pass
+
+    fr_entry = help_content_fr.get(route)
+    en_entry = help_content_en.get(route)
+
+    if lang == "fr" and fr_entry:
+        return fr_entry
+    return en_entry or {}
+
+
+# Keep backward compatibility
+help_content = help_content_en

@@ -1,3 +1,4 @@
+from components.i18n import t
 from nicegui import native,ui,app,events
 import sqlite3
 from typing import Dict
@@ -46,10 +47,10 @@ class CatalogApp:
 
         # UI Components
         with ui.column().classes('w-full p-4'):
-            ui.label('🔭 AstroObject to DSO Association').classes('text-2xl')
+            ui.label(t("dso_astro_assoc")).classes('text-2xl')
             with ui.row().classes('gap-4'):
-                ui.button('Export Associations to CSV', on_click=self.on_export_click)
-                ui.button('Delete Astro Objects not used anymore', on_click=self.on_delete_click)
+                ui.button(t("export_csv"), on_click=self.on_export_click)
+                ui.button(t("delete_unused"), on_click=self.on_delete_click)
             self.loading_spinner = ui.spinner(size='lg').classes('m-4')
 
             columns=[
@@ -105,9 +106,9 @@ class CatalogApp:
         from nicegui import run
         ok = await run.io_bound(delete_unused_astro_objects, self.conn)
         if ok:
-            ui.notify('AstroObject data have been purged!')
+            ui.notify(t("astro_purged"))
         else:
-            ui.notify('Error occurs during AstroObject purge!')
+            ui.notify(t("error_astro_purge"))
         # recreate default if need
         await run.io_bound(insert_default_groups, self.conn)
         self.reload()
@@ -204,13 +205,13 @@ class CatalogApp:
 
             # Filters & Search Inputs
             self.current_dso_assign = str(astro_object_row[3])
-            search_input = ui.input(label='Search (designation, name, constellation, type)', on_change=lambda e: update_dso_list()).classes('w-full')
-            constellation_filter = ui.input(label='Constellation (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
-            type_filter = ui.input(label='Type (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
+            search_input = ui.input(label=t("search_dso"), on_change=lambda e: update_dso_list()).classes('w-full')
+            constellation_filter = ui.input(label=t("constellation_exact"), on_change=lambda e: update_dso_list()).classes('w-full')
+            type_filter = ui.input(label=t("type_exact"), on_change=lambda e: update_dso_list()).classes('w-full')
 
-            dso_select = ui.select({}, label='Select DSO', on_change=lambda e: update_dso_value()).classes('w-full')
+            dso_select = ui.select({}, label=t("select_dso"), on_change=lambda e: update_dso_value()).classes('w-full')
             # Allow user to enter custom DSO
-            custom_dso_input = ui.input(label='Edit or enter custom description', value=astro_object_row[2]).classes('w-full')
+            custom_dso_input = ui.input(label=t("custom_description"), value=astro_object_row[2]).classes('w-full')
 
             def update_dso_value():
                 if dso_select.value and dso_select.value != self.current_dso_assign:
@@ -260,15 +261,15 @@ class CatalogApp:
 
                     update_astro_object_dso(self.conn, astro_object_row[0], int(dso_select.value), final_description)
 
-                    ui.notify('DSO assigned/updated!')
+                    ui.notify(t("dso_assigned"))
                     dialog.close()
                     self.reload()
 
                 else:
-                    ui.notify('Please select a DSO first.', color='red')
+                    ui.notify(t("notif_select_dso_first"), color='red')
 
             with ui.row():
-                ui.button('Confirm', on_click=confirm)
-                ui.button('Cancel', on_click=dialog.close)
+                ui.button(t("confirm"), on_click=confirm)
+                ui.button(t("cancel"), on_click=dialog.close)
 
         dialog.open()

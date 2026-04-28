@@ -1,3 +1,4 @@
+from components.i18n import t
 # components/menu.py
 from nicegui import ui, app
 from components.help_system import register_drawer, open_help
@@ -20,7 +21,7 @@ def menu(title):
         dark.disable()
         ui.query('body').style(f'background-color: {"#f5f5e6"}')
 
-    ui.button('↑ Top', on_click=lambda: ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"})')) \
+    ui.button(t("top"), on_click=lambda: ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"})')) \
         .props('round color=primary') \
         .classes('fixed bottom-4 right-4 z-[9999] shadow-lg')
 
@@ -47,16 +48,16 @@ def menu(title):
                     badge.text = f"📦 {copied}/{total}"
                     badge.visible = True
                 elif p and p['status'] == 'copy_done':
-                    badge.text = "🔄 Syncing DB..."
+                    badge.text = t("syncing_db")
                     badge.visible = True
                 elif p and p['status'] == 'scanning':
                     badge.text = p.get('current_file', '🔍 Scanning...')
                     badge.visible = True
                 elif p and p['status'] == 'done':
-                    badge.text = "✅ Transfer done"
+                    badge.text = t("transfer_done")
                     badge.visible = True
                 elif p and p['status'] == 'error':
-                    badge.text = "❌ Transfer error"
+                    badge.text = t("transfer_error")
                     badge.visible = True
                 else:
                     badge.visible = False
@@ -68,44 +69,44 @@ def menu(title):
         _badge_timer = ui.timer(2.0, _check_transfer)
         ui.context.client.on_disconnect(lambda: _badge_timer.cancel())
 
-        #ui.button('Dwarf Connect').classes('text-sm')
+        #ui.button(t("dwarf_connect")).classes('text-sm')
 
         with ui.button(icon='menu').classes('text-sm ml-auto'):
             with ui.menu().classes('max-h-none'):
-                ui.menu_item('Home', on_click=lambda: ui.navigate.to('/'))
+                ui.menu_item(t("menu_home"), on_click=lambda: ui.navigate.to('/'))
                 ui.separator()
-                ui.menu_item('Dwarfs Settings', on_click=lambda: ui.navigate.to('/Dwarf')).classes('whitespace-nowrap')
-                ui.menu_item('Backup Setting', on_click=lambda: ui.navigate.to('/Backup')).classes('whitespace-nowrap')
-                ui.menu_item('Dark Library', on_click=lambda: ui.navigate.to('/DarkLibrary')).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_dwarf_settings"), on_click=lambda: ui.navigate.to('/Dwarf')).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_backup_settings"), on_click=lambda: ui.navigate.to('/Backup')).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_darks"), on_click=lambda: ui.navigate.to('/DarkLibrary')).classes('whitespace-nowrap')
                 ui.separator()
-                ui.menu_item('Explore', on_click=lambda: ui.navigate.to('/Explore'))
-                ui.menu_item('Manual Sessions', on_click=lambda: ui.navigate.to('/ManualExplore')).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_explore"), on_click=lambda: ui.navigate.to('/Explore'))
+                ui.menu_item(t("menu_manual_sessions"), on_click=lambda: ui.navigate.to('/ManualExplore')).classes('whitespace-nowrap')
                 ui.separator()
-                ui.menu_item('Transfer', on_click=lambda: ui.navigate.to('/Transfer'))
-                ui.menu_item('Add Session', on_click=lambda: ui.navigate.to('/AddManualSession')).classes('whitespace-nowrap')
-                ui.menu_item('Mosaics', on_click=lambda: ui.navigate.to('/Mosaic'))
+                ui.menu_item(t("menu_transfer"), on_click=lambda: ui.navigate.to('/Transfer'))
+                ui.menu_item(t("menu_add_session"), on_click=lambda: ui.navigate.to('/AddManualSession')).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_mosaic"), on_click=lambda: ui.navigate.to('/Mosaic'))
                 ui.separator()
-                ui.menu_item('MtpDevice', on_click=lambda: ui.navigate.to('/MtpDevice'))
-                ui.menu_item('Catalog', on_click=lambda: ui.navigate.to('/Catalog'))
-                ui.menu_item('Settings', on_click=lambda: ui.navigate.to('/Settings'))
+                ui.menu_item(t("menu_mtp"), on_click=lambda: ui.navigate.to('/MtpDevice'))
+                ui.menu_item(t("menu_catalog"), on_click=lambda: ui.navigate.to('/Catalog'))
+                ui.menu_item(t("menu_settings"), on_click=lambda: ui.navigate.to('/Settings'))
                 ui.separator()
-                ui.menu_item('🌙 Dark Mode', on_click=lambda: dark_mode()).classes('whitespace-nowrap')
-                ui.menu_item('☀️ Light Mode', on_click=lambda: light_mode()).classes('whitespace-nowrap')
-                ui.menu_item('❓ Help', on_click=open_help)
+                ui.menu_item(t("menu_dark_mode"), on_click=lambda: dark_mode()).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_light_mode"), on_click=lambda: light_mode()).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_help"), on_click=open_help)
 
     # Warning banner — visible on ALL pages when a transfer is running
     def _stop_transfer():
         app.storage.general['transfer_cancel_requested'] = True
-        ui.notify("🛑 Transfer cancellation requested...", type="warning")
+        ui.notify(t("transfer_cancellation"), type="warning")
 
     with ui.element('div').classes('w-full') as close_warning:
         with ui.row().classes("relative w-full items-center bg-red-50 border border-red-300 rounded px-3 py-1"):
             # Centered button (absolute)
-            ui.button("🛑 Stop Transfer", on_click=_stop_transfer) \
+            ui.button(t("stop_transfer"), on_click=_stop_transfer) \
                 .props("flat dense color=negative") \
                 .classes("text-xs absolute left-1/2 -translate-x-1/2")
             # Right-aligned text
-            ui.label("⚠️ Transfer in progress — closing the app will stop the transfer.") \
+            ui.label(t("transfer_close_warn")) \
                 .classes("ml-auto text-sm font-semibold text-red-600 text-right")
     close_warning.visible = False
     setStyle()

@@ -77,22 +77,26 @@ def open_folder(path_var):
     else:
         safe_print(f"[FAIL] Path does not exist: {path}")
 
-def compute_md5(filepath):
+def compute_md5(filepath, chunk_size=1024 * 64):  # 64 KB default
     hash_md5 = hashlib.md5()
     filepath_str = str(filepath)
+
     if filepath_str.startswith("ftp://"):
-        # For FTP, read the file in chunks
-        url_parts = filepath[6:].split('/', 1)
+        url_parts = filepath_str[6:].split('/', 1)
         ftp_host = url_parts[0]
         ftp_path = url_parts[1]
+
         with ftplib.FTP(ftp_host) as ftp:
-            ftp.login()  # Anonymous by default
-            with ftp.transfercmd(f'RETR {ftp_path}') as conn:
-                while chunk := conn.recv(4096):
-                    hash_md5.update(chunk)
+            ftp.login()
+
+            def callback(chunk):
+                hash_md5.update(chunk)
+
+            ftp.retrbinary(f'RETR {ftp_path}', callback, blocksize=chunk_size)
+
     else:
         with open(win_long_path(filepath), "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
+            for chunk in iter(lambda: f.read(chunk_size), b""):
                 hash_md5.update(chunk)
 
     return hash_md5.hexdigest()
@@ -230,9 +234,78 @@ def get_fits_name_from_zip(search_dir: str | Path) -> Path:
 def _err_path(p):
     p = Path(p)
     return p.with_stem(p.stem + "_err") if p else None
-    
 
-    
+# --- Main safe copy ---
+def safe_copy2(
+    src_file: str,
+    dst_file: str,
+    verify_exts=('.fits', '.json'),
+    max_retries=2,
+    logger=None,
+):
+    """
+    Copy file with verification (size + optional hash).
+
+    :param src_file: source path
+    :param dst_file: destination path
+    :param verify_exts: extensions requiring hash check
+    :param max_retries: number of retries on failure
+    :param logger: optional logger (e.g. my_logger)
+    """
+
+    ext = os.path.splitext(src_file)[1].lower()
+
+    for attempt in range(1, max_retries + 2):  # retries + first try
+        try:
+            # --- Copy ---
+            shutil.copy2(src_file, dst_file)
+
+            # --- Check existence ---
+            if not os.path.exists(dst_file):
+                raise Exception(f"Missing file after copy: {dst_file}")
+
+            # --- Check size ---
+            src_size = os.path.getsize(src_file)
+            dst_size = os.path.getsize(dst_file)
+
+            if src_size != dst_size:
+                raise Exception(f"Size mismatch: {src_file}")
+
+            # --- Optional hash check ---
+            if ext in verify_exts:
+                # hash AFTER copy → benefits from OS cache
+                src_hash = compute_md5(src_file)
+                dst_hash = compute_md5(dst_file)
+
+                if src_hash != dst_hash:
+                    raise Exception(f"Checksum mismatch: {src_file}")
+
+            # --- Success ---
+            if logger:
+                logger.debug(f"Copied OK: {src_file} -> {dst_file}")
+            return True
+
+        except Exception as e:
+            if logger:
+                logger.warning(f"[Attempt {attempt}] Copy failed: {src_file} ({e})")
+
+            # cleanup partial file
+            try:
+                if os.path.exists(dst_file):
+                    os.remove(dst_file)
+            except Exception:
+                pass
+
+            if attempt > max_retries:
+                if logger:
+                    logger.error(f"Final failure: {src_file}")
+                raise
+
+            # small delay before retry (helps with USB / network glitches)
+            time.sleep(0.5)
+
+    return False
+ 
 ###########################
 # Specific Files functions
 ###########################
@@ -431,7 +504,9 @@ def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry
         if dry_run:
             print(f"[DRY RUN] Would copy: {src_file} → {dst_file}")
         else:
-            shutil.copy2(src_file, dst_file)
+            result_copy = safe_copy2(src_file, dst_file)
+            if not result_copy:
+                raise Exception(f"Copy failed without exception: {src_file}")
             restored_count += 1
             print(f"Restored: {dst_file}")
             app.progress.value = round(progress)
@@ -1481,7 +1556,9 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
                 if files_are_different(src_file, dst_file, file_name == "shotsInfo.json"):
                     safe_print(f"Copying {file_name} to {session}...")
                     print_log(f"📥 Copying {file_name} to {session}...", log)
-                    shutil.copy2(src_file, dst_file)
+                    result_copy = safe_copy2(src_file, dst_file)
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {src_file}")
                 else:
                     safe_print(f"Skipping {file_name} (unchanged)")
                     print_log(f"✅ Skipping {file_name} (unchanged)", log)

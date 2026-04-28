@@ -1,3 +1,4 @@
+from components.i18n import t
 import webview
 from nicegui import ui, run, app, Client
 
@@ -38,7 +39,7 @@ class TransferApp:
         self.conn = connect_db(self.database)
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
-            ui.label("Connected MTP Devices:")
+            ui.label(t("mtp_devices"))
             self.dwarf_select = []
             devices = self.mtp.list_mtp_devices()
             for name, path in devices:
@@ -51,23 +52,23 @@ class TransferApp:
                         dwarf_options = get_dwarf_mtp_drive(self.conn, path)
                         print(dwarf_options)
                         if dwarf_options:
-                            ui.label("Dwarf:")
+                            ui.label(t("dwarf_device"))
                             names = [name for _, name, _ in dwarf_options]
                             self.dwarf_select.append(names[0])
                             ui.select(options=names,value=names[0]).props('outlined')
                     else:
-                        ui.button("Save", on_click=lambda n=name, p=path: add_mtp_device_to_db(self.conn, n, p))
+                        ui.button(t("save"), on_click=lambda n=name, p=path: add_mtp_device_to_db(self.conn, n, p))
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
-            ui.label("Destination Directory")
+            ui.label(t("destination_dir2"))
             self.destination_input = ui.input(placeholder="Enter Subdirectory Name", value=self.destination_dir).classes("min-w-[300px] overflow-x-auto whitespace-nowrap")
-            ui.button("Select Destination", on_click=lambda : self.select_local_folder())
+            ui.button(t("select_destination"), on_click=lambda : self.select_local_folder())
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
-            ui.label("Saved MTP Devices:")
+            ui.label(t("saved_mtp"))
             devices = get_mtp_devices(self.conn)
             progress_bar = ui.circular_progress(max=100)
-            self.notification_label = ui.label("Idle...")
+            self.notification_label = ui.label(t("idle"))
 
             for device in devices:
                 is_visible = False
@@ -83,12 +84,12 @@ class TransferApp:
                 if is_visible:
                     subdirs = self.mtp.list_subdirectories(device[2])
                     if subdirs:
-                        ui.label("Select Directory")
-                        selected_subdir = ui.select(label="Please select", options=subdirs, on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[300px] w-auto overflow-x-auto whitespace-nowrap")
-                        progress_label = ui.label("Idle...")
+                        ui.label(t("select_directory"))
+                        selected_subdir = ui.select(label=t("please_select"), options=subdirs, on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[300px] w-auto overflow-x-auto whitespace-nowrap")
+                        progress_label = ui.label(t("idle"))
                         ui.button(f"Copy from {device[1]}", on_click=lambda d=device[2], sd = selected_subdir, pb=progress_bar, pl=progress_label: self.start_copy(d, sd.value, pb, pl))
                     else:
-                        ui.label("No subdirectories found in Astronomy folder.")
+                        ui.label(t("no_subfolders"))
 
     async def resize_input(self):
         await self.client.run_javascript('''
@@ -121,12 +122,12 @@ class TransferApp:
         self.destination_dir = self.destination_input.value
         if not self.destination_dir:
             progress_label.set_text("Select a destination Directory.")
-            ui.notify("No destination Directory selected.", type='warning')
+            ui.notify(t("no_dest_dir"), type='warning')
             return
 
         if not subdir_name:
             progress_label.set_text("Select a source directory.")
-            ui.notify("No source Directory selected.", type='warning')
+            ui.notify(t("no_source_dir"), type='warning')
             return
 
         # Check if destination path exists
@@ -145,8 +146,8 @@ class TransferApp:
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
             ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
             with ui.row():
-                ui.button("Yes", on_click=lambda: dialog.submit('Yes'))
-                ui.button("No", on_click=lambda: dialog.submit('No'))
+                ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
+                ui.button(t("no"), on_click=lambda: dialog.submit('No'))
 
         result = await dialog
         if result == 'Yes':

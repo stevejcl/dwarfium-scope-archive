@@ -1,6 +1,7 @@
+from components.i18n import t
 from nicegui import ui, app, context
 
-from components.help_content import help_content
+from components.help_content import get_help, help_content
 
 help_drawer = None
 timer_drawer = None
@@ -34,7 +35,7 @@ def build_help():
 
     path = ui.context.client.page.path
     # Try exact match first, then strip/add trailing slash
-    data = help_content.get(path) or help_content.get(path.rstrip('/')) or help_content.get(path + '/') or {
+    data = get_help(path) or get_help(path.rstrip('/')) or get_help(path + '/') or {
         'title': 'Help',
         'content': 'No help available for this page.'
     }

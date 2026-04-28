@@ -1,3 +1,4 @@
+from components.i18n import t
 import urllib.parse
 import webview
 import sqlite3
@@ -49,12 +50,12 @@ class ConfigApp:
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
             with ui.row().classes("w-full mt-2 mb-2 justify-between gap-8"):
-                ui.button("🗂️ Show Backup Data", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
-                self.history_log = ui.button("📋 Transfer History Log", on_click=self._toggle_history).classes(sizeBTN)
-                ui.button("🔍 Analyze Current Drive", on_click=self.analyze_drive).classes(sizeBTN)
+                ui.button(t("show_backup_data"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
+                self.history_log = ui.button(t("transfer_history_log"), on_click=self._toggle_history).classes(sizeBTN)
+                ui.button(t("analyze_drive"), on_click=self.analyze_drive).classes(sizeBTN)
             with ui.grid(columns=2):
-                ui.button("Check Session Integrity", on_click=self.check_integrity_drive).classes(sizeBTN)
-                self.button_explore_session = ui.button("🔎 Open in Explorer", on_click=self.open_in_explore).classes(sizeBTN)
+                ui.button(t("check_integrity"), on_click=self.check_integrity_drive).classes(sizeBTN)
+                self.button_explore_session = ui.button(t("open_in_explorer"), on_click=self.open_in_explore).classes(sizeBTN)
             with ui.row().classes('col-span-2 items-start gap-4'):  
                self.results_container = ui.column().classes('flex-1')
             # Transfer history — hidden by default, shown on demand
@@ -66,37 +67,37 @@ class ConfigApp:
 
                 # Left: Add New button aligned with form top
                 with ui.column().classes('items-start pt-8'):
-                    ui.button("➕ Add New BackupDrive", on_click=self.set_new_BackupDrive).classes(sizeBTN)
+                    ui.button(t("add_backup_drive"), on_click=self.set_new_BackupDrive).classes(sizeBTN)
 
                 # Right: form fields
                 with ui.column().classes('items-start flex-1'):
-                    ui.label("Select Existing BackupDrive").classes("text-lg font-semibold")
+                    ui.label(t("select_existing_drive")).classes("text-lg font-semibold")
 
                     # BackupDrive Selection
                     self.backupDrive_selector = ui.select(
                         options=[],
                         on_change=self.load_selected_backupDrive,
-                        label="Please select"
+                        label=t("please_select")
                     ).props('stack-label').props('outlined').classes('w-60')
 
                     with ui.row().classes('items-center gap-4'):
-                        self.backupDrive_name = ui.input("Backup Drive Name").classes('w-55')
-                        ui.button("🗑️ Delete Backup Drive",
+                        self.backupDrive_name = ui.input(t("backup_drive_name")).classes('w-55')
+                        ui.button(t("delete_backup_drive"),
                                   on_click=self.confirm_and_delete_BackupDrive).props("color=red").classes(sizeBTN)
 
-                    self.backupDrive_desc = ui.input("Drive Description").classes('w-55')
+                    self.backupDrive_desc = ui.input(t("drive_description")).classes('w-55')
 
                     with ui.row().classes('items-center gap-4'):
                         self.backupDrive_location = (
-                            ui.input("Location")
+                            ui.input(t("location_label"))
                             .classes("overflow-x-auto whitespace-nowrap")
                             .style("min-width: 260px; max-width: 400px;")
                         )
-                        ui.button("Select Folder", on_click=self.select_folder).classes('w-46')
+                        ui.button(t("select_folder"), on_click=self.select_folder).classes('w-46')
 
                     with ui.row().classes('items-center gap-4'):
-                        self.backupDrive_astroDir = ui.input("Astronomy Directory").classes('w-55') or ""
-                        ui.button("Select Sub Folder", on_click=self.select_subfolder).classes(sizeBTN)
+                        self.backupDrive_astroDir = ui.input(t("astronomy_dir")).classes('w-55') or ""
+                        ui.button(t("select_sub_folder"), on_click=self.select_subfolder).classes(sizeBTN)
 
                     # Dwarf selection
                     self.dwarf_list = get_dwarf_Names(self.conn)
@@ -116,11 +117,11 @@ class ConfigApp:
             # ── Bottom: action buttons centered ───────────────────────────────
             ui.separator()
             with ui.row().classes("w-full mt-2 mb-2 justify-between"):
-                ui.button("Save / Update Backup Drive",
+                ui.button(t("save_update_drive"),
                           on_click=self.save_or_update_backup_drive).classes(sizeBTN2)
-                ui.button("🗑️ Delete Backup Entries",
+                ui.button(t("delete_backup_entries"),
                           on_click=self.confirm_and_delete_entries).props("color=red").classes(sizeBTN2)
-                ui.button("🗑️ Delete Manual Entries",
+                ui.button(t("delete_manual_entries"),
                           on_click=self.confirm_and_delete_manual_entries).props("color=red").classes(sizeBTN2)
 
         # need this button don't change if not
@@ -197,7 +198,7 @@ class ConfigApp:
             return
 
         with self.history_container:
-            ui.label("📋 Transfer History").classes("text-base font-bold mt-2 mb-1")
+            ui.label(t("transfer_history")).classes("text-base font-bold mt-2 mb-1")
             for entry in history:
                 ok      = entry.get('result', '') == 'ok'
                 ts      = entry.get('timestamp', '')[:16].replace('T', ' ')
@@ -240,7 +241,7 @@ class ConfigApp:
             self.resetIntegrity()
             self.history_log.visible = True
         else:
-            ui.notify("Invalid backup Drive selection.", type="negative")
+            ui.notify(t("invalid_backup_drive"), type="negative")
             self.history_log.visible = False
             return
 
@@ -288,7 +289,7 @@ class ConfigApp:
             self.backupDrive_dwarf.value = self.dwarfs[0][1]
 
     async def select_folder(self):
-        ui.notify("Please choose the main backup directory for your Dwarf astrophotography images or dark files.", type="info")
+        ui.notify(t("please_backup_dir"), type="info")
         location = self.backupDrive_location.value
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
@@ -305,10 +306,10 @@ class ConfigApp:
             self.backupDrive_location.value = folder
 
     async def select_subfolder(self, location_entry):
-        ui.notify("You can select a specific subfolder where your astrophotography session images are stored.", type="info")
+        ui.notify(t("select_astro_info"), type="info")
         location = self.backupDrive_location.value
         if not location:
-            ui.notify("Fill Location first.", type="negative")
+            ui.notify(t("fill_location"), type="negative")
             return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
@@ -327,7 +328,7 @@ class ConfigApp:
                 astroDir = os.path.relpath(subfolder, location)
                 self.backupDrive_astroDir.value = astroDir
             elif subfolder:
-                ui.notify("Selected folder is not inside the Location folder.", type="negative")
+                ui.notify(t("folder_not_in_loc"), type="negative")
 
     def get_selected_dwarf_id(self):
         print(f"selector: {self.dwarf_selector.value}")
@@ -338,7 +339,7 @@ class ConfigApp:
     def _offer_backup_now(self, dwarf_id, backup_drive_id):
         """After saving a new backup drive, offer to go straight to Explore."""
         with ui.dialog() as dlg, ui.card().classes("p-4 gap-4"):
-            ui.label("✅ Backup Drive saved!").classes("text-lg font-bold")
+            ui.label(t("backup_drive_saved2")).classes("text-lg font-bold")
             ui.label(
                 "Would you like to go to Explore now to back up your Dwarf sessions? "
                 "Sessions not yet backed up will be shown automatically."
@@ -348,8 +349,8 @@ class ConfigApp:
                     dlg.close()
                     url = f"/Explore?DwarfId={dwarf_id}&BackupDriveId={backup_drive_id}&mode=dwarf&only_on_dwarf=1"
                     ui.navigate.to(url)
-                ui.button("🔭 Go to Explore", on_click=go_explore)
-                ui.button("Stay here", on_click=dlg.close)
+                ui.button(t("go_explore"), on_click=go_explore)
+                ui.button(t("stay_here"), on_click=dlg.close)
         dlg.open()
 
     async def save_or_update_backup_drive(self):
@@ -360,7 +361,7 @@ class ConfigApp:
         dwarf_id = self.get_selected_dwarf_id()
 
         if not (name and location and dwarf_id):
-            ui.notify("Fill all fields and save a Dwarf first.", type="negative")
+            ui.notify(t("fill_fields_save_dwarf"), type="negative")
             return
 
         existing = get_backupDrive_id_from_location(self.conn, location)
@@ -376,10 +377,10 @@ class ConfigApp:
             try:
                 self.backupDrive_id = add_backupDrive_detail(self.conn, name, desc, location, astroDir, dwarf_id)
                 self.refresh_backupDrive_list()
-                ui.notify("Backup drive saved.", type="positive")
+                ui.notify(t("backup_drive_saved"), type="positive")
                 self._offer_backup_now(dwarf_id, self.backupDrive_id)
             except sqlite3.IntegrityError:
-                ui.notify("This folder is already registered.", type="negative")
+                ui.notify(t("this_folder_registered"), type="negative")
 
     def ok_confirm_and_update_backup_data(self):
         name = self.backupDrive_name.value
@@ -390,7 +391,7 @@ class ConfigApp:
 
         set_backupDrive_detail(self.conn, name, desc, astroDir, dwarf_id, location)
         self.refresh_backupDrive_list()
-        ui.notify("BackupDrive info updated.", type="positive")
+        ui.notify(t("backup_info_updated"), type="positive")
 
     def save_backup_drive(self):
         name = self.backupDrive_name.value
@@ -400,16 +401,16 @@ class ConfigApp:
         dwarf_id = self.get_selected_dwarf_id()
 
         if not (name and location and dwarf_id):
-            ui.notify("Fill all fields and save a Dwarf first.", type="negative")
+            ui.notify(t("fill_fields_save_dwarf"), type="negative")
             return
 
         cursor = self.conn.cursor()
         try:
             add_backupDrive_detail(self.conn, name, desc, location, astroDir, dwarf_id)
             self.refresh_backupDrive_list()
-            ui.notify("Backup drive saved.", type="positive")
+            ui.notify(t("backup_drive_saved"), type="positive")
         except sqlite3.IntegrityError:
-            ui.notify("This folder is already registered.", type="negative")
+            ui.notify(t("this_folder_registered"), type="negative")
 
     def update_backup_drive(self):
         location = self.backupDrive_location.value
@@ -419,22 +420,22 @@ class ConfigApp:
         dwarf_id = self.get_selected_dwarf_id()
 
         if not location:
-            ui.notify("No location selected.", type="negative")
+            ui.notify(t("no_location"), type="negative")
             return
 
         existing = get_backupDrive_id_from_location(self.conn, location)
         if not existing:
-            ui.notify("No BackupDrive registered at this location.", type="negative")
+            ui.notify(t("no_backup_drive_loc"), type="negative")
             return
 
         set_backupDrive_detail(self.conn, name, desc, astroDir, dwarf_id, location)
         self.refresh_backupDrive_list()
-        ui.notify("BackupDrive info updated", type="positive")
+        ui.notify(t("backup_info_updated"), type="positive")
 
     async def analyze_drive(self):
         location = self.backupDrive_location.value
         if not location:
-            ui.notify("No location selected.", type="negative")
+            ui.notify(t("no_location"), type="negative")
             return
 
         astroDir = self.backupDrive_astroDir.value or ""
@@ -442,7 +443,7 @@ class ConfigApp:
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
-            close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+            close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
             spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
@@ -488,7 +489,7 @@ class ConfigApp:
     async def check_integrity_drive(self):
         location = self.backupDrive_location.value
         if not location:
-            ui.notify("No location selected.", type="negative")
+            ui.notify(t("no_location"), type="negative")
             return
 
         astroDir = self.backupDrive_astroDir.value or ""
@@ -496,7 +497,7 @@ class ConfigApp:
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
-            close_button = ui.button("Close", on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+            close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label(f"🔍 Scanning: {location}, please wait...")
             spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
@@ -522,7 +523,7 @@ class ConfigApp:
 
                 with self.results_container:
                     ui.separator()
-                    ui.label("⚠️ Sessions with errors:").classes("text-bold")
+                    ui.label(t("sessions_in_error")).classes("text-bold")
 
                     self.backup_integrity_list = ui.select(
                         options={
@@ -546,7 +547,7 @@ class ConfigApp:
 
     def open_in_explore(self):
         if not self.selected_error["value"]:
-            ui.notify("Please select a session", type="warning")
+            ui.notify(t("please_select_session"), type="warning")
             return
 
         # retrieve session from label
@@ -556,7 +557,7 @@ class ConfigApp:
         )
 
         if not selected:
-            ui.notify("Session not found", type="negative")
+            ui.notify(t("session_not_found"), type="negative")
             return
 
         session_id = selected["session_id"]
@@ -566,7 +567,7 @@ class ConfigApp:
             
     async def confirm_and_delete_BackupDrive(self):
         if self.backupDrive_id is None:
-            ui.notify("No Backup Drive selected", type="negative")
+            ui.notify(t("no_backup_drive_sel"), type="negative")
             return
 
         if has_related_manual_entries(self.conn, self.backupDrive_id):
@@ -595,11 +596,11 @@ class ConfigApp:
         self.refresh_backupDrive_list()
         self.set_new_BackupDrive()
         self.resetIntegrity()
-        ui.notify("BackupDrive deleted.", type="positive")
+        ui.notify(t("backup_drive_deleted"), type="positive")
 
     async def confirm_and_delete_entries(self):
         if self.backupDrive_id is None:
-            ui.notify("No Backup Drive selected", type="negative")
+            ui.notify(t("no_backup_drive_sel"), type="negative")
             return
 
         await self.WinLog.show(
@@ -611,15 +612,15 @@ class ConfigApp:
     def ok_confirm_and_delete_backup_entries(self):
         delete_backup_entries_and_dwarf_data(self.conn, self.backupDrive_id)
         self.backup_scan_date.text = ""
-        ui.notify("Backup entries and DwarfData deleted.", type="positive")
+        ui.notify(t("backup_entries_deleted"), type="positive")
 
     async def confirm_and_delete_manual_entries(self):
         if self.backupDrive_id is None:
-            ui.notify("No Backup Drive selected.", type="negative")
+            ui.notify(t("no_backup_selected"), type="negative")
             return
 
         if not has_related_manual_entries(self.conn, self.backupDrive_id):
-            ui.notify("No manual entries found for this drive.", type="info")
+            ui.notify(t("no_manual_entries"), type="info")
             return
 
         # First confirmation — warn about ManualSession records
@@ -639,7 +640,7 @@ class ConfigApp:
     async def _ask_delete_manual_sessions_too(self):
         """Second check: offer to also delete orphaned ManualSession records."""
         with ui.dialog().props('persistent') as dialog, ui.card().classes("p-4 gap-3"):
-            ui.label("🗑️ Also delete ManualSession records?").classes("font-semibold")
+            ui.label(t("also_delete_manual")).classes("font-semibold")
             ui.separator()
             ui.label(
                 "ManualSession records hold the metadata (RA/Dec, description, file paths). "
@@ -658,7 +659,7 @@ class ConfigApp:
                     on_click=lambda: (dialog.close(),
                                       self._do_delete_manual_entries(also_sessions=True))
                 ).props("color=red")
-                ui.button("Cancel", on_click=dialog.close).props("flat color=grey")
+                ui.button(t("cancel"), on_click=dialog.close).props("flat color=grey")
         dialog.open()
 
     def _do_delete_manual_entries(self, also_sessions: bool):
@@ -671,7 +672,7 @@ class ConfigApp:
         ui.notify(msg, type="positive")
 
     def get_explore_url(self, session_id = None):
-        ui.notify("Showing Backup Data...")  # Simulate showing data
+        ui.notify(t("showing_backup"))  # Simulate showing data
         if self.backupDrive_id is None:
             explore_url = f"/Explore?mode=backup"
         else:

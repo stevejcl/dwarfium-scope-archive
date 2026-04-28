@@ -5,6 +5,7 @@ import subprocess
 import os
 import re
 import socket
+from components.i18n import t, set_language, get_language, SUPPORTED_LANGUAGES
 
 def _get_app_version():
     """Read version from version.py (built executable) or CHANGELOG.md (dev mode)."""
@@ -92,14 +93,21 @@ class SettingsApp:
 
             with ui.card().classes("w-full p-4"):
                 from nicegui import app as nicegui_app
-                ui.label("ℹ️ Application Info").classes("text-xl font-bold mb-2")
+                ui.label(t("settings_app_info")).classes("text-xl font-bold mb-2")
                 ui.label(f"Version : {_get_app_version()}").classes("text-sm text-gray-600")
+                with ui.row().classes("items-center gap-2 mt-2"):
+                    ui.label(t("lang_label")).classes("text-sm text-gray-600")
+                    ui.select(
+                        {"en": "🇬🇧 English", "fr": "🇫🇷 Français"},
+                        value=get_language(),
+                        on_change=lambda e: set_language(e.value)
+                    ).classes("w-40")
                 if nicegui_app.storage.general.get('LAN_MODE', False):
                     ip = _get_local_ip()
                     port = nicegui_app.storage.general.get('LAN_PORT', 8080)
                     ui.label(f"📡 LAN access: http://{ip}:{port}").classes("text-sm text-blue-600 mt-1")
                 else:
-                    ui.label("📡 LAN access: disabled").classes("text-sm text-gray-400 mt-1")
+                    ui.label(t("settings_lan_disabled")).classes("text-sm text-gray-400 mt-1")
                 ui.separator().classes("my-2")
                 self._last_report_path = None
                 export_status = ui.label("").classes("text-sm text-gray-500 mt-1")
@@ -136,13 +144,13 @@ class SettingsApp:
                         ui.notify(f"Export failed: {e}", type="negative")
 
                 with ui.row().classes("mt-2 gap-2 items-center"):
-                    ui.button("📄 Export PDF Report", on_click=export_pdf_report) \
+                    ui.button(t("settings_export_pdf"), on_click=export_pdf_report) \
                         .props("outlined")
-                    open_btn = ui.button("📂 Open", on_click=open_report) \
+                    open_btn = ui.button(t("settings_open_report"), on_click=open_report) \
                         .props("outlined")
                     open_btn.visible = False
 
-            ui.label("🔭 Configuration of Dwarf Local Parent directory").classes("text-xl font-bold")
+            ui.label(t("dwarf_config")).classes("text-xl font-bold")
 
             with ui.card().classes("w-full p-4") as info_dwarf_local:
                 current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
@@ -171,36 +179,36 @@ class SettingsApp:
 
                     ui.notify(f"Dwarf Local Parent path saved: {new_path}", type='positive', position='top')
 
-                ui.button("Save", on_click=save_path).classes("mt-4")
+                ui.button(t("save"), on_click=save_path).classes("mt-4")
          
-            ui.label("🔭 Configuration of NOVA Astrometry").classes("text-xl font-bold")
+            ui.label(t("nova_config")).classes("text-xl font-bold")
 
             ui.label(f"Detected System : {platform.system()}")
 
             with ui.card().classes("w-full"):
-                ui.label("🌐 Online mode (Astrometry.net)")
-                ui.button("Create an API key on Astrometry.net",
+                ui.label(t("nova_online"))
+                ui.button(t("nova_create_key"),
                           on_click=lambda:ui.navigate.to('https://nova.astrometry.net/api_help', new_tab=True))
                 api_key = get_setting_text(self.conn, "NOVA_ASTRO_API") or ""
                 api_input = ui.input("API key", value=api_key, password=True)
 
                 def save_api_key():
                     set_setting_text(self.conn, "NOVA_ASTRO_API", api_input.value.strip())
-                    ui.notify("API key saved successfully!", type='positive')
+                    ui.notify(t("notif_api_key_saved"), type='positive')
 
                 ui.button("💾 Save key", on_click=save_api_key)
 
             with ui.card().classes("w-full"):
-                ui.label("💻 Local Mode (solve-field)")
+                ui.label(t("nova_local"))
 
                 if self.check_solve_field():
                     ui.label("✅ solve-field is not available on this system.")
                 else:
                     ui.label("❌ solve-field not found.")
-                    ui.button("Install solve-field localy", on_click=self.install_local_astrometry)
+                    ui.button(t("nova_install"), on_click=self.install_local_astrometry)
 
             with ui.card().classes("w-full"):
-                ui.label("🔭 Mosaic & Stitch Parameters").classes("text-xl font-bold")
+                ui.label(t("mosaic_params")).classes("text-xl font-bold")
                 StitchParamsEditor(self.conn)  # no on_change → Save button
 
         if not self.InitDwarfLocal:
@@ -231,7 +239,7 @@ class SettingsApp:
                     set_setting_text(self.conn, "DWARF_LOCAL_PATH", path)
                     self.InitDwarfLocal = True
 
-                    ui.notify("Path saved successfully!", type="positive")
+                    ui.notify(t("path_saved"), type="positive")
                     dialog.close()
 
                     # redirect

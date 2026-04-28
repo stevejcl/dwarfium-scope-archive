@@ -1,5 +1,12 @@
 # Changelog
 
+## [In Progress] - 2026-04-28
+
+### Add 
+    Add SessionNotes Managment
+    Add robust file copy for Session Transfer
+    Begin of Multi Language
+
 ## [V3.1.3] - 2026-04-28
 
 ### Add 

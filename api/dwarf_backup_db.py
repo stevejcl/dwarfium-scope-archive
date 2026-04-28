@@ -248,6 +248,22 @@ def create_DwarfSessionsError_sql():
         )
         """
 
+def create_SessionNotes_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS SessionNotes (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            backup_entry_id   INTEGER REFERENCES BackupEntry(id) ON DELETE CASCADE,
+            manual_session_id INTEGER REFERENCES ManualSession(id) ON DELETE CASCADE,
+            summary           TEXT,
+            note              TEXT,
+            location          TEXT,
+            moon_phase        TEXT,
+            seeing            INTEGER CHECK(seeing BETWEEN 1 AND 5),
+            created_at        TEXT DEFAULT (datetime('now')),
+            updated_at        TEXT DEFAULT (datetime('now'))
+        )
+        """
+
 SCHEMAS = {
     "DsoCatalog": create_DsoCatalog_sql,
     "AstroObject": create_AstroObject_sql,
@@ -263,6 +279,7 @@ SCHEMAS = {
     "ManualSession": create_ManualSession_sql,
     "ManualSessionEntry": create_ManualSessionEntry_sql,
     "DwarfSessionsError" : create_DwarfSessionsError_sql,
+    "SessionNotes": create_SessionNotes_sql,
 }
 
 # Sanity check — catch wrong mappings at import time, not at runtime
@@ -310,7 +327,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 6
+CURRENT_DB_VERSION = 8
 
 def init_db(conn):
     try:
@@ -403,6 +420,15 @@ def init_db(conn):
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_dwarfsessionserror_session_dir ON DwarfSessionsError(session_dir);
+        """)
+
+        cursor.execute(create_SessionNotes_sql())
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_backup ON SessionNotes(backup_entry_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_manual ON SessionNotes(manual_session_id);
         """)
 
         # Stamp current version so future startups skip migrations
@@ -670,6 +696,23 @@ def migrate_v7(conn):
         return []
 
 
+def migrate_v8(conn):
+    try:
+        print("Migrating Database to V8...")
+        cursor = conn.cursor()
+        cursor.execute(create_SessionNotes_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_backup ON SessionNotes(backup_entry_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_manual ON SessionNotes(manual_session_id);
+        """)
+        conn.commit()
+        print("Migration v8 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v8: {e}")
+        return []
+
 
 MIGRATIONS = {
     1: migrate_v1,
@@ -679,6 +722,7 @@ MIGRATIONS = {
     5: migrate_v5,
     6: migrate_v6,
     7: migrate_v7,
+    8: migrate_v8,
     # Add more later...
 }
 

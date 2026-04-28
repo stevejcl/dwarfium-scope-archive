@@ -1,3 +1,4 @@
+from components.i18n import t
 import webview
 import asyncio
 from nicegui import ui, app, run, Client, background_tasks
@@ -11,7 +12,7 @@ from pathlib import Path
 from components.menu import menu
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
-from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
+from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
@@ -175,20 +176,20 @@ class TransferApp:
         with ui.card().classes("w-full p-4 mt-2 items-center") as self.main_ui:
             with ui.grid(columns=nbcol).classes("items-center"):
                 if self.BackUrl:
-                    ui.button("🔙 Back", on_click=lambda: ui.navigate.to(self.get_explore_url())).classes("justify-self-start")
+                    ui.button(t("back_btn"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes("justify-self-start")
                 # In Repair / Merge mode the direction is fixed — hide the Archive/Restore toggle
                 if self.mode != "Repair" and self.mode != "Merge" :
                     self.mode_toggle = ui.toggle(['Archive', 'Restore'], value=self.mode, on_change=self.switch_mode).classes("col-span-1 justify-self-center")
                 elif self.mode == "Repair":
                     self.mode_toggle = None
-                    ui.label("🔧 Repair Transfer (Temp → Dwarf)").classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
+                    ui.label(t("repair_transfer")).classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
                 else:
                     self.mode_toggle = None
-                    ui.label("🔧 Merge Transfer (Temp → Dwarf)").classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
+                    ui.label(t("merge_transfer")).classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
 
             with ui.grid(columns=2):
                 with ui.column().classes('w-50 items-center'):
-                    ui.label("Select Dwarf:").classes("text-lg font-semibold")
+                    ui.label(t("select_dwarf")).classes("text-lg font-semibold")
                     self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
                     with ui.row().classes('items-center gap-2'):
                         self.usb_status_label = ui.label("").classes('pb-2')
@@ -204,27 +205,27 @@ class TransferApp:
                             .style('position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10')
                         )
                 with ui.column().classes('w-50 items-center'):
-                    ui.label("Backup Drive:").classes("text-lg font-semibold")
+                    ui.label(t("backup_drive")).classes("text-lg font-semibold")
                     self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
                     self.backup_status_label = ui.label("").classes('pb-2')
 
-            self.transfert_mode_select = ui.select(label="Transfer Mode",options=[], on_change=self.change_transfert_mode).props('stack-label').props('outlined').classes('w-40').classes("min-w-[200px] w-auto overflow-x-auto whitespace-nowrap")
+            self.transfert_mode_select = ui.select(label=t("transfer_mode"),options=[], on_change=self.change_transfert_mode).props('stack-label').props('outlined').classes('w-40').classes("min-w-[200px] w-auto overflow-x-auto whitespace-nowrap")
 
-            self.SourceDirectory = ui.label("Source: Dwarf USB Drive").classes("text-lg font-semibold")
-            self.input_src_dir = ui.select(label="Source Directory:", value = self.src_dir, options=[self.src_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            ui.button("Select Source", on_click=lambda : self.select_source_folder()).classes(sizeBTN)
+            self.SourceDirectory = ui.label(t("source_usb")).classes("text-lg font-semibold")
+            self.input_src_dir = ui.select(label=t("source_directory"), value = self.src_dir, options=[self.src_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
+            ui.button(t("select_source"), on_click=lambda : self.select_source_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-1 items-center"):
-            self.DestinationDirectory = ui.label("Destination: Backup Drive").classes("text-lg font-semibold")
-            self.input_dest_dir = ui.select(label="Destination Directory:", value = self.dest_dir, options=[self.dest_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            ui.button("Select Destination", on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
+            self.DestinationDirectory = ui.label(t("backup_destination")).classes("text-lg font-semibold")
+            self.input_dest_dir = ui.select(label=t("destination_dir"), value = self.dest_dir, options=[self.dest_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
+            ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
-            self.progress_label = ui.label("Idle...")
+            self.progress_label = ui.label(t("idle"))
             self.progress = ui.linear_progress(value=0, show_value=False).classes("w-full")
-            self.CancelBackup = self.cancel_btn = ui.button('Cancel Backup', on_click=lambda: self.cancel()).classes(sizeBTN)
+            self.CancelBackup = self.cancel_btn = ui.button(t("cancel_backup"), on_click=lambda: self.cancel()).classes(sizeBTN)
             self.cancel_btn.visible = False
-            self.StartBackup = ui.button('Start Backup', on_click=lambda:self.start_backup()).classes(sizeBTN)
+            self.StartBackup = ui.button(t("start_backup"), on_click=lambda:self.start_backup()).classes(sizeBTN)
             self.cancel_backup = False
             ui.label(
                 "💡 Transfer runs in the background — you can navigate to other pages and return. "
@@ -239,8 +240,8 @@ class TransferApp:
             # Persistent banner shown when a transfer is running in background
             with ui.element('div').classes('w-full') as self._running_banner:
                 with ui.row().classes("w-full items-center bg-orange-50 rounded p-2 gap-2"):
-                    ui.label("🔄 Transfer running — you can browse other pages and come back.").classes("text-sm text-orange-500 flex-1")
-                    ui.label("⚠️ Closing the app will stop the transfer.").classes("text-sm font-bold text-red-500")
+                    ui.label(t("transfer_running")).classes("text-sm text-orange-500 flex-1")
+                    ui.label(t("cancel_transfer_warn")).classes("text-sm font-bold text-red-500")
             self._running_banner.visible = False
 
             # Emergency reset button — shown when transfer appears stuck
@@ -674,7 +675,7 @@ class TransferApp:
                     startrails = list_ftp_subdirectories(self.dwarf_ip_sta_mode, subdir='STARTRAILS')
                     subdirs += [f"{s}" for s in restacked] + [f"{s}" for s in startrails]
             except Exception as e:
-                ui.notify("No RESTACKED or STARTRAILS folder found on FTP or access failed")
+                ui.notify(t("no_restacked"))
 
             # Optionally remove duplicates
             subdirs = sorted(set(subdirs))
@@ -764,7 +765,7 @@ class TransferApp:
             else:
                 msg = "Database sync in progress."
             with ui.dialog().props('persistent') as dlg, ui.card().classes('p-6 gap-4'):
-                ui.label("⚠️ Transfer in progress").classes("text-lg font-bold text-orange-500")
+                ui.label(t("transfer_warning")).classes("text-lg font-bold text-orange-500")
                 ui.label(f"{msg} Please wait for it to complete before starting a new one.").classes("text-gray-600")
                 ui.button("OK", on_click=dlg.close).props("color=primary")
             dlg.open()
@@ -859,8 +860,8 @@ class TransferApp:
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
             ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
             with ui.row():
-                ui.button("Yes", on_click=lambda: dialog.submit('Yes'))
-                ui.button("No", on_click=lambda: dialog.submit('No'))
+                ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
+                ui.button(t("no"), on_click=lambda: dialog.submit('No'))
 
         result = await dialog
         if result == 'Yes':
@@ -903,7 +904,7 @@ class TransferApp:
         if result_backup:
             local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
             if not local_Main_Dwarf_dir:
-                self._safe_ui(lambda: ui.notify("❌ Error accessing local Dwarf Directory", type="negative"))
+                self._safe_ui(lambda: ui.notify(t("no_error_access"), type="negative"))
             else:
                 label = spinner = log = dialog = None
                 try:
@@ -914,7 +915,7 @@ class TransferApp:
                                     label   = ui.label(self.ScanningMessage)
                                     spinner = ui.spinner(size="lg")
                                     log     = ui.log(max_lines=40).classes('w-full').style('height: 600px')
-                                    ui.button('Close', on_click=dialog.close)
+                                    ui.button(t("close"), on_click=dialog.close)
                                 dialog.open()
                 except Exception:
                     pass
@@ -951,7 +952,7 @@ class TransferApp:
             return True
         else:
             self._safe_ui(lambda: self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files..."))
-        self._safe_ui(lambda: ui.notify("Starting..."))
+        self._safe_ui(lambda: ui.notify(t("starting")))
 
         if self.mode == "Repair":
             transfer_mode = self.transfert_mode_select.value
@@ -989,7 +990,7 @@ class TransferApp:
 
         if result:
             self._safe_ui(lambda: self.progress_label.set_text("End of Backup"))
-            self._safe_ui(lambda: ui.notify("✅ Backup complete and verified!"))
+            self._safe_ui(lambda: ui.notify(t("backup_verified")))
             self._write_transfer_journal(dest_path, src_dir, result=True)
 
             # Dark download mode: just a file copy — no session scan needed
@@ -1008,7 +1009,7 @@ class TransferApp:
         """Run the post-copy scan — with dialog if page is still open, silently if not."""
         local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
         if not local_Main_Dwarf_dir:
-            self._safe_ui(lambda: ui.notify("❌ Error accessing local Dwarf Directory", type="negative"))
+            self._safe_ui(lambda: ui.notify(t("no_error_access"), type="negative"))
             self._set_progress('error', 0, 0, error="No local Dwarf directory")
             return
 
@@ -1022,7 +1023,7 @@ class TransferApp:
                             label   = ui.label(self.ScanningMessage)
                             spinner = ui.spinner(size="lg")
                             log     = ui.log(max_lines=25).classes('w-full').style('height: 450px;')
-                            ui.button('Close', on_click=dialog.close)
+                            ui.button(t("close"), on_click=dialog.close)
                         dialog.open()
         except Exception:
             print("[Transfer] Client gone — running post-copy scan silently")
@@ -1053,7 +1054,7 @@ class TransferApp:
                 pass
 
         try:
-            _ui(lambda: ui.notify("Starting Local Sync ..."))
+            _ui(lambda: ui.notify(t("starting_sync")))
             self._set_progress('scanning', 0, 0, current_file="🔄 Syncing session files...")
             session_name = ""
             dir_parent_session = ""
@@ -1087,10 +1088,10 @@ class TransferApp:
             print(f"dir_parent_session: {dir_parent_session}")
             print(f"dir_backup_session: {dir_backup_session}")
             # if session is a RESTACKED one will be copied in RESTACKED dir by sync_dwarf_sessions
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, sync_dwarf_sessions, self.DwarfId, dir_parent_session, local_Main_Dwarf_dir, session_name, log)
 
-            _ui(lambda: ui.notify("Starting Analysis ..."))
+            _ui(lambda: ui.notify(t("starting_analysis")))
             self._set_progress('scanning', 0, 0, current_file="🔍 Analysing backup drive...")
 
             local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.DwarfId)
@@ -1277,7 +1278,7 @@ class TransferApp:
         app.storage.general.pop('transfer_copy_totals', None)
         self._reset_btn.visible = False
         self._reset_progress_ui()
-        ui.notify("Transfer state reset — you can start a new transfer.", type="warning")
+        ui.notify(t("transfer_reset"), type="warning")
 
     def _reset_progress_ui(self, clear_paths=True):
         """Reset progress UI to idle state and clear storage so badge disappears."""
@@ -1596,14 +1597,6 @@ class TransferApp:
 
         return all_files
 
-    # Optional: compute a SHA256 hash for data integrity
-    def file_hash(self, path):
-        hash = hashlib.sha256()
-        with open(path, 'rb') as f:
-            while chunk := f.read(8192):
-               hash.update(chunk)
-        return hash.hexdigest()
-
     def _clean_dwarf_dest_subdir_files(self, dest_dir: str) -> None:
         dest = Path(dest_dir)
         if not dest.exists():
@@ -1663,7 +1656,7 @@ class TransferApp:
 
                 # --- FTP ➜ LOCAL (ARCHIVE) ---
                 if use_ftp and is_archive:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, ftp_download_file, ftp, src_file, dest_file)
 
                 # --- LOCAL ➜ FTP (RESTORE) ---
@@ -1673,12 +1666,16 @@ class TransferApp:
                 # --- LOCAL ➜ LOCAL ---
                 else:
                     os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     try:
-                        await loop.run_in_executor(None, shutil.copy2, src_file, dest_file)
+                        result_copy =  await loop.run_in_executor(None, safe_copy2, src_file, dest_file)
+                        if not result_copy:
+                            raise Exception(f"Copy failed without exception: {src_file}")
+
                     except OSError as ose:
                         winerror = getattr(ose, 'winerror', None)
-                        if winerror == 112 or ose.errno == 28:  # 28 = ENOSPC (Linux)
+                        errno = getattr(ose, 'errno', None)
+                        if winerror == 112 or errno == 28:  # 28 = ENOSPC (Linux)
                             msg = f"❌ Disk full — transfer stopped after {verified_files}/{total_files} files."
                             self._safe_ui(lambda m=msg: self.notify_me.refresh(m))
                             self._safe_ui(lambda m=msg: ui.notify(m, type="negative", timeout=0))
@@ -1686,16 +1683,8 @@ class TransferApp:
                             result = False
                             break
                         raise  # other OSError — let outer except handle it
-                    # Skip size check if file missing — copy was interrupted (shutdown)
-                    if os.path.exists(dest_file):
-                        if os.path.getsize(src_file) != os.path.getsize(dest_file):
-                            raise Exception("Size mismatch after copy")
-
-                    # 🔒 Step 2 (Optional): Check hash for sensitive files
-                    #if os.path.splitext(src_file)[1] in ['.fits', '.json', '.jpg']:
-                    #    if file_hash(src_file) != file_hash(dest_file):
-                    #        ui.notify.refresh(f"Checksum mismatch: {src_file}")
-                    #        break
+                    except xception as e:
+                        raise Exception(f"Error during copy: {src_file}") from e
 
                 verified_files += 1
                 self._safe_ui(lambda p=progress: setattr(progress_bar, "value", round(p) / 100))

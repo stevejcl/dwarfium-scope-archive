@@ -1,3 +1,4 @@
+from components.i18n import t
 from nicegui import ui, app
 
 import os
@@ -43,7 +44,7 @@ async def home_page():
     status = None
     curent_init = is_app_started
     if not is_app_started:
-        status = ui.label('Starting...')
+        status = ui.label(t("starting"))
     spinner = ui.spinner(size='md')
 
     await ui.context.client.connected()
@@ -218,7 +219,7 @@ class HomeApp:
             self.gallery_timer = None
 
         with ui.column().classes("w-full").classes("items-center"):
-            ui.label("⭐ My Favorite images ⭐ ").classes("text-center mt-0 text-lg font-semibold")
+            ui.label(t("favorites_gallery")).classes("text-center mt-0 text-lg font-semibold")
             if image_data:
                 slideshow_image = ui.image("").classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
                 image_info = ui.label("").classes("text-center mt-2 text-lg font-semibold")
@@ -271,10 +272,10 @@ class HomeApp:
                 self.gallery_timer = ui.timer(interval=10, callback=next_image)
 
                 with ui.row().classes("gap-4 mb-0"):
-                    ui.button("Previous", on_click=prev_image)
-                    ui.button("Next", on_click=next_image)
+                    ui.button(t("previous"), on_click=prev_image)
+                    ui.button(t("next"), on_click=next_image)
             else:
-                ui.label("No favorite images found.")
+                ui.label(t("no_fav_images"))
 
     def open_folder(self, directory = None):
         if not directory:

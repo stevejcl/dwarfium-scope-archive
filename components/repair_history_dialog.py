@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from components.i18n import t
 """
 components/repair_history_dialog.py
 -------------------------------------
@@ -35,7 +38,7 @@ Usage
     )
     dialog.open()
 """
-from __future__ import annotations
+
 
 from typing import Callable
 from nicegui import ui
@@ -136,7 +139,7 @@ class RepairHistoryDialog:
                 with ui.row().classes("w-full items-center gap-3 pb-2 border-b border-gray-200"):
                     ui.icon("history", color="orange", size="2rem")
                     with ui.column().classes("gap-0"):
-                        ui.label("Previous actions found").classes("text-lg font-bold")
+                        ui.label(t("previous_actions")).classes("text-lg font-bold")
                         session_display = self.primary_session
                         if len(session_display) > 60:
                             session_display = "…" + session_display[-57:]
@@ -146,7 +149,7 @@ class RepairHistoryDialog:
 
                 # ── History list ─────────────────────────────────────────
                 if not history:
-                    ui.label("No previous actions found for this session.").classes(
+                    ui.label(t("no_prev_actions")).classes(
                         "text-gray-500 italic py-4"
                     )
                 else:
@@ -213,12 +216,12 @@ class RepairHistoryDialog:
         # ── Pre-built delete confirmation dialog ─────────────────────
         with ui.dialog().props("persistent").style("z-index: 10000") as self._confirm_dlg, \
              ui.card().style("min-width: 400px"):
-            ui.label("Remove this entry from history?").classes("font-semibold")
+            ui.label(t("remove_history")).classes("font-semibold")
             ui.label(
                 "The output folder and its files are NOT deleted."
             ).classes("text-sm text-gray-500")
             with ui.row().classes("gap-2 justify-end w-full pt-2"):
-                ui.button("Cancel", on_click=self._confirm_dlg.close).props("flat")
+                ui.button(t("cancel"), on_click=self._confirm_dlg.close).props("flat")
                 ui.button(
                     "Remove",
                     on_click=self._confirm_delete_selected,
@@ -321,14 +324,14 @@ class RepairHistoryDialog:
 
     def _handle_copy(self):
         if self._selected_entry is None:
-            ui.notify("Please select an entry first.", type="warning")
+            ui.notify(t("please_select_entry"), type="warning")
             return
         self.close()
         self._on_copy(self._selected_entry)
 
     def _handle_delete(self):
         if self._selected_entry is None:
-            ui.notify("Please select an entry first.", type="warning")
+            ui.notify(t("please_select_entry"), type="warning")
             return
         self._confirm_dlg.open()
 
@@ -339,7 +342,7 @@ class RepairHistoryDialog:
         entry_id = self._selected_entry["id"]
         removed = self.manager.delete_action(entry_id)
         if removed:
-            ui.notify("✅ Entry removed from history.", type="positive")
+            ui.notify(t("entry_removed"), type="positive")
             if entry_id in self._entry_cards:
                 self._entry_cards[entry_id].delete()
                 del self._entry_cards[entry_id]
@@ -350,7 +353,7 @@ class RepairHistoryDialog:
             self._action_hint.set_text("👆 Select an entry above to enable actions")
             self._action_hint.classes(remove="text-green-600", add="text-gray-400")
         else:
-            ui.notify("❌ Entry not found.", type="negative")
+            ui.notify(t("entry_not_found"), type="negative")
 
     def _handle_cancel(self):
         self.close()
