@@ -9,7 +9,7 @@ import traceback
 import asyncio
 from pathlib import Path
 from components.menu import menu
-from api.dwarf_backup_fct import get_local_dwarf_dir, print_log, win_long_path, get_session_detail
+from api.dwarf_backup_fct import get_local_dwarf_dir, print_log, win_long_path, get_session_detail, safe_copy2
 from api.dwarf_backup_fct_mosaic import repair_mosaic_session, merge_mosaic, safe_progress
 from api.dwarf_mosaic_check import (
     read_shots_info,
@@ -1027,7 +1027,9 @@ class MosaicApp:
                     copied = 0
                     for src, dst in files_to_copy:
                         try:
-                            shutil.copy2(src, dst)
+                            result_copy = safe_copy2(src, dst)
+                            if not result_copy:
+                                raise Exception(f"Copy failed without exception: {src}")
                             copied += 1
                         except Exception as e:
                             print_log(f"⚠️ Could not copy {os.path.basename(src)} to Session_Error: {e}", self.log_ui)
@@ -1118,7 +1120,7 @@ class MosaicApp:
         work_primary_path = Path(work_primary)
 
         # ── Backup before merge ─────────────────────────────────────────────
-        backed_up = backup_merge_files(work_primary)
+        backed_up = await backup_merge_files(work_primary)
         if backed_up is None:
             ui.notify("⚠️ Could not create backup — merge aborted.", type="negative")
             return None
@@ -1170,13 +1172,13 @@ class MosaicApp:
                 with ui.row().classes("justify-end gap-2 mt-4 w-full"):
                     def on_error_params():
                         self.open_stitch_params()
-                    def on_error_retry():
+                    async def on_error_retry():
                         error_dialog.close()
-                        restore_merge_files(backed_up)
+                        await restore_merge_files(backed_up)
                         cleanup_backup(backed_up)
                         ui.timer(0, lambda: self.create_and_show_panorama(secondary, work_primary), once=True)
-                    def on_error_discard():
-                        restore_merge_files(backed_up)
+                    async def on_error_discard():
+                        await restore_merge_files(backed_up)
                         cleanup_backup(backed_up)
                         error_dialog.close()
                         ui.notify("Mosaic discarded — files restored.", type="warning")
@@ -1272,9 +1274,9 @@ class MosaicApp:
         # --- Button handlers ---
         accepted = False
 
-        def on_discard():
+        async def on_discard():
             nonlocal accepted
-            restore_merge_files(backed_up)
+            await restore_merge_files(backed_up)
             cleanup_backup(backed_up)
             result_dialog.close()
             ui.notify("Mosaic discarded — files restored to original.", type="warning")
@@ -1312,7 +1314,9 @@ class MosaicApp:
 
         for item in src_path.iterdir():
             if item.is_file():
-                shutil.copy2(str(item), str(dest_path / item.name))
+                result_copy = safe_copy2(str(item), str(dest_path / item.name))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(item)}")
                 #print_log(f"  📄 {item.name}", log)
                 done += 1
                 if progress_cb and total > 0:
@@ -1323,7 +1327,9 @@ class MosaicApp:
                 files = list(item.glob("stacked-16*"))
                 #print_log(f"  📁 {item.name} ({len(files)} files)", log)
                 for f in files:
-                    shutil.copy2(str(f), str(panel_dest / f.name))
+                    result_copy = safe_copy2(str(f), str(panel_dest / f.name))
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {str(f)}")
                     #print_log(f"    ✔️ {f.name}", log)
                     done += 1
                     if progress_cb and total > 0:
@@ -1374,7 +1380,9 @@ class MosaicApp:
 
         # copytree with custom copy function to track progress
         def copy_with_progress(src_f, dst_f):
-            shutil.copy2(src_f, dst_f)
+            result_copy = safe_copy2(src_f, dst_f)
+            if not result_copy:
+                raise Exception(f"Copy failed without exception: {src_f}")
             nonlocal done
             done += 1
             print(f"  ✔️ {Path(src_f).name}")

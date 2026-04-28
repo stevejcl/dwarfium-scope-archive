@@ -248,79 +248,107 @@ def reload(table, target, objects, astro_object_id, astro_group_id):
 
         ui.update() 
 
-def show_assign_dialog(conn: sqlite3.Connection , astro_object_row, on_done=None):
+def show_assign_dialog(db_path_or_conn, astro_object_row, on_done=None):
+    """
+    db_path_or_conn: either a db path string OR a sqlite3.Connection.
+    Opens its own connection per query to avoid SQLite thread issues.
+    """
+    from nicegui import run
+    import sqlite3 as _sqlite3
+
+    if isinstance(db_path_or_conn, str):
+        db_path = db_path_or_conn
+    else:
+        db_path = db_path_or_conn.execute("PRAGMA database_list").fetchone()[2]
+
+    def _open():
+        c = _sqlite3.connect(db_path)
+        c.execute("PRAGMA foreign_keys = ON")
+        return c
+
     with ui.dialog() as dialog, ui.card().style('width: 600px; max-width: none'):
         ui.label(f"Assign DSO to AstroObject ID {astro_object_row[1]}")
 
-        # Filters & Search Inputs
-        current_dso_assign = str(astro_object_row[3])
         search_input = ui.input(label='Search (designation, name, constellation, type)', on_change=lambda e: update_dso_list()).classes('w-full')
         constellation_filter = ui.input(label='Constellation (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
         type_filter = ui.input(label='Type (exact)', on_change=lambda e: update_dso_list()).classes('w-full')
+        dso_select = ui.select({}, label='Select DSO').classes('w-full')
+        custom_dso_input     = ui.input(label="custom_description",
+                                        value=astro_object_row[2] or '').classes('w-full')
 
-        dso_select = ui.select({}, label='Select DSO', on_change=lambda e: update_dso_value(current_dso_assign)).classes('w-full')
-        # Allow user to enter custom DSO
-        custom_dso_input = ui.input(label='Edit or enter custom description', value=astro_object_row[2]).classes('w-full')
+        _user_is_searching = [False]
 
-        def update_dso_value(current_dso_assign):
-            if dso_select.value and dso_select.value != current_dso_assign:
-                print(f"description updated")
-                custom_dso_input.value = get_dso_description(conn, dso_select.value)
-                current_dso_assign = dso_select.value
-
-        def update_dso_list():
-            filtered = get_dso_filtered(
-                conn,
-                search=search_input.value,
-                constellation=constellation_filter.value or None,
-                dso_type=type_filter.value or None
-            )
-            options = {str(dso[0]): f"{dso[2]} ({dso[3]}, {dso[4]})" for dso in filtered}
+        async def update_dso_list(auto_select=False):
+            def _fetch():
+                c = _open()
+                result = get_dso_filtered(c,
+                    search=search_input.value,
+                    constellation=constellation_filter.value or None,
+                    dso_type=type_filter.value or None)
+                c.close()
+                return result
+            filtered = await run.io_bound(_fetch)
+            options = {str(d[0]): f"{d[2]} ({d[3]}, {d[4]})" for d in filtered}
             dso_select.set_options(options)
+            # Auto-select first result only when user typed something
+            if auto_select and options:
+                dso_select.value = next(iter(options))
+                await update_dso_value()
 
-        def update_dso_data():
-            registered = get_dso_registered(
-                conn,
-                astro_object_row[3],
-            )
+        async def update_dso_value():
+            if not dso_select.value:
+                return
+            def _fetch():
+                c = _open()
+                desc = get_dso_description(c, dso_select.value)
+                c.close()
+                return desc
+            desc = await run.io_bound(_fetch)
+            if desc:
+                custom_dso_input.value = desc
+
+        async def update_dso_data():
+            def _fetch():
+                c = _open()
+                r = get_dso_registered(c, astro_object_row[3])
+                c.close()
+                return r
+            registered = await run.io_bound(_fetch)
             if registered:
-                options = {str(registered[0]): f"{registered[2]} ({registered[3]}, {registered[4]})"}
-                dso_select.set_options(options)
+                dso_select.set_options(                        
+                    {str(registered[0]): f"{registered[2]} ({registered[3]}, {registered[4]})"})
                 dso_select.value = str(registered[0])
             else:
-               update_dso_list()
+                await update_dso_list(auto_select=False)
 
-        update_dso_data()
+        search_input.on('update:model-value',         lambda e: update_dso_list(auto_select=True))
+        constellation_filter.on('update:model-value', lambda e: update_dso_list(auto_select=True))
+        type_filter.on('update:model-value',          lambda e: update_dso_list(auto_select=True))
+        dso_select.on('update:model-value',           lambda e: update_dso_value())
 
-        def confirm():
-            if dso_select.value:
-                dso_id = int(dso_select.value)
+        ui.timer(0, update_dso_data, once=True)
 
-                # Génère la description automatiquement
-                dso = get_dso_registered(conn, dso_id)
+        async def confirm():
+            if not dso_select.value:
+                ui.notify(t("notif_select_dso_first"), color='red')
+                return
+            dso_id = int(dso_select.value)
+            def _save():
+                c = _open()
+                dso = get_dso_registered(c, dso_id)
                 if dso:
-                    auto_description = f"{dso[2].split(',')[0].strip()} ({dso[3]}) in {dso[4]}, size: {dso[5] or 'N/A'}, mag: {dso[6] or 'N/A'}"
+                    auto_desc = f"{dso[2].split(',')[0].strip()} ({dso[3]}) in {dso[4]}, size: {dso[5] or 'N/A'}, mag: {dso[6] or 'N/A'}"
                 else:
-                    auto_description = ''
-
-                # Compare avec l'input de l'utilisateur
-                final_description = custom_dso_input.value.strip()
-                if final_description == auto_description:
-                    final_description = auto_description  # pas changé
-
-                update_astro_object_dso(conn, astro_object_row[0], int(dso_select.value), final_description)
-
-                ui.notify('DSO assigned/updated!')
-                close()
-            else:
-                ui.notify('Please select a DSO first.', color='red')
-
-
-        def close():
-                dialog.close()
-                # back to parent function!
-                if on_done:
-                    on_done()
+                    auto_desc = ''
+                final_desc = custom_dso_input.value.strip() or auto_desc
+                update_astro_object_dso(c, astro_object_row[0], dso_id, final_desc)
+                c.close()
+                return dso_id
+            await run.io_bound(_save)
+            ui.notify("DSO assigned/updated!")
+            dialog.close()
+            if on_done:
+                on_done()
 
         with ui.row():
             ui.button('Confirm', on_click=confirm)

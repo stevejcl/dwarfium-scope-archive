@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import traceback
 from components.menu import menu
-from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
+from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir, safe_copy2
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
@@ -451,7 +451,9 @@ class TransferAppUSB:
                 progress = round((i + 1) / total_files * 100)
 
                 os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                shutil.copy2(src_file, dest_file)
+                result_copy = safe_copy2(src_file, dest_file)
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {src_file}")
 
                 # 🔎 Step 1: Size check
                 if os.path.getsize(src_file) != os.path.getsize(dest_file):

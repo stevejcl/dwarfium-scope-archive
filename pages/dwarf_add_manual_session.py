@@ -19,7 +19,7 @@ from astropy.wcs import WCS
 from components.menu import menu
 from api.dwarf_backup_fct import ( 
     hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
-    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref
+    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref, safe_copy2
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id, get_or_create_ManualSessionDrive, update_manual_session
@@ -1726,7 +1726,10 @@ class AddManualSession:
                         counter += 1
 
                     # Copy the file to destination
-                    shutil.copy2(src_path, dest_file_path)
+                    result_copy = safe_copy2(src_path, dest_file_path)
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {src_path}")
+                        
                     
                     #thumbnail for first jpeg
                     if (file_ext.lower() == ".jpg" or file_ext.lower() == ".jpeg" ) and counter == 1:

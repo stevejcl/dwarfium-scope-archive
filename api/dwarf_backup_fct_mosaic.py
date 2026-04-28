@@ -17,7 +17,7 @@ from scipy.ndimage import distance_transform_edt, binary_dilation
 
 from nicegui import ui, run, Client
 
-from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path
+from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path, safe_copy2
 
 from api.dwarf_backup_fct_mosaic_algo import ( infer_mosaic_info_from_images, subsample_for_alignment, crop_to_active_region, equalize_background, detect_panel_position)
 
@@ -1743,7 +1743,9 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
             for old_file in old_panel.glob("*.fits"):
                 if not old_file.name.startswith("stacked-16"):
                     if files_are_different(str(old_file), str(new_panel / old_file.name)):
-                        await run.io_bound(shutil.copy2, str(old_file), str(new_panel / old_file.name))
+                        result_copy = await run.io_bound(safe_copy2, str(old_file), str(new_panel / old_file.name))
+                        if not result_copy:
+                            raise Exception(f"Copy failed without exception: {str(src_file)}")
                     else:
                         safe_print(f"Skipping {old_file.name} (unchanged)")
 
@@ -1763,7 +1765,9 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
             print_log( f"ℹ️ Replacing PNGs for panel {panel_index}...", log)
             for old_file, new_file in zip(old_pngs, new_pngs):
                 if files_are_different(str(old_file), str(new_file)):
-                    await run.io_bound(shutil.copy2, str(old_file), str(new_file))   # replace content, keep name
+                    result_copy = await run.io_bound(safe_copy2, str(old_file), str(new_file))   # replace content, keep name
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {str(old_file)}")
                 else:
                     safe_print(f"Skipping {new_file.name} (unchanged)")
 
@@ -1780,7 +1784,9 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
             print_log( f"ℹ️ Copying old stacked-16 FITS files for panel {panel_index}...", log)
             for old_file, new_file in zip(old_stacked, new_stacked):
                 if files_are_different(str(old_file), str(new_file)):
-                    await run.io_bound(shutil.copy2, str(old_file), str(new_file))   # replace content, keep name
+                    result_copy = await run.io_bound(safe_copy2, str(old_file), str(new_file))   # replace content, keep name
+                    if not result_copy:
+                        raise Exception(f"Copy failed without exception: {str(old_file)}")
                 else:
                     safe_print(f"Skipping {new_file.name} (unchanged)")
 
@@ -1798,7 +1804,9 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
         new_info = new_path / "shotsInfo.json"
         if old_info.exists():
             if files_are_different(str(old_info), str(new_info), True):
-                await run.io_bound(shutil.copy2, str(old_info), str(new_info))   # replace content, keep name
+                result_copy = await run.io_bound(safe_copy2, str(old_info), str(new_info))   # replace content, keep name
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(old_info)}")
             else:
                 safe_print(f"Skipping {new_info.name} (unchanged)")
 
@@ -1879,7 +1887,7 @@ async def repair_mosaic_session(old_session_path: str, new_session_path: str, lo
 # MERGE LOGIC (backup helper)
 # =========================================================
 
-def backup_merge_files(work_primary: str) -> dict | None:
+async def backup_merge_files(work_primary: str) -> dict | None:
     """
     Backup all files that merge_mosaic will overwrite.
     Returns a dict mapping original_path -> backup_path, or None on failure.
@@ -1894,7 +1902,9 @@ def backup_merge_files(work_primary: str) -> dict | None:
             src = work_path / name
             if src.exists():
                 dst = backup_dir / name
-                shutil.copy2(str(src), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(src), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(src)}")
                 backed_up[str(src)] = str(dst)
 
         # Per-panel files
@@ -1908,13 +1918,17 @@ def backup_merge_files(work_primary: str) -> dict | None:
             jpg = panel_dir / "stacked.jpg"
             if jpg.exists():
                 dst = panel_backup / "stacked.jpg"
-                shutil.copy2(str(jpg), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(jpg), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(jpg)}")
                 backed_up[str(jpg)] = str(dst)
 
             # stacked-16*.png
             for png in panel_dir.glob("stacked-16*.png"):
                 dst = panel_backup / png.name
-                shutil.copy2(str(png), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(png), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(png)}")
                 backed_up[str(png)] = str(dst)
 
         print(f"  ✅ Backed up {len(backed_up)} files → {backup_dir}")
@@ -1926,11 +1940,13 @@ def backup_merge_files(work_primary: str) -> dict | None:
         return None
 
 
-def restore_merge_files(backed_up: dict) -> None:
+async def restore_merge_files(backed_up: dict) -> None:
     """Restore all backed-up files to their original locations."""
     for original, backup in backed_up.items():
         try:
-            shutil.copy2(backup, original)
+            result_copy = await run.io_bound(safe_copy2, backup, original)
+            if not result_copy:
+                raise Exception(f"Copy failed without exception: {backup}")
             print(f"  ✅ Restored {Path(original).name}")
         except Exception as e:
             print(f"  ⚠️ Restore failed for {original}: {e}")
@@ -2026,7 +2042,9 @@ async def merge_mosaic(old_path_str, new_path_str, copy_intermediate_files, log,
                     dst = new_panel / new_name
 
                     if files_are_different(f, dst):
-                        await run.io_bound(shutil.copy2, str(f), str(dst))
+                        result_copy = await run.io_bound(safe_copy2, str(f), str(dst))
+                        if not result_copy:
+                            raise Exception(f"Copy failed without exception: {str(f)}")
                     else:
                         safe_print(f"Skipping {new_name} (unchanged)")
 
@@ -2193,13 +2211,17 @@ async def reset_panel_images(primary_path_str, new_path_str, log, progress_bar, 
                 print_log(f"⚠️ Panel {i}: no stacked PNG found in primary", log)
             for f in primary_pngs:
                 dst = new_panel / f.name
-                await run.io_bound(shutil.copy2, str(f), str(dst))
+                result_copy = await run.io_bound(safe_copy2, str(f), str(dst))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(f)}")
                 print_log(f"  ✔️ Restored {f.name}", log)
 
             # stacked.jpg in subdir
             primary_jpg = primary_panel / "stacked.jpg"
             if primary_jpg.exists():
-                await run.io_bound(shutil.copy2, str(primary_jpg), str(new_panel / "stacked.jpg"))
+                result_copy = await run.io_bound(safe_copy2, str(primary_jpg), str(new_panel / "stacked.jpg"))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(primary_jpg)}")
                 print_log(f"  ✔️ Restored stacked.jpg in panel {i}", log)
             else:
                 print_log(f"  ⚠️ No stacked.jpg in primary panel {i}", log)
@@ -2214,7 +2236,9 @@ async def reset_panel_images(primary_path_str, new_path_str, log, progress_bar, 
         for filename in ["stacked.jpg", "stacked_thumbnail.jpg", "shotsInfo.json"]:
             src = primary_path / filename
             if src.exists():
-                await run.io_bound(shutil.copy2, str(src), str(new_path / filename))
+                result_copy = await run.io_bound(safe_copy2, str(src), str(new_path / filename))
+                if not result_copy:
+                    raise Exception(f"Copy failed without exception: {str(src)}")
                 print_log(f"  ✔️ Restored {filename}", log)
             else:
                 print_log(f"  ⚠️ {filename} not found in primary", log)

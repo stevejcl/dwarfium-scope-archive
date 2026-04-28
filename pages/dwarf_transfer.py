@@ -11,7 +11,7 @@ from pathlib import Path
 from components.menu import menu
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
-from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
+from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
@@ -1392,15 +1392,24 @@ class TransferApp:
                 # --- LOCAL ➜ LOCAL ---
                 else:
                     os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                    await run.io_bound(shutil.copy2, src_file, dest_file)
-                    if os.path.getsize(src_file) != os.path.getsize(dest_file):
-                        raise Exception("Size mismatch after copy")
+                    result_copy =await run.io_bound(safe_copy2, src_file, dest_file)
+                    try:                 
+                        if not result_copy:
+                             raise Exception(f"Copy failed without exception: {src_file}")
 
-                    # 🔒 Step 2 (Optional): Check hash for sensitive files
-                    #if os.path.splitext(src_file)[1] in ['.fits', '.json', '.jpg']:
-                    #    if file_hash(src_file) != file_hash(dest_file):
-                    #        ui.notify.refresh(f"Checksum mismatch: {src_file}")
-                    #        break
+                    except OSError as ose:
+                        winerror = getattr(ose, 'winerror', None)
+                        errno = getattr(ose, 'errno', None)
+                        if winerror == 112 or errno == 28:  # 28 = ENOSPC (Linux)
+                            msg = f"❌ Disk full — transfer stopped after {verified_files}/{total_files} files."
+                            self._safe_ui(lambda m=msg: self.notify_me.refresh(m))
+                            self._safe_ui(lambda m=msg: ui.notify(m, type="negative", timeout=0))
+                            self._set_progress('error', verified_files, total_files, error="Disk full")
+                            result = False
+                            break
+                        raise  # other OSError — let outer except handle it
+                    except xception as e:
+                        raise Exception(f"Error during copy: {src_file}") from e
 
                 verified_files += 1
                 self._safe_ui(lambda: setattr(progress_bar, "value", round(progress)))

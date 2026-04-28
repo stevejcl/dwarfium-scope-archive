@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.0.9h] - 2026-04-28
+
+### Add 
+    Introduce a robust safe_copy2 utility (with retries, size/hash verification)
+    FTP support and configurable chunk size)
+
+### BugFix# 
+    UI improvements in AstroObject association and DSO catalog
+
 ## [V3.0.9g] - 2026-04-27
 
 ### Add 

@@ -3339,6 +3339,14 @@ def get_astro_objects(conn: sqlite3.Connection):
     with conn:
         return conn.execute(query, DEFAULT_GROUP_NAMES).fetchall()
 
+def get_astro_object_by_id(conn: sqlite3.Connection, object_id: int):
+    """Return a single AstroObject row (id, name, description, dso_id) by id."""
+    with conn:
+        return conn.execute(
+            "SELECT id, name, description, dso_id FROM AstroObject WHERE id = ?",
+            (object_id,)
+        ).fetchone()
+
 def get_astro_object_description(conn: sqlite3.Connection, object_id=None):
     with conn:
         result = conn.execute('SELECT description FROM AstroObject Where id = ? ', (object_id,)).fetchone()

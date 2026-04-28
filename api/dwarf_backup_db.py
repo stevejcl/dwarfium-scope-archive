@@ -310,7 +310,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 6
+CURRENT_DB_VERSION = 7
 
 def init_db(conn):
     try:
