@@ -35,7 +35,7 @@ def infer_mosaic_info_from_images(mosaic_dir: str) -> dict | None:
         # ── Total mosaic size ──────────────────────────────────────────
         root_stacked = mosaic_dir / "stacked.jpg"
         if not root_stacked.exists():
-            print_log(f"  ⚠️ No root stacked.jpg in {mosaic_dir}")
+            print_log(f"  ⚠️ No root stacked.jpg in {mosaic_dir}", None)
             return None
         
         mosaic_img = cv2.imread(str(root_stacked))
@@ -58,7 +58,7 @@ def infer_mosaic_info_from_images(mosaic_dir: str) -> dict | None:
                     break
 
         if panel_w is None:
-            print_log(f"  ⚠️ No panel stacked.jpg found")
+            print_log(f"  ⚠️ No panel stacked.jpg found", None)
             return None
 
         # ── Derive grid and overlap ────────────────────────────────────
@@ -87,7 +87,7 @@ def infer_mosaic_info_from_images(mosaic_dir: str) -> dict | None:
         }
 
     except Exception as e:
-        print_log(f"  ⚠️ infer_mosaic_info_from_images failed: {e}")
+        print_log(f"  ⚠️ infer_mosaic_info_from_images failed: {e}", None)
         return None
 
 def detect_panel_position(gray: np.ndarray, edge_frac: float = 0.35) -> tuple[int, int]:
