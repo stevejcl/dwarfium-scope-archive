@@ -34,7 +34,7 @@ def session_notes_widget(conn, backup_entry_id=None, manual_session_id=None):
                             backup_entry_id=backup_entry_id,
                             manual_session_id=manual_session_id)
 
-    with ui.card().tight().classes("w-full border border-gray-200"):
+    with ui.card().tight().classes("border border-gray-200 m-2"):
         container = ui.column().classes("w-full gap-1")
         with container:
             _render_widget(conn, container, note,

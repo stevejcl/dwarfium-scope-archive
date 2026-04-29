@@ -20,7 +20,7 @@ from components.menu import menu, setStyle
 @ui.page('/Backup')
 async def backup_settings(BackupId:int = None):
 
-    menu("Backup Backup Configuration")
+    menu(t("page_backup"))
     await ui.context.client.connected()
     # Launch the GUI
     ConfigApp(DB_NAME, BackupId=BackupId)
@@ -106,7 +106,7 @@ class ConfigApp:
 
                     self.dwarf_selector = ui.select(
                         options=list(self.dwarf_name_to_id.keys()),
-                        label="Select Dwarf"
+                        label=t("select_dwarf_label")
                     ).props('stack-label').props('outlined').classes('w-60')
 
                     with ui.card().tight():
@@ -530,7 +530,7 @@ class ConfigApp:
                             e["session_id"]: f"{e['session_dir']} → {e.get('reason') or e.get('status')}"
                             for e in self.errors
                         },
-                        label="Select a session",
+                        label=t("select_a_session"),
                         on_change=lambda e: self.selected_error.update({"value": e.value})
                     ).classes("w-full")
         except Exception as e:
@@ -650,12 +650,12 @@ class ConfigApp:
             ui.separator()
             with ui.row().classes("gap-4"):
                 ui.button(
-                    "Delete entries only",
+                    t("delete_entries_only"),
                     on_click=lambda: (dialog.close(),
                                       self._do_delete_manual_entries(also_sessions=False))
                 ).props("color=orange")
                 ui.button(
-                    "Delete entries AND sessions",
+                    t("delete_entries_sessions"),
                     on_click=lambda: (dialog.close(),
                                       self._do_delete_manual_entries(also_sessions=True))
                 ).props("color=red")

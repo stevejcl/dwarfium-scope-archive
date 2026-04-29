@@ -297,6 +297,9 @@ _T.update({
     "usb_inaccessible":     {"en": "USB Directory is inaccessible.", "fr": "Le répertoire USB est inaccessible."},
     "select_usb_folder":    {"en": "Select USB Folder",             "fr": "Sélectionner le dossier USB"},
     "select_sub_folder":    {"en": "Select Sub Folder",             "fr": "Sélectionner un sous-dossier"},
+    "wait_complete":        {"en": "Please wait for it to complete before starting a new one.",             "fr": "Merci de patient jusqu'à l'achèvement, avant d'en commencer un autre."},
+    "select_src_dir":       {"en": "Select a Source Directory",     "fr": "Sélectionnez le répertoire d'origine"},
+    "select_dst_dir":       {"en": "Select a Destination Directory",     "fr": "Sélectionnez le répertoire de destination"},
 
     # Mosaic page
     "mosaic_result":        {"en": "🌅 Mosaic Result",              "fr": "🌅 Résultat de la mosaïque"},
@@ -581,4 +584,289 @@ _T.update({
     "syncing_db":           {"en": "🔄 Syncing DB...",  "fr": "🔄 Sync DB..."},
     "transfer_done":        {"en": "✅ Transfer done",  "fr": "✅ Transfert terminé"},
     "transfer_error":       {"en": "❌ Transfer error", "fr": "❌ Erreur transfert"},
+})
+
+# ── Mosaic additional ─────────────────────────────────────────────────────────
+_T.update({
+    "merge_mode":           {"en": "Merge",                    "fr": "Fusion"},
+    "repair_mode":          {"en": "Repair",                   "fr": "Réparer"},
+    "mosaic_merge_desc":    {"en": "Primary = base mosaic. Secondary = session whose data will be merged into it. Result goes to the work directory.",
+                             "fr": "Principale = mosaïque de base. Secondaire = session dont les données seront fusionnées. Résultat dans le dossier de travail."},
+    "primary_session_dir":  {"en": "Primary Session Directory:","fr": "Répertoire session principale :"},
+    "secondary_session_dir":{"en": "Secondary Session Directory:","fr": "Répertoire session secondaire :"},
+    "path_detected":        {"en": "✅ Path detected.",         "fr": "✅ Chemin détecté."},
+    "path_not_detected":    {"en": "❌ Path not detected.",     "fr": "❌ Chemin non détecté."},
+})
+
+# ── New strings from latest commits ──────────────────────────────────────────
+_T.update({
+    # Backup page
+    "delete_entries_sessions":  {"en": "Delete entries AND sessions",     "fr": "Supprimer les entrées ET les sessions"},
+    "delete_entries_only":      {"en": "Delete entries only",             "fr": "Supprimer les entrées uniquement"},
+    "manual_session_info":      {"en": "ManualSession records hold the metadata (RA/Dec, description, file paths).", "fr": "Les enregistrements ManualSession contiennent les métadonnées (AR/Déc, description, chemins)."},
+    "select_dwarf_label":       {"en": "Select Dwarf",                    "fr": "Sélectionner un Dwarf"},
+    "select_a_session":         {"en": "Select a session",                "fr": "Sélectionner une session"},
+    "drive_in_use_backup":      {"en": "This Backup Drive is still in use by one or more backup entries. Please delete them first.", "fr": "Ce disque est encore utilisé par des entrées de sauvegarde. Supprimez-les d'abord."},
+    "drive_in_use_manual":      {"en": "This Backup Drive is still in use by one or more manual entries. Please delete them first.", "fr": "Ce disque est encore utilisé par des entrées manuelles. Supprimez-les d'abord."},
+    "go_explore_backup":        {"en": "Would you like to go to Explore now to back up your Dwarf sessions?", "fr": "Voulez-vous aller dans Explorer maintenant pour sauvegarder vos sessions Dwarf ?"},
+    # Dwarf page
+    "cannot_delete_dwarf":      {"en": "Cannot delete: this Dwarf is still linked to one or more backup entries.", "fr": "Impossible de supprimer : ce Dwarf est encore lié à des entrées de sauvegarde."},
+    "mtp_device":               {"en": "MTP Device",                      "fr": "Appareil MTP"},
+    "sessions_in_error":        {"en": "⚠️ Sessions in Error",            "fr": "⚠️ Sessions en erreur"},
+    # Explore
+    "prepare_siril":            {"en": "📡 Prepare for Siril",            "fr": "📡 Préparer pour Siril"},
+    "filter_objects":           {"en": "🔍 Filter objects...",            "fr": "🔍 Filtrer les objets..."},
+    "view_linked_manual":       {"en": "🔗 View linked Manual session",   "fr": "🔗 Voir la session manuelle liée"},
+    "show_panels":              {"en": "🧩 Show Current Panels",          "fr": "🧩 Afficher les panneaux"},
+    # Manual Explore
+    "show_fullscreen_btn":      {"en": "Show fullscreen",                 "fr": "Plein écran"},
+    "edit_session":             {"en": "✏️ Edit session",                 "fr": "✏️ Modifier la session"},
+    "view_linked_dwarf":        {"en": "🔗 View linked Dwarf session",    "fr": "🔗 Voir la session Dwarf liée"},
+    "identify_target_btn":      {"en": "🖼️ Identify target",             "fr": "🖼️ Identifier la cible"},
+    "open_folder_btn":          {"en": "🗁 Open",                         "fr": "🗁 Ouvrir"},
+    "delete_session_btn":       {"en": "🗑️ Delete session",              "fr": "🗑️ Supprimer la session"},
+    # Mosaic
+    "confirm_continue":         {"en": "Confirm and continue",            "fr": "Confirmer et continuer"},
+    "no_thumbnail_check":       {"en": "No thumbnail available — check orientation manually", "fr": "Aucune miniature disponible — vérifiez l'orientation manuellement"},
+    "output_directory":         {"en": "Output Directory:",               "fr": "Répertoire de sortie :"},
+    "select_session_repair":    {"en": "Select a session to repair:",     "fr": "Sélectionner une session à réparer :"},
+    "copy_to_dwarf":            {"en": "📁 Copy to Dwarf now",            "fr": "📁 Copier vers le Dwarf maintenant"},
+    "use_as_secondary":         {"en": "🔧 Use as Secondary Session",     "fr": "🔧 Utiliser comme session secondaire"},
+    # Transfer
+    "force_reset_transfer":     {"en": "⚠️ Force Reset Transfer State",   "fr": "⚠️ Forcer la réinitialisation du transfert"},
+})
+
+# ── Toggle values ─────────────────────────────────────────────────────────────
+_T.update({
+    "archive_mode":     {"en": "Archive",   "fr": "Archive"},
+    "restore_mode":     {"en": "Restore",   "fr": "Restaurer"},
+})
+
+_T.update({
+    "dest_already_exists": {"en": "The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?",
+                            "fr": "La destination :\n'{dest_path}' existe déjà.\nÊtes-vous sûr de vouloir continuer ?"},
+    "notify_dest_already_exists": {"en": "The destination: '{dest_path}' already exists!}",
+                            "fr": "La destination : '{dest_path}' existe déjà."},
+})
+
+_T.update({
+    "initializing_db":  {"en": "Initializing database...", "fr": "Initialisation de la base de données..."},
+    "ready":            {"en": "Ready ✅",                  "fr": "Prêt ✅"},
+})
+
+_T.update({
+    "local_data_size":    {"en": "Local Data size:",     "fr": "Taille données locales :"},
+    "local_archive_size": {"en": "Local Archive size:",  "fr": "Taille archive locale :"},
+})
+
+_T.update({
+    "list_objects":       {"en": "List Objects",              "fr": "Liste des objets"},
+    "no_session_found":   {"en": "No Session found.",         "fr": "Aucune session trouvée."},
+    "no_fits_on_disk":    {"en": "No sub-exposure fits files were found on the disk", "fr": "Aucun fichier FITS de sous-exposition trouvé sur le disque"},
+    "backup_available_on":{"en": "Backup Available on:",      "fr": "Sauvegarde disponible sur :"},
+    "last_scan_label":    {"en": "Last Scan on:",             "fr": "Dernier scan le :"},
+})
+
+_T.update({
+    "ftp_not_connected": {"en": "❌ FTP Error: not connected", "fr": "❌ Erreur FTP : non connecté"},
+})
+
+_T.update({
+    "total_matching":       {"en": "Total matching sessions:",     "fr": "Total des sessions correspondantes :"},
+    "sessions_found":       {"en": "sessions were found, totaling","fr": "sessions trouvées, totalisant"},
+    "stacks_exp":           {"en": "stacks and a total exposure time of", "fr": "stacks et un temps de pose total de"},
+    "select_session_for":   {"en": "Select a session for",         "fr": "Sélectionner une session pour"},
+    "restore_selected":     {"en": "📦 Restore Selected Sessions", "fr": "📦 Restaurer les sessions sélectionnées"},
+})
+
+_T.update({
+    "taken":            {"en": "Taken",                                   "fr": "Prise"},
+    "restack":          {"en": "Restack",                                 "fr": "Restack"},
+    "all_backups":      {"en": "(All Backups)",                           "fr": "(Tous les disques)"},
+    "all_dwarfs":       {"en": "(All Dwarfs)",                            "fr": "(Tous les Dwarfs)"},
+    "all_sessions":     {"en": "[ALL SESSIONS]",                          "fr": "[TOUTES LES SESSIONS]"},
+    "lens_label":       {"en": "Lens",                                    "fr": "Objectif"},
+    "stacked_shots":    {"en": "stacked shots for a total exposure time of", "fr": "poses empilées pour un temps de pose total de"},
+    "classified_as":    {"en": "Classified as:",                          "fr": "Classifié comme :"},
+    "directory_size":   {"en": "Directory Size",                          "fr": "Taille du répertoire"},
+    "filename":         {"en": "Filename",                                "fr": "Fichier"},
+    "panels_found":     {"en": "panel(s) found",                          "fr": "panneau(x) trouvé(s)"},
+})
+
+_T.update({
+    "with_label":           {"en": "with",                                "fr": "avec"},
+    "size_label":           {"en": "Size",                                "fr": "Taille"},
+    "darks_matched_range":  {"en": "dark(s) matched (temp in range)",     "fr": "dark(s) correspondant (température dans la plage)"},
+    "darks_matched_closest":{"en": "dark(s) matched (closest temp)",      "fr": "dark(s) correspondant (température la plus proche)"},
+    "no_darks_found":       {"en": "❌ No matching darks found",           "fr": "❌ Aucun dark correspondant trouvé"},
+})
+
+_T.update({
+    "on_label":             {"en": "on",                                  "fr": "le"},
+    "min_temp":             {"en": "MinTemp",                             "fr": "TempMin"},
+    "max_temp":             {"en": "MaxTemp",                             "fr": "TempMax"},
+    "found_one_fits":       {"en": "Found one fits image on the disk",    "fr": "1 image FITS trouvée sur le disque"},
+    "found_fits_images":    {"en": "fits images on the disk",             "fr": "images FITS trouvées sur le disque"},
+    "found_failed_images":  {"en": "failed images on the disk",           "fr": "images en erreur sur le disque"},
+    "all_sessions_display": {"en": "[ALL SESSIONS]",                      "fr": "[TOUTES LES SESSIONS]"},
+})
+
+# ── Comet / Asteroid search ───────────────────────────────────────────────────
+_T.update({
+    "comet_expansion_title":{"en": "☄️ Nearby comets & asteroids (SkyBot / IMCCE)",
+                             "fr": "☄️ Comètes & astéroïdes proches (SkyBot / IMCCE)"},
+    "col_type":             {"en": "Type",                                "fr": "Type"},
+    "col_mag":              {"en": "Mag (V)",                             "fr": "Mag (V)"},
+    "searching_comets":     {"en": "⏳ Searching comets…",               "fr": "⏳ Recherche de comètes…"},
+    "no_session_date_skybot":{"en": "⚠️ No session date available — cannot query SkyBot.",
+                              "fr": "⚠️ Date de session non disponible — impossible d'interroger SkyBot."},
+    "comet_error":          {"en": "☄️ Unexpected error:",               "fr": "☄️ Erreur inattendue :"},
+    "comets_found_searching":{"en": "comet(s) found — searching asteroids…",
+                              "fr": "comète(s) trouvée(s) — recherche d'astéroïdes…"},
+    "no_comets_searching":  {"en": "⏳ No comets found — searching asteroids…",
+                             "fr": "⏳ Aucune comète trouvée — recherche d'astéroïdes…"},
+    "no_comets_asteroids":  {"en": "✅ No comets or asteroids found within 4° at the time of this session.",
+                             "fr": "✅ Aucune comète ou astéroïde trouvé à moins de 4° lors de cette session."},
+    "comet_copied":         {"en": "copied to description — click 💾 Save to confirm.",
+                             "fr": "copié dans la description — cliquez 💾 Sauvegarder pour confirmer."},
+    "max_magnitude":        {"en": "Max magnitude",                      "fr": "Magnitude maximale"},
+    "apply_filter":         {"en": "Apply filter",                       "fr": "Appliquer le filtre"},
+    "objects_shown":        {"en": "object(s) shown",                    "fr": "objet(s) affiché(s)"},
+    "click_to_use":         {"en": "click ➕ to use as description",     "fr": "cliquez ➕ pour utiliser comme description"},
+})
+
+_T.update({
+    "objects_fainter":  {"en": "object(s) found but all fainter than mag {limit:.1f} — try increasing the limit.",
+                         "fr": "objet(s) trouvé(s) mais tous plus faibles que mag {limit:.1f} — essayez d'augmenter la limite."},
+    "mag_tooltip":      {"en": "Objects fainter than this value are excluded (Dwarf II ≈ mag 13–15)",
+                         "fr": "Les objets plus faibles que cette valeur sont exclus (Dwarf II ≈ mag 13–15)"},
+    "refresh_label":    {"en": "Refresh",                           "fr": "Actualiser"},
+    "no_data":          {"en": "No data available",                 "fr": "Aucune donnée disponible"},
+})
+
+_T.update({
+    "dwarf_target": {"en": "Dwarf Target", "fr": "Cible Dwarf"},
+})
+
+_T.update({
+    "target_label": {"en": "Target", "fr": "Cible"},
+})
+
+_T.update({
+    "date_label":           {"en": "Date",                              "fr": "Date"},
+    "type_label":           {"en": "Type",                              "fr": "Type"},
+    "temp_label":           {"en": "Temp",                              "fr": "Temp"},
+    "no_filter":            {"en": "No filter",                         "fr": "Sans filtre"},
+    "fits_files_in_folder": {"en": "FITS file(s) in session folder",    "fr": "fichier(s) FITS dans le dossier de session"},
+    "images_found":         {"en": "images found",                      "fr": "images trouvées"},
+    "dwarf_label":          {"en": "Dwarf",                             "fr": "Dwarf"},
+    "drive_label":          {"en": "Drive",                             "fr": "Disque"},
+    "folder_label":         {"en": "Folder",                            "fr": "Dossier"},
+})
+
+_T.update({
+    "no_connection_available":  {"en": "No connection available",               "fr": "Aucune connexion disponible"},
+    "source_dwarf_ftp":         {"en": "Source: Dwarf Drive (FTP)",             "fr": "Source : Lecteur Dwarf (FTP)"},
+    "source_dwarf":             {"en": "Source: Dwarf Drive",                   "fr": "Source : Lecteur Dwarf"},
+    "source_cali_ftp":          {"en": "Source: Dwarf CALI_FRAME (FTP)",        "fr": "Source : Dwarf CALI_FRAME (FTP)"},
+    "source_cali":              {"en": "Source: Dwarf CALI_FRAME",              "fr": "Source : Dwarf CALI_FRAME"},
+    "source_repaired_mosaic":   {"en": "Source: Repaired Mosaic Temp Directory","fr": "Source : Répertoire temp mosaïque réparée"},
+    "source_merged_mosaic":     {"en": "Source: Merged Mosaic Temp Directory",  "fr": "Source : Répertoire temp mosaïque fusionnée"},
+    "source_backup_drive":      {"en": "Source: Backup Drive",                  "fr": "Source : Disque de sauvegarde"},
+    "dest_backup_drive":        {"en": "Destination: Backup Drive",             "fr": "Destination : Disque de sauvegarde"},
+    "dest_dwarf_ftp":           {"en": "Destination: Dwarf Drive (FTP)",        "fr": "Destination : Lecteur Dwarf (FTP)"},
+    "dest_dwarf":               {"en": "Destination: Dwarf Drive",              "fr": "Destination : Lecteur Dwarf"},
+    "the_dwarf_dir":            {"en": "the Dwarf directory!",                  "fr": "le répertoire Dwarf !"},
+    "the_backup_dir":           {"en": "the backup directory!",                 "fr": "le répertoire de sauvegarde !"},
+    "scanning_backup_drive":    {"en": "🔍 Scanning Backup drive, please wait...","fr": "🔍 Analyse du disque de sauvegarde, veuillez patienter..."},
+    "scanning_dwarf_drive":     {"en": "🔍 Scanning Dwarf drive, please wait...","fr": "🔍 Analyse du lecteur Dwarf, veuillez patienter..."},
+    "end_scanning_backup":      {"en": "End of Scanning Backup drive",          "fr": "Fin de l'analyse du disque de sauvegarde"},
+    "end_scanning_dwarf":       {"en": "End of Scanning Dwarf drive",           "fr": "Fin de l'analyse du lecteur Dwarf"},
+    "start_backup":             {"en": "Start Backup",                          "fr": "Démarrer la sauvegarde"},
+    "start_restore":            {"en": "Start Restore",                         "fr": "Démarrer la restauration"},
+    "start_repair_transfer":    {"en": "Start Repair Mosaic Transfer",          "fr": "Démarrer le transfert de réparation"},
+    "start_merge_transfer":     {"en": "Start Merge Mosaic Transfer",           "fr": "Démarrer le transfert de fusion"},
+    "cancel_restore":           {"en": "Cancel Restore",                        "fr": "Annuler la restauration"},
+    "cancel_transfer":          {"en": "Cancel Transfer",                       "fr": "Annuler le transfert"},
+    "analysing_backup_drive":   {"en": "🔍 Analysing backup drive...",          "fr": "🔍 Analyse du disque de sauvegarde..."},
+})
+
+_T.update({
+    "manual_sessions_found": {"en": "manual sessions found.",      "fr": "sessions manuelles trouvées."},
+    "session_label":         {"en": "Session",                     "fr": "Session"},
+})
+
+_T.update({
+    "mosaic_repair_desc":   {"en": "Primary = reference mosaic (small but correct). Secondary = session to repair. Result goes to the work directory.",
+                             "fr": "Principale = mosaïque de référence (petite mais correcte). Secondaire = session à réparer. Résultat dans le dossier de travail."},
+    "primary_session_repair":  {"en": "📂 Primary Session (reference — correct mosaic)",  "fr": "📂 Session principale (référence — mosaïque correcte)"},
+    "secondary_session_repair":{"en": "📂 Secondary Session (session to repair)",          "fr": "📂 Session secondaire (session à réparer)"},
+    "start_merge":          {"en": "🔀 Start Merge",                                       "fr": "🔀 Démarrer la fusion"},
+})
+
+_T.update({
+    "transfer_background":      {"en": "💡 Transfer runs in the background — you can navigate to other pages and return. Closing the app will stop the transfer.",
+                                 "fr": "💡 Le transfert tourne en arrière-plan — vous pouvez naviguer et revenir. Fermer l'application arrêtera le transfert."},
+    "copy_complete":            {"en": "Copy complete ({copied}/{total} files)",
+                                 "fr": "Copie terminée ({copied}/{total} fichiers)"},
+    "db_sync_progress":         {"en": "Database sync in progress.",        "fr": "Synchronisation de la base en cours."},
+    "ftp_read_only":            {"en": "FTP is read-only: Restore not allowed.", "fr": "FTP est en lecture seule : restauration non autorisée."},
+    "transferring":             {"en": "Transferring",                      "fr": "Transfert en cours"},
+    "syncing_db":               {"en": "Syncing database...",               "fr": "Synchronisation base de données..."},
+    "transfer_complete":        {"en": "Transfer complete: {copied}/{total} files copied successfully",
+                                 "fr": "Transfert terminé : {copied}/{total} fichiers copiés avec succès"},
+    "transfer_cancelled":       {"en": "Transfer cancelled after {copied}/{total} files",
+                                 "fr": "Transfert annulé après {copied}/{total} fichiers"},
+    "transfer_error_msg":       {"en": "Error after {copied}/{total}: {error}",
+                                 "fr": "Erreur après {copied}/{total} : {error}"},
+    "last_transfer_ok":         {"en": "Last transfer OK — {mode} | {dwarf} → {backup} | {session} ({copied}/{total} files) at {ts}",
+                                 "fr": "Dernier transfert OK — {mode} | {dwarf} → {backup} | {session} ({copied}/{total} fichiers) à {ts}"},
+    "last_transfer_interrupted":{"en": "Last transfer interrupted — {mode} | {dwarf} → {backup} | {session} ({copied}/{total} files) at {ts}",
+                                 "fr": "Dernier transfert interrompu — {mode} | {dwarf} → {backup} | {session} ({copied}/{total} fichiers) à {ts}"},
+})
+
+_T.update({
+    "transfer_background": {
+        "en": "💡 Transfer runs in the background — you can navigate to other pages and return. Closing the app will stop the transfer.",
+        "fr": "💡 Le transfert tourne en arrière-plan — vous pouvez naviguer et revenir. Fermer l'application arrêtera le transfert."
+    },
+    "tag_optional": {"en": "Help: " \
+                           "Tag is Optional. Leave empty for a single version.\n" \
+                           "Use a tag (e.g. 'v2', 'Siril') to keep multiple " \
+                           "imports of the same session side by side.\n",
+                     "fr": "Aide : " \
+                           "Le tag est facultatif. Laissez ce champ vide pour une seule version.\n" \
+                           "Utilisez un tag (par exemple, « v2 », « Siril ») pour conserver plusieurs " \
+                            "importations de la même session côte à côte.\n"},
+})
+
+_T.update({
+    "transfer_already_running": {"en": "A transfer is already running ({copied}/{total} files copied).",
+                                  "fr": "Un transfert est déjà en cours ({copied}/{total} fichiers copiés)."},
+    "transfer_interrupted":     {"en": "⚠️ Last transfer was interrupted: {copied}/{total} files copied from {src}. You can restart the transfer to complete it.",
+                                  "fr": "⚠️ Le dernier transfert a été interrompu : {copied}/{total} fichiers copiés depuis {src}. Vous pouvez relancer le transfert."},
+    "syncing_session_files":    {"en": "🔄 Syncing session files...",    "fr": "🔄 Synchronisation des fichiers de session..."},
+    "disk_full_msg":            {"en": "❌ Disk full — transfer stopped after {verified}/{total} files.",
+                                  "fr": "❌ Disque plein — transfert arrêté après {verified}/{total} fichiers."},
+    "no_local_dwarf_dir":       {"en": "No local Dwarf directory",       "fr": "Aucun répertoire Dwarf local"},
+    "sessions_indexed":         {"en": "✅ {copied}/{total} files — {dwarf} dwarf + {backup} backup sessions indexed",
+                                  "fr": "✅ {copied}/{total} fichiers — {dwarf} sessions Dwarf + {backup} sessions sauvegarde indexées"},
+})
+
+# ── Page Titles ───────────────────────────────────────────────────────────────
+_T.update({
+    "page_home":           {"en": "Home",                        "fr": "Accueil"},
+    "page_dwarf":          {"en": "Dwarf Configuration",         "fr": "Configuration Dwarf"},
+    "page_backup":         {"en": "Backup Configuration",        "fr": "Configuration Sauvegarde"},
+    "page_darks":          {"en": "Dark Library",                "fr": "Bibliothèque Darks"},
+    "page_explore":        {"en": "Explore",                     "fr": "Explorer"},
+    "page_manual_explore": {"en": "Explore Manual Session",      "fr": "Explorer Sessions Manuelles"},
+    "page_manual_add":     {"en": "Add Manual Session",          "fr": "Ajout Session Manuelle"},
+    "page_manual_exit":    {"en": "Edit Manual Session",         "fr": "Edition Session Manuelle"},
+    "page_transfer":       {"en": "Session Transfer",            "fr": "Transfert de Session"},
+    "page_usb_transfer":   {"en": "Session USB Transfer",        "fr": "Transfert de Session par USB"},
+    "page_mosaic":         {"en": "Mosaic Merge / Repair",       "fr": "Mosaïque Fusion / Réparer"},
+    "page_mtp":            {"en": "DWARF II MTP Device Manager", "fr": "DWARF II Gestion MTP"},
+    "page_catalog":        {"en": "Catalog Edition",             "fr": "Edition Catalogue"},
+    "page_settings":       {"en": "Settings",                    "fr": "Paramètres"},
 })

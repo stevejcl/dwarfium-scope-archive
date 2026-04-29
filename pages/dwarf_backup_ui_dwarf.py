@@ -24,7 +24,7 @@ from components.help_system import open_help
 @ui.page('/Dwarf')
 async def dwarf_settings(DwarfId:int = None, FirstInit=False):
 
-    menu("Dwarf Configuration")
+    menu(t("page_dwarf"))
     await ui.context.client.connected()
     # Launch the GUI
     ConfigApp(DB_NAME, DwarfId=DwarfId, FirstInit=FirstInit)
@@ -69,7 +69,7 @@ class ConfigApp:
             with ui.row().classes("w-full justify-between"):
                 ui.button(t("show_dwarf_data"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
                 self.btn_error_sessions = ui.button(
-                    "⚠️ Sessions in Error",
+                    t("sessions_in_error"),
                     on_click=self._toggle_error_sessions
                 ).classes(sizeBTN).props("color=orange")
                 self.btn_error_sessions.set_visibility(False)
@@ -121,7 +121,7 @@ class ConfigApp:
                         self.refresh_btn = (
                             ui.button(icon='refresh', on_click=self.check_dir_dwarf)
                             .props('flat round dense')
-                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == "❌ Path not detected."))
+                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
                         )
 
                     with ui.grid(columns=2) as self.mtp_column:
@@ -162,12 +162,12 @@ class ConfigApp:
                         ui.colors(brand='#A1A0A1')
                         with ui.grid(columns=2):
                             with ui.row().classes("gap-4 mt-2"):
-                                ui.item_label('Local Data size:').props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
+                                ui.item_label(t('local_data_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
                                 self.dwarf_data_size = ui.label("").classes("pl-1 pr-2 pt-0 pb-1")
 
 
                             with ui.row().classes("gap-4 mt-2"):
-                                ui.item_label('Local Archive size:').props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
+                                ui.item_label(t('local_archive_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
                                 self.dwarf_archive_size = ui.label("").classes("pl-1 pr-2 pt-0 pb-1")
 
 
@@ -189,9 +189,9 @@ class ConfigApp:
         if self.dwarf_astroDir.value:
            if os.path.exists(self.dwarf_astroDir.value):
                self.dwarf_status = "USB"
-               self.usb_status_label.text = "✅ Path detected."
+               self.usb_status_label.text = t("path_detected")
            else:
-               self.usb_status_label.text = "❌ Path not detected."
+               self.usb_status_label.text = t("path_not_detected")
 
     def refresh_dwarf_list(self):
         """Refresh the list of dwarfs and update the selection dropdown."""
@@ -383,7 +383,7 @@ class ConfigApp:
             # Now create the UI select with friendly names
             with self.mtp_column:
                 self.dwarf_mtpdevice = ui.select(
-                    label="MTP Device",
+                    label=t("mtp_device"),
                     options=mtp_options,
                     value=mtp_name,
                     on_change=lambda: self.on_mtp_selected(device_map)

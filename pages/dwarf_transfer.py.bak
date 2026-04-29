@@ -179,7 +179,7 @@ class TransferApp:
                     ui.button(t("back_btn"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes("justify-self-start")
                 # In Repair / Merge mode the direction is fixed — hide the Archive/Restore toggle
                 if self.mode != "Repair" and self.mode != "Merge" :
-                    self.mode_toggle = ui.toggle({'Archive': t('archive_mode'), 'Restore': t('restore_mode')}, value=self.mode, on_change=self.switch_mode).classes("col-span-1 justify-self-center")
+                    self.mode_toggle = ui.toggle(['Archive', 'Restore'], value=self.mode, on_change=self.switch_mode).classes("col-span-1 justify-self-center")
                 elif self.mode == "Repair":
                     self.mode_toggle = None
                     ui.label(t("repair_transfer")).classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
@@ -228,7 +228,8 @@ class TransferApp:
             self.StartBackup = ui.button(t("start_backup"), on_click=lambda:self.start_backup()).classes(sizeBTN)
             self.cancel_backup = False
             ui.label(
-                t("transfer_background")
+                "💡 Transfer runs in the background — you can navigate to other pages and return. "
+                "Closing the app will stop the transfer."
             ).classes("text-sm text-blue-500 mt-2")
 
             # Background task progress panel — shown when a transfer is running
@@ -245,7 +246,7 @@ class TransferApp:
 
             # Emergency reset button — shown when transfer appears stuck
             self._reset_btn = ui.button(
-                t("force_reset_transfer"),
+                "⚠️ Force Reset Transfer State",
                 on_click=self._force_reset_transfer
             ).props("flat color=negative").classes("text-xs mt-2")
             self._reset_btn.visible = False
@@ -758,14 +759,14 @@ class TransferApp:
             copied = p.get('copied', 0)
             total  = p.get('total', 0)
             if status == 'running':
-                msg = t("transfer_already_running").format(copied=copied, total=total)
+                msg = f"A transfer is already running ({copied}/{total} files copied)."
             elif status == 'copy_done':
                 msg = f"Copy complete ({copied}/{total} files) — database sync in progress."
             else:
                 msg = "Database sync in progress."
             with ui.dialog().props('persistent') as dlg, ui.card().classes('p-6 gap-4'):
                 ui.label(t("transfer_warning")).classes("text-lg font-bold text-orange-500")
-                ui.label(f"{msg} {t('wait_complete')}").classes("text-gray-600")
+                ui.label(f"{msg} Please wait for it to complete before starting a new one.").classes("text-gray-600")
                 ui.button("OK", on_click=dlg.close).props("color=primary")
             dlg.open()
             return
@@ -776,10 +777,10 @@ class TransferApp:
         dest_dir = self.input_dest_dir.value
         print(f" Backup dest_dir:  {dest_dir}")
         if not src_dir:
-            self.progress_label.set_text(t("select_src_dir"))
+            self.progress_label.set_text("Select a Source Directory.")
             return
         if not dest_dir:
-            self.progress_label.set_text(t("select_dst_dir"))
+            self.progress_label.set_text("Select a Destination Directory.")
             return
 
         # Multi-session: if the source dropdown lists several session folders (not the root dir)
@@ -853,11 +854,11 @@ class TransferApp:
     async def confirm_overwrite(self, dest_path, isFullBackup):
 
         print("confirm_overwrite")
-        ui.notify(f"{t('notify_dest_already_exists')}", type='warning')
+        ui.notify(f"The destination '{dest_path}' already exists.!", type='warning')
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
-            ui.label(f"{t('dest_already_exists')}")
+            ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
             with ui.row():
                 ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
                 ui.button(t("no"), on_click=lambda: dialog.submit('No'))
@@ -1009,7 +1010,7 @@ class TransferApp:
         local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
         if not local_Main_Dwarf_dir:
             self._safe_ui(lambda: ui.notify(t("no_error_access"), type="negative"))
-            self._set_progress('error', 0, 0, error=t("no_local_dwarf_dir"))
+            self._set_progress('error', 0, 0, error="No local Dwarf directory")
             return
 
         # Try to show scan dialog — run silently if client is gone
@@ -1054,7 +1055,7 @@ class TransferApp:
 
         try:
             _ui(lambda: ui.notify(t("starting_sync")))
-            self._set_progress('scanning', 0, 0, current_file=t("syncing_session_files"))
+            self._set_progress('scanning', 0, 0, current_file="🔄 Syncing session files...")
             session_name = ""
             dir_parent_session = ""
             dir_backup_session = ""
@@ -1128,7 +1129,7 @@ class TransferApp:
             prev_total  = totals.get('total', 0)
             app.storage.general.pop('transfer_copy_totals', None)
             self._set_progress('done', prev_copied, prev_total,
-                               current_file=t("sessions_indexed").format(copied=prev_copied, total=prev_total, dwarf=total_dwarf, backup=total_backup))
+                               current_file=f"✅ {prev_copied}/{prev_total} files — {total_dwarf} dwarf + {total_backup} backup sessions indexed")
 
         except Exception as e:
             _ui(lambda: spinner.set_visibility(False) if spinner else None)
@@ -1178,7 +1179,8 @@ class TransferApp:
             total  = interrupted.get('total', 0)
             src    = interrupted.get('src', '')
             ui.notify(
-                f"{t('transfer_interrupted').format(copied=copied, total=total, src=src)}",
+                f"⚠️ Last transfer was interrupted: {copied}/{total} files copied from {src}. "
+                "You can restart the transfer to complete it.",
                 type="warning",
                 timeout=10000,
             )
@@ -1646,7 +1648,7 @@ class TransferApp:
                 if app.storage.general.pop('transfer_cancel_requested', False):
                     self.cancel_backup = True
                 if self.cancel_backup:
-                    self._safe_ui(lambda: self.notify_me.refresh(t("backup_cancelled")))
+                    self._safe_ui(lambda: self.notify_me.refresh("Backup cancelled."))
                     result = False
                     break
 
@@ -1674,7 +1676,7 @@ class TransferApp:
                         winerror = getattr(ose, 'winerror', None)
                         errno = getattr(ose, 'errno', None)
                         if winerror == 112 or errno == 28:  # 28 = ENOSPC (Linux)
-                            msg = t("disk_full_msg").format(verified=verified_files, total=total_files)
+                            msg = f"❌ Disk full — transfer stopped after {verified_files}/{total_files} files."
                             self._safe_ui(lambda m=msg: self.notify_me.refresh(m))
                             self._safe_ui(lambda m=msg: ui.notify(m, type="negative", timeout=0))
                             self._set_progress('error', verified_files, total_files, error="Disk full")
@@ -1694,17 +1696,17 @@ class TransferApp:
             elif verified_files == total_files:
                 # end task
                 if (self.dest_override) :
-                    self._safe_ui(lambda: self.notify_me.refresh(t("backup_complete")))
+                    self._safe_ui(lambda: self.notify_me.refresh("✅ Backup complete and verified!"))
                     self._set_progress('done', verified_files, total_files,
                                current_file=f"✅ {verified_files}/{total_files} files")
                 else:
-                    self._safe_ui(lambda: self.notify_me.refresh(t("backup_complete")))
+                    self._safe_ui(lambda: self.notify_me.refresh("✅ Backup complete and verified!"))
                     self._set_progress('copy_done', verified_files, total_files)
                     # Save copy totals separately — scanning status will overwrite copied/total
                     app.storage.general['transfer_copy_totals'] = {'copied': verified_files, 'total': total_files}
                 result = True
             else:
-                self._safe_ui(lambda: self.notify_me.refresh(t("backup_incomplete")))
+                self._safe_ui(lambda: self.notify_me.refresh("⚠️ Backup incomplete due to verification failure."))
                 self._set_progress('error', verified_files, total_files, error="Verification failure")
 
         except asyncio.CancelledError:

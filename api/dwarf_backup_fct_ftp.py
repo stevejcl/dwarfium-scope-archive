@@ -11,6 +11,8 @@ from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5
 DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
 DWARF3_FTP_PATH = "/Astronomy"
 
+from components.i18n import t
+
 @contextmanager
 def ftp_conn(ip_address):
     ftp = ftplib.FTP()
@@ -37,7 +39,7 @@ def check_ftp_connection(ip_address):
             else:
                 return "❌ Connected to FTP (not Dwarf)."
     except ftplib.all_errors:
-        return "❌ FTP Error: not connected"
+        return t("ftp_not_connected")
 
 # Function to connect to Dwarf via FTP
 def connect_to_dwarf(ip_address, status_label):

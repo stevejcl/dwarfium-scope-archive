@@ -45,7 +45,7 @@ from components.astro_object_associate import DwarfData, show_unknown_target_dia
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
 
-ALL_BACKUPS = "(All Backups)"
+ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
 ALL_DWARFS = "(All Dwarfs)"
 ALL_SESSIONS = "[ALL SESSIONS]"
 
@@ -64,7 +64,7 @@ def safe_print(text):
 @ui.page('/Explore/')
 async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None, only_on_dwarf: int = 0):
 
-    menu("Explore")
+    menu(t("page_explore"))
     await ui.context.client.connected()
 
     print(f" BackupDriveId: {BackupDriveId}")
@@ -186,10 +186,10 @@ class ExploreApp:
                                 ui.label(t("dwarf_device"))
                                 self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
-                        with ui.card().tight().classes('pr-3').bind_visibility_from(self.dwarf_filter, "value", lambda value: value != ALL_DWARFS):
-                            self.only_on_dwarf = ui.checkbox("Only show backed up sessions present on selected Dwarf ",on_change = self.on_change_only_on_dwarf)
-                            self.only_on_backup = ui.checkbox("Only show backed up sessions but deleted on selected Dwarf ",on_change = self.on_change_only_on_backup)
-                            self.only_duplicates_backup = ui.checkbox("Only show duplicates backed up sessions",on_change = self.load_objects)
+                        with ui.card().tight().classes('pr-3').bind_visibility_from(self.dwarf_filter, "value", lambda value: value != t("all_dwarfs")):
+                            self.only_on_dwarf = ui.checkbox(t("only_backed_up"),on_change = self.on_change_only_on_dwarf)
+                            self.only_on_backup = ui.checkbox(t("only_backed_not_dwarf"),on_change = self.on_change_only_on_backup)
+                            self.only_duplicates_backup = ui.checkbox(t("only_duplicates"),on_change = self.load_objects)
                     else:
                         if self.BackUrl:
                             with ui.grid(columns=2):
@@ -206,17 +206,17 @@ class ExploreApp:
                                 self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
                         with ui.row().classes('w-full'):
-                            with ui.card().tight().bind_visibility_from(self.dwarf_filter, "value", lambda value: value != ALL_DWARFS):
+                            with ui.card().tight().bind_visibility_from(self.dwarf_filter, "value", lambda value: value != t("all_dwarfs")):
                                 ui.label("")
-                                self.only_on_dwarf = ui.checkbox("Only show sessions not yet backed up on selected Dwarf ", value=self.OnlyOnDwarf, on_change = self.on_change_only_on_dwarf)
+                                self.only_on_dwarf = ui.checkbox(t("only_not_backed"), value=self.OnlyOnDwarf, on_change = self.on_change_only_on_dwarf)
                                 ui.label("")
-                                self.only_on_backup = ui.checkbox("Only show sessions already backed up on selected Dwarf ",on_change = self.on_change_only_on_backup)
+                                self.only_on_backup = ui.checkbox(t("only_already_backed"),on_change = self.on_change_only_on_backup)
 
                     self.count_label = ui.label(t("total_sessions_zero"))
                     with ui.card().tight().classes('w-full'):
                         with ui.row().classes('items-center m-4 gap-2'):
                             self.object_filter = (
-                                ui.input(placeholder='🔍 Filter objects...', on_change=lambda e: self.load_objects_ui() if e.value else self.load_objects())
+                                ui.input(placeholder=t('filter_objects'), on_change=lambda e: self.load_objects_ui() if e.value else self.load_objects())
                                 .classes('flex-1')
                                 .props('clearable')
                             )
@@ -256,14 +256,14 @@ class ExploreApp:
                             self.delete_session_icon.visible = False
                             # Link to the ManualSession that was imported alongside this BackupEntry
                             self.linked_manual_session_icon = ui.button(
-                                "🔗 View linked Manual session",
+                                t("view_linked_manual"),
                                 on_click=self.navigate_to_linked_manual_session,
                             ).classes('h-16')
                             self.linked_manual_session_icon.visible = False
                             self.action_fits_files_icon = ui.button("", on_click=lambda: self.action_cleanup_restore_fits()).classes('h-16')
                             self.action_fits_files_icon.visible = False
                             self.siril_json_icon = ui.button(
-                                "📡 Prepare for Siril",
+                                t("prepare_siril"),
                                 on_click=self.prepare_siril_json
                             ).classes('h-16')
                             self.siril_json_icon.visible = False
@@ -309,7 +309,7 @@ class ExploreApp:
 
         # Only add ALL_BACKUPS when there are multiple backup drives
         if len(self.backup_options) > 1:
-            names = [ALL_BACKUPS] + [name for _, name in self.backup_options]
+            names = [t("all_backups")] + [name for _, name in self.backup_options]
         else:
             names = [name for _, name in self.backup_options]
         initial_value = names[0] if names else None
@@ -324,7 +324,7 @@ class ExploreApp:
         print(f"on_backup_filter_change: {self.BackupDriveId}-{current_dwarf_id}")
         current_backup_id = self.BackupDriveId
         selected_name = self.backup_filter.value
-        if selected_name == ALL_BACKUPS:
+        if selected_name == t('all_backups'):
             self.BackupDriveId = None
         else:
             for bid, name in self.backup_options:
@@ -351,7 +351,7 @@ class ExploreApp:
 
         # Only add ALL_DWARFS when there are multiple dwarfs
         if not self.BackupDriveId and len(self.dwarf_options) > 1:
-            names = [ALL_DWARFS] + names
+            names = [t("all_dwarfs")] + names
         initial_value = names[0] if names else None
         matching_value = current_dwarf_id or self.DwarfId
         if matching_value:
@@ -363,7 +363,7 @@ class ExploreApp:
     def get_selected_dwarf_id(self):
         value = self.dwarf_filter.value
         if self.BackupDriveId is None:
-            if value == ALL_DWARFS:
+            if value == t('all_dwarfs'):
                 return None
             return next((id_ for id_, name in self.dwarf_options if name == value), None)
         else:
@@ -405,7 +405,7 @@ class ExploreApp:
             self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
             count = get_countObjects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
 
-        self.count_label.text = f"Total matching sessions: {count}"
+        self.count_label.text = f"{t('total_matching')} {count}"
         print (f"Total matching sessions: {count}")
         print (f"Total objects: {len(self.objects)}")
         print (f"Total objects: {[f'{oid} - {name} {dso_id} {"G" if is_group else ""}' for oid, name, dso_id, is_group in self.objects]}")
@@ -501,7 +501,7 @@ class ExploreApp:
         shown_all_for_dso = set()
         grouped_objects = defaultdict(list)
         priority_order = {
-            "[ALL SESSIONS]": 0,
+            ALL_SESSIONS: 0,
             "Manual": 1,
             "MOSAIC_Unknown": 2,
             "Unknown": 3,
@@ -529,6 +529,7 @@ class ExploreApp:
         display_items = []
 
         all_sessions_name = ALL_SESSIONS
+        all_sessions_display = t("all_sessions_display")
         grouped_objects[all_sessions_name].append((None, all_sessions_name, None, True))
 
         for name_object in sorted(grouped_objects.keys(), key=sort_key):
@@ -565,7 +566,8 @@ class ExploreApp:
 
                 # Single object -> flat item
                 oid, full_name, dso_id, is_group = entries[0]
-                label = f"{'✨ ' if is_group else ''}{name_object}"
+                display_name = t('all_sessions_display') if name_object == ALL_SESSIONS else name_object
+                label = f"{'✨ ' if is_group else ''}{display_name}"
                 data = {
                     "oid": oid,
                     "name": name_object,
@@ -575,7 +577,7 @@ class ExploreApp:
                 }
                 display_items.append({
                     "type": "item",
-                    "label": name_object,
+                    "label": display_name,
                     "label_full": label,
                     "data": data,
                 })
@@ -658,7 +660,7 @@ class ExploreApp:
 
         # Step 3: Render UI
         with self.object_list:
-            ui.item_label('List Objects').props('header').classes('text-bold')
+            ui.item_label(t('list_objects')).props('header').classes('text-bold')
             ui.separator()
 
             def handle_click(data):
@@ -799,7 +801,7 @@ class ExploreApp:
             self.label_to_index = {}
             self.file_list.set_options([])
             with self.details_files:
-                ui.item_label('No Session found.').props('header').classes('text-bold')
+                ui.item_label(t('no_session_found')).props('header').classes('text-bold')
 
         if len(files) == 1:
             self.selected_DeleteEntryInfo = BackupEntryData(
@@ -820,7 +822,11 @@ class ExploreApp:
         else:
             # Populate combobox with readable file names
             details = []
-            select_file = [f'Select a session for {self.selected_object}']
+
+            if self.selected_object == ALL_SESSIONS:
+                select_file = [f"{t('select_session_for')} {t("all_sessions")}"]
+            else: 
+                select_file = [f"{t('select_session_for')} {self.selected_object}"]
             stackeds = 0
             total_time_exp = 0
             self.label_to_index = {}
@@ -866,11 +872,11 @@ class ExploreApp:
                 # Displaying star icon based on favorite status only in backup mode
                 star_icon = '⭐ ' if is_favorite else '☆ '
                 bad_icon = '❗ ' if int(stacks) < 50 else ''
-                info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+                info_stack = t("restack") if is_Restacked(session_dir) else t("taken")
                 target = init_target[:10]
                 description,_ =  get_name_object(descriptionDB)
                 # Building the details string with the star icon
-                label_text = f"{info_stack} with 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks} 🛰️ {description}"
+                label_text = f"{info_stack} {t('with_label')} 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks} 🛰️ {description}"
 
                 # If label already exists (duplicate), append a small invisible suffix
                 count = 0
@@ -888,10 +894,10 @@ class ExploreApp:
                     details_text
                 )
 
-            self.file_list.set_options(select_file, value=f'Select a session for {self.selected_object}')
+            self.file_list.set_options(select_file, value=f"{t('select_session_for')} {self.selected_object}")
 
             with self.details_files:
-                ui.item_label(f"{len(files)} sessions were found, totaling {stackeds} stacks and a total exposure time of {format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
+                ui.item_label(f"{len(files)} {t('sessions_found')} {stackeds} {t('stacks_exp')} {format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
                 ui.separator()
 
                 selected_sessions = set()  # will store selected labels
@@ -947,8 +953,8 @@ class ExploreApp:
                         self.transfer_multi_btn.visible = has_sel
                         if has_sel:
                             self.transfer_multi_btn.set_text(
-                                "📦 Restore Selected Sessions" if self.mode == "backup"
-                                else "📦 Backup Selected Sessions"
+                                t("restore_selected") if self.mode == "backup"
+                                else t("backup_selected")
                             )
                             self.transfer_multi_btn.enable()
                         else:
@@ -1188,7 +1194,7 @@ class ExploreApp:
         selected_value = self.file_list.value
         details = []
 
-        if not selected_value or selected_value.startswith('Select a session'):
+        if not selected_value or selected_value.startswith(t('select_session_for').split(' {')[0]):
             return
 
         self.details_files.clear()
@@ -1250,7 +1256,7 @@ class ExploreApp:
                 binning = 1
 
             # display Values
-            info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+            info_stack = t("restack") if is_Restacked(session_dir) else t("taken")
             star_icon = '⭐ ' if is_favorite else '☆ '
             full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
             self.selected_path = os.path.dirname(full_path)
@@ -1261,12 +1267,12 @@ class ExploreApp:
             set_base_folder(full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0])
             lens = "(Wide)" if ("_WIDE_") in session_dir else "(Tele)"
 
-            details_files_text = f"{star_icon}{info_stack} with 🔭 {dwarf_name} {lens} on 📅 {show_date_session(session_date)}"
+            details_files_text = f"{star_icon}{info_stack} {t('with_label')} 🔭 {dwarf_name} {lens} {t("on_label")} 📅 {show_date_session(session_date)}"
 
             # details
 
             #details.append(f"Session: {session_dir}")
-            details.append(f"🛰️ Dwarf Target: {init_target}")
+            details.append(f"🛰️ {t('dwarf_target')}: {init_target}")
 
             classified_text, descriptiondb = self.update_classified_label(astro_object_id, init_target, "", True)
             if classified_text:
@@ -1277,9 +1283,9 @@ class ExploreApp:
             exp = f"️{exp_time}s" if exp_time is not None else "N/A"
             gain = gainDB if gainDB is not None else "N/A"
 
-            details.append(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {IR_filter}")
+            details.append(f"⚙️ {t('lens_label')}: {lens} | {t('exposure_label')}: {exp} | {t('gain_label')}: {gain} | {t('filter_label')}: {IR_filter}")
             if minTemp and maxTemp:
-                details.append(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}")
+                details.append(f"{t('min_temp')}: {minTemp} | {t('max_temp')}: {maxTemp}")
             bad_icon = '❗ ' if int(stacks) < 50 else ''
             details.append(f"📊 Stacks: {bad_icon}{stacks}")
 
@@ -1298,7 +1304,7 @@ class ExploreApp:
                 # Add colored details
                 ui.item(f"Session: {session_dir}").classes('text-blue-800')
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"🛰️ Dwarf Target: {init_target}").classes('text-green-600')
+                    ui.item(f"🛰️ {t('dwarf_target')}: {init_target}").classes('text-green-600')
                     if self.dso_catalog:
                         ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(DwarfData.from_row(row), descriptiondb))
 
@@ -1312,10 +1318,10 @@ class ExploreApp:
                 exp_value = parse_exposure(exp) if exp != "N/A" else 0
                 gain = gainDB if gainDB is not None else "N/A"
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"⚙️ Lens : {lens} | Exposure: {exp} | Gain: {gain} | Filter: {IR_filter}").classes('text-yellow-700')
+                    ui.item(f"⚙️ {t('lens_label')}: {lens} | {t('exposure_label')}: {exp} | {t('gain_label')}: {gain} | {t('filter_label')}: {IR_filter}").classes('text-yellow-700')
 
                     if minTemp and maxTemp:
-                        ui.item(f"MinTemp: {minTemp} | MaxTemp: {maxTemp}").classes('text-sky-700')
+                        ui.item(f"{t('min_temp')}: {minTemp} | {t('max_temp')}: {maxTemp}").classes('text-sky-700')
 
                 color = 'text-red-600' if stacks < 100 else 'text-indigo-600'
                 
@@ -1329,7 +1335,7 @@ class ExploreApp:
                         if fits_path and os.path.isfile(fits_path):
                             exposure_time = format_seconds_hms(get_total_exposure(fits_path))
 
-                ui.item(f"📊 {stacks} stacked shots for a total exposure time of {exposure_time}").classes(color)
+                ui.item(f"📊 {stacks} {t('stacked_shots')} {exposure_time}").classes(color)
 
                 # --- Dark match badge ---
                 if dwarf_id and exp_time and gainDB:
@@ -1344,11 +1350,11 @@ class ExploreApp:
                             max_temp = int(maxTemp) if maxTemp is not None else None,
                         )
                         if _dark["status"] == "matched":
-                            ui.item(f"🎯 {_dark['count']} dark(s) matched (temp in range)").classes('text-green-600')
+                            ui.item(f"🎯 {_dark['count']} {t('darks_matched_range')}").classes('text-green-600')
                         elif _dark["status"] == "partial":
-                            ui.item(f"🎯 {_dark['count']} dark(s) matched (closest temp)").classes('text-orange-500')
+                            ui.item(f"🎯 {_dark['count']} {t('darks_matched_closest')}").classes('text-orange-500')
                         else:
-                            ui.item("❌ No matching darks found").classes('text-red-500')
+                            ui.item(t("no_darks_found")).classes('text-red-500')
                     except Exception as _e:
                         print(f"[dark match] {_e}")
 
@@ -1420,7 +1426,7 @@ class ExploreApp:
 
         # Update the label text or text
         if classified:
-            classified_text = f"Classified as: {classified}"
+            classified_text = f"{t('classified_as')} {classified}"
 
         if not text_only and self.classified_label:
             self.classified_label.set_text(classified_text)
@@ -1534,13 +1540,13 @@ class ExploreApp:
             size_mb = None
 
         if self.nb_fits_files is not None and self.nb_fits_files == 1:
-            details_preview.append(f"Found one fits image on the disk")
+            details_preview.append(t("found_one_fits"))
         if self.nb_fits_files is not None and self.nb_fits_files > 1:
-            details_preview.append(f"Found {self.nb_fits_files} fits images on the disk")
+            details_preview.append(f"{self.nb_fits_files} {t('found_fits_images')}")
         if self.nb_failed_fits_files is not None and self.nb_failed_fits_files == 1:
             details_preview.append(f"Found one failed image on the disk")
         if self.nb_failed_fits_files is not None and self.nb_failed_fits_files > 1:
-            details_preview.append(f"Found {self.nb_failed_fits_files} failed images on the disk")
+            details_preview.append(f"{self.nb_failed_fits_files} {t('found_failed_images')}")
 
         if self.nb_tiff_files is not None and self.nb_tiff_files == 1:
             details_preview.append(f"Found one tiff image on the disk")
@@ -1552,14 +1558,14 @@ class ExploreApp:
             details_preview.append(f"Found {self.nb_failed_tiff_files} failed images on the disk")
 
         if size_dir_kb is not None and size_dir_mb < 2:
-            details_preview.append(f"Directory Size: {size_dir_kb:.2f} KB")
+            details_preview.append(f"{t('directory_size')}: {size_dir_kb:.2f} KB")
         if size_dir_kb is not None and size_dir_mb >= 2:
-            details_preview.append(f"Directory Size: {size_dir_mb:.2f} MB")
-        details_preview.append(f"Filename: {self.preview_image_path}")
+            details_preview.append(f"{t('directory_size')}: {size_dir_mb:.2f} MB")
+        details_preview.append(f"{t('filename')}: {self.preview_image_path}")
         if size_kb is not None and size_mb < 2:
-            details_preview.append(f"Size: {size_kb:.2f} KB")
+            details_preview.append(f"{t('size_label')}: {size_kb:.2f} KB")
         if size_kb is not None and size_mb >= 2:
-            details_preview.append(f"Size: {size_mb:.2f} MB")
+            details_preview.append(f"{t('size_label')}: {size_mb:.2f} MB")
 
         print(self.preview_image_path)
 
@@ -1590,7 +1596,7 @@ class ExploreApp:
             if not self.mode == "backup" and is_path_local_dwarf_dir(preview_image_path):
                 ui.item(f"DWARF device not connected. Using offline session archive").props('header').classes('text-bold').classes('text-red-600')
 
-            toggle = ui.toggle({True:'Show Details', False:'Hide Details'}, value=True).classes("m-4")
+            toggle = ui.toggle({True: t('show_details'), False: t('hide_details')}, value=True).classes("m-4")
 
             with ui.column().classes('gap-1').bind_visibility_from(toggle, 'value'):
 
@@ -1598,7 +1604,7 @@ class ExploreApp:
                     if "_MOSAIC_" in file_path:
                         panels = get_mosaic_panels(os.path.dirname(self.preview_image_path))
                         if len(panels) > 1:
-                            ui.label(f'📦 {len(panels)} panel(s) found').classes('text-lg m-4')
+                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-lg m-4')
                             ui.button(t("show_mosaic_gallery"), on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
 
                         panels_png = get_mosaic_panels(os.path.dirname(self.preview_image_path), img_type="png")
@@ -1610,7 +1616,7 @@ class ExploreApp:
                     ui.item(data_detail).classes('text-sm')
 
             if not restacked_session and (self.nb_fits_files is None or self.nb_fits_files == 0):
-                ui.item_label(f"No sub-exposure fits files were found on the disk").classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
+                ui.item_label(t("no_fits_on_disk")).classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
             self.get_details_presence_label(self.preview_image_path, file_path)
 
     def get_details_presence_label(self, preview_image_path: str, file_path):
@@ -1657,7 +1663,7 @@ class ExploreApp:
                     if os.path.isdir(os.path.dirname(backup_full_path)):
                         self.path_result_on_backupDrive = os.path.dirname(backup_full_path)
                     return {
-                        ui.item_label(f"Backup Available on:").classes("text-green-600").classes("pl-4 pr-4").props('header').classes('text-bold'),
+                        ui.item_label(t("backup_available_on")).classes("text-green-600").classes("pl-4 pr-4").props('header').classes('text-bold'),
                         ui.label(f"{os.path.dirname(backup_full_path)}") \
                         .on('click', lambda: self.open_folder(os.path.dirname(backup_full_path))) \
                         .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
@@ -1796,7 +1802,7 @@ class ExploreApp:
             # at least one ManualSessionEntry references the current BackupEntry.
             if not self.linked_manual_session_icon:
                 self.linked_manual_session_icon = ui.button(
-                    "🔗 View linked Manual session",
+                    t("view_linked_manual"),
                     on_click=self.navigate_to_linked_manual_session,
                 ).classes('h-16')
 
@@ -1889,7 +1895,7 @@ class ExploreApp:
             gain = gainDB if gainDB is not None else "N/A"
             astro_filter = f"{IR_filter}" if IR_filter else "No Filter"
 
-            info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+            info_stack = t("restack") if is_Restacked(session_dir) else t("taken")
             details_session = f"⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}"
 
             full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
@@ -2089,7 +2095,7 @@ class ExploreApp:
                     ui.label(t("mosaic_result")).classes("text-xl font-bold")
                     with ui.row().classes("gap-2"):
                         btn_show_panels = ui.button(
-                            "🧩 Show Current Panels",
+                            t("show_panels"),
                             on_click=lambda: self.open_gallery_dialog(directory, panels)
                         ).props("flat")
                         btn_discard = ui.button(t("discard")).props("flat color=negative")
@@ -2374,7 +2380,7 @@ class ExploreApp:
         if self.mode != "backup":
             dwarf_id = self.get_selected_dwarf_id()
 
-            if dwarf_id == ALL_DWARFS:
+            if dwarf_id == t('all_dwarfs'):
                 ui.notify(t("please_select_dwarf"), color="warning")
 
             elif self.selected_path:
@@ -2392,7 +2398,7 @@ class ExploreApp:
             else:
                 dwarf_id = self.get_selected_dwarf_id()
 
-                if dwarf_id == ALL_DWARFS:
+                if dwarf_id == t('all_dwarfs'):
                     ui.notify(t("please_select_dwarf"), color="warning")
 
                 elif self.selected_path:
@@ -2415,7 +2421,7 @@ class ExploreApp:
             return ""
 
         dwarf_id = self.get_selected_dwarf_id()
-        if not dwarf_id or dwarf_id == ALL_DWARFS:
+        if not dwarf_id or dwarf_id == t('all_dwarfs'):
             ui.notify(t("please_select_dwarf"), color="warning")
             return ""
 

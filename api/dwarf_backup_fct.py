@@ -934,14 +934,22 @@ def extract_target_json(astro_path):
         return None, None, None
 
 def show_date_session(date_db):
+    from components.i18n import get_language
     dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-    date_session = dt.strftime("%B %d, %Y at %I:%M:%S %p")
-    return date_session
+    if get_language() == 'fr':
+        months = ['janvier','février','mars','avril','mai','juin',
+                  'juillet','août','septembre','octobre','novembre','décembre']
+        return f"{dt.day} {months[dt.month-1]} {dt.year} à {dt.strftime('%H:%M:%S')}"
+    return dt.strftime("%B %d, %Y at %I:%M:%S %p")
 
 def show_short_date_session(date_db):
+    from components.i18n import get_language
     dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-    date_session = dt.strftime("%b %d, %Y %I:%M %p")
-    return date_session
+    if get_language() == 'fr':
+        months = ['jan','fév','mar','avr','mai','jun',
+                  'jul','aoû','sep','oct','nov','déc']
+        return f"{dt.day} {months[dt.month-1]} {dt.year} {dt.strftime('%H:%M')}"
+    return dt.strftime("%b %d, %Y %I:%M %p")
 
 def extract_astro_name_from_folder(folder_name: str) -> str | None:
     """

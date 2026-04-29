@@ -29,6 +29,7 @@ from datetime import datetime
 from nicegui import ui, app
 from components.i18n import t
 from components.session_notes import session_notes_widget
+from components.session_notes import session_notes_widget
 from api.dwarf_backup_db import DB_NAME, connect_db
 from api.dwarf_backup_db_api import (
     get_dwarf_Names,
@@ -741,8 +742,7 @@ class ManualExploreApp:
             self.label_to_index[label] = 0
             self.file_list.set_options([label], value=label)
         else:
-            labels = [f"{t('select_session_for')} {t(self.selected_object)}"]
-
+            labels = [f'Select a session for {self.selected_object}']
             self.label_to_index = {}
 
             for idx, row in enumerate(files):

@@ -37,7 +37,7 @@ client_apps = {}
 @ui.page('/AddManualSession/')
 async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupDriveId:int = None, ManualEntryId:int = None, back_url:str = None):
 
-    menu("Add Manual Session" if not ManualEntryId else "Edit Manual Session")
+    menu(t("page_manual_add") if not ManualEntryId else t("page_manual_exit"))
     await ui.context.client.connected()
     # Launch the GUI - ManualEntryId triggers edit mode for an existing session
     ui.context.manual_session_app = AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupDriveId=BackupDriveId, ManualEntryId=ManualEntryId, BackUrl=back_url)
@@ -608,7 +608,7 @@ class AddManualSession:
 
                 self.DestinationDirectory = ui.label(t("backup_destination")).classes("mt-2 font-medium")
                 with ui.row().classes("w-full items-center gap-2"):
-                    self.input_dest_dir = ui.input("Destination Directory:", value = self.dest_dir).classes("w-[80%] overflow-x-auto whitespace-nowrap")
+                    self.input_dest_dir = ui.input(t("destination_dir"), value = self.dest_dir).classes("w-[80%] overflow-x-auto whitespace-nowrap")
                     ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder())
 
             # --- ACTION BUTTONS ---

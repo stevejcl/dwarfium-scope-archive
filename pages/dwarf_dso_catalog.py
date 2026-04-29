@@ -13,7 +13,7 @@ from components.win_log import WinLog
 @ui.page('/Catalog/')
 async def dwarf_catalog():
 
-    menu("Catalog Edition")
+    menu(t("page_catalog"))
     await ui.context.client.connected()
     try:
         ui.context.catalog_app = CatalogApp(DB_NAME)

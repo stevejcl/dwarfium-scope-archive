@@ -6,6 +6,7 @@
     Add SessionNotes Managment
     Add robust file copy for Session Transfer
     Begin of Multi Language
+    Add Comets/Asteroid detector fot setting Target
 
 ## [V3.1.3] - 2026-04-28
 

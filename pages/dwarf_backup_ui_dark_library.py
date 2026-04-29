@@ -19,7 +19,7 @@ from components.menu import menu, setStyle
 
 @ui.page('/DarkLibrary')
 async def dark_library_page(LibraryId: int = None):
-    menu("Dark Library")
+    menu(t("page_darks"))
     await ui.context.client.connected()
     DarkLibraryApp(DB_NAME, LibraryId=LibraryId)
 

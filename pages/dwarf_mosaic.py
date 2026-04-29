@@ -45,7 +45,7 @@ async def mosaic_page(
     back_url: str = None,
 ):
 
-    menu("Mosaic Merge / Repair")
+    menu(t("page_mosaic"))
     await ui.context.client.connected()
     ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId)
 
@@ -131,11 +131,12 @@ class MosaicApp:
                 if self.BackUrl:
                     ui.button(t("back_btn"), on_click=lambda: ui.navigate.to(self.BackUrl)).classes("justify-self-start")
                 self.mode_toggle = ui.toggle(
-                    ['Merge', 'Repair'], value=self.mode, on_change=self.switch_mode
+                    {'Merge': t('merge_mode'), 'Repair': t('repair_mode')},
+                    value=self.mode, on_change=self.switch_mode
                 ).classes("col-span-1 justify-self-center")
 
             self.main_label = ui.label(
-                "Primary = base mosaic. Secondary = session whose data will be merged into it. Result goes to the work directory."
+                t("mosaic_merge_desc")
             ).classes("text-sm text-gray-500")
 
             # Dwarf + Backup selector row
@@ -148,7 +149,7 @@ class MosaicApp:
                         self.refresh_btn = (
                             ui.button(icon='refresh', on_click=self.check_dir_dwarf)
                             .props('flat round dense')
-                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == "❌ Path not detected."))
+                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
                         )
                 with ui.column().classes('w-50 items-center'):
                     ui.label(t("backup_drive")).classes("text-lg font-semibold")
@@ -161,12 +162,12 @@ class MosaicApp:
             with ui.row().classes("items-center gap-2"):
                 ui.label(t("data_source")).classes("text-sm text-gray-500")
                 self.primary_source_toggle = ui.toggle(
-                    ['Dwarf', 'Backup'], value='Dwarf',
-                    on_change=self.on_primary_source_change,
+                    {'Dwarf': t('dwarf_device'), 'Backup': t('menu_backup_settings')},
+                    value='Dwarf', on_change=self.on_primary_source_change,
                 ).props('dense')
             self.input_primary_dir = (
                 ui.select(
-                    label="Primary Session Directory:",
+                    label=t("primary_session_dir"),
                     value=self.primary_session_dir,
                     options=[self.primary_session_dir],
                     on_change=self.on_primary_dir_change,
@@ -193,12 +194,12 @@ class MosaicApp:
             with ui.row().classes("items-center gap-2"):
                 ui.label(t("data_source")).classes("text-sm text-gray-500")
                 self.secondary_source_toggle = ui.toggle(
-                    ['Dwarf', 'Backup'], value='Dwarf',
-                    on_change=self.on_secondary_source_change,
+                    {'Dwarf': t('dwarf_device'), 'Backup': t('menu_backup_settings')},
+                    value='Dwarf', on_change=self.on_secondary_source_change,
                 ).props('dense')
             self.input_secondary_dir = (
                 ui.select(
-                    label="Secondary Session Directory:",
+                    label=t("secondary_session_dir"),
                     value=self.secondary_session_dir,
                     options=[self.secondary_session_dir],
                     on_change=self.on_secondary_dir_change,
@@ -227,7 +228,7 @@ class MosaicApp:
                 ui.label(t("no_stacked")).classes("text-sm text-gray-500")
             self.error_session_select = (
                 ui.select(
-                    label="Select a session to repair:",
+                    label=t("select_session_repair"),
                     options=[],
                     on_change=lambda: None,
                 )
@@ -235,7 +236,7 @@ class MosaicApp:
                 .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
             )
             ui.button(
-                "🔧 Use as Secondary Session",
+                t("use_as_secondary"),
                 on_click=self.use_error_session_as_secondary,
             ).classes("w-64")
         self.error_sessions_card.set_visibility(self.mode == "Repair")
@@ -245,7 +246,7 @@ class MosaicApp:
             ui.label(t("output_dir")).classes("text-lg font-semibold")
             self.input_output_dir = (
                 ui.select(
-                    label="Output Directory:",
+                    label=t("output_directory"),
                     value=self.output_dir,
                     options=[self.output_dir],
                     on_change=lambda: None,
@@ -291,7 +292,7 @@ class MosaicApp:
             with ui.row().classes("gap-3 justify-end pt-3 w-full"):
                 ui.button(t("later"), on_click=self._copy_dlg.close).props("flat color=grey")
                 ui.button(
-                    "📁 Copy to Dwarf now",
+                    t("copy_to_dwarf"),
                     on_click=self._on_copy_dlg_confirm,
                 ).props("color=green")
 
@@ -304,16 +305,16 @@ class MosaicApp:
         self.error_sessions_card.set_visibility(self.mode == "Repair")
         self.refresh_error_sessions()
         if self.mode == "Repair":
-            self.main_label.text = "Primary = reference mosaic (small but correct). Secondary = session to repair. Result goes to the work directory."
+            self.main_label.text = t("mosaic_repair_desc")
             self.action_button.text = "🔧 Start Repair"
-            self.primary_session_label.text = "📂 Primary Session (reference — correct mosaic)"
-            self.secondary_session_label.text = "📂 Secondary Session (session to repair)"
+            self.primary_session_label.text = t("primary_session_repair")
+            self.secondary_session_label.text = t("secondary_session_repair")
             self.copy_intermediate_files.visible = False
         else:
-            self.main_label.text = "Primary = base mosaic. Secondary = session whose data will be merged into it. Result goes to the work directory."
-            self.action_button.text = "🔀 Start Merge"
-            self.primary_session_label.text = "📂 Primary Session (Base Mosaic)"
-            self.secondary_session_label.text = "📂 Secondary Session (Additional Data to Merge)"
+            self.main_label.text = t("mosaic_merge_desc")
+            self.action_button.text = t("start_merge")
+            self.primary_session_label.text = t("primary_session")
+            self.secondary_session_label.text = t("secondary_session")
             self.copy_intermediate_files.visible = True
 
     # ------------------------------------------------------------------ #
@@ -395,13 +396,13 @@ class MosaicApp:
             self.BackupId, self.backup_location, self.backup_astrodir = self.backup_data[selected_name]
             self.backup_path = os.path.join(self.backup_location, self.backup_astrodir)
             if os.path.exists(self.backup_path):
-                self.backup_status_label.text = "✅ Path detected."
-                if self.usb_status_label.text != "✅ Path detected." and self.primary_source_toggle.value == "Dwarf": 
+                self.backup_status_label.text = t("path_detected")
+                if self.usb_status_label.text != t("path_detected") and self.primary_source_toggle.value == "Dwarf": 
                     self.primary_source_toggle.value = "Backup"
                     self.secondary_source_toggle.value = "Backup"
             else:
-                self.backup_status_label.text = "❌ Path not detected."
-                if self.usb_status_label.text == "✅ Path detected." and self.primary_source_toggle.value == "Backup": 
+                self.backup_status_label.text = t("path_not_detected")
+                if self.usb_status_label.text == t("path_detected") and self.primary_source_toggle.value == "Backup": 
                     self.primary_source_toggle.value = "Dwarf"
                     self.secondary_source_toggle.value = "Dwarf"
         else:
@@ -440,9 +441,9 @@ class MosaicApp:
     def check_dir_dwarf(self):
         if self.dwarf_astroDir:
             if os.path.exists(self.dwarf_astroDir):
-                self.usb_status_label.text = "✅ Path detected."
+                self.usb_status_label.text = t("path_detected")
             else:
-                self.usb_status_label.text = "❌ Path not detected."
+                self.usb_status_label.text = t("path_not_detected")
         else:
             self.usb_status_label.text = ""
 
@@ -810,7 +811,7 @@ class MosaicApp:
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("info").classes("text-gray-400").classes('text-5gl')
                     ui.label(
-                        "No thumbnail available — check orientation manually"
+                        t("no_thumbnail_check")
                     ).classes("text-sm text-gray-500")
 
             # ── Toggle manuel ─────────────────────────────────────────────
@@ -840,7 +841,7 @@ class MosaicApp:
                     self.start_process()
 
                 ui.button(
-                    "Confirm and continue",
+                    t("confirm_continue"),
                     on_click=on_confirm,
                     icon="check_circle",
                 ).classes("bg-blue-600 text-white")

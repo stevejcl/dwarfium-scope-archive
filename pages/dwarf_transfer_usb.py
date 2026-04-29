@@ -16,7 +16,7 @@ from components.win_log import WinLog
 @ui.page('/TransferUSB/')
 async def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive'):
 
-    menu("Session Transfer")
+    menu(t("page_usb_transfer"))
     await ui.context.client.connected()
     # Launch the GUI
     ui.context.transfert_app =  TransferAppUSB(DB_NAME, DwarfId=DwarfId, Session=session, Mode=mode)
@@ -82,7 +82,7 @@ class TransferAppUSB:
         sizeBTN='w-56'
 
         with ui.card().classes("w-full p-4 mt-4 items-center") as self.main_ui:
-            self.mode_toggle = ui.toggle(['Archive', 'Restore'], value='Archive', on_change=self.switch_mode)
+            self.mode_toggle = ui.toggle({'Archive': t('archive_mode'), 'Restore': t('restore_mode')}, value='Archive', on_change=self.switch_mode)
 
             with ui.grid(columns=2):
                 with ui.column():
@@ -311,7 +311,7 @@ class TransferAppUSB:
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
-            ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
+            ui.label(t('dest_already_exists').format(dest_path=dest_path))
             with ui.row():
                 ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
                 ui.button(t("no"), on_click=lambda: dialog.submit('No'))

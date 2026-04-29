@@ -53,7 +53,7 @@ async def home_page():
     await asyncio.sleep(0)
 
     if not is_app_started and status:
-        status.set_text('Initializing database...')
+        status.set_text(t('initializing_db'))
     await ensure_init()
 
     await ui.context.client.connected()
@@ -69,7 +69,7 @@ async def home_page():
 
     spinner.delete()
     if not curent_init and status:
-        status.set_text('Ready ✅')
+        status.set_text(t('ready'))
         ui.timer(3.0, lambda: status.delete(), once=True)
 
     ON_AIR = app.storage.general.get('ON_AIR', False)

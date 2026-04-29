@@ -48,7 +48,7 @@ from components.stitch_params_editor import StitchParamsEditor, get_stitch_param
 @ui.page('/Settings/')
 def astro_settings(InitDwarfLocal = True):
 
-    menu("Settings")
+    menu(t("page_settings"))
 
     # Launch the GUI with the parameters
     ui.context.settings_app =  SettingsApp(DB_NAME, InitDwarfLocal=InitDwarfLocal)
@@ -100,7 +100,7 @@ class SettingsApp:
                     ui.select(
                         {"en": "🇬🇧 English", "fr": "🇫🇷 Français"},
                         value=get_language(),
-                        on_change=lambda e: set_language(e.value)
+                        on_change=lambda e: (set_language(e.value), ui.navigate.reload())
                     ).classes("w-40")
                 if nicegui_app.storage.general.get('LAN_MODE', False):
                     ip = _get_local_ip()
@@ -114,7 +114,7 @@ class SettingsApp:
 
                 def open_report():
                     if not self._last_report_path or not os.path.exists(self._last_report_path):
-                        ui.notify("No report generated yet", type="warning")
+                        ui.notify(t("no_report"), type="warning")
                         return
                     try:
                         import subprocess, platform
@@ -196,7 +196,7 @@ class SettingsApp:
                     set_setting_text(self.conn, "NOVA_ASTRO_API", api_input.value.strip())
                     ui.notify(t("notif_api_key_saved"), type='positive')
 
-                ui.button("💾 Save key", on_click=save_api_key)
+                ui.button(t("save_key"), on_click=save_api_key)
 
             with ui.card().classes("w-full"):
                 ui.label(t("nova_local"))
@@ -214,7 +214,7 @@ class SettingsApp:
         if not self.InitDwarfLocal:
             with ui.dialog().props('persistent') as dialog, ui.card().classes("w-[500px] p-6"):
 
-                ui.label("🚀 First Setup Required").classes("text-xl font-bold")
+                ui.label(t("first_setup")).classes("text-xl font-bold")
 
                 ui.label(
                     "Before using Dwarfium Scope Archive, you need to select a folder to store your local session index.\n"
@@ -245,7 +245,7 @@ class SettingsApp:
                     # redirect
                     ui.timer(0.5, lambda: ui.navigate.to("/Dwarf?FirstInit=True"), once=True)
 
-                ui.button("✅ Save and continue", on_click=validate_and_continue)\
+                ui.button(t("save_continue"), on_click=validate_and_continue)\
                     .classes("mt-4 w-full")
 
             dialog.open()  

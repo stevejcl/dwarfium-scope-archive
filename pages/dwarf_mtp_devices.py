@@ -14,7 +14,7 @@ from components.menu import menu
 @ui.page("/MtpDevice")
 async def mtp_page(client: Client):
 
-    menu("DWARF II MTP Device Manager")
+    menu(t("page_mtp"))
     await ui.context.client.connected()
     # Launch the GUI
     TransferApp(client, DB_NAME)
