@@ -101,7 +101,7 @@ def normalise_panels_overlap(placements: list, masks: list, n_ch: int) -> list:
         print(f"  Panel {idx+1}: overlap zone = {n_px} px", end="  ")
 
         if n_px < 200:
-            print_log("⚠️  too few pixels — skipping normalisation for this panel")
+            print_log("⚠️  too few pixels — skipping normalisation for this panel", None)
             normalised.append([ch.astype(np.float64) for ch in placements[idx]])
             placed_mask |= masks[idx].astype(bool)
             continue
