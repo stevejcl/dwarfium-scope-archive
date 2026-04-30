@@ -1,6 +1,6 @@
 # Changelog
 
-## [V3.1.4] - 2026-04-30
+## [V3.1.4b] - 2026-04-30
 
 ### Add 
     Add SessionNotes Managment
