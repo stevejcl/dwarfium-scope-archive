@@ -1460,6 +1460,11 @@ def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_ob
         meta.get('shotsStacked'), meta.get('ircut'), meta.get('maxTemp'), meta.get('minTemp'),
         "0","0", 4, stacked_path, stacked_md5)
 
+    # ── Resolve observation location (FITS GPS → JPEG EXIF → default) ────────
+    if data_id:
+        from api.dwarf_location_api import resolve_location_for_session
+        resolve_location_for_session(conn, base_dir, root, data_id)
+
     return new_value, data_id
 
 

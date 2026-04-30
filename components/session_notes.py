@@ -8,6 +8,9 @@ Clicking opens a dialog to create/edit.
 
 from nicegui import ui
 from api.dwarf_backup_db_api import get_session_note, save_session_note, delete_session_note
+from api.dwarf_location_api import get_location as _get_location, set_dwarfdata_location
+from api.dwarf_location_api import set_manual_session_location
+from components.location_manager import location_picker
 from components.i18n import t
 
 # Moon phase icons + labels
@@ -48,12 +51,21 @@ def _render_widget(conn, container, note, backup_entry_id, manual_session_id):
     container.clear()
     with container:
         if note:
-            # Summary line
-            moon     = note[6] or ""
+            # Summary line — note columns:
+            # [0]=id [1]=backup_entry_id [2]=manual_session_id
+            # [3]=summary [4]=note [5]=location_id [6]=moon_phase [7]=seeing
+            moon       = note[6] or ""
             seeing_val = int(note[7]) if (note[7] is not None) else 0
-            stars    = SEEING_STARS[seeing_val - 1] if 1 <= seeing_val <= 5 else ""
-            summary  = note[3] or ""
-            location = note[5] or ""
+            stars      = SEEING_STARS[seeing_val - 1] if 1 <= seeing_val <= 5 else ""
+            summary    = note[3] or ""
+
+            # Resolve location name from FK
+            location_id = note[5]
+            if location_id:
+                _loc_row = _get_location(conn, location_id)
+                location = _loc_row["name"] if _loc_row else ""
+            else:
+                location = ""
 
             with ui.row().classes("w-full items-center gap-2 flex-wrap"):
                 ui.button("✏️", on_click=lambda: _open_dialog(
@@ -78,15 +90,16 @@ def _render_widget(conn, container, note, backup_entry_id, manual_session_id):
 
 def _open_dialog(conn, container, note, backup_entry_id, manual_session_id):
     """Open the create/edit dialog."""
-    note_id     = note[0] if note else None
-    summary_val = note[3] if note else ""
-    note_val    = note[4] if note else ""
-    location_val= note[5] if note else ""
-    moon_val    = note[6] if note else ""
-    seeing_val  = int(note[7]) if (note and note[7] is not None) else 0
+    note_id        = note[0] if note else None
+    summary_val    = note[3] if note else ""
+    note_val       = note[4] if note else ""
+    location_id_val = note[5] if note else None
+    moon_val       = note[6] if note else ""
+    seeing_val     = int(note[7]) if (note and note[7] is not None) else 0
 
-    selected_moon   = [moon_val]
-    selected_seeing = [seeing_val]
+    selected_moon        = [moon_val]
+    selected_seeing      = [seeing_val]
+    selected_location_id = [location_id_val]
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
         ui.label(t("notes_title")).classes("text-lg font-bold mb-2")
@@ -135,11 +148,34 @@ def _open_dialog(conn, container, note, backup_entry_id, manual_session_id):
                     btn.props("color=grey-4")
                 seeing_btns[i] = btn
 
-        # Location
-        location_input = ui.input(
-            label=t("notes_location"),
-            value=location_val
-        ).classes("w-full mt-2")
+        # Location picker (FK → ObservationLocation)
+        # "Apply to session" propagates location_id to DwarfData or ManualSession
+        def _on_location_change(loc_id):
+            selected_location_id[0] = loc_id
+
+        def _on_apply_to_session(loc_id):
+            """Propagate selected location to DwarfData or ManualSession."""
+            if loc_id is None:
+                return
+            if backup_entry_id:
+                from api.dwarf_backup_db_api import get_backup_entry
+                entry = get_backup_entry(conn, backup_entry_id)
+                if entry and entry.get("dwarf_data_id"):
+                    set_dwarfdata_location(conn, entry["dwarf_data_id"], loc_id)
+                    ui.notify(t("loc_saved"), type="positive")
+            elif manual_session_id:
+                set_manual_session_location(conn, manual_session_id, loc_id)
+                ui.notify(t("loc_saved"), type="positive")
+
+        with ui.column().classes("w-full mt-2 gap-0"):
+            ui.label(t("notes_location")).classes("text-sm font-semibold")
+            location_picker(
+                conn,
+                current_location_id=location_id_val,
+                on_change=_on_location_change,
+                show_apply_button=bool(backup_entry_id or manual_session_id),
+                on_apply=_on_apply_to_session,
+            )
 
         # Summary
         summary_input = ui.input(
@@ -176,14 +212,13 @@ def _open_dialog(conn, container, note, backup_entry_id, manual_session_id):
                         conn,
                         summary=summary_input.value.strip(),
                         note=note_input.value.strip(),
-                        location=location_input.value.strip(),
+                        location_id=selected_location_id[0],
                         moon_phase=selected_moon[0],
                         seeing=selected_seeing[0] or None,
                         backup_entry_id=backup_entry_id,
                         manual_session_id=manual_session_id,
                         note_id=note_id,
                     )
-                    # Reload note and re-render
                     ui.notify(t("notes_saved"), type="positive")
                     dialog.close()
                     updated = get_session_note(

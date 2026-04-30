@@ -654,4 +654,30 @@ TRANSLATIONS: dict[str, str] = {
     "notif_select_dso_first":       "Veuillez d'abord sélectionner un DSO.",
     "notif_no_folder":              "Aucun dossier sélectionné !",
     "notif_cannot_remove_fits":     "Impossible de supprimer le FITS principal tant que d'autres sont présents !",
+
+    # ── Observation Locations ─────────────────────────────────────────────────
+    "loc_title":                    "Lieux d'observation",
+    "loc_add":                      '➕ Ajouter un lieu',
+    "loc_edit":                     'Modifier le lieu',
+    "loc_name":                     'Nom',
+    "loc_latitude":                 'Latitude',
+    "loc_longitude":                'Longitude',
+    "loc_address":                  'Adresse',
+    "loc_comment":                  'Commentaire',
+    "loc_set_default":              '⭐ Définir par défaut',
+    "loc_is_default":               '⭐ Par défaut',
+    "loc_open_map":                 '🗺️ Carte',
+    "loc_no_locations":             "Aucun lieu d'observation enregistré.",
+    "loc_confirm_delete":           'Supprimer ce lieu ?',
+    "loc_saved":                    'Lieu enregistré.',
+    "loc_deleted":                  'Lieu supprimé.',
+    "loc_name_required":            'Le nom est requis.',
+    "loc_apply_session":            '📍 Appliquer à la session',
+    "loc_manage":                   'Gérer les lieux',
+    "loc_none":                     '(aucun lieu)',
+
+    "loc_detect":                   'Détecter ma position',
+    "loc_detecting":                'Détection en cours...',
+    "loc_detect_failed":            'Échec de la détection.',
+
 }

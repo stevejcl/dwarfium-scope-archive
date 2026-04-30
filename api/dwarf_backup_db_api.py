@@ -3752,26 +3752,26 @@ def get_session_note(conn, backup_entry_id=None, manual_session_id=None):
     return None
 
 
-def save_session_note(conn, summary, note, location, moon_phase, seeing,
+def save_session_note(conn, summary, note, location_id, moon_phase, seeing,
                       backup_entry_id=None, manual_session_id=None, note_id=None):
     """Create or update a SessionNote. Returns the note id."""
     with conn:
         if note_id:
             conn.execute("""
                 UPDATE SessionNotes
-                SET summary=?, note=?, location=?, moon_phase=?, seeing=?,
+                SET summary=?, note=?, location_id=?, moon_phase=?, seeing=?,
                     updated_at=datetime('now')
                 WHERE id=?
-            """, (summary, note, location, moon_phase, seeing, note_id))
+            """, (summary, note, location_id, moon_phase, seeing, note_id))
             return note_id
         else:
             cur = conn.execute("""
                 INSERT INTO SessionNotes
                     (backup_entry_id, manual_session_id, summary, note,
-                     location, moon_phase, seeing)
+                     location_id, moon_phase, seeing)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (backup_entry_id, manual_session_id, summary, note,
-                  location, moon_phase, seeing))
+                  location_id, moon_phase, seeing))
             return cur.lastrowid
 
 

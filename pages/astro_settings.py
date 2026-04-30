@@ -181,6 +181,12 @@ class SettingsApp:
 
                 ui.button(t("save"), on_click=save_path).classes("mt-4")
          
+            # ── Observation Locations ─────────────────────────────────────────
+            ui.label(t("loc_title")).classes("text-xl font-bold")
+            with ui.card().classes("w-full p-4"):
+                from components.location_manager import location_manager_widget
+                location_manager_widget(self.conn)
+
             ui.label(t("nova_config")).classes("text-xl font-bold")
 
             ui.label(f"Detected System : {platform.system()}")

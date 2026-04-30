@@ -1,6 +1,6 @@
 # Changelog
 
-## [In Progress] - 2026-04-28
+## [V3.1.4] - 2026-04-30
 
 ### Add 
     Add SessionNotes Managment
@@ -8,6 +8,7 @@
     Begin of Multi Language
     Add Comets/Asteroid detector fot setting Target
     Add localized help content and loader
+    Add ObservationLocation support & UI
 
 ### BugFix#
     ALL_SESSION Filter translat every where

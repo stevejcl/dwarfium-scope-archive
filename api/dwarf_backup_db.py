@@ -88,7 +88,8 @@ def create_DwarfData_sql():
             height TEXT,
             media_type INTEGER,
             stacked_fits_path TEXT,
-            stacked_fits_md5 TEXT
+            stacked_fits_md5 TEXT,
+            location_id INTEGER REFERENCES ObservationLocation(id) ON DELETE SET NULL
         )
         """
 
@@ -205,6 +206,7 @@ def create_ManualSession_sql():
             stacked_png_path TEXT,
             stacked_fits_path TEXT,
             stacked_fits_md5 TEXT,
+            location_id INTEGER REFERENCES ObservationLocation(id) ON DELETE SET NULL,
             UNIQUE("session_name", "session_tag", "session_type")
         )
         """
@@ -256,7 +258,7 @@ def create_SessionNotes_sql():
             manual_session_id INTEGER REFERENCES ManualSession(id) ON DELETE CASCADE,
             summary           TEXT,
             note              TEXT,
-            location          TEXT,
+            location_id       INTEGER REFERENCES ObservationLocation(id) ON DELETE SET NULL,
             moon_phase        TEXT,
             seeing            INTEGER CHECK(seeing BETWEEN 1 AND 5),
             created_at        TEXT DEFAULT (datetime('now')),
@@ -264,11 +266,26 @@ def create_SessionNotes_sql():
         )
         """
 
+def create_ObservationLocation_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS ObservationLocation (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            latitude    REAL,
+            longitude   REAL,
+            address     TEXT,
+            comment     TEXT,
+            is_default  INTEGER DEFAULT 0
+        )
+        """
+
+
 SCHEMAS = {
     "DsoCatalog": create_DsoCatalog_sql,
     "AstroObject": create_AstroObject_sql,
     "MtpDevices": create_MtpDevices_sql,
     "Dwarf": create_Dwarf_sql,
+    "ObservationLocation": create_ObservationLocation_sql,
     "DwarfData": create_DwarfData_sql,
     "DwarfEntry": create_DwarfEntry_sql,
     "BackupDrive": create_BackupDrive_sql,
@@ -287,7 +304,7 @@ assert SCHEMAS["AstroObject"] is create_AstroObject_sql, (
     "SCHEMAS['AstroObject'] must be create_AstroObject_sql — "
     "do not map it to create_DwarfData_sql"
 )
-  
+
 def start_db(database: str = DB_NAME):
     try:
         db_dir = os.path.dirname(database)
@@ -327,7 +344,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 8
+CURRENT_DB_VERSION = 9
 
 def init_db(conn):
     try:
@@ -368,6 +385,13 @@ def init_db(conn):
 
         cursor.execute(create_Dwarf_sql())
 
+        # ObservationLocation must exist before DwarfData (FK dependency)
+        cursor.execute(create_ObservationLocation_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observationlocation_default
+            ON ObservationLocation(is_default);
+        """)
+
         cursor.execute(create_DwarfData_sql())
 
         cursor.execute(create_DwarfEntry_sql())
@@ -403,6 +427,9 @@ def init_db(conn):
         """)
 
         cursor.execute(create_ManualSession_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsession_location ON ManualSession(location_id);
+        """)
 
         cursor.execute(create_ManualSessionEntry_sql())
 
@@ -714,6 +741,57 @@ def migrate_v8(conn):
         return []
 
 
+
+def migrate_v9(conn):
+    """
+    v9 — Observation Location management.
+    - Create ObservationLocation table
+    - Add location_id FK to DwarfData
+    - Replace SessionNotes.location (TEXT) with location_id (FK)
+    """
+    try:
+        print("Migrating Database to V9...")
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF")
+
+        cursor.execute(create_ObservationLocation_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observationlocation_default
+            ON ObservationLocation(is_default);
+        """)
+
+        add_column_if_not_exists(conn, "DwarfData", "location_id",
+                                 "INTEGER REFERENCES ObservationLocation(id) ON DELETE SET NULL")
+
+        add_column_if_not_exists(conn, "ManualSession", "location_id",
+                                 "INTEGER REFERENCES ObservationLocation(id) ON DELETE SET NULL")
+
+        rebuild_tables(conn, ["SessionNotes"])
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_backup ON SessionNotes(backup_entry_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_manual ON SessionNotes(manual_session_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionnotes_location ON SessionNotes(location_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dwarfdata_location ON DwarfData(location_id);
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_manualsession_location ON ManualSession(location_id);
+        """)
+
+        cursor.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+        print("Migration v9 applied.")
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v9: {e}")
+
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -723,6 +801,7 @@ MIGRATIONS = {
     6: migrate_v6,
     7: migrate_v7,
     8: migrate_v8,
+    9: migrate_v9,
     # Add more later...
 }
 
