@@ -8,6 +8,10 @@
     Begin of Multi Language
     Add Comets/Asteroid detector fot setting Target
 
+### BugFix#
+    ALL_SESSION Filter translat every where
+    NOTES Widgedt appearance
+
 ## [V3.1.3] - 2026-04-28
 
 ### Add 

@@ -822,11 +822,10 @@ class ExploreApp:
         else:
             # Populate combobox with readable file names
             details = []
-
+            value_select = f"{t('select_session_for')} {self.selected_object}"
             if self.selected_object == ALL_SESSIONS:
-                select_file = [f"{t('select_session_for')} {t("all_sessions")}"]
-            else: 
-                select_file = [f"{t('select_session_for')} {self.selected_object}"]
+                value_select = f"{t('select_session_for')} {t("all_sessions")}"
+            select_file = [value_select]
             stackeds = 0
             total_time_exp = 0
             self.label_to_index = {}
@@ -894,7 +893,7 @@ class ExploreApp:
                     details_text
                 )
 
-            self.file_list.set_options(select_file, value=f"{t('select_session_for')} {self.selected_object}")
+            self.file_list.set_options(select_file, value=value_select)
 
             with self.details_files:
                 ui.item_label(f"{len(files)} {t('sessions_found')} {stackeds} {t('stacks_exp')} {format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
@@ -1394,7 +1393,8 @@ class ExploreApp:
                 # --- Session Notes ---
                 _be_id = get_backup_entry_id_by_dwarf_data(self.conn, dwarf_data_id)
                 if _be_id:
-                    session_notes_widget(self.conn, backup_entry_id=_be_id)
+                    with ui.item():
+                        session_notes_widget(self.conn, backup_entry_id=_be_id)
 
             self.preview_image_path = full_path
             await self.update_preview(full_path)

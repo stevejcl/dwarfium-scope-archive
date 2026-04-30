@@ -742,6 +742,10 @@ class ManualExploreApp:
             self.file_list.set_options([label], value=label)
         else:
             labels = [f"{t('select_session_for')} {t(self.selected_object)}"]
+            value_select = f"{t('select_session_for')} {self.selected_object}"
+            if self.selected_object == ALL_SESSIONS:
+                value_select = f"{t('select_session_for')} {t("all_sessions")}"
+            labels = [value_select]
 
             self.label_to_index = {}
 
@@ -977,6 +981,10 @@ class ManualExploreApp:
                 temp_str = f"🌡 {t('temp_label')}: {min_temp}°C – {max_temp}°C" if min_temp is not None else f"🌡 {t('temp_label')}: {max_temp}°C"
                 ui.item(temp_str).classes('text-sky-700')
 
+            # --- Session Notes ---
+            with ui.item():
+                session_notes_widget(self.conn, manual_session_id=manual_session_id)
+
             ui.separator()
             # --- FITS file count for this session ---
             if session_dir and os.path.isdir(session_dir):
@@ -995,9 +1003,6 @@ class ManualExploreApp:
 
             if session_dir:
                 ui.item(f"📂 {t('folder_label')}: {session_dir}").classes('text-gray-400 text-xs')
-
-            # --- Session Notes ---
-            session_notes_widget(self.conn, manual_session_id=manual_session_id)
 
         # --- Preview image ---
         preview_path = jpeg_path or stacked_png_path or thumbnail_path
