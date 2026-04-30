@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.1.5] - 2026-05-01
+
+### BugFix#
+    Load Translation in Windows exe
+
 ## [V3.1.4c] - 2026-04-30
 
 ### Add 

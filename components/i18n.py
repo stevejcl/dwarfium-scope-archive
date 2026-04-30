@@ -30,14 +30,30 @@ def _load_locale(lang: str) -> dict[str, str]:
     """Load and cache the TRANSLATIONS dict for *lang*."""
     if lang in _cache:
         return _cache[lang]
-    try:
-        locale_path = Path(__file__).parent / "locales" / f"{lang}.py"
-        spec = importlib.util.spec_from_file_location(f"locales.{lang}", locale_path)
-        module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
-        spec.loader.exec_module(module)                      # type: ignore[union-attr]
-        _cache[lang] = module.TRANSLATIONS
-    except Exception:
-        _cache[lang] = {}
+    # Try multiple base paths to support running as script, frozen exe, or
+    # from a working directory different from the project root (Windows .exe).
+    candidates = [
+        Path(__file__).parent / "locales" / f"{lang}.py",          # normal: components/locales/
+        Path(__file__).parent.parent / "components" / "locales" / f"{lang}.py",  # one level up
+        Path("components") / "locales" / f"{lang}.py",              # relative to CWD
+        Path("locales") / f"{lang}.py",                             # flat layout
+    ]
+    for locale_path in candidates:
+        if not locale_path.exists():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"locales.{lang}", locale_path)
+            module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
+            spec.loader.exec_module(module)                      # type: ignore[union-attr]
+            _cache[lang] = module.TRANSLATIONS
+            return _cache[lang]
+        except Exception as e:
+            print(f"[i18n] Failed to load locale '{lang}' from {locale_path}: {e}")
+
+    print(f"[i18n] WARNING: locale '{lang}' not found in any candidate path:")
+    for p in candidates:
+        print(f"  {'✅' if p.exists() else '❌'}  {p.resolve()}")
+    _cache[lang] = {}
     return _cache[lang]
 
 
@@ -49,6 +65,7 @@ def get_language() -> str:
         lang = app.storage.general.get("language", DEFAULT_LANGUAGE)
         return lang if lang in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
     except Exception:
+        # app.storage not yet available (module import time or frozen exe startup)
         return DEFAULT_LANGUAGE
 
 
