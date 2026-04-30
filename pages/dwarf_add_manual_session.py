@@ -38,7 +38,7 @@ client_apps = {}
 async def manual_session_page(client: Client, DwarfId:int = None, session:str = None, BackupDriveId:int = None, ManualEntryId:int = None, back_url:str = None):
 
     menu(t("page_manual_add") if not ManualEntryId else t("page_manual_exit"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     # Launch the GUI - ManualEntryId triggers edit mode for an existing session
     ui.context.manual_session_app = AddManualSession(client, DB_NAME, DwarfId=DwarfId, Session=session, BackupDriveId=BackupDriveId, ManualEntryId=ManualEntryId, BackUrl=back_url)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

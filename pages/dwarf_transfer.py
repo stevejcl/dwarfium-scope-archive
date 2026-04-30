@@ -33,7 +33,7 @@ async def transfer_page(
     dest_override: str = None,  # force destination to this path (e.g. CALI_FRAME dir)
 ):
     menu(t("page_transfer"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     # Launch the GUI
     ui.context.transfert_app = TransferApp(
         client,

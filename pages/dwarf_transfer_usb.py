@@ -17,7 +17,7 @@ from components.win_log import WinLog
 async def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive'):
 
     menu(t("page_usb_transfer"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     # Launch the GUI
     ui.context.transfert_app =  TransferAppUSB(DB_NAME, DwarfId=DwarfId, Session=session, Mode=mode)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

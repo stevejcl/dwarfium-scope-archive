@@ -47,7 +47,7 @@ async def home_page():
         status = ui.label(t("starting"))
     spinner = ui.spinner(size='md')
 
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
 
     # 👇 laisse le temps au rendu UI
     await asyncio.sleep(0)
@@ -56,7 +56,7 @@ async def home_page():
         status.set_text(t('initializing_db'))
     await ensure_init()
 
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
 
     # Check settings and handle directory setup
     conn = connect_db(DB_NAME)

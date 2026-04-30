@@ -46,7 +46,7 @@ async def mosaic_page(
 ):
 
     menu(t("page_mosaic"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId)
 
 

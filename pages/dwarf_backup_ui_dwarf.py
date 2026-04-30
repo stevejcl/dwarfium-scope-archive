@@ -25,7 +25,7 @@ from components.help_system import open_help
 async def dwarf_settings(DwarfId:int = None, FirstInit=False):
 
     menu(t("page_dwarf"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     # Launch the GUI
     ConfigApp(DB_NAME, DwarfId=DwarfId, FirstInit=FirstInit)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

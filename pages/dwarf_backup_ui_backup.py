@@ -21,7 +21,7 @@ from components.menu import menu, setStyle
 async def backup_settings(BackupId:int = None):
 
     menu(t("page_backup"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     # Launch the GUI
     ConfigApp(DB_NAME, BackupId=BackupId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))

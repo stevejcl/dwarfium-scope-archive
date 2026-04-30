@@ -94,17 +94,26 @@ async def manual_explore_page(
     SessionId: int = None,
 ):
     menu(t("page_manual_explore"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
+
+    # Guard: if the client was already disconnected during connection (fast navigation,
+    # drawer JS timeout), abort page construction to avoid "client deleted" warnings.
+    if not ui.context.client.id in ui.context.client.__class__._instances:
+        return
 
     print(f" [ManualExplore] BackupDriveId={BackupDriveId}  DwarfId={DwarfId}  SessionId={SessionId}")
 
-    app_instance = ManualExploreApp(
-        DB_NAME,
-        BackupDriveId=BackupDriveId,
-        DwarfId=DwarfId,
-        BackUrl=back_url,
-        SessionId=SessionId,
-    )
+    try:
+        app_instance = ManualExploreApp(
+            DB_NAME,
+            BackupDriveId=BackupDriveId,
+            DwarfId=DwarfId,
+            BackUrl=back_url,
+            SessionId=SessionId,
+        )
+    except Exception as e:
+        print(f"[ManualExplore] Failed to initialize page (client may have disconnected): {e}")
+        return
 
     ui.context.manual_explore_app = app_instance
 

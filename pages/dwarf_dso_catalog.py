@@ -14,7 +14,7 @@ from components.win_log import WinLog
 async def dwarf_catalog():
 
     menu(t("page_catalog"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     try:
         ui.context.catalog_app = CatalogApp(DB_NAME)
         # Defer load after page is fully connected — avoids drawer JS timeout

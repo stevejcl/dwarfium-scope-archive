@@ -65,14 +65,18 @@ def safe_print(text):
 async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None, only_on_dwarf: int = 0):
 
     menu(t("page_explore"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
 
     print(f" BackupDriveId: {BackupDriveId}")
     print(f" DwarfId: {DwarfId}")
     print(f" mode: {mode}")
 
     # Launch the GUI with the parameters
-    ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId, OnlyOnDwarf=bool(only_on_dwarf))
+    try:
+        ui.context.explore_app = ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId, OnlyOnDwarf=bool(only_on_dwarf))
+    except Exception as e:
+        print(f"[Explore] Failed to initialize page (client may have disconnected): {e}")
+        return
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class ExploreApp:

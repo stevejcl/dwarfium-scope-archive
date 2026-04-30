@@ -15,7 +15,7 @@ from components.menu import menu
 async def mtp_page(client: Client):
 
     menu(t("page_mtp"))
-    await ui.context.client.connected()
+    await ui.context.client.connected(timeout=10.0)
     # Launch the GUI
     TransferApp(client, DB_NAME)
 
