@@ -98,7 +98,7 @@ async def manual_explore_page(
 
     # Guard: if the client was already disconnected during connection (fast navigation,
     # drawer JS timeout), abort page construction to avoid "client deleted" warnings.
-    if not ui.context.client.id in ui.context.client.__class__._instances:
+    if not ui.context.client.id in ui.context.client.__class__.instances:
         return
 
     print(f" [ManualExplore] BackupDriveId={BackupDriveId}  DwarfId={DwarfId}  SessionId={SessionId}")
