@@ -7,6 +7,7 @@
     Add robust file copy for Session Transfer
     Begin of Multi Language
     Add Comets/Asteroid detector fot setting Target
+    Add localized help content and loader
 
 ### BugFix#
     ALL_SESSION Filter translat every where
