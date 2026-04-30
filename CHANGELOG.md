@@ -1,6 +1,6 @@
 # Changelog
 
-## [V3.1.4b] - 2026-04-30
+## [V3.1.4c] - 2026-04-30
 
 ### Add 
     Add SessionNotes Managment
@@ -13,6 +13,7 @@
 ### BugFix#
     ALL_SESSION Filter translat every where
     NOTES Widgedt appearance
+    Error Version Comit
 
 ## [V3.1.3] - 2026-04-28
 
