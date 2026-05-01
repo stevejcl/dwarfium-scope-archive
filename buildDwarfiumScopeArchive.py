@@ -24,8 +24,10 @@ SOURCE_FILE = "dwarfium_scope_archive.py"
 DIST_DIR = Path("dist")
 BUILD_DIR = Path("build")
 IMAGE_DIR = Path("image")
-DIST_IMAGE_DIR = DIST_DIR / "image"
-DIST_DB_DIR = DIST_DIR / "db"
+DIST_IMAGE_DIR      = DIST_DIR / "image"
+DIST_DB_DIR         = DIST_DIR / "db"
+DIST_LOCALES_DIR    = DIST_DIR / "components" / "locales"
+DIST_HELP_LOCALES_DIR = DIST_DIR / "components" / "help_locales"
 
 print("Current working directory:", os.getcwd())
 
@@ -93,6 +95,20 @@ if src_json.exists():
     shutil.copy2(src_json, dest_json)
 else:
     print(f"Warning: {src_json} does not exist, skipping.")
+
+# Copy locale files into dist/components/locales/ (required for i18n)
+DIST_LOCALES_DIR.mkdir(parents=True, exist_ok=True)
+for locale_file in Path("components/locales").glob("*.py"):
+    dest = DIST_LOCALES_DIR / locale_file.name
+    print(f"Copying {locale_file} to {dest}")
+    shutil.copy2(locale_file, dest)
+
+# Copy help locale files into dist/components/help_locales/
+DIST_HELP_LOCALES_DIR.mkdir(parents=True, exist_ok=True)
+for locale_file in Path("components/help_locales").glob("*.py"):
+    dest = DIST_HELP_LOCALES_DIR / locale_file.name
+    print(f"Copying {locale_file} to {dest}")
+    shutil.copy2(locale_file, dest)
 
 # Step 4 – Zip everything in dist
 import platform

@@ -33,14 +33,26 @@ def _load_help_locale(lang: str) -> dict[str, dict[str, str]]:
     """Load and cache the HELP dict for *lang*."""
     if lang in _help_cache:
         return _help_cache[lang]
-    try:
-        locale_path = Path(__file__).parent / "help_locales" / f"{lang}.py"
-        spec = importlib.util.spec_from_file_location(f"help_locales.{lang}", locale_path)
-        module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
-        spec.loader.exec_module(module)                      # type: ignore[union-attr]
-        _help_cache[lang] = module.HELP
-    except Exception:
-        _help_cache[lang] = {}
+    import sys as _sys
+    candidates = [
+        Path(__file__).parent / "help_locales" / f"{lang}.py",
+        Path("components") / "help_locales" / f"{lang}.py",
+    ]
+    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
+        candidates.insert(0, Path(_sys._MEIPASS) / "components" / "help_locales" / f"{lang}.py")
+    for locale_path in candidates:
+        if not locale_path.exists():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"help_locales.{lang}", locale_path)
+            module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
+            spec.loader.exec_module(module)                      # type: ignore[union-attr]
+            _help_cache[lang] = module.HELP
+            return _help_cache[lang]
+        except Exception as e:
+            print(f"[help] Failed to load help locale '{lang}' from {locale_path}: {e}")
+    print(f"[help] WARNING: help locale '{lang}' not found")
+    _help_cache[lang] = {}
     return _help_cache[lang]
 
 

@@ -30,14 +30,16 @@ def _load_locale(lang: str) -> dict[str, str]:
     """Load and cache the TRANSLATIONS dict for *lang*."""
     if lang in _cache:
         return _cache[lang]
-    # Try multiple base paths to support running as script, frozen exe, or
-    # from a working directory different from the project root (Windows .exe).
+    import sys as _sys
+    # Try multiple paths: normal script, PyInstaller exe (_MEIPASS), CWD variants
     candidates = [
-        Path(__file__).parent / "locales" / f"{lang}.py",          # normal: components/locales/
-        Path(__file__).parent.parent / "components" / "locales" / f"{lang}.py",  # one level up
-        Path("components") / "locales" / f"{lang}.py",              # relative to CWD
-        Path("locales") / f"{lang}.py",                             # flat layout
+        Path(__file__).parent / "locales" / f"{lang}.py",
+        Path(__file__).parent.parent / "components" / "locales" / f"{lang}.py",
+        Path("components") / "locales" / f"{lang}.py",
+        Path("locales") / f"{lang}.py",
     ]
+    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
+        candidates.insert(0, Path(_sys._MEIPASS) / "components" / "locales" / f"{lang}.py")
     for locale_path in candidates:
         if not locale_path.exists():
             continue
@@ -49,8 +51,7 @@ def _load_locale(lang: str) -> dict[str, str]:
             return _cache[lang]
         except Exception as e:
             print(f"[i18n] Failed to load locale '{lang}' from {locale_path}: {e}")
-
-    print(f"[i18n] WARNING: locale '{lang}' not found in any candidate path:")
+    print(f"[i18n] WARNING: locale '{lang}' not found. Tried:")
     for p in candidates:
         print(f"  {'✅' if p.exists() else '❌'}  {p.resolve()}")
     _cache[lang] = {}
@@ -65,7 +66,6 @@ def get_language() -> str:
         lang = app.storage.general.get("language", DEFAULT_LANGUAGE)
         return lang if lang in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
     except Exception:
-        # app.storage not yet available (module import time or frozen exe startup)
         return DEFAULT_LANGUAGE
 
 

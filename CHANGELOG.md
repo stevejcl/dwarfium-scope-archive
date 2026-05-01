@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.1.5b] - 2026-05-01
+
+### Add 
+    Include locale files in dist and robust loaders
+
 ## [V3.1.5] - 2026-05-01
 
 ### BugFix#
