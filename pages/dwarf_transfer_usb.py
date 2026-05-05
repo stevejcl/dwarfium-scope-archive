@@ -247,7 +247,7 @@ class TransferAppUSB:
         else:
             folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         if folder and not folder[0].startswith(self.src_main_dir):
-            ui.notify(f"❌ Access denied: You cannot navigate outside {self.SourceMainDir}")
+            ui.notify(t("access_denied_outside", path=self.SourceMainDir), type="negative")
         elif folder:
             ui.notify(folder[0])
             folder = os.path.normpath(folder[0])
@@ -267,9 +267,9 @@ class TransferAppUSB:
             folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         
         if folder and not folder[0].startswith(self.dest_main_dir):
-            ui.notify(f"❌ Access denied: You cannot navigate outside {self.DestinationMainDir}")
+            ui.notify(t("access_denied_outside", path=self.DestinationMainDir), type="negative")
         elif folder:
-            ui.notify(f"✅ Selected Folder: {folder[0]}")
+            ui.notify(t("folder_selected", path=folder[0]), type="positive")
             folder = os.path.normpath(folder[0])
             self.input_dest_dir.value = folder
 
@@ -307,7 +307,7 @@ class TransferAppUSB:
     async def confirm_overwrite(self, dest_path, isFullBackup):
 
         print("confirm_overwrite")
-        ui.notify(f"The destination '{dest_path}' already exists.!", type='warning')
+        ui.notify(t("dest_already_exists", path=dest_path), type="warning")
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
@@ -361,7 +361,7 @@ class TransferAppUSB:
                 local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
                 if not local_Main_Dwarf_dir:
                     spinner.visible = False
-                    ui.notify(f"❌ Error accessing local Dwarf Directory : {local_Main_Dwarf_dir}", type="negative")
+                    ui.notify(t("dwarf_local_dir_error", path=local_Main_Dwarf_dir), type="negative")
                 else:
                     ui.notify(t("starting_sync"))
                     session_name = ""
@@ -394,17 +394,17 @@ class TransferAppUSB:
                     total_dwarf, deleted_dwarf, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
                     total_backup, deleted_backup, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
                     if rebuild_result["rebuilt"] > 0:
-                        ui.notify(f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked.", type="positive")
+                        ui.notify(t('manual_sessions_relinked', count=rebuild_result['rebuilt']), type='positive')
                     if rebuild_result["skipped"] > 0:
-                        ui.notify(f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched.", type="warning", timeout=8000)
+                        ui.notify(t('manual_sessions_unmatched', count=rebuild_result['skipped']), type='warning', timeout=8000)
 
                     spinner.visible = False
                     label.text = self.EndScanningMessage
-                    ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive")
-                    ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive")
+                    ui.notify(t("analysis_complete_dwarf", total=total_dwarf), type="positive")
+                    ui.notify(t("analysis_complete_backup", total=total_backup), type="positive")
 
             except Exception as e:
-                ui.notify(f"❌ Error: {str(e)}", type="negative")
+                ui.notify(t("error_generic", error=str(e)), type="negative")
         else:
             self.progress_label.set_text(f"Backup interrupted!")
 

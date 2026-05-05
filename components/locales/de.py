@@ -284,7 +284,6 @@ TRANSLATIONS: dict[str, str] = {
     "drive_in_use_backup":          "This Backup Drive is still in use by one or more backup entries. Please delete them first.",  # TODO
     "drive_in_use_manual":          "This Backup Drive is still in use by one or more manual entries. Please delete them first.",  # TODO
     "backup_info_updated":          "BackupDrive info updated",  # TODO
-    "no_backup_drive_sel2":         "No backup drive selected",  # TODO
     "no_backup_drive_sel":          "No backup drive selected.",  # TODO
     "dest_already_exists":          "The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?",  # TODO
     "notify_dest_already_exists":   "The destination: '{dest_path}' already exists!}",  # TODO
@@ -317,7 +316,9 @@ TRANSLATIONS: dict[str, str] = {
     "all_sessions":                 "[ALL SESSIONS]",  # TODO
     "total_matching":               "Total matching sessions:",  # TODO
     "sessions_found":               "sessions were found, totaling",  # TODO
+    "session_found":                "session was found, totaling",  # TODO
     "stacks_exp":                   "stacks and a total exposure time of",  # TODO
+    "stack_exp":                    "stack and a total exposure time of",  # TODO
     "no_session_found":             "No Session found.",  # TODO
 
     # ── Transfer ──────────────────────────────────────────────────────────────────
@@ -460,6 +461,7 @@ TRANSLATIONS: dict[str, str] = {
     "taken":                        "Taken",  # TODO
     "restack":                      "Restack",  # TODO
     "stacked_shots":                "stacked shots for a total exposure time of",  # TODO
+    "stacked_shots_one":            "stacked shot for a total exposure time of",  # TODO
     "classified_as":                "Classified as:",  # TODO
     "directory_size":               "Directory Size",  # TODO
     "filename":                     "Filename",  # TODO
@@ -467,6 +469,12 @@ TRANSLATIONS: dict[str, str] = {
     "images_found":                 "images found",  # TODO
     "fits_files_in_folder":         "FITS file(s) in session folder",  # TODO
     "no_fits_on_disk":              "No sub-exposure fits files were found on the disk",  # TODO
+    "folder_not_exist":             "Folder does not exist:\n{path}",  # TODO
+    "folder_deleted":               "Folder deleted:\n{path}",  # TODO
+    "error_deleting_folder":        "Error deleting folder:\n{e}",  # TODO
+    "fits_cleanup_confirm_title":   "Confirm FITS Cleanup on Dwarf",  # TODO
+    "fits_cleanup_confirm_msg":     "⚠️ Are you sure you want to clean up FITS files on the Dwarf for this session?\n\nAll raw FITS files will be permanently removed.\nThe final stacked FITS file will be kept.\n\n",  # TODO
+    "image_quality":                "Images quality: ",  # TODO
 
     # ── Manual Session ────────────────────────────────────────────────────────────
     "add_manual_session":           "Add Manual Session",  # TODO
@@ -540,7 +548,6 @@ TRANSLATIONS: dict[str, str] = {
     # ── Dark Library ──────────────────────────────────────────────────────────────
     "dark_library":                 "Dark Library",  # TODO
     "dark_inventory":               "Dark Inventory",  # TODO
-    "dark_deleted":                 "Dark Library deleted.",  # TODO
     "dark_library_deleted":         "Dark Library deleted.",  # TODO
     "save_update_library":          "Save / Update Library",  # TODO
     "delete_library":               "🗑️ Delete Library",  # TODO
@@ -655,4 +662,103 @@ TRANSLATIONS: dict[str, str] = {
     "notif_select_dso_first":       "Please select a DSO first.",  # TODO
     "notif_no_folder":              "No folder selected!",  # TODO
     "notif_cannot_remove_fits":     "Cannot remove main FITS while others are present!",  # TODO
+    # ── Observation Locations ─────────────────────────────────────────────────
+    "loc_title":                    'Observation Locations',  # TODO
+    "loc_add":                      '➕ Add Location',  # TODO
+    "loc_edit":                     'Edit Location',  # TODO
+    "loc_name":                     'Name',  # TODO
+    "loc_latitude":                 'Latitude',  # TODO
+    "loc_longitude":                'Longitude',  # TODO
+    "loc_address":                  'Address',  # TODO
+    "loc_comment":                  'Comment',  # TODO
+    "loc_set_default":              '⭐ Set as default',  # TODO
+    "loc_is_default":               '⭐ Default',  # TODO
+    "loc_open_map":                 '🗺️ Map',  # TODO
+    "loc_no_locations":             'No observation locations yet.',  # TODO
+    "loc_confirm_delete":           'Delete this location?',  # TODO
+    "loc_saved":                    'Location saved.',  # TODO
+    "loc_deleted":                  'Location deleted.',  # TODO
+    "loc_name_required":            'Name is required.',  # TODO
+    "loc_apply_session":            '📍 Apply to session',  # TODO
+    "loc_manage":                   'Manage locations',  # TODO
+    "loc_none":                     '(no location)',  # TODO
+
+    "loc_detect":                   'Detect my location',  # TODO
+    "loc_detecting":                'Detecting...',  # TODO
+    "loc_detect_failed":            'Location detection failed.',  # TODO
+
+    # ── Sky Position Search ─────────────────────────────────────────────────────
+    "sky_search_title":             'Find sessions near an object',  # TODO
+    "sky_search_catalog":           'DSO Catalog',  # TODO
+    "sky_search_online":            'Search online (Simbad)',  # TODO
+    "sky_search_constellation":     'Constellation',  # TODO
+    "sky_search_type":              'Type',  # TODO
+    "sky_search_name":              'Object name...',  # TODO
+    "sky_search_simbad_ph":         'e.g. Betelgeuse, HD 12345...',  # TODO
+    "sky_search_not_found":         'Object not found in Simbad.',  # TODO
+    "sky_search_radius":            'Radius',  # TODO
+    "sky_search_found":             'Found {n} object(s) within {r:.1f}° of {label}',  # TODO
+    "sky_search_none":              'No sessions within {r:.1f}° of {label}',  # TODO
+    "sky_search_show":              'Show sessions',  # TODO
+    # ── FITS / Restore / Mosaic notifications ─────────────────────────────────
+    "fits_cleanup_running":         "Running cleanup on Dwarf Dir: '{path}'",  # TODO
+    "fits_deleted_count":           '{count} FITS files on Dwarf have been deleted.',  # TODO
+    "fits_deleted_one":             'One FITS file on Dwarf has been deleted.',  # TODO
+    "fits_deleted_none":            'No FITS files on Dwarf have been deleted.',  # TODO
+    "fits_cleanup_error":           'Error cleanup folder:\n{error}',  # TODO
+    "fits_creation_failed":         'FITS creation failed: {error}',  # TODO
+    "fits_json_error":              '❌ Failed to generate JSON: {error}',  # TODO
+    "restore_cancelled":            'Restore cancelled at {restored} restored on {total} total files, {skipped} skipped',  # TODO
+    "restore_completed":            'Restore completed ✅ {restored} restored on {total} total files, {skipped} skipped',  # TODO
+    "restore_error":                'Error restoring files:\n{error}',  # TODO
+    "mosaic_failed":                'Mosaic failed: {error}',  # TODO
+    "save_failed":                  '❌ Save failed: {error}',  # TODO
+    "save_ok":                      '✅ Saved: {name}',  # TODO
+    "launching_restore":            'Launching restore for {count} session(s)...',  # TODO
+    "launching_backup":             'Launching backup for {count} session(s)...',  # TODO
+    "folder_delete_error":          'Error deleting folder:\n{error}',  # TODO
+
+    # ── Extra notification keys ────────────────────────────────────────────────
+    "item_deleted":                 '🗑️ Deleted: {name}',  # TODO
+    "auto_install_unsupported":     'Automatic installation not supported on this system.',  # TODO
+
+    # ── Notifications — file, scan, dwarf, mosaic, transfer ──────────────────
+    "file_delete_error":            'Could not delete {name}: {error}',  # TODO
+    "file_not_found_disk":          'File not found on disk: {name}',  # TODO
+    "file_open_error":              'Cannot open file: {error}',  # TODO
+    "file_upload_ok":               '✅ Uploaded {name}',  # TODO
+    "folder_selected":              '✅ Selected Folder: {path}',  # TODO
+    "temp_file_deleted":            '🧹 Deleted temp file: {path}',  # TODO
+    "temp_file_delete_error":       'Error deleting temp file: {error}',  # TODO
+    "temp_folder_created":          '✅ Temp folder created: {path}',  # TODO
+    "output_folder_selected":       '✅ Output folder: {path}',  # TODO
+    "access_denied_outside":        '❌ Access denied: You cannot navigate outside {path}',  # TODO
+    "access_denied_source":         '❌ Access denied: source must be inside the backup directory ({path})',  # TODO
+    "edit_mode_loaded":             "✏️ Edit mode: session '{name}' loaded.",  # TODO
+    "fits_read_error":              'Error reading FITS: {error}',  # TODO
+    "scanning_location":            '🔍 Scanning: {location}',  # TODO
+    "analysis_complete":            '✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.',  # TODO
+    "analysis_complete_backup":     '✅ Analysis Complete: {total} new sessions found on backup.',  # TODO
+    "analysis_complete_dwarf":      '✅ Analysis Complete: {total} new sessions found on dwarf.',  # TODO
+    "analysis_errors_found":        '✅ Analysis Complete: {count} sessions with errors found.',  # TODO
+    "dwarf_updated":                "Dwarf '{name}' updated.",  # TODO
+    "dwarf_created":                "Dwarf '{name}' created with ID {id}",  # TODO
+    "dwarf_local_path_saved":       'Dwarf Local Parent path saved: {path}',  # TODO
+    "dwarf_local_dir_error":        '❌ Error accessing local Dwarf Directory: {path}',  # TODO
+    "dwarf_local_dir_create_error": "❌ Error: can't create Local Dwarf Directory",  # TODO
+    "primary_session_set":          '✅ Primary session: {name}',  # TODO
+    "secondary_session_set":        '✅ Secondary session: {name}',  # TODO
+    "primary_source_set":           '✅ Primary source → {source}: {path}',  # TODO
+    "secondary_source_set":         '✅ Secondary source → {source}: {path}',  # TODO
+    "no_dir_available":             '⚠️ No {label} directory available.',  # TODO
+    "manual_sessions_relinked":     '🔗 {count} manual session(s) re-linked.',  # TODO
+    "manual_sessions_unmatched":    '⚠️ {count} manual session(s) could not be matched.',  # TODO
+    "error_generic":                '❌ Error: {error}',  # TODO
+    "report_saved":                 'Report saved: {name}',  # TODO
+    "export_failed":                'Export failed: {error}',  # TODO
+
+    # ── Quality filter ──────────────────────────────────────────────────────────
+    "quality_filter_label":         'Quality:',  # TODO
+    "quality_filter_tooltip":       'Filter by quality score — 🌐 all · 🟢 good (≥65) · 🟡 fair (≥40)\nUnscored sessions always shown',  # TODO
+
 }

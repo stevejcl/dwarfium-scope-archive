@@ -1,5 +1,12 @@
 # Changelog
 
+## [V3.1.5c] - 2026-05-05
+
+### Add 
+    Introduce session quality and sky-search features
+    new tools (quality_scan, skybot_scan)
+    Add missing Description in DSO Catalog
+
 ## [V3.1.5b] - 2026-05-01
 
 ### Add 

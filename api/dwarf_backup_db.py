@@ -279,6 +279,31 @@ def create_ObservationLocation_sql():
         )
         """
 
+def create_skybot_table_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS SkyBotResult (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            backup_entry_id   INTEGER NOT NULL REFERENCES BackupEntry(id) ON DELETE CASCADE,
+            quality_score     REAL,
+            total_exp_seconds REAL,
+            score_a           REAL,
+            score_c           REAL,
+            scored_at         TEXT NOT NULL
+        )
+        """
+
+def create_quality_table_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS SessionQuality (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            backup_entry_id   INTEGER NOT NULL REFERENCES BackupEntry(id) ON DELETE CASCADE,
+            quality_score     REAL,
+            total_exp_seconds REAL,
+            score_a           REAL,
+            score_c           REAL,
+            scored_at         TEXT NOT NULL
+        )
+        """
 
 SCHEMAS = {
     "DsoCatalog": create_DsoCatalog_sql,
@@ -297,6 +322,8 @@ SCHEMAS = {
     "ManualSessionEntry": create_ManualSessionEntry_sql,
     "DwarfSessionsError" : create_DwarfSessionsError_sql,
     "SessionNotes": create_SessionNotes_sql,
+    "SkyBotResult": create_skybot_table_sql,
+    "SessionQuality": create_quality_table_sql,
 }
 
 # Sanity check — catch wrong mappings at import time, not at runtime
@@ -344,7 +371,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 def init_db(conn):
     try:
@@ -456,6 +483,18 @@ def init_db(conn):
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_sessionnotes_manual ON SessionNotes(manual_session_id);
+        """)
+
+        cursor.execute(create_skybot_table_sql())
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_skybotresult_entry ON SkyBotResult(backup_entry_id);
+        """)
+
+        cursor.execute(create_quality_table_sql())
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionquality_entry ON SessionQuality(backup_entry_id);
         """)
 
         # Stamp current version so future startups skip migrations
@@ -791,6 +830,33 @@ def migrate_v9(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v9: {e}")
 
+def migrate_v10(conn):
+    try:
+        print("Migrating Database to V10..")
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF")
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observationlocation_default
+            ON ObservationLocation(is_default);
+        """)
+
+        cursor.execute(create_skybot_table_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_skybotresult_entry ON SkyBotResult(backup_entry_id);
+        """)
+
+        cursor.execute(create_quality_table_sql())
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessionquality_entry ON SessionQuality(backup_entry_id);
+        """)
+
+        cursor.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+        print("Migration v10 applied.")
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v10: {e}")
 
 MIGRATIONS = {
     1: migrate_v1,
@@ -802,6 +868,7 @@ MIGRATIONS = {
     7: migrate_v7,
     8: migrate_v8,
     9: migrate_v9,
+    10: migrate_v10,
     # Add more later...
 }
 

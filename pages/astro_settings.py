@@ -125,7 +125,7 @@ class SettingsApp:
                         else:
                             subprocess.Popen(["xdg-open", self._last_report_path])
                     except Exception as e:
-                        ui.notify(f"Cannot open file: {e}", type="negative")
+                        ui.notify(t("file_open_error", error=e), type="negative")
 
                 def export_pdf_report():
                     try:
@@ -138,10 +138,10 @@ class SettingsApp:
                         self._last_report_path = out
                         export_status.set_text(f"✅ {os.path.basename(out)}")
                         open_btn.visible = True
-                        ui.notify(f"Report saved: {os.path.basename(out)}", type="positive")
+                        ui.notify(t("report_saved", name=os.path.basename(out)), type="positive")
                     except Exception as e:
                         export_status.set_text(f"❌ Error: {e}")
-                        ui.notify(f"Export failed: {e}", type="negative")
+                        ui.notify(t("export_failed", error=e), type="negative")
 
                 with ui.row().classes("mt-2 gap-2 items-center"):
                     ui.button(t("settings_export_pdf"), on_click=export_pdf_report) \
@@ -172,12 +172,12 @@ class SettingsApp:
                     new_path = self.path_input.value.strip()
 
                     if not new_path or not os.path.isdir(new_path):
-                        ui.notify("Please select a valid existing directory.", type='warning')
+                        ui.notify(t("please_select_valid_dir"), type="warning")
                         return
 
                     set_setting_text(self.conn, "DWARF_LOCAL_PATH", new_path)
 
-                    ui.notify(f"Dwarf Local Parent path saved: {new_path}", type='positive', position='top')
+                    ui.notify(t("dwarf_local_path_saved", path=new_path), type="positive", position="top")
 
                 ui.button(t("save"), on_click=save_path).classes("mt-4")
          
@@ -239,7 +239,7 @@ class SettingsApp:
                     path = (self.first_path_input.value or "").strip()
 
                     if not path or not os.path.isdir(path):
-                        ui.notify("Please select a valid directory.", type="warning")
+                        ui.notify(t("please_select_dir"), type="warning")
                         return
 
                     set_setting_text(self.conn, "DWARF_LOCAL_PATH", path)
@@ -267,4 +267,4 @@ class SettingsApp:
         elif system == "Linux":
             subprocess.Popen(["bash", "extern/linux/astrometry/install_astrometry.sh"])
         else:
-            ui.notify("Installation automatique non supportée pour ce système.", type='warning')
+            ui.notify(t("auto_install_unsupported"), type="warning")

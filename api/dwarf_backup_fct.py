@@ -525,7 +525,7 @@ def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry
 
 def get_total_exposure(fits_file):
     try:
-        with fits.open(fits_file) as hdul:
+        with fits.open(win_long_path(fits_file)) as hdul:
             return float(hdul[0].header.get("EXPTIME", 0))
     except Exception as e:
         safe_print(f"Error reading EXPTIME from {fits_file}: {e}")

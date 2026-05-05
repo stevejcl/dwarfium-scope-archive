@@ -33,3 +33,5 @@ image/image-fits.psd
 /reports
 /work
 /files (13)
+version.py
+*.bak

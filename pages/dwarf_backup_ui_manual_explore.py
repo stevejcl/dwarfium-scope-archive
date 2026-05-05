@@ -1382,9 +1382,9 @@ class ManualExploreApp:
             if folder:
                 try:
                     shutil.rmtree(folder)
-                    ui.notify(f"Folder deleted: {folder}", color="positive")
+                    ui.notify(t("folder_deleted", path=folder), color="positive")
                 except Exception as e:
-                    ui.notify(f"Could not delete folder: {e}", color="negative")
+                    ui.notify(t("file_delete_error", name=folder, error=e), color="negative")
 
             # 2. Remove the DB entry (and parent ManualSession if orphaned)
             ok = delete_manual_session_entry(self.conn, entry_id)

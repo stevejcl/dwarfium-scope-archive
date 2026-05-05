@@ -257,7 +257,7 @@ class AddManualSession:
         # --- Populate the existing-files panel ---
         self._load_existing_files_panel(session_dir)
 
-        ui.notify(f"✏️ Edit mode: session '{session_name}' loaded.", type="info")
+        ui.notify(t("edit_mode_loaded", name=session_name), type="info")
 
     def _load_existing_files_panel(self, session_dir: str):
         """
@@ -341,11 +341,11 @@ class AddManualSession:
         try:
             if os.path.exists(path):
                 os.remove(path)
-                ui.notify(f"🗑️ Deleted: {name}", type="positive")
+                ui.notify(t("item_deleted", name=name), type="positive")
             else:
-                ui.notify(f"File not found on disk: {name}", type="warning")
+                ui.notify(t("file_not_found_disk", name=name), type="warning")
         except Exception as e:
-            ui.notify(f"Could not delete {name}: {e}", type="negative")
+            ui.notify(t("file_delete_error", name=name, error=e), type="negative")
             return
 
         # Remove from tracking list
@@ -797,9 +797,9 @@ class AddManualSession:
             folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         
         if folder and not folder[0].startswith(self.dest_main_dir):
-            ui.notify(f"❌ Access denied: You cannot navigate outside {self.DestinationMainDir}")
+            ui.notify(t("access_denied_outside", path=self.DestinationMainDir), type="negative")
         elif folder:
-            ui.notify(f"✅ Selected Folder: {folder[0]}")
+            ui.notify(t("folder_selected", path=folder[0]), type="positive")
             folder = os.path.normpath(folder[0])
             self.input_dest_dir.value = folder
 
@@ -991,7 +991,7 @@ class AddManualSession:
                     await self.analyse_fits(tmp_path, file.name, dialog_fits, False)
 
                 except Exception as ex:
-                    ui.notify(f"Error reading FITS: {ex}", type='negative')
+                    ui.notify(t("fits_read_error", error=ex), type="negative")
                     os.remove(tmp_path)
                     dialog_fits.close()
                     await asyncio.sleep(0.5)
@@ -1009,7 +1009,7 @@ class AddManualSession:
             })
             self.update_remove_button()
 
-        ui.notify(f"✅ Uploaded {file.name}")
+        ui.notify(t("file_upload_ok", name=file.name), type="positive")
 
     async def _reset_and_restore(self, rejected_name: str):
 
@@ -1092,9 +1092,9 @@ class AddManualSession:
             if file_path and os.path.exists(file_path):
                 print(f"🧹 Deleted temp file: {file_path}")
                 os.remove(file_path)
-            ui.notify(f"🧹 Deleted temp file: {file_path}", type='info')
+            ui.notify(t("temp_file_deleted", path=file_path), type="info")
         except Exception as ex:
-            ui.notify(f"Error deleting temp file: {ex}", type='warning')
+            ui.notify(t("temp_file_delete_error", error=ex), type="warning")
 
         # Remove from list
         self.uploaded_fits_files.remove(self.selected_file)

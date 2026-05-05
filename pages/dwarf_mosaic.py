@@ -346,7 +346,7 @@ class MosaicApp:
         self.secondary_session_dir = full_path
         self.input_secondary_dir.set_options([full_path], value=full_path)
         self.on_secondary_dir_change()
-        ui.notify(f"Secondary session set to: {selected_dir}", type="positive")
+        ui.notify(t("secondary_session_set", name=selected_dir), type="positive")
 
     def populate_dwarf_filter(self):
         self.usb_status_label.text = ""
@@ -498,24 +498,24 @@ class MosaicApp:
         root = self._root_for_source(self.primary_source)
         if not root:
             label = "Backup" if self.primary_source == 'Backup' else "Dwarf"
-            ui.notify(f"⚠️ No {label} directory available.", type="warning")
+            ui.notify(t("no_dir_available", label=label), type="warning")
             return
         self.primary_session_dir = root
         self.primary_main_dir = root
         self.input_primary_dir.set_options([root], value=root)
-        ui.notify(f"✅ Primary source → {self.primary_source}: {root}", type="positive")
+        ui.notify(t("primary_source_set", source=self.primary_source, path=root), type="positive")
 
     def on_secondary_source_change(self):
         self.secondary_source = self.secondary_source_toggle.value
         root = self._root_for_source(self.secondary_source)
         if not root:
             label = "Backup" if self.secondary_source == 'Backup' else "Dwarf"
-            ui.notify(f"⚠️ No {label} directory available.", type="warning")
+            ui.notify(t("no_dir_available", label=label), type="warning")
             return
         self.secondary_session_dir = root
         self.secondary_main_dir = root
         self.input_secondary_dir.set_options([root], value=root)
-        ui.notify(f"✅ Secondary source → {self.secondary_source}: {root}", type="positive")
+        ui.notify(t("secondary_source_set", source=self.secondary_source, path=root), type="positive")
 
     # ------------------------------------------------------------------ #
     #  INPUT CHANGE HANDLERS                                               #
@@ -612,7 +612,7 @@ class MosaicApp:
         chosen = os.path.normpath(folder[0])
 
         if root_dir and not chosen.startswith(root_dir):
-            ui.notify(f"❌ Access denied: You cannot navigate outside {label_name}", type="negative")
+            ui.notify(t("access_denied_outside", path=label_name), type="negative")
             return None
 
         return chosen
@@ -627,7 +627,7 @@ class MosaicApp:
         if chosen:
             self.primary_session_dir = chosen
             self.input_primary_dir.set_options([chosen], value=chosen)
-            ui.notify(f"✅ Primary session: {chosen}", type="positive")
+            ui.notify(t("primary_session_set", name=chosen), type="positive")
 
     async def select_secondary_folder(self):
         label = "the Backup directory!" if self.secondary_source == 'Backup' else "the Dwarf astro directory!"
@@ -639,7 +639,7 @@ class MosaicApp:
         if chosen:
             self.secondary_session_dir = chosen
             self.input_secondary_dir.set_options([chosen], value=chosen)
-            ui.notify(f"✅ Secondary session: {chosen}", type="positive")
+            ui.notify(t("secondary_session_set", name=chosen), type="positive")
 
     async def select_output_folder(self):
         chosen = await self._pick_folder(
@@ -651,7 +651,7 @@ class MosaicApp:
             self.output_dir = chosen
             self.input_output_dir.set_options([chosen], value=chosen)
             self._init_repair_mgr(chosen)
-            ui.notify(f"✅ Output folder: {chosen}", type="positive")
+            ui.notify(t("output_folder_selected", path=chosen), type="positive")
 
     def create_temp_folder(self):
         """Create a system temp directory and pre-fill the output field."""
@@ -659,7 +659,7 @@ class MosaicApp:
         self.output_dir = tmp
         self.input_output_dir.set_options([tmp], value=tmp)
         self._init_repair_mgr(tmp)
-        ui.notify(f"✅ Temp folder created: {tmp}", type="positive")
+        ui.notify(t("temp_folder_created", path=tmp), type="positive")
 
     def _init_repair_mgr(self, output_dir: str):
         """Initialise (or reinitialise) the RepairSessionManager for the chosen output dir."""

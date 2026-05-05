@@ -325,7 +325,7 @@ class ConfigApp:
         base = self.dwarf_astroDir.value.strip() if self.dwarf_astroDir.value else ""
         full_path = os.path.normpath(os.path.join(base, session_dir) if base else session_dir)
         if not os.path.exists(full_path):
-            ui.notify(f"Folder not found: {full_path}", type="warning")
+            ui.notify(t("folder_not_found", path=full_path), type="warning")
             return
         if os.name == "nt":  # Windows
             subprocess.Popen(f'explorer "{full_path}"')
@@ -505,10 +505,10 @@ class ConfigApp:
 
         if self.dwarf_id:  # Update
             set_dwarf_detail(self.conn, name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id, self.dwarf_id)
-            ui.notify(f"Dwarf '{name}' updated.", type="positive")
+            ui.notify(t("dwarf_updated", name=name), type="positive")
         else:  # Insert
             self.dwarf_id = add_dwarf_detail(self.conn, name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id)
-            ui.notify(f"Dwarf '{name}' created with ID {self.dwarf_id}", type="positive")
+            ui.notify(t("dwarf_created", name=name, id=self.dwarf_id), type="positive")
 
         self.refresh_dwarf_list()
 
@@ -573,9 +573,9 @@ class ConfigApp:
                 print(local_Dwarf_dir)
                 ui.notify(t("starting_analysis"))
                 total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log)
-                ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
+                ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
             else:
-               ui.notify(f"❌ Error: can't create Local Dwarf Directory", type="negative")
+               ui.notify(t("dwarf_local_dir_create_error"), type="negative")
             spinner.set_visibility(False)
 
         except Exception as e:

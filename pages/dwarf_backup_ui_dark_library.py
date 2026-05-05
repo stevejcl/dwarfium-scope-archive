@@ -372,7 +372,7 @@ class DarkLibraryApp:
             ui.notify(t("set_cali_first"), type="warning")
             return
         if not os.path.isdir(location):
-            ui.notify(f"❌ Folder not found: {location}", type="negative")
+            ui.notify(t("folder_not_found", path=location), type="negative")
             return
 
         ui.run_javascript("document.body.style.cursor='wait'")

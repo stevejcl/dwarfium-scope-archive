@@ -650,7 +650,7 @@ class TransferApp:
                 selected = folder[0]
                 constraint = self.src_root or ""
                 if constraint and not selected.startswith(constraint):
-                    ui.notify(f"❌ Access denied: source must be inside the backup directory ({constraint})", type="negative")
+                    ui.notify(t("access_denied_source", path=constraint), type="negative")
                 else:
                     folder_norm = os.path.normpath(selected)
                     self.input_src_dir.set_options([folder_norm], value=folder_norm)
@@ -704,7 +704,7 @@ class TransferApp:
                 folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
 
             if folder and not folder[0].startswith(self.src_main_dir):
-                ui.notify(f"❌ Access denied: You cannot navigate outside {self.SourceMainDir}")
+                ui.notify(t("access_denied_outside", path=self.SourceMainDir), type="negative")
             elif folder:
                 ui.notify(folder[0])
                 folder = os.path.normpath(folder[0])
@@ -741,9 +741,9 @@ class TransferApp:
                 folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
         
             if folder and not folder[0].startswith(self.dest_main_dir):
-                ui.notify(f"❌ Access denied: You cannot navigate outside {self.DestinationMainDir}")
+                ui.notify(t("access_denied_outside", path=self.DestinationMainDir), type="negative")
             elif folder:
-                ui.notify(f"✅ Selected Folder: {folder[0]}")
+                ui.notify(t("folder_selected", path=folder[0]), type="positive")
                 folder = os.path.normpath(folder[0])
                 self.input_dest_dir.set_options([folder], value = folder)
 
@@ -1110,18 +1110,18 @@ class TransferApp:
             # In Repair mode the backup drive is unchanged — skip backup scan
             if self.mode != "Repair" and self.mode != "Merge" and dir_backup_session is not None:
                 total_backup, deleted_backup, rebuild_result = await loop.run_in_executor(None, scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
-                _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive"))
+                _ui(lambda: ui.notify(t("analysis_complete_backup", total=total_backup), type="positive"))
                 if rebuild_result["rebuilt"] > 0:
-                    _ui(lambda: ui.notify(f"🔗 {rebuild_result['rebuilt']} manual session(s) re-linked.", type="positive"))
+                    _ui(lambda: ui.notify(t('manual_sessions_relinked', count=rebuild_result['rebuilt']), type='positive'))
                 if rebuild_result["skipped"] > 0:
-                    _ui(lambda: ui.notify(f"⚠️ {rebuild_result['skipped']} manual session(s) could not be matched.", type="warning", timeout=8000))
+                    _ui(lambda: ui.notify(t('manual_sessions_unmatched', count=rebuild_result['skipped']), type='warning', timeout=8000))
             else:
                 total_backup, deleted_backup, rebuild_result = 0, 0, {"rebuilt": 0, "skipped": 0, "errors": 0}
 
             _ui(lambda: spinner.set_visibility(False) if spinner else None)
             _ui(lambda: setattr(label, "text", self.EndScanningMessage) if label else None)
-            _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_dwarf} new sessions found on dwarf.", type="positive"))
-            _ui(lambda: ui.notify(f"✅ Analysis Complete: {total_backup} new sessions found on backup.", type="positive"))
+            _ui(lambda: ui.notify(t("analysis_complete_dwarf", total=total_dwarf), type="positive"))
+            _ui(lambda: ui.notify(t("analysis_complete_backup", total=total_backup), type="positive"))
             # Retrieve copy totals saved separately (scanning status overwrites copied/total)
             totals = app.storage.general.get('transfer_copy_totals', {})
             prev_copied = totals.get('copied', 0)
@@ -1132,7 +1132,7 @@ class TransferApp:
 
         except Exception as e:
             _ui(lambda: spinner.set_visibility(False) if spinner else None)
-            _ui(lambda: ui.notify(f"❌ Error: {str(e)}", type="negative"))
+            _ui(lambda: ui.notify(t("error_generic", error=str(e)), type="negative"))
             self._set_progress('error', 0, 0, error=str(e))
 
 

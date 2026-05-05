@@ -454,9 +454,9 @@ class ConfigApp:
         try:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
 
-            ui.notify(f"🔍 Scanning: {location}-{astroDir}")
+            ui.notify(t("scanning_location", location=f"{location}-{astroDir}"))
             total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)
-            ui.notify(f"✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.", type="positive")
+            ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
             spinner.set_visibility(False)
 
             # Report manual session re-linking that happened during the scan
@@ -510,9 +510,9 @@ class ConfigApp:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
             session_list = get_sessions_backup(self.conn, self.backupDrive_id)
             print(f"session_list: {len(session_list)} found")
-            ui.notify(f"🔍 Scanning: {location}-{astroDir}")
+            ui.notify(t("scanning_location", location=f"{location}-{astroDir}"))
             self.errors = await run.io_bound (list_error_integrity, self.conn, backup_drive_id, self.backupDrive_location.value, session_list, log)
-            ui.notify(f"✅ Analysis Complete: {len(self.errors)} sessions errors found", type="positive")
+            ui.notify(t("analysis_errors_found", count=len(self.errors)), type="positive")
             spinner.set_visibility(False)
             self.results_container.clear()
             if len(self.errors) > 0:
