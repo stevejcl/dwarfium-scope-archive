@@ -7,6 +7,7 @@ import shutil
 import argparse
 from pathlib import Path
 from datetime import datetime
+import time
 import re
 import platform
 import subprocess
@@ -1908,8 +1909,14 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
     data_ids = set()
     session_date = extract_session_datetime(dwarf_path)
     if not session_date:
-        safe_print("Error : No session_date")
-        return added, data_ids
+        # Fallback: use folder mtime (battery cutoff may produce non-standard folder names)
+        try:
+            mtime = os.path.getmtime(dwarf_path)
+            session_date = datetime.fromtimestamp(mtime)
+            safe_print(f"Warning : session_date not found in folder name, using mtime: {session_date}")
+        except Exception as e:
+            safe_print(f"Error : No session_date and mtime failed: {e}")
+            return added, data_ids
 
     safe_print(f"process_dwarf_folder - dwarf_path {dwarf_path} ")
 

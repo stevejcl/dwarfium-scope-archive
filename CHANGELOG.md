@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.1.6_RC] - 2026-05-06
+
+### BugFix#
+    import time error
+
 ## [V3.1.6] - 2026-05-06
 
 ### Add
