@@ -1,5 +1,18 @@
 # Changelog
 
+## [V3.1.6] - 2026-05-06
+
+### Add
+    Improve object handling, quality filter & i18n
+    Improve SQL and DB API: tighten object-match logic
+    Localization: replace many hard-coded UI labels in help_locales (de/en/es/fr) with tokenized {t:...} keys and add documentation 
+    add optional min_quality filtering
+    add new DB helpers clear_astro_object and delete_astro_object
+    add documentation for scoring / quality-related controls.
+
+### BugFix#
+     Code fix: correct column indices for astro_object_id/astro_group_id mapping
+
 ## [V3.1.5c] - 2026-05-05
 
 ### Add 

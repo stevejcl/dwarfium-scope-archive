@@ -39,8 +39,8 @@ class DwarfData:
                 target=row[13],
                 dec=row[14],
                 ra=row[15],
-                astro_object_id=row[16],
-                astro_group_id=row[17],
+                astro_object_id=row[17],
+                astro_group_id=row[18],
                 session_date=row[7] if len(row) > 7 else None,
             )
         else:

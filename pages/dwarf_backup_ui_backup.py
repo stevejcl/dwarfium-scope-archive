@@ -4,7 +4,7 @@ import webview
 import sqlite3
 import os
 
-from nicegui import native, app, run, ui
+from nicegui import native, app, run, ui, background_tasks
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, list_error_integrity  
@@ -13,6 +13,7 @@ from api.dwarf_backup_db_api import get_dwarf_Names, get_sessions_backup
 from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
 from api.dwarf_backup_db_api import get_session_present_in_backupDrive
 from api.dwarf_backup_db_api import has_related_backup_entries, has_related_manual_entries, delete_backup_entries_and_dwarf_data, delete_manual_entries
+from tools.quality_scan import ensure_quality_table, get_sessions_to_score, score_entry_ids
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
@@ -444,7 +445,7 @@ class ConfigApp:
         with ui.dialog().props('persistent')  as dialog, ui.card().style('width: 800px; max-width: none'):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
             close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
-            ui.label(f"🔍 Scanning: {location}-{astroDir}, please wait...")
+            ui.label(t("scanning_backup_location", location=f"{location}-{astroDir}"))
             spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
@@ -458,6 +459,22 @@ class ConfigApp:
             total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)
             ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
             spinner.set_visibility(False)
+
+            # Auto-score new sessions in background
+            if total >= 0:
+                async def _auto_score():
+                    def _get_and_score():
+                        conn2 = connect_db(DB_NAME)
+                        ensure_quality_table(conn2)
+                        sessions = get_sessions_to_score(conn2, None, None, False, backup_drive_id)
+                        close_db(conn2)
+                        entry_ids = [s["id"] for s in sessions]
+                        if entry_ids:
+                            return score_entry_ids(DB_NAME, entry_ids)
+                        return 0
+                    scored = await run.io_bound(_get_and_score)
+                    print(f"[AutoScore] {scored} new session(s) scored after backup scan.")
+                background_tasks.create(_auto_score())
 
             # Report manual session re-linking that happened during the scan
             if rebuild_result["rebuilt"] > 0:
@@ -498,7 +515,7 @@ class ConfigApp:
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
             close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
-            ui.label(f"🔍 Scanning: {location}, please wait...")
+            ui.label(t("scanning_backup_location", location=location))
             spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
 
@@ -517,7 +534,7 @@ class ConfigApp:
             self.results_container.clear()
             if len(self.errors) > 0:
                 error_found = True
-                close_button.text = "Close and Show Results"
+                close_button.text = t("button_end_analysis_errors")
                 # Store selected error
                 self.selected_error = {"value": None}
 

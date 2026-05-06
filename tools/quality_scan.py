@@ -538,6 +538,76 @@ def main():
 
     conn.close()
 
+def score_entry_ids(db_path: str, entry_ids: list, threshold: float = 40.0) -> int:
+    """
+    Score a specific list of BackupEntry ids.
+    Reuses all existing scoring logic.
+    Returns the number of sessions scored.
+    """
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    ensure_quality_table(conn)
+
+    # Build session dicts using same query as get_sessions_to_score
+    keys = ['id','session_date','session_dir','backup_drive_id',
+            'quality_score','shotsStacked','shotsToTake','exp_time',
+            'target','thumbnail_path','stacked_fits_path',
+            'dwarf_file_path','drive_location','drive_astro_dir',
+            'dwarf_type','stacked_fits_path2']
+
+    scored = 0
+    print(f"quality scoring for: {entry_ids}")
+    for eid in entry_ids:
+        rows = conn.execute("""
+            SELECT BackupEntry.id, BackupEntry.session_date,
+                   BackupEntry.session_dir, BackupEntry.backup_drive_id,
+                   SessionQuality.quality_score,
+                   DwarfData.shotsStacked, DwarfData.shotsToTake,
+                   DwarfData.exp_time, DwarfData.target,
+                   DwarfData.thumbnail_path, DwarfData.stacked_fits_path,
+                   DwarfData.file_path, BackupDrive.location,
+                   BackupDrive.astronomy_dir, Dwarf.type,
+                   DwarfData.stacked_fits_path
+            FROM BackupEntry
+            JOIN DwarfData   ON BackupEntry.dwarf_data_id  = DwarfData.id
+            JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+            LEFT JOIN Dwarf  ON BackupEntry.dwarf_id = Dwarf.id
+            LEFT JOIN SessionQuality ON BackupEntry.id = SessionQuality.backup_entry_id
+            WHERE BackupEntry.id = ?
+        """, (eid,)).fetchall()
+
+        for r in rows:
+            session = dict(zip(keys, r))
+            score_a, det_a = score_metadata(session)
+            total_exp_s = det_a.get("total_exp_s", 0.0)
+            score_c = None
+            jpg = find_stacked_jpg(session)
+            if score_a >= threshold and jpg:
+                score_c, _ = score_jpeg(jpg)
+                final = round(score_a * 0.6 + score_c * 0.4, 1)
+            else:
+                final = score_a
+
+            scored_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute("""
+                INSERT INTO SessionQuality
+                    (backup_entry_id, quality_score, total_exp_seconds,
+                     score_a, score_c, scored_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(backup_entry_id) DO UPDATE SET
+                    quality_score=excluded.quality_score,
+                    total_exp_seconds=excluded.total_exp_seconds,
+                    score_a=excluded.score_a,
+                    score_c=excluded.score_c,
+                    scored_at=excluded.scored_at
+            """, (eid, final, total_exp_s, score_a, score_c, scored_at))
+            conn.commit()
+            scored += 1
+
+    print(f"done : {scored}")
+    conn.close()
+    return scored
 
 if __name__ == "__main__":
     main()
+

@@ -153,22 +153,19 @@ class ConfigApp:
 
             ui.separator()
 
-            with ui.row().classes('w-full gap-8 items-start') as self.local_info: 
-                with ui.column():
+            with ui.row().classes('w-full gap-8 items-center') as self.local_info: 
+                with ui.column().classes('justify-center'):
                     ui.button(t("empty_archive"), on_click=self.confirm_and_delete_dwarf_archive).props("color=red").classes(sizeBTN)
 
-                with ui.column():
-                    with ui.card().tight():
+                with ui.column().classes('flex-1'):
+                    with ui.card().tight().classes('w-full'):
                         ui.colors(brand='#A1A0A1')
-                        with ui.grid(columns=2):
-                            with ui.row().classes("gap-4 mt-2"):
-                                ui.item_label(t('local_data_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
-                                self.dwarf_data_size = ui.label("").classes("pl-1 pr-2 pt-0 pb-1")
+                        with ui.grid(columns=2).classes('w-full text-center gap-y-1'):
+                            ui.item_label(t('local_data_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand text-sm')
+                            ui.item_label(t('local_archive_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand text-sm')
 
-
-                            with ui.row().classes("gap-4 mt-2"):
-                                ui.item_label(t('local_archive_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand')
-                                self.dwarf_archive_size = ui.label("").classes("pl-1 pr-2 pt-0 pb-1")
+                            self.dwarf_data_size = ui.label("").classes('text-base')
+                            self.dwarf_archive_size = ui.label("").classes('text-base')
 
 
         # need this button don't change if not

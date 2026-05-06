@@ -20,7 +20,7 @@ Dwarfium Scope Archive vous aide à sauvegarder, organiser et explorer vos sessi
 
 ## Fonctionnalités principales
 
-- **Dwarf** — configurer vos appareils Dwarf (chemin USB, adresse IP, type)
+- **{t:dwarf_label}** — configurer vos appareils Dwarf (chemin USB, adresse IP, type)
 - **Sauvegarde** — configurer vos disques de sauvegarde et scanner les nouvelles sessions
 - **{t:page_explore}** — parcourir et rechercher toutes les sessions sauvegardées
 - **{t:menu_manual_sessions}** — importer des fichiers FITS/PNG/JPG personnalisés depuis n'importe quel outil
@@ -29,7 +29,7 @@ Dwarfium Scope Archive vous aide à sauvegarder, organiser et explorer vos sessi
 
 ## Workflow typique
 
-1. Configurer votre Dwarf sur la page **Dwarf**
+1. Configurer votre Dwarf sur la page **{t:dwarf_label}**
 2. Utiliser **Analyser le lecteur Dwarf** pour indexer les sessions sur votre Dwarf
 3. Configurer votre disque de sauvegarde sur la page **Sauvegarde**
 4. Utiliser **Analyser le disque actuel** sur la page Sauvegarde pour indexer les sessions
@@ -76,9 +76,9 @@ Scanne le répertoire USB du Dwarf et indexe toutes les sessions dans la base de
 
 ## Afficher les données Dwarf
 
-Ouvre la page Explorer pour visualiser les données stockées sur votre Dwarf.
+Ouvre la page **{t:page_explore}**r pour visualiser les données stockées sur votre Dwarf.
 Vous pouvez ensuite les importer dans votre sauvegarde.
-Activez **Only show sessions not yet backed up**
+Activez **{t:only_backed_not_dwarf}**
 pour afficher les sessions en attente et le bouton Sauvegarder.
 À exécuter après : **Analyser le lecteur Dwarf**.
 
@@ -117,9 +117,9 @@ Chaque disque de sauvegarde est lié à un Dwarf.
 
 1. Cliquez sur **{t:add_backup_drive}**
 2. Entrez un nom (ex. `DWARF_MINI_NEW`)
-3. Cliquez sur **Select Folder** pour choisir le dossier racine du disque de sauvegarde
+3. Cliquez sur **{t:select_folder}** pour choisir le dossier racine du disque de sauvegarde
 4. Définissez optionnellement un sous-répertoire **{t:astronomy_dir}**
-5. Sélectionnez le **Dwarf** auquel ce disque appartient
+5. Sélectionnez le **{t:dwarf_label}** auquel ce disque appartient
 6. Cliquez sur **{t:save_update_drive}**
 
 ## Analyser le disque actuel
@@ -136,7 +136,7 @@ Les comptages peuvent différer si des images rejetées ont été supprimées su
 
 ## Afficher toutes les données de sauvegarde
 
-Ouvre la page Explorer pour visualiser les données stockées sur votre disque.
+Ouvre la page **{t:page_explore}**r pour visualiser les données stockées sur votre disque.
 Vous pouvez ensuite les restaurer sur votre Dwarf.
 Activez **{t:only_backed_not_dwarf}**
 pour lister les sessions supprimées et afficher le bouton Restaurer.
@@ -166,43 +166,70 @@ re-liées automatiquement depuis les fichiers `shotsInfo.json` lors d'une nouvel
 ## Objectif
 
 Parcourez et recherchez toutes les sessions indexées depuis vos disques de sauvegarde.
-Pour voir les sessions actuellement stockées sur votre Dwarf, allez sur la page Dwarf
+Pour voir les sessions actuellement stockées sur votre Dwarf, allez sur la page **{t:page_dwarf}**
 et cliquez sur le bouton « Show Dwarf Data ».
 
 ## Filtres
 
-- **Backup Drive** — filtrer par disque de sauvegarde (ou afficher tout)
-- **Dwarf** — filtrer par appareil Dwarf
-- **Filter objects** — rechercher par nom de cible
+- **{t:backup_drive}** — filtrer par disque de sauvegarde (ou afficher tout)
+- **{t:dwarf_label}** — filtrer par appareil Dwarf
+- **{t:filter_objects}** — rechercher par nom de cible
+- **Qualité** — filtrer les sessions par score de qualité d'image :
+  - 🌐 Toutes les sessions (défaut)
+  - 🟢 Bonnes (score ≥ 65)
+  - 🟡 Moyennes (score ≥ 40)
+  - Les sessions non évaluées sont toujours visibles quel que soit le filtre
+- **🔭 Objet proche** — trouver les sessions dans un rayon autour d'un DSO ou de coordonnées personnalisées
 
 ## Détail d'une session
 
 Cliquez sur une cible dans le panneau gauche, puis sélectionnez une session dans le
-menu déroulant **Session list** pour voir :
+menu déroulant **Liste des sessions** pour voir :
 
 - Cible, RA/Dec, classification
 - Exposition, gain, filtre, température
-- Images stackées et temps de pose total
+- Images stackées et temps de pose total avec **score de qualité** (⭐⭐⭐⭐ 78.2)
 - **🎯 Dark match** — combien de darks de calibration sont disponibles pour cette session
+
+## Score de qualité d'image
+
+Chaque session peut être évaluée sur une échelle de 0 à 100 en deux passes :
+
+- **Passe A (métadonnées)** — taux de stack, temps de pose total, calibration darks, type de capteur (Dwarf 3 / Mini obtiennent un bonus)
+- **Passe B (analyse image)** — plage dynamique, contraste et entropie du JPEG stacké
+
+Seuils de score :
+- ⭐⭐⭐⭐⭐ Excellent (≥ 80)
+- ⭐⭐⭐⭐ Bon (≥ 65)
+- ⭐⭐⭐ Moyen (≥ 50)
+- ⭐⭐ Passable (≥ 35)
+- ⭐ Faible (< 35)
+
+Les sessions sont évaluées automatiquement après chaque scan de sauvegarde.
+Vous pouvez aussi évaluer manuellement avec le bouton **🌟 Evaluer** dans la barre d'actions
+(Evalue toutes les sessions de l'objet courant) ou le bouton **Évaluer la qualité** dans
+le panneau de détail (évalue uniquement la session sélectionnée).
 
 ## Actions
 
-- **Open** — ouvrir le dossier de session dans l'Explorateur Windows
-- **Show Fullscreen** — afficher l'image stackée en plein écran
+- **{t:open_folder_btn}** — ouvrir le dossier de session dans l'Explorateur Windows
+- **{t:show_fullscreen_btn}** — afficher l'image stackée en plein écran
+- **🌟 Évaluer** — scorer toutes les sessions de l'objet sélectionné
 - **Backup/Restore** — effectuer des actions sur la session sélectionnée
 - **Availability** — dépend des cases cochées. Voir les conseils pour plus de détails.
-- **Delete Session (Backup Drive)** — supprime définitivement toutes les données de session du disque de sauvegarde.
-- **Delete Session (Dwarf)** — disponible uniquement si une sauvegarde existe.
+- **{t:delete_session}** — supprime définitivement toutes les données de session du disque de sauvegarde.
+- **{t:delete_session}** — disponible uniquement si une sauvegarde existe.
     Accessible via le bouton **« Show Dwarf Data »** sur la page Paramètres Dwarf.
-- **View linked Manual Session** — accéder à toute session manuelle liée à cette entrée
+- **{t:view_linked_manual}** — accéder à toute session manuelle liée à cette entrée
 - **Add/Remove Favorite** — basculer le titre de la session pour l'afficher ou le masquer sur la page d'accueil
-- **Show Details / Hide Details** — afficher/masquer les statistiques de fichiers et infos de répertoire
+- **{t:show_details}** — afficher/masquer les statistiques de fichiers et infos de répertoire
 
 ## Conseils
 
-- Utilisez les cases **Only Show Session on Dwarf** / **Only on Backup** pour trouver les sessions
-  qui existent à un seul endroit
-- Le badge 🎯 indique l'état de correspondance des darks — vert = température dans la plage, orange = température la plus proche, rouge = aucune correspondance
+- Utilisez les cases **supprimées du Dwarf** / **non encore sauvegardées** pour trouver les sessions qui existent à un seul endroit
+- Le badge 🎯 indique l'état de correspondance des darks — vert = température dans la plage, orange = plus proche, rouge = aucune
+- Les sessions sans score apparaissent toujours quel que soit le filtre qualité
+- Lancez un scan complet depuis la ligne de commande : `python tools/quality_scan.py --report`
 ''',
     },
 
@@ -216,9 +243,9 @@ Siril, GraXpert ou tout autre outil de traitement.
 
 ## Filtres
 
-- **Backup Drive** — filtrer par disque
-- **Dwarf** — filtrer par appareil Dwarf
-- **Session list** — sélectionner une session spécifique à afficher
+- **{t:backup_drive}** — filtrer par disque
+- **{t:dwarf_label}** — filtrer par appareil Dwarf
+- **{t:session_list}** — sélectionner une session spécifique à afficher
 
 ## Détail d'une session
 
@@ -231,18 +258,18 @@ La sélection d'une session affiche :
 
 ## Actions
 
-- **Open** — ouvrir le dossier de session dans l'Explorateur
-- **Show Fullscreen** — afficher l'image stackée en plein écran
-- **View linked Dwarf session** — accéder à la session brute originale dans Explorer
+- **{t:open_folder_btn}** — ouvrir le dossier de session dans l'Explorateur
+- **{t:show_fullscreen_btn}** — afficher l'image stackée en plein écran
+- **{t:view_linked_dwarf}** — accéder à la session brute originale dans Explorer
 - **Add Favorite / Remove Favorite** — marquer pour le traitement
-- **Edit Session** — mettre à jour les métadonnées ou ajouter des fichiers
-- **Delete Session** — supprimer les fichiers et l'entrée de la base de données
+- **{t:edit_session}** — mettre à jour les métadonnées ou ajouter des fichiers
+- **{t:delete_session_btn}** — supprimer les fichiers et l'entrée de la base de données
 
 ## Conseils
 
 - Les sessions sont regroupées par objet cible dans le panneau gauche
 - Le groupe **manual** contient les sessions sans cible DSO reconnue
-- Utilisez **Edit Session** pour ajouter des variantes Starless ou Denoise après traitement
+- Utilisez **{t:edit_session}** pour ajouter des variantes Starless ou Denoise après traitement
 ''',
     },
 
@@ -258,13 +285,13 @@ Siril, GraXpert ou tout autre outil — dans l'archive.
 
 ### 1. Sélectionner la destination
 
-Choisissez un **Backup Drive** et définissez le **{t:destination_dir2}** où le
+Choisissez un **{t:backup_drive}** et définissez le **{t:destination_dir2}** où le
 dossier de session sera créé.
 
 ### 2. Nommer la session
 
 Entrez un **{t:session_name_label}** (ex. `Cave_Nebula_Duo-Band_20260409`).
-Ajoutez optionnellement un **Tag** (ex. `Siril`) pour distinguer les variantes.
+Ajoutez optionnellement un **{t:tag}** (ex. `Siril`) pour distinguer les variantes.
 
 ### 3. Uploader les fichiers
 
@@ -275,7 +302,7 @@ Ajoutez optionnellement un **Tag** (ex. `Siril`) pour distinguer les variantes.
 
 ### 4. URL Stellar Studio
 
-Collez une URL vers un fichier FITS hébergé en ligne. Choisissez un suffixe **Type** :
+Collez une URL vers un fichier FITS hébergé en ligne. Choisissez un suffixe **{t:sky_search_type}** :
 - **Auto** → `stacked-16_{session}__Auto.fits`
 - **Denoise** → `stacked-16_{session}__Denoise.fits`
 - **Starless** → `stacked-16_{session}__Starless.fits`
@@ -317,8 +344,8 @@ Où : `exp` = temps de pose en secondes, `gain` = valeur du gain,
 ## Ajouter une bibliothèque
 
 1. Cliquez sur **{t:add_library}**
-2. Sélectionnez le **Dwarf** et le **Backup Drive**
-3. Cliquez sur **Select Folder** pour choisir le dossier `CALI_FRAME`
+2. Sélectionnez le **{t:dwarf_label}** et le **{t:backup_drive}**
+3. Cliquez sur **{t:select_folder}** pour choisir le dossier `CALI_FRAME`
    (la boîte de dialogue s'ouvre à la racine du disque de sauvegarde — naviguez un niveau en dessous)
 4. Cliquez sur **{t:save_update_library}**
 
@@ -357,7 +384,7 @@ Copiez des sessions entre le Dwarf et un disque de sauvegarde.
 ## Modes
 
 - **{t:archive_mode}** — copier du Dwarf → Disque de sauvegarde (sauvegarde normale)
-- **Restore** — copier du Disque de sauvegarde → Dwarf (remettre des sessions)
+- **{t:restore_mode}** — copier du Disque de sauvegarde → Dwarf (remettre des sessions)
 
 ## Modes de transfert
 
@@ -366,9 +393,9 @@ Copiez des sessions entre le Dwarf et un disque de sauvegarde.
 
 ## Workflow
 
-1. Sélectionnez le **Dwarf** et le **Backup Drive**
+1. Sélectionnez le **{t:dwarf_label}** et le **{t:backup_drive}**
 2. Choisissez **USB** ou **FTP** dans le sélecteur de mode de transfert
-3. Définissez le **Source Directory** (ou utilisez Select Source)
+3. Définissez le **{t:source_directory}** (ou utilisez Select Source)
 4. Définissez le **{t:destination_dir2}** (ou utilisez Select Destination)
 5. Cliquez sur **{t:start_backup}** / **{t:start_restore}**
 
@@ -415,7 +442,7 @@ adjacents qui sont assemblés en une seule image grand champ.
 
 ## Workflow
 
-1. Sélectionnez un **Dwarf** et un **Backup Drive**
+1. Sélectionnez un **{t:dwarf_label}** et un **{t:backup_drive}**
 2. Parcourez la liste des sessions mosaïque détectées sur le disque
 3. Sélectionnez les panneaux à inclure dans l'assemblage
 4. Cliquez sur **Generate Panorama** pour assembler les panneaux
@@ -449,7 +476,7 @@ Connectez-vous à un télescope Dwarf 2 via MTP (Media Transfer Protocol).
 3. Dans l'application, allez dans **Advanced Settings** pour activer le MTP
 4. Sur cette page, cliquez sur **Scan for MTP Devices**
 5. Sélectionnez le Dwarf détecté dans la liste
-6. Utilisez **Browse** pour naviguer dans le système de fichiers de l'appareil
+6. Utilisez **{t:open_folder}** pour naviguer dans le système de fichiers de l'appareil
 7. Sélectionnez les sessions à transférer
 
 ## Conseils
@@ -486,7 +513,7 @@ automatique des cibles et la classification des sessions.
 
 - Le catalogue est utilisé automatiquement lorsque vous analysez un disque de sauvegarde —
   les cibles de session sont associées et classifiées
-- Utilisez **Identify Target** sur toute session non résolue dans Explorer pour
+- Utilisez **{t:identify_target_btn}** sur toute session non résolue dans Explorer pour
   la lier manuellement à un objet du catalogue
 - Le catalogue est basé sur les bases de données DSO standard (NGC, IC, Messier)
 ''',

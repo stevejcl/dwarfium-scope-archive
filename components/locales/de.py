@@ -290,6 +290,8 @@ TRANSLATIONS: dict[str, str] = {
     "please_backup_dir":            "Please choose the main backup directory for your Dwarf astrophotography images or dark files.",  # TODO
     "please_astro_dir":             "Please select the Astronomy directory within the mapped USB drive.",  # TODO
     "select_astro_info":            "You can select a specific subfolder where your astrophotography session images are stored.",  # TODO
+    "scanning_backup_location":     "🔍 Scanning: {location}, please wait...",  # TODO
+    "button_end_analysis_errors":   "Close and Show Results",  # TODO
 
     # ── Backup operations ─────────────────────────────────────────────────────────
     "launch_backup":                "Launch Backup Dwarf Data...",  # TODO
@@ -760,5 +762,9 @@ TRANSLATIONS: dict[str, str] = {
     # ── Quality filter ──────────────────────────────────────────────────────────
     "quality_filter_label":         'Quality:',  # TODO
     "quality_filter_tooltip":       'Filter by quality score — 🌐 all · 🟢 good (≥65) · 🟡 fair (≥40)\nUnscored sessions always shown',  # TODO
+
+    "confirm_clear_dso":            'Remove the DSO association from this object?',  # TODO
+    "dso_cleared":                  '✅ DSO association removed.',  # TODO
+    "clear":                        'Clear',  # TODO
 
 }

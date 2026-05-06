@@ -27,7 +27,7 @@ from api.dwarf_backup_db_api import (
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
     has_related_manual_sessions, get_ManualSession_by_backup_entry_id,
     find_matching_darks, generate_siril_session_json,
-    get_dwarf_session_error_by_dir,
+    get_dwarf_session_error_by_dir, get_sky_filter_entry_ids
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
@@ -45,6 +45,7 @@ from components.astro_object_associate import DwarfData, show_unknown_target_dia
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
+from tools.quality_scan import score_entry_ids
 
 ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
 ALL_DWARFS = "(All Dwarfs)"
@@ -128,6 +129,7 @@ class ExploreApp:
         self.objects = []
         self.base_folder = None
         self.selected_object = None
+        self.selected_object_id = None
         self.selected_object_description = None
         self.selected_object_is_group = False
         self.preview_image_type = "jpg"
@@ -436,97 +438,60 @@ class ExploreApp:
         await self.load_objects()
       
     def _score_current_object(self):
-        """Score sessions of the current object using quality_scan logic."""
-        import sys, os
-        tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools")
-        if tools_path not in sys.path:
-            sys.path.insert(0, tools_path)
+        """Score sessions of the current object — delegates to quality_scan.score_entry_ids()."""
 
-        entry_ids = [row[0] for row in self._current_files if row[0] is not None]
+        if self.current_session_row:
+            entry_ids = [self.current_session_row[22]] if self.current_session_row[22] is not None else []
+        else:
+            entry_ids = [row[22] for row in self._current_files if row[22] is not None]
         if not entry_ids:
             ui.notify(t("score_no_sessions"), type="warning")
             return
 
         ui.notify(t("score_running", count=len(entry_ids)), type="info")
-
+        print(entry_ids)
+        client = ui.context.client
         async def _run():
-            from nicegui import run as _run_ng
-            def _score():
-                import sqlite3 as _sq
-                from quality_scan import (ensure_quality_table, score_metadata,
-                                          find_stacked_jpg, score_jpeg)
-                from datetime import datetime, timezone
-                conn2 = _sq.connect(self.database)
-                ensure_quality_table(conn2)
-                scored = 0
-                keys = ['id','session_date','session_dir','backup_drive_id',
-                        'quality_score','shotsStacked','shotsToTake','exp_time',
-                        'target','thumbnail_path','stacked_fits_path',
-                        'dwarf_file_path','drive_location','drive_astro_dir',
-                        'dwarf_type','stacked_fits_path2']
-                for eid in entry_ids:
-                    rows = conn2.execute("""
-                        SELECT BackupEntry.id, BackupEntry.session_date,
-                               BackupEntry.session_dir, BackupEntry.backup_drive_id,
-                               NULL,
-                               DwarfData.shotsStacked, DwarfData.shotsToTake,
-                               DwarfData.exp_time, DwarfData.target,
-                               DwarfData.thumbnail_path, DwarfData.stacked_fits_path,
-                               DwarfData.file_path, BackupDrive.location,
-                               BackupDrive.astronomy_dir, Dwarf.type,
-                               DwarfData.stacked_fits_path
-                        FROM BackupEntry
-                        JOIN DwarfData   ON BackupEntry.dwarf_data_id  = DwarfData.id
-                        JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
-                        LEFT JOIN Dwarf  ON BackupEntry.dwarf_id = Dwarf.id
-                        WHERE BackupEntry.id = ?
-                    """, (eid,)).fetchall()
-                    for r in rows:
-                        session = dict(zip(keys, r))
-                        score_a, det_a = score_metadata(session)
-                        total_exp_s = det_a.get("total_exp_s", 0.0)
-                        score_c = None
-                        jpg = find_stacked_jpg(session)
-                        if score_a >= 40 and jpg:
-                            score_c, _ = score_jpeg(jpg)
-                            final = round(score_a * 0.6 + score_c * 0.4, 1)
-                        else:
-                            final = score_a
-                        scored_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                        conn2.execute("""
-                            INSERT INTO SessionQuality
-                                (backup_entry_id, quality_score, total_exp_seconds,
-                                 score_a, score_c, scored_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(backup_entry_id) DO UPDATE SET
-                                quality_score=excluded.quality_score,
-                                total_exp_seconds=excluded.total_exp_seconds,
-                                score_a=excluded.score_a,
-                                score_c=excluded.score_c,
-                                scored_at=excluded.scored_at
-                        """, (eid, final, total_exp_s, score_a, score_c, scored_at))
-                        conn2.commit()
-                        scored += 1
-                conn2.close()
-                return scored
-
-            n = await _run_ng.io_bound(_score)
-            ui.notify(t("score_done", count=n), type="positive")
-            if self.selected_object is not None:
-                self._handle_object_click(
-                    self.selected_object,
-                    self.selected_object_description,
-                    self.selected_object_description,
-                    None,
-                    self.selected_object_is_group,
-                )
+            n = await run.io_bound(score_entry_ids, self.database, entry_ids)
+            with client:
+                ui.notify(t("score_done", count=n), type="positive")
+                print(f"selected_object: {self.selected_object}")
+                if self.selected_object is not None:
+                    current_sid = (self.current_session_row[22]
+                                   if self.current_session_row is not None else None)
+                    # Match by oid first (reliable), fallback to normalised name
+                    match = next(
+                        ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
+                         if oid == self.selected_object_id),
+                        None
+                    )
+                    if match is None:
+                        # Fallback: strip extra spaces and compare
+                        sel_norm = " ".join(self.selected_object.split())
+                        match = next(
+                            ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
+                             if " ".join(name.split()) == sel_norm),
+                            None
+                        )
+                    if match:
+                        oid, dso_id, is_group = match
+                        self.load_objects_ui()
+                        ui.timer(0.1, lambda o=oid, d=dso_id, g=is_group, sid=current_sid:
+                                 self._handle_object_click_work(o, d, g, session_id=sid), once=True)
+                    else:
+                        print(f"[Score] No match found for selected_object_id={self.selected_object_id} name='{self.selected_object}'")
 
         background_tasks.create(_run())
 
     def _on_quality_filter_change(self, e):
         """Update quality filter and reload objects."""
         val = e.value if hasattr(e, "value") else e
-        self.quality_filter = None if val == 0 else int(val)
+         # val can be int 0 or string "0" depending on NiceGUI version
+        try:
+            val = int(val)
+        except (TypeError, ValueError):
+            val = 0
+        self.quality_filter = None if val == 0 else val
         ui.timer(0.05, self.load_objects, once=True)
 
     def _on_sky_result(self, ra_deg: float, dec_deg: float, label: str, radius_deg: float):
@@ -535,6 +500,13 @@ class ExploreApp:
         self.sky_filter_dec    = dec_deg
         self.sky_filter_label  = label
         self.sky_filter_radius = radius_deg
+        # Compute entry_ids once — used by ALL_SESSIONS and per-object combos
+        dwarf_id = self.get_selected_dwarf_id()
+        self.sky_filter_entry_ids = get_sky_filter_entry_ids(
+            self.conn, ra_deg, dec_deg, radius_deg,
+            backup_drive_id=self.BackupDriveId,
+            dwarf_id=dwarf_id if dwarf_id else None,
+        )
         badge_text = f"🔭 {label}  {radius_deg:.1f}°"
         self.sky_badge.set_text(badge_text)
         self.sky_badge.classes(remove="hidden")
@@ -543,9 +515,10 @@ class ExploreApp:
 
     def _clear_sky_filter(self):
         """Remove the sky position filter and return to normal mode."""
-        self.sky_filter_ra  = None
-        self.sky_filter_dec = None
-        self.sky_filter_label  = ""
+        self.sky_filter_ra         = None
+        self.sky_filter_dec        = None
+        self.sky_filter_label      = ""
+        self.sky_filter_entry_ids  = None
         self.sky_badge.set_text("")
         self.sky_badge.classes("hidden")
         self.sky_clear_btn.classes("hidden")
@@ -569,6 +542,7 @@ class ExploreApp:
                 self.sky_filter_radius,
                 backup_drive_id=self.BackupDriveId,
                 dwarf_id=dwarf_id if dwarf_id else None,
+                min_quality=self.quality_filter
             )
             count = count_sessions_by_sky_position(
                 self.conn,
@@ -576,17 +550,18 @@ class ExploreApp:
                 self.sky_filter_radius,
                 backup_drive_id=self.BackupDriveId,
                 dwarf_id=dwarf_id if dwarf_id else None,
+                min_quality=self.quality_filter
             )
         elif self.mode == "backup":
             show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
-            show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
+            show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup and dwarf_id else False
             if show_only_duplicates:
                 self.objects = get_Objects_duplicate_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
                 count = get_countObjects_duplicate_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
             else: 
-                self.objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
-                count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
+                self.objects = get_Objects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value, min_quality=self.quality_filter)
+                count = get_countObjects_backup(self.conn, self.BackupDriveId, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value, min_quality=self.quality_filter)
         else:
             show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
@@ -711,11 +686,26 @@ class ExploreApp:
             return get_base(name1) == get_base(name2)
 
         # Step 2: Group objects by display name
+        # Pre-compute which DSO ids already have a group object (is_group=1)
+        # so we can skip creating a redundant [ALL] entry for them
+        # DSO ids where exactly 1 group exists → [ALL] is redundant, the group itself serves as [ALL]
+        from collections import Counter as _Counter
+        _group_dso_counts = _Counter(dso_id for _, _, dso_id, is_group in self.objects if is_group and dso_id is not None)
+        dso_ids_with_single_group = {dso_id for dso_id, cnt in _group_dso_counts.items() if cnt == 1}
+
         for oid, name, dso_id, is_group in self.objects:
             name_object, _ = get_name_object(name)
             if self.object_filter.value and self.object_filter.value.lower() not in name_object.lower():
                 continue
-            grouped_objects[name_object].append((oid, name, dso_id, is_group))
+            # If this IS the group object and it's the only group for its DSO,
+            # key it as "[ALL]" so it appears at root level instead of as a sub-item
+            if dso_id in dso_ids_with_single_group:
+                if is_group:
+                    # Group appears as sole entry — individual members hidden (same data)
+                    grouped_objects[name_object].append((oid, name, dso_id, is_group))
+                # else: skip individual members, covered by the group entry
+            else:
+                grouped_objects[name_object].append((oid, name, dso_id, is_group))
 
         display_items = []
 
@@ -735,7 +725,9 @@ class ExploreApp:
                     dso_id is not None and
                     dso_id_counts[dso_id] > 1 and
                     dso_id not in shown_all_for_dso and
-                    dso_id not in filter_dso
+                    dso_id not in filter_dso and
+                    dso_id not in dso_ids_with_single_group
+                    #sum(1 for entries_g in grouped_objects.values() for e in entries_g if e[2] == dso_id and e[3]) != 1  # skip only if exactly 1 group covers all
                 ):
                     all_name = f"{name_object.split(' [')[0]} [ALL]"
                     visible_names.append(all_name)
@@ -808,7 +800,9 @@ class ExploreApp:
                     dso_id is not None and
                     dso_id_counts[dso_id] > 1 and
                     dso_id not in shown_all_for_dso and
-                    dso_id not in filter_dso
+                    dso_id not in filter_dso and
+                    dso_id not in dso_ids_with_single_group
+                    #sum(1 for e in entries if e[3]) != 1  # skip only if exactly 1 group covers all sessions
                 ):
                     all_name = f"{name_object} [ALL]"
                     all_node_id = f"all_{dso_id}"
@@ -856,6 +850,7 @@ class ExploreApp:
 
             def handle_click(data):
                 self.selected_object = data["name"]
+                self.selected_object_id = data["oid"]
                 self._handle_object_click(data["oid"], data["name"], data["desc"], data["dso_id"], data["is_group"])
 
             def handle_select(event):
@@ -916,7 +911,8 @@ class ExploreApp:
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id = None):
         self.object_spinner.set_visibility(True)
-        self.selected_object = name 
+        self.selected_object = name
+        self.selected_object_id = oid
         self.selected_object_description = desc 
         self.selected_object_is_group = is_group
         ui.timer(0.05, lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id), once=True)
@@ -974,19 +970,34 @@ class ExploreApp:
         self._mobile_go_right()  # slide to right panel on mobile
 
         if self.mode == "backup":
-            show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup else False
+            show_only_duplicates = self.only_duplicates_backup.value if self.only_duplicates_backup and dwarf_id else False
             if show_only_duplicates:
-                files = get_ObjectSelect_duplicate_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value, session_id)
-            else:
-                files = get_ObjectSelect_backup(self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value, session_id)
+                files = get_ObjectSelect_duplicate_backup(
+                    self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id,
+                    self.only_on_dwarf.value, self.only_on_backup.value, is_group,
+                    self.object_filter.value, session_id,
+                    entry_ids=self.sky_filter_entry_ids,
+                    min_quality=self.quality_filter,
+                )
                 self._current_files = list(files)
-                if self.quality_filter is not None:
-                    files = [r for r in files if r[22] is None or float(r[22]) >= self.quality_filter]
-                # Apply quality filter — keep sessions with score >= threshold OR unscored (NULL)
-                if self.quality_filter is not None:
-                    files = [r for r in files if r[22] is None or float(r[22]) >= self.quality_filter]
+            else:
+                files = get_ObjectSelect_backup(
+                    self.conn, object_id, dso_id, self.BackupDriveId, dwarf_id,
+                    self.only_on_dwarf.value, self.only_on_backup.value, is_group,
+                    self.object_filter.value, session_id,
+                    entry_ids=self.sky_filter_entry_ids,
+                    min_quality=self.quality_filter,
+                )
+                self._current_files = list(files)
         else:
-            files = get_ObjectSelect_dwarf(self.conn, object_id, dso_id, dwarf_id, self.only_on_dwarf.value, self.only_on_backup.value, is_group, self.object_filter.value, session_id)
+            files = get_ObjectSelect_dwarf(
+                self.conn, object_id, dso_id, dwarf_id,
+                self.only_on_dwarf.value, self.only_on_backup.value, is_group,
+                self.object_filter.value, session_id,
+                entry_ids=self.sky_filter_entry_ids,
+                min_quality=self.quality_filter,
+            )
+            self._current_files = list(files)
 
         # Store all rows globally so we can access them later
         self.all_files_rows = [list(row) for row in files]
@@ -1002,8 +1013,8 @@ class ExploreApp:
 
         if len(files) == 1:
             self.selected_DeleteEntryInfo = BackupEntryData(
-                backup_drive_id=files[0][19],
-                dwarf_id=files[0][20],
+                backup_drive_id=files[0][20],
+                dwarf_id=files[0][21],
                 dwarf_data_id=files[0][0]
             )
             # If only one file, put it in the ComboBox and display it directly
@@ -1030,8 +1041,8 @@ class ExploreApp:
             for idx, row in enumerate(files):
                 # Extracting values for clarity
                 self.selected_DeleteEntryInfo = BackupEntryData(
-                    backup_drive_id=row[19],
-                    dwarf_id=row[20],
+                    backup_drive_id=row[20],
+                    dwarf_id=row[21],
                     dwarf_data_id=row[0]
                 )
                 # extract DB Values
@@ -1051,9 +1062,16 @@ class ExploreApp:
                 init_target = row[13] if row[13] is not None else UNKNOWN
                 declination = row[14]
                 right_ascencion = row[15]
-                astro_object_id = row[16]
-                astro_group_id = row[17]
-                descriptionDB = row[18]
+                _binning_raw = row[16]
+                try:
+                    binning = int(str(_binning_raw).split("*")[0]) if _binning_raw else 1
+                except Exception:
+                    binning = 1
+                astro_object_id = row[17]
+                astro_group_id = row[18]
+                descriptionDB = row[19]
+                # row[20]=backup_drive_id  row[21]=dwarf_id row[22]=backup_entry_id 
+                _qdot = _quality_dot(row[23] if len(row) > 23 else None)
 
                 # display Values
                 session_date = show_short_date_session(session_date)
@@ -1076,7 +1094,6 @@ class ExploreApp:
 
                 # If label already exists (duplicate), append a small invisible suffix
                 count = 0
-                _qdot = _quality_dot(row[22] if len(row) > 22 else None)
                 base_label = f"{star_icon}{_qdot} {bad_icon}{label_text}"
                 details_text = base_label
                 while details_text in self.label_to_index:
@@ -1387,6 +1404,7 @@ class ExploreApp:
         dialog.open()
 
     async def on_file_selected(self):
+        self.current_session_row = None
         selection_index = None
         selected_value = self.file_list.value
         details = []
@@ -1418,8 +1436,8 @@ class ExploreApp:
             row = self.all_files_rows[selection_index]
 
             self.selected_DeleteEntryInfo = BackupEntryData(
-                backup_drive_id=row[19],
-                dwarf_id=row[20],
+                backup_drive_id=row[20],
+                dwarf_id=row[21],
                 dwarf_data_id=row[0]
             )
             self.current_session_row = row
@@ -1441,16 +1459,17 @@ class ExploreApp:
             init_target = row[13] if row[13] is not None else UNKNOWN
             declination = row[14]
             right_ascencion = row[15]
-            astro_object_id = row[16]
-            astro_group_id = row[17]
-            descriptionDB = row[18]
-            # row[19]=backup_drive_id  row[20]=dwarf_id  row[21]=binning
-            dwarf_id = row[20]
-            _binning_raw = row[21] if len(row) > 21 else None
+            _binning_raw = row[16]
             try:
                 binning = int(str(_binning_raw).split("*")[0]) if _binning_raw else 1
             except Exception:
                 binning = 1
+            astro_object_id = row[17]
+            astro_group_id = row[18]
+            descriptionDB = row[19]
+            # row[20]=backup_drive_id  row[21]=dwarf_id row[22]=backup_entry_id 
+            dwarf_id = row[21]
+            _qscore = row[23] if len(row) > 23 else None
 
             # display Values
             info_stack = t("restack") if is_Restacked(session_dir) else t("taken")
@@ -1484,7 +1503,6 @@ class ExploreApp:
             if minTemp and maxTemp:
                 details.append(f"{t('min_temp')}: {minTemp} | {t('max_temp')}: {maxTemp}")
             bad_icon = '❗ ' if int(stacks) < 50 else ''
-            _qscore = row[22] if len(row) > 22 else None
             _qstr = f"  {_quality_stars(_qscore)}" if _qscore is not None else ""
             details.append(f"📊 Stacks: {bad_icon}{stacks}{_qstr}")
 
@@ -1534,10 +1552,12 @@ class ExploreApp:
                         if fits_path and os.path.isfile(fits_path):
                             exposure_time = format_seconds_hms(get_total_exposure(fits_path))
 
-                _qscore2 = row[22] if len(row) > 22 else None
-                _qdot = _quality_dot(_qscore2) if _qscore2 is not None else None
-                _qstr2 = f"  {_quality_stars(_qscore2)}" if _qscore2 is not None else ""
-                ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time} - {t('image_quality')} {_qdot} {_qstr2}").classes(color)
+                _qdot = _quality_dot(_qscore) if _qscore is not None else ""
+                _qstr2 = f"  {_quality_stars(_qscore)}" if _qscore is not None else ""
+                with ui.row().classes('w-full gap-8 items-start'):
+                    ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time} - {t('image_quality')} {_qdot} {_qstr2}").classes(color)
+                    if not _qscore:
+                        ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object())
 
                 # --- Dark match badge ---
                 if dwarf_id and exp_time and gainDB:
@@ -1609,8 +1629,8 @@ class ExploreApp:
         #target = row[13]
         #dec = row[14]
         #ra = row[15]
-        #astro_object_id = row[16]
-        #astro_group_id = row[17]
+        #astro_object_id = row[17]
+        #astro_group_id = row[18]
 
         on_done = lambda: self.update_classified_label(dwarf_data.astro_object_id, dwarf_data.target, "")
         show_unknown_target_dialog(self.conn, dwarf_data, self.dso_catalog, False, on_done)
@@ -1878,6 +1898,7 @@ class ExploreApp:
         self.show_gallery_icon.visible = False
         self.open_folder_icon.disable()
         self.fullscreen_icon.disable()
+        self.fullscreen_icon.visible = False
         self.backup_session_icon.disable()
         self.backup_session_icon.visible = False
         self.delete_session_icon.disable()
@@ -1888,7 +1909,7 @@ class ExploreApp:
         if self.linked_manual_session_icon:
             self.linked_manual_session_icon.visible = False
         self.selected_path = ""
-
+        self.current_session_row = None
         # Delete old icons from UI
         for icon in self.preview_icons.values():
             icon.delete()
@@ -1905,6 +1926,12 @@ class ExploreApp:
                 self.show_gallery_icon.visible = False
                 self.show_gallery_icon.disable()
 
+            if len(self.all_files_rows) > 1 and not self.selected_path:
+                self.score_session_icon.visible = True
+            else:
+                self.score_session_icon.visible = False
+
+
     def update_preview_icons(self):
         with self.icon_row:
             if not self.open_folder_icon:
@@ -1917,8 +1944,10 @@ class ExploreApp:
             if not self.fullscreen_icon:
                 self.fullscreen_icon =  ui.button(t("show_fullscreen_img"), on_click=self.image_dialog.open).classes('h-16')
             elif self.selected_path and os.path.isdir(self.selected_path):
+                self.fullscreen_icon.visible = True
                 self.fullscreen_icon.enable()
             else:
+                self.fullscreen_icon.visible = False
                 self.fullscreen_icon.disable()
 
             # Delete any existing format icons before recreating them
@@ -1997,11 +2026,9 @@ class ExploreApp:
                 self.delete_session_icon = ui.button(t("delete_session"), on_click=lambda: self.delete_directory()).classes('h-16')
             elif self.mode == "backup" and self.selected_path and os.path.isdir(self.selected_path):
                 self.delete_session_icon.visible = True
-                self.score_session_icon.visible = True
                 self.delete_session_icon.enable()
             else:
                 self.delete_session_icon.visible = False
-                self.score_session_icon.visible = False
                 self.delete_session_icon.disable()
 
             # Show the "View linked Manual session" button only in backup mode when
@@ -2094,7 +2121,7 @@ class ExploreApp:
             session_date = row[7]
             session_dir = row[8]
             dwarf_name = row[9]
-            descriptionDB = row[18]
+            descriptionDB = row[19]
 
             lens = "(W) " if ("_WIDE_") in session_dir else ""
             exp = f"{exp_time}s" if exp_time is not None else "N/A"
@@ -2386,8 +2413,10 @@ class ExploreApp:
                 url_path = build_preview_url(preview_image_path)
                 self.preview_image.source = url_path
                 save_selected_path = self.selected_path
+                save_current_row = self.current_session_row
                 self.reset_preview_icons()
                 self.selected_path = save_selected_path
+                self.current_session_row = save_current_row
                 self.update_preview_icons()
                 ui.notify(t("mosaic_saved"), type="positive")
                 if len(panels_fits) > 0:
@@ -2414,8 +2443,10 @@ class ExploreApp:
                 url_path = build_preview_url(preview_image_path)
                 self.preview_image.source = url_path
                 save_selected_path = self.selected_path
+                save_current_row = self.current_session_row
                 self.reset_preview_icons()
                 self.selected_path = save_selected_path
+                self.current_session_row = save_current_row
                 self.update_preview_icons()
                 ui.notify(t("mosaic_fits_created"), type="positive")
             except Exception as ex:
@@ -2546,7 +2577,7 @@ class ExploreApp:
             return
 
         # Multiple linked sessions — show a picker dialog
-        # col [0] = ManualSessionEntry.id, [1] = session_name, [2] = session_type, [14] = session_date, col [22] is backup_entry_id
+        # col [0] = ManualSessionEntry.id, [1] = session_name, [2] = session_type, [14] = session_date, col [23] is backup_entry_id
         with ui.dialog() as dialog, ui.card().classes("p-4 gap-3").style("min-width: 60%;"):
             ui.label(f"🔗 {len(rows)} linked Manual sessions — choose one:").classes("font-semibold")
             ui.separator()

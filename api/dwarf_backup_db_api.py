@@ -516,9 +516,9 @@ def get_Objects_backup(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                 ON (
                     (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NULL)
                     OR
-                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NOT NULL AND AstroObject.description != '' )
+                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NOT NULL AND (AstroObject.description != '' AND AstroObject.description IS NOT NULL) )
                     OR
-                    (AstroObject.id = BackupEntry.astro_group_id AND BackupEntry.astro_object_id IS NOT NULL AND AstroObject.description = '')
+                    (AstroObject.id = BackupEntry.astro_group_id AND BackupEntry.astro_object_id IS NOT NULL AND AstroObject.is_group = 1)
                 )
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
@@ -595,9 +595,9 @@ def get_Objects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=None,
                 ON (
                     (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NULL)
                     OR
-                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NOT NULL AND AstroObject.description != '' )
+                    (AstroObject.id = BackupEntry.astro_object_id AND BackupEntry.astro_group_id IS NOT NULL AND (AstroObject.description != '' AND AstroObject.description IS NOT NULL) )
                     OR
-                    (AstroObject.id = BackupEntry.astro_group_id AND BackupEntry.astro_object_id IS NOT NULL)
+                    (AstroObject.id = BackupEntry.astro_group_id AND BackupEntry.astro_object_id IS NOT NULL AND AstroObject.is_group = 1)
                 )
             JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
@@ -684,9 +684,9 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
                 ON (
                     (AstroObject.id = DwarfEntry.astro_object_id AND DwarfEntry.astro_group_id IS NULL)
                     OR
-                    (AstroObject.id = DwarfEntry.astro_object_id AND DwarfEntry.astro_group_id IS NOT NULL AND AstroObject.description != '' )
+                    (AstroObject.id = DwarfEntry.astro_object_id AND DwarfEntry.astro_group_id IS NOT NULL AND (AstroObject.description != '' AND AstroObject.description IS NOT NULL) )
                     OR
-                    (AstroObject.id = DwarfEntry.astro_group_id AND DwarfEntry.astro_object_id IS NOT NULL)
+                    (AstroObject.id = DwarfEntry.astro_group_id AND DwarfEntry.astro_object_id IS NOT NULL AND AstroObject.is_group = 1)
                 )
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
         """
@@ -861,7 +861,6 @@ def get_countObjects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=
             # Include sessions with score >= min_quality OR no score (NULL = unscored, keep visible)
             conditions.append("(SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
             params.append(min_quality)
-    
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
@@ -946,6 +945,7 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id =
                 DwarfData.target,
                 DwarfData.dec,
                 DwarfData.ra,
+                DwarfData.binning,
                 BackupEntry.astro_object_id,
                 BackupEntry.astro_group_id,
                 {display_name_expr} AS object_display_name,
@@ -1030,7 +1030,7 @@ def get_ObjectSelect_backup(conn: sqlite3.Connection, object_id = None, dso_id =
 
         if min_quality is not None:
             # Include sessions with score >= min_quality OR no score (NULL = unscored, keep visible)
-            conditions.append("(SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
+            where_clauses.append("(SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
             params.append(min_quality)
 
         if where_clauses:
@@ -1068,6 +1068,7 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
                 DwarfData.target,
                 DwarfData.dec,
                 DwarfData.ra,
+                DwarfData.binning,
                 BackupEntry.astro_object_id,
                 BackupEntry.astro_group_id,
                 {display_name_expr} AS object_display_name,
@@ -1162,7 +1163,7 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
 
         if min_quality is not None:
             # Include sessions with score >= min_quality OR no score (NULL = unscored, keep visible)
-            conditions.append("(SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
+            where_clauses.append("(SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
             params.append(min_quality)
 
         if where_clauses:
@@ -1200,6 +1201,7 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
                 DwarfData.target,
                 DwarfData.dec,
                 DwarfData.ra,
+                DwarfData.binning,
                 DwarfEntry.astro_object_id,
                 DwarfEntry.astro_group_id,
                 {display_name_expr} AS object_display_name,
@@ -1315,9 +1317,9 @@ def get_Objects_manual(conn: sqlite3.Connection, backup_drive_id=None, dwarf_id=
                     -- Prefer the group label when the object belongs to a named group
                     (AstroObject.id = ManualSessionEntry.astro_object_id AND ManualSessionEntry.astro_group_id IS NULL)
                     OR
-                    (AstroObject.id = ManualSessionEntry.astro_object_id AND ManualSessionEntry.astro_group_id IS NOT NULL AND AstroObject.description != '')
+                    (AstroObject.id = ManualSessionEntry.astro_object_id AND ManualSessionEntry.astro_group_id IS NOT NULL AND (AstroObject.description != ''  AND AstroObject.description IS NOT NULL))
                     OR
-                    (AstroObject.id = ManualSessionEntry.astro_group_id  AND ManualSessionEntry.astro_object_id IS NOT NULL AND AstroObject.description = '')
+                    (AstroObject.id = ManualSessionEntry.astro_group_id  AND ManualSessionEntry.astro_object_id IS NOT NULL AND AstroObject.is_group = 1)
                 )
             JOIN ManualSession ON ManualSessionEntry.manual_session_id = ManualSession.id
         """
@@ -3525,6 +3527,24 @@ def insert_astro_object(conn: sqlite3.Connection, name=None, unknown=False, dec=
         print(f"[DB ERROR] Failed to insert astro object {name}: {e}")
         return None, False
 
+def clear_astro_object(conn: sqlite3.Connection, astro_id = None):
+    try:
+        if astro_id:
+            # Check if the object exists
+            cursor = conn.execute("SELECT id FROM AstroObject WHERE id = ?", (astro_id,))
+            row = cursor.fetchone()
+            if row:
+
+                conn.execute(
+                    "UPDATE AstroObject SET dso_id = NULL, description = '' WHERE id = ?",
+                    (astro_id,)
+                )
+                commit_db(conn)
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to clear astro object {astro_id}: {e}")
+        return None, False
+
 ##########################
 # Default group functions
 ##########################
@@ -3636,6 +3656,17 @@ def export_associations(conn: sqlite3.Connection):
     writer.writerows(data)
     output.seek(0)
     return output.read()
+
+
+def delete_astro_object(conn: sqlite3.Connection, astro_object_id: int) -> bool:
+    """Delete an AstroObject and cascade to BackupEntry references."""
+    try:
+        conn.execute("DELETE FROM AstroObject WHERE id = ?", (astro_object_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] delete_astro_object: {e}")
+        return False
 
 ########################
 # MTP DEVICES functions
@@ -3871,6 +3902,7 @@ def get_Objects_by_sky_position(
     radius_deg: float,
     backup_drive_id=None,
     dwarf_id=None,
+    min_quality=None
 ) -> list:
     """
     Return objects in the same format as get_Objects_backup()
@@ -3905,6 +3937,7 @@ def get_Objects_by_sky_position(
                 ON (AstroObject.id = BackupEntry.astro_object_id
                     OR AstroObject.id = BackupEntry.astro_group_id)
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+            LEFT JOIN SessionQuality ON BackupEntry.id = SessionQuality.backup_entry_id
             WHERE DwarfData.ra  IS NOT NULL
               AND DwarfData.dec IS NOT NULL
               AND CAST(DwarfData.dec AS REAL) BETWEEN ? AND ?
@@ -3925,6 +3958,10 @@ def get_Objects_by_sky_position(
         if dwarf_id:
             query  += " AND BackupEntry.dwarf_id = ?"
             params.append(dwarf_id)
+        if min_quality is not None:
+            # Include sessions with score >= min_quality OR no score (NULL = unscored, keep visible)
+            query += (" AND (SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
+            params.append(min_quality)
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -3959,6 +3996,7 @@ def count_sessions_by_sky_position(
     radius_deg: float,
     backup_drive_id=None,
     dwarf_id=None,
+    min_quality=None
 ) -> int:
     """
     Return the actual number of BackupEntry (sessions) near (ra_deg, dec_deg).
@@ -3977,6 +4015,7 @@ def count_sessions_by_sky_position(
                 CAST(DwarfData.dec AS REAL) AS dec_val
             FROM BackupEntry
             JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
+            LEFT JOIN SessionQuality ON BackupEntry.id = SessionQuality.backup_entry_id
             WHERE DwarfData.ra  IS NOT NULL
               AND DwarfData.dec IS NOT NULL
               AND CAST(DwarfData.dec AS REAL) BETWEEN ? AND ?
@@ -3996,6 +4035,10 @@ def count_sessions_by_sky_position(
         if dwarf_id:
             query  += " AND BackupEntry.dwarf_id = ?"
             params.append(dwarf_id)
+        if min_quality is not None:
+            # Include sessions with score >= min_quality OR no score (NULL = unscored, keep visible)
+            query += (" AND (SessionQuality.quality_score IS NULL OR SessionQuality.quality_score >= ?)")
+            params.append(min_quality)
 
         cursor = conn.cursor()
         cursor.execute(query, params)

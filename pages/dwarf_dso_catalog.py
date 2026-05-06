@@ -4,7 +4,7 @@ import sqlite3
 from typing import Dict
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, commit_db
-from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, insert_default_groups
+from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, insert_default_groups, clear_astro_object
 
 from components.menu import menu
 from components.astro_object_associate import show_assign_dialog
@@ -25,8 +25,6 @@ async def dwarf_catalog():
 
 def _fetch_catalog_data(database):
     """Module-level function — safe for run.io_bound (no self, no conn to pickle)."""
-    from api.dwarf_backup_db import connect_db, close_db
-    from api.dwarf_backup_db_api import get_astro_objects
     conn = connect_db(database)
     try:
         return get_astro_objects(conn)
@@ -58,12 +56,14 @@ class CatalogApp:
                 {'name': 'name',        'label': 'Name',        'field': 'name',        'sortable': True,  'style': 'width: 180px; white-space: normal; word-break: break-word'},
                 {'name': 'description', 'label': 'Description', 'field': 'description', 'sortable': True,  'style': 'width: 320px; white-space: normal; word-break: break-word'},
                 {'name': 'dso',         'label': 'DSO',         'field': 'dso',         'sortable': True,  'style': 'width: 120px'},
+                {'name': 'type',       'label': '',            'field': 'is_group',                       'style': 'width: 40px'},
                 {'name': 'actions',     'label': 'Actions',     'field': 'actions',                        'style': 'width: 140px'},
             ]
 
             # Create the table
             self.table = ui.table(columns=columns, rows=[], row_key='id').classes('w-full')
             self.table.on('assign_dso', self.on_assign_dso)
+            self.table.on('delete_astro', self.on_delete_astro)
 
     async def load_data(self):
         """Load catalog data in a thread so spinner renders first."""
@@ -75,7 +75,7 @@ class CatalogApp:
             placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
             rows = c.execute(f"""
                 SELECT AO.id, AO.name, AO.description,
-                       COALESCE(DSO.designation, '') AS dso_name
+                       COALESCE(DSO.designation, '') AS dso_name, AO.is_group
                 FROM AstroObject AO
                 LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
                 WHERE AO.name NOT IN ({placeholders})
@@ -132,7 +132,7 @@ class CatalogApp:
             placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
             rows = self.conn.execute(f"""
                 SELECT AO.id, AO.name, AO.description,
-                       COALESCE(DSO.designation, '') AS dso_name
+                       COALESCE(DSO.designation, '') AS dso_name, AO.is_group
                 FROM AstroObject AO
                 LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
                 WHERE AO.name NOT IN ({placeholders})
@@ -140,7 +140,8 @@ class CatalogApp:
             """, DEFAULT_GROUP_NAMES).fetchall()
         self.data = [(r[0], r[1], r[2], None) for r in rows]
         self.table.rows = [
-            {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3], 'actions': ''}
+            {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3],
+             'is_group': r[4] if len(r) > 4 else 0, 'actions': ''}
             for r in rows
         ]
         self.table.update()
@@ -161,12 +162,24 @@ class CatalogApp:
                 <q-td key="dso" :props="props">
                   {{ props.row.dso }}
                 </q-td>
+                <q-td key="type" :props="props">
+                  <span v-if="props.row.is_group">✨</span>
+                  <span v-else>⭐</span>
+                </q-td>
                 <q-td key="actions" :props="props">
                   <q-btn
                     dense
                     size="sm"
                     label="Assign/Change DSO"
                     @click="$parent.$emit('assign_dso', props.row.id)"
+                    class="q-mr-xs"
+                  />
+                  <q-btn
+                    dense
+                    size="sm"
+                    color="negative"
+                    icon="delete"
+                    @click="$parent.$emit('delete_astro', props.row.id)"
                   />
                 </q-td>
               </q-tr>
@@ -192,6 +205,21 @@ class CatalogApp:
                 row['dso'] = get_dso_name(self.conn, ao[3])
                 break
         self.table.update()
+
+    def on_delete_astro(self, msg: Dict):
+        ao_id = msg.args
+        with ui.dialog() as dialog, ui.card():
+            ui.label(t("confirm_clear_dso")).classes("font-bold")
+            with ui.row():
+                def do_clear(aid=ao_id):
+                    clear_astro_object(self.conn, ao_id)
+                    ui.notify(t("astro_deleted"), type="positive")
+                    ui.notify(t("dso_cleared"), type="positive")
+                    dialog.close()
+                    self.reload()
+                ui.button(t("clear"), on_click=do_clear).props("color=warning")
+                ui.button(t("cancel"), on_click=dialog.close).props("flat")
+        dialog.open()
 
     def on_assign_dso(self, msg: Dict):
         ao_id = msg.args

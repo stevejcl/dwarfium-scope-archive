@@ -289,6 +289,8 @@ TRANSLATIONS: dict[str, str] = {
     "please_backup_dir":            "Choisissez le répertoire principal de sauvegarde pour vos images d'astrophotographie Dwarf ou fichiers darks.",
     "please_astro_dir":             "Sélectionnez le répertoire Astronomie dans le lecteur USB mappé.",
     "select_astro_info":            "Vous pouvez sélectionner un sous-dossier spécifique où sont stockées vos images de session d'astrophotographie.",
+    "scanning_backup_location":     "🔍 Analyse: {location}, veuillez patienter...",
+    "button_end_analysis_errors":   "Fermer et Afficher les résultas", 
 
     # ── Backup operations ─────────────────────────────────────────────────────────
     "launch_backup":                "Lancer la sauvegarde...",
@@ -457,8 +459,8 @@ TRANSLATIONS: dict[str, str] = {
     "show_panels":                  "🧩 Afficher les panneaux",
     "manual_sessions_found":        "sessions manuelles trouvées.",
     "last_scan_label":              "Dernier scan le :",
-    "taken":                        "Pris",
-    "restack":                      "Restack",
+    "taken":                        "Capturé",
+    "restack":                      "Réempilé",
     "stacked_shots":                "poses empilées pour un temps de pose total de",
     "stacked_shots_one":            "pose empilée pour un temps de pose total de",
     "classified_as":                "Classifié comme :",
@@ -760,6 +762,20 @@ TRANSLATIONS: dict[str, str] = {
 
     # ── Quality filter ──────────────────────────────────────────────────────────
     "quality_filter_label":         'Qualité :',
-    "quality_filter_tooltip":       'Filtrer par score de qualité — 🌐 tous · 🟢 bon (≥65) · 🟡 moyen (≥40)\nSessions non scorées toujours visibles',
+    "quality_filter_tooltip":       'Filtrer par score de qualité — 🌐 tous · 🟢 bon (≥65) · 🟡 moyen (≥40)\nSessions non évaluées toujours visibles',
+
+    # ── Quality scoring ─────────────────────────────────────────────────────────
+    "score_session_btn":            '🌟 Évaluer',
+    "score_no_sessions":            'Aucune session à evaluer pour cet objet.',
+    "score_running":                'Calcul du score pour {count} session(s)...',
+    "score_done":                   '✅ {count} session(s) évaluée(s).',
+
+    # ── DSO Catalog ─────────────────────────────────────────────────────────────
+    "confirm_delete_astro":         'Supprimer cet objet ? Les sessions liées perdront leur assignation.',
+    "astro_deleted":                '✅ Objet supprimé.',
+
+    "confirm_clear_dso":            "Supprimer l'association DSO de cet objet ?",
+    "dso_cleared":                  '✅ Association DSO supprimée.',
+    "clear":                        'Effacer',
 
 }

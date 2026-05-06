@@ -289,6 +289,8 @@ TRANSLATIONS: dict[str, str] = {
     "please_backup_dir":            "Please choose the main backup directory for your Dwarf astrophotography images or dark files.",
     "please_astro_dir":             "Please select the Astronomy directory within the mapped USB drive.",
     "select_astro_info":            "You can select a specific subfolder where your astrophotography session images are stored.",
+    "scanning_backup_location":     "🔍 Scanning: {location}, please wait...",
+    "button_end_analysis_errors":   "Close and Show Results",
 
     # ── Backup operations ─────────────────────────────────────────────────────────
     "launch_backup":                "Launch Backup Dwarf Data...",
@@ -760,5 +762,19 @@ TRANSLATIONS: dict[str, str] = {
     # ── Quality filter ──────────────────────────────────────────────────────────
     "quality_filter_label":         'Quality:',
     "quality_filter_tooltip":       'Filter by quality score — 🌐 all · 🟢 good (≥65) · 🟡 fair (≥40)\nUnscored sessions always shown',
+
+    # ── Quality scoring ─────────────────────────────────────────────────────────
+    "score_session_btn":            '🌟 Score',
+    "score_no_sessions":            'No sessions to score for this object.',
+    "score_running":                'Scoring {count} session(s)...',
+    "score_done":                   '✅ {count} session(s) scored.',
+
+    # ── DSO Catalog ─────────────────────────────────────────────────────────────
+    "confirm_delete_astro":         'Delete this object? Sessions linked to it will lose their object assignment.',
+    "astro_deleted":                '✅ Object deleted.',
+
+    "confirm_clear_dso":            'Remove the DSO association from this object?',
+    "dso_cleared":                  '✅ DSO association removed.',
+    "clear":                        'Clear',
 
 }

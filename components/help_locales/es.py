@@ -18,8 +18,8 @@ Dwarfium Scope Archive helps you back up, organise and explore your Dwarf telesc
 
 ## Main features
 
-- **Dwarf** — configure your Dwarf devices (USB path, IP address, type)
-- **Backup** — configure your backup drives and scan for new sessions
+- **{t:dwarf_label}** — configure your Dwarf devices (USB path, IP address, type)
+- **{t:menu_backup}** — configure your backup drives and scan for new sessions
 - **{t:page_explore}** — browse and search all backed-up sessions
 - **{t:menu_manual_sessions}** — import custom stacked FITS/PNG/JPG files from any tool
 - **{t:page_darks}** — manage calibration frames (darks) for Siril processing
@@ -27,10 +27,10 @@ Dwarfium Scope Archive helps you back up, organise and explore your Dwarf telesc
 
 ## Typical workflow
 
-1. Configure your Dwarf on the **Dwarf** page
-2. Use **Analyze Dwarf Data** to index the sessions on your Dwarf
-2. Configure your backup drive on the **Backup** page
-3. Use **Analyze Current Drive** on the Backup page to index the sessions
+1. Configure your Dwarf on the **{t:dwarf_label}** page
+2. Use **{t:analyze_dwarf_drive}** to index the sessions on your Dwarf
+2. Configure your backup drive on the **{t:menu_backup}** page
+3. Use **{t:analyze_drive}** on the **{t:page_backup}** page to index the sessions
 4. Use the **{t:transfer}** page to copy sessions from the Dwarf to your backup
 5. Browse everything on the **{t:page_explore}** page
 6. The **{t:page_explore}** page allows also to Backup directly a selected session
@@ -74,11 +74,11 @@ Run this after connecting the Dwarf by USB.
 
 ## Show Dwarf Data
 
-Opens the Explore page to view data stored on your Dwarf.
+Opens the **{t:page_explore}** page to view data stored on your Dwarf.
 You can then import it into your backup.
-Enable **Only show sessions not yet backed up** 
+Enable **{t:only_backed_not_dwarf}** 
 This will display pending sessions and show the Backup button.
-Run this after running : **Analyze Dwarf Drive**.
+Run this after running : **{t:analyze_dwarf_drive}**.
 
 ## Sessions with Errors
 
@@ -92,7 +92,7 @@ Opens sessions without a final stacked file.
 
 ## Tips
 
-- The USB path must be accessible when you click **Analyze Dwarf Drive**
+- The USB path must be accessible when you click **{t:analyze_dwarf_drive}**
 - FTP requires the Dwarf to be on the same WiFi network as your computer
 - You can have multiple Dwarfs — each has its own entry
 
@@ -115,9 +115,9 @@ Each backup drive is linked to one Dwarf.
 
 1. Click **{t:add_backup_drive}**
 2. Enter a name (e.g. `DWARF_MINI_NEW`)
-3. Click **Select Folder** to choose the root folder of the backup drive
+3. Click **{t:select_folder}** to choose the root folder of the backup drive
 4. Optionally set an **{t:astronomy_dir}** subdirectory
-5. Select the **Dwarf** this drive belongs to
+5. Select the **{t:dwarf_label}** this drive belongs to
 6. Click **{t:save_update_drive}**
 
 ## Analyze Current Drive
@@ -133,7 +133,7 @@ The counts may differ if bad frames were removed on the Dwarf.
 
 ## Show All Current Backup Data
 
-Opens the Explore page to view data stored on your drive.
+Opens the **{t:page_explore}** page to view data stored on your drive.
 You can then restore them to your dwarf.
 Enable **{t:only_backed_not_dwarf}** 
 to list deleted sessions and display the Restore button..
@@ -142,7 +142,7 @@ to list deleted sessions and display the Restore button..
 
 Removes all indexed session data for this drive from the database.
 The files on disk are **not** deleted. After deleting, run
-**Analyze Current Drive** to re-index.
+**{t:analyze_drive}** to re-index.
 
 ## Delete Manual Entries
 
@@ -163,19 +163,19 @@ automatically from `shotsInfo.json` files when you re-analyze.
 ## Purpose
 
 Browse and search all sessions indexed from your backup drives.
-To view sessions currently stored on your Dwarf, go to the Dwarf page
+To view sessions currently stored on your Dwarf, go to the **{t:page_dwarf}** page
  and click the "Show Dwarf Data" button.
 
 ## Filters
 
-- **Backup Drive** — filter by backup drive (or show all)
-- **Dwarf** — filter by Dwarf device
-- **Filter objects** — search by target name
+- **{t:backup_drive}** — filter by backup drive (or show all)
+- **{t:dwarf_label}** — filter by Dwarf device
+- **{t:filter_objects}** — search by target name
 
 ## Session detail
 
 Click a target in the left panel, then select a session from the
-**Session list** dropdown to see:
+**{t:session_list}** dropdown to see:
 
 - Target, RA/Dec, classification
 - Exposure, gain, filter, temperature
@@ -184,16 +184,16 @@ Click a target in the left panel, then select a session from the
 
 ## Actions
 
-- **Open** — open the session folder in Windows Explorer
-- **Show Fullscreen** — view the stacked image fullscreen
+- **{t:open_folder_btn}** — open the session folder in Windows Explorer
+- **{t:show_fullscreen_btn}** — view the stacked image fullscreen
 - **Backup/Restore** — Allows you to perform actions on the selected session.
 - **Availability** — Depends on the selected checkboxes. See tips for more details.
-- **Delete Session (Backup Drive)** — Permanently removes all session data from the backup drive.
-- **Delete Session (Dwarf)** — Available only if a backup exists.
-    Access it via the **"Show Dwarf Data"** button in the Dwarf Settings page.
-- **View linked Manual Session** — jump to any Manual Session linked to this entry
+- **{t:delete_session}** — Permanently removes all session data from the backup drive.
+- **{t:delete_session}** — Available only if a backup exists.
+    Access it via the **{t:show_dwarf_data}** button in the Dwarf Settings page.
+- **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
 - **Add/Remove Favorite** — Toggle the session title to show or hide it on the home page
-- **Show Details / Hide Details** — toggle file stats and directory info
+- **{t:show_details}** — toggle file stats and directory info
 
 ## Tips
 
@@ -215,9 +215,9 @@ Siril, GraXpert or any other processing tool.
 
 ## Filters
 
-- **Backup Drive** — filter by drive
-- **Dwarf** — filter by Dwarf device
-- **Session list** — select a specific session to view
+- **{t:backup_drive}** — filter by drive
+- **{t:dwarf_label}** — filter by Dwarf device
+- **{t:session_list}** — select a specific session to view
 
 ## Session detail
 
@@ -230,19 +230,19 @@ Selecting a session shows:
 
 ## Actions
 
-- **Open** — open the session folder in Explorer
-- **Show Fullscreen** — view the stacked image fullscreen
-- **View linked Dwarf session** — jump to the original raw session in Explore
+- **{t:open_folder_btn}** — open the session folder in Explorer
+- **{t:show_fullscreen_btn}** — view the stacked image fullscreen
+- **{t:view_linked_dwarf}** — jump to the original raw session in Explore
 - **Add Favorite / Remove Favorite** — mark for processing
-- **Edit Session** — update metadata or add more files
-- **Delete Session** — remove files and database entry
+- **{t:edit_session}** — update metadata or add more files
+- **{t:delete_session_btn}** — remove files and database entry
 
 ## Tips
 
 - To Backup a Dwarf session, selct the 
 - Sessions are grouped by target object in the left panel
 - The **manual** group contains sessions without a recognised DSO target
-- Use **Edit Session** to add Starless or Denoise variants after processing
+- Use **{t:edit_session}** to add Starless or Denoise variants after processing
 ''',
     },
 
@@ -258,13 +258,13 @@ Siril, GraXpert, or any other tool — into the archive.
 
 ### 1. Select destination
 
-Choose a **Backup Drive** and set the **{t:destination_dir2}** where the
+Choose a **{t:backup_drive}** and set the **{t:destination_dir2}** where the
 session folder will be created.
 
 ### 2. Name the session
 
 Enter a **{t:session_name_label}** (e.g. `Cave_Nebula_Duo-Band_20260409`).
-Optionally add a **Tag** (e.g. `Siril`) to distinguish variants.
+Optionally add a **{t:tag}** (e.g. `Siril`) to distinguish variants.
 
 ### 3. Upload files
 
@@ -275,7 +275,7 @@ Optionally add a **Tag** (e.g. `Siril`) to distinguish variants.
 
 ### 4. Stellar Studio URL
 
-Paste a URL to a FITS file hosted online. Choose a **Type** suffix:
+Paste a URL to a FITS file hosted online. Choose a **{t:sky_search_type}** suffix:
 - **Auto** → `stacked-16_{session}__Auto.fits`
 - **Denoise** → `stacked-16_{session}__Denoise.fits`
 - **Starless** → `stacked-16_{session}__Starless.fits`
@@ -317,8 +317,8 @@ Where: `exp` = exposure in seconds, `gain` = gain value,
 ## Adding a library
 
 1. Click **{t:add_library}**
-2. Select the **Dwarf** and **Backup Drive**
-3. Click **Select Folder** to choose the `CALI_FRAME` folder
+2. Select the **{t:dwarf_label}** and **{t:backup_drive}**
+3. Click **{t:select_folder}** to choose the `CALI_FRAME` folder
    (the dialog opens at the backup drive root — navigate one level down)
 4. Click **{t:save_update_library}**
 
@@ -357,7 +357,7 @@ Copy sessions between the Dwarf and a backup drive.
 ## Modes
 
 - **{t:archive_mode}** — copy from Dwarf → Backup Drive (normal backup)
-- **Restore** — copy from Backup Drive → Dwarf (put sessions back)
+- **{t:restore_mode}** — copy from Backup Drive → Dwarf (put sessions back)
 
 ## Transfer modes
 
@@ -366,15 +366,15 @@ Copy sessions between the Dwarf and a backup drive.
 
 ## Workflow
 
-1. Select the **Dwarf** and **Backup Drive**
+1. Select the **{t:dwarf_label}** and **{t:backup_drive}**
 2. Choose **USB** or **FTP** in the Transfer Mode selector
-3. Set the **Source Directory** (or use Select Source)
+3. Set the **{t:source_directory}** (or use Select Source)
 4. Set the **{t:destination_dir2}** (or use Select Destination)
 5. Click **{t:start_backup}** / **{t:start_restore}**
 
 ## Tips
 
-- After a transfer, the Backup page will automatically re-analyze the drive
+- After a transfer, the **{t:page_backup}** page will automatically re-analyze the drive
   to index any new sessions
 - You can transfer a single session by selecting its folder as the source
 - Multi-session transfer: the source dropdown shows all sessions — select
@@ -415,7 +415,7 @@ fields that are stitched together into a single wide-field image.
 
 ## Workflow
 
-1. Select a **Dwarf** and **Backup Drive**
+1. Select a **{t:dwarf_label}** and **{t:backup_drive}**
 2. Browse the list of mosaic sessions detected on the drive
 3. Select panels to include in the stitch
 4. Click **Generate Panorama** to stitch the panels together
@@ -449,7 +449,7 @@ Connect to a Dwarf 2 telescope via MTP (Media Transfer Protocol) —
 3 .In the app, go to to **Advanced Settings** to enable MTP
 2. On this page, click **Scan for MTP Devices**
 3. Select the detected Dwarf from the list
-4. Use **Browse** to navigate the device file system
+4. Use **{t:open_folder}** to navigate the device file system
 5. Select sessions to transfer
 
 ## Tips
@@ -486,7 +486,7 @@ target identification and session classification.
 
 - The catalog is used automatically when you analyze a backup drive —
   session targets are matched and classified
-- Use **Identify Target** on any unresolved session in Explore to
+- Use **{t:identify_target_btn}** on any unresolved session in Explore to
   manually link it to a catalog object
 - The catalog is based on standard DSO databases (NGC, IC, Messier)
 ''',
