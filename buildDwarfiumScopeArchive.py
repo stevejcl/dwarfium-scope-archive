@@ -15,7 +15,8 @@ sep = os.pathsep  # Cross-platform separator: ; on Windows, : on Unix/macOS
 
 extra_data = [
     f"{citation_path}{sep}astroquery",
-    f"astroquery/simbad/data/query_criteria_fields.json{sep}astroquery/simbad/data"
+    f"astroquery/simbad/data/query_criteria_fields.json{sep}astroquery/simbad/data",
+    f"tools{sep}tools",
 ]
    
 APP_NAME = "DwarfiumScopeArchive"
@@ -114,6 +115,10 @@ for locale_file in Path("components/help_locales").glob("*.py"):
 # Copy tools/ into dist/tools/ (quality_scan, skybot_scan, etc.)
 DIST_TOOLS_DIR = DIST_DIR / "tools"
 DIST_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure __init__.py exists for package import
+tools_init = Path("tools") / "__init__.py"
+if not tools_init.exists():
+    tools_init.write_text("# tools package\n")
 for tool_file in Path("tools").glob("*.py"):
     dest = DIST_TOOLS_DIR / tool_file.name
     print(f"Copying {tool_file} to {dest}")

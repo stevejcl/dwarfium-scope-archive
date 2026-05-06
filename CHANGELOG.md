@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.1.6_RC3] - 2026-05-07
+
+### BugFix#
+    Ensure the tools directory is packaged for Windows builds: add tools to extra_data, copy tools/*.py into dist/tools, and create a tools/__init__.py at build time
+
 ## [V3.1.6_RC2] - 2026-05-06
 
 ### BugFix#
