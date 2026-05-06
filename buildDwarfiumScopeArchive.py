@@ -28,6 +28,7 @@ DIST_IMAGE_DIR      = DIST_DIR / "image"
 DIST_DB_DIR         = DIST_DIR / "db"
 DIST_LOCALES_DIR    = DIST_DIR / "components" / "locales"
 DIST_HELP_LOCALES_DIR = DIST_DIR / "components" / "help_locales"
+DIST_TOOLS_DIR       = DIST_DIR / "tools"
 
 print("Current working directory:", os.getcwd())
 
@@ -109,6 +110,14 @@ for locale_file in Path("components/help_locales").glob("*.py"):
     dest = DIST_HELP_LOCALES_DIR / locale_file.name
     print(f"Copying {locale_file} to {dest}")
     shutil.copy2(locale_file, dest)
+
+# Copy tools/ into dist/tools/ (quality_scan, skybot_scan, etc.)
+DIST_TOOLS_DIR = DIST_DIR / "tools"
+DIST_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+for tool_file in Path("tools").glob("*.py"):
+    dest = DIST_TOOLS_DIR / tool_file.name
+    print(f"Copying {tool_file} to {dest}")
+    shutil.copy2(tool_file, dest)
 
 # Step 4 – Zip everything in dist
 import platform

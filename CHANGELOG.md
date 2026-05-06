@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.1.6_RC2] - 2026-05-06
+
+### BugFix#
+    Add Tools directory for Windows build
+
 ## [V3.1.6_RC] - 2026-05-06
 
 ### BugFix#
