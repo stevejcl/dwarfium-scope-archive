@@ -770,4 +770,31 @@ TRANSLATIONS: dict[str, str] = {
     "no_unused_astro":              'No unused objects to delete.',  # TODO
     "confirm_delete_unused_astro":  '{count} unused object(s) will be permanently deleted. Continue?',  # TODO
 
+    # ── Transfer / Mosaic / MTP status messages ────────────────────────────────
+    "ftp_readonly":                 'FTP is read-only.',  # TODO
+    "transfer_canceled":            'Backup canceled.',  # TODO
+    "no_files_to_copy":             'No files to copy.',  # TODO
+    "starting_copy":                'Starting copying {total} files...',  # TODO
+    "full_backup_starting":         'Full Backup, Starting copying {total} files...',  # TODO
+    "end_of_backup":                'End of Backup',  # TODO
+    "backup_interrupted":           'Backup interrupted!',  # TODO
+    "status_idle":                  'Idle...',  # TODO
+    "status_checking":              'Check Files...',  # TODO
+    "status_starting":              'Starting...',  # TODO
+    "status_copying":               'Copy...',  # TODO
+    "status_end":                   'End...',  # TODO
+    "copied_files":                 'Copied {copied}/{total} files',  # TODO
+    "select_dest_dir":              'Select a destination Directory.',  # TODO
+    "select_src_dir_msg":           'Select a source directory.',  # TODO
+    "dest_backup_drive_label":      'Destination: Backup Drive',  # TODO
+    "view_session_explore":         '🔭 View Session in Explore',  # TODO
+    "backup_session_label":         'Backup Session',  # TODO
+    "restore_session_label":        'Restore Session',  # TODO
+    "mosaic_copying":               '📋 Copying primary session to work directory…',  # TODO
+    "mosaic_copy_failed":           '❌ Copy failed.',  # TODO
+    "mosaic_running":               '🚀 Running Mosaic process on work directory…',  # TODO
+    "mosaic_complete":              '✅ Process complete.',  # TODO
+    "mosaic_failed_cancelled":      '❌ Process failed or was cancelled.',  # TODO
+    "transfer_successful":          '✅ {mode} successful!',  # TODO
+
 }

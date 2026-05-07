@@ -909,7 +909,7 @@ class MosaicApp(DbPageMixin):
         await self.client.run_javascript("document.body.style.cursor='wait'")
         self.log_ui.clear()
         self.progress.value = 0
-        self.progress_label.set_text("📋 Copying primary session to work directory…")
+        self.progress_label.set_text(t("mosaic_copying"))
 
         # ── Step 0: register action as "running" ─────────────────────────
         from datetime import datetime
@@ -948,7 +948,7 @@ class MosaicApp(DbPageMixin):
                 error = str(e)
                 self.notify_me.refresh(f"❌ Copy failed: {e}", type="negative")
                 traceback.print_exc()
-                self.progress_label.set_text("❌ Copy failed.")
+                self.progress_label.set_text(t("mosaic_copy_failed"))
                 self.cancel_btn.visible = False
                 self.action_button.visible = True
                 self.repair_mgr.update_action_status(self._current_entry_id, "failed", error=str(e))
@@ -960,7 +960,7 @@ class MosaicApp(DbPageMixin):
 
         if not self.cancel_process.is_set():
             # ── Step 2: run the repair / merge on the work copy ────────────────
-            self.progress_label.set_text("🚀 Running Mosaic process on work directory…")
+            self.progress_label.set_text(t("mosaic_running"))
             try:
                 if self.mode == "Repair":
                     print_log("Starting Repair…", self.log_ui)
@@ -983,7 +983,7 @@ class MosaicApp(DbPageMixin):
 
         if result and Path(result).exists():
             self.progress.value = 100
-            self.progress_label.set_text("✅ Process complete.")
+            self.progress_label.set_text(t("mosaic_complete"))
             self.image_ui.set_source(str(result))
             self.image_ui.force_reload()
             self.notify_me.refresh("✅ Done! Result image displayed below.", type="positive")
@@ -1085,7 +1085,7 @@ class MosaicApp(DbPageMixin):
         else:
             status = "failed" if error else "partial"
             self.repair_mgr.update_action_status(self._current_entry_id, status, error=error)
-            self.progress_label.set_text("❌ Process failed or was cancelled.")
+            self.progress_label.set_text(t("mosaic_failed_cancelled"))
             self.notify_me.refresh("⚠️ Process finished but no result image was produced.", type="warning")
 
     # ------------------------------------------------------------------ #
@@ -1107,7 +1107,7 @@ class MosaicApp(DbPageMixin):
     async def _offer_copy_after_process(self, entry: dict):
         action_label = "repaired" if self.mode == "Repair" else "merged"
         self._copy_dlg_entry = entry
-        self._copy_dlg_title.set_text(f"✅ {self.mode} successful!")
+        self._copy_dlg_title.set_text(t("transfer_successful", mode=self.mode))
         self._copy_dlg_body.set_text(
             f"The {action_label} session is ready in the output directory. "
             "Do you want to copy the files back to the Dwarf now?"

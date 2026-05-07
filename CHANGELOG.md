@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.1.6_RC5] - 2026-05-07
+
+### Add
+    Add more translations
+    
 ## [V3.1.6_RC4] - 2026-05-07
 
 ### Add

@@ -373,7 +373,7 @@ class AddManualSession(DbPageMixin):
 
     def set_mode_UI(self):
 
-        self.DestinationDirectory.set_text("Destination: Backup Drive")
+        self.DestinationDirectory.set_text(t("dest_backup_drive_label"))
         self.DestinationMainDir = "the backup directory!"
         self.ScanningMessage = "🔍 Scanning Dwarf drive, please wait..."
         self.EndScanningMessage = "End of Scanning Dwarf drive"
@@ -1585,7 +1585,7 @@ class AddManualSession(DbPageMixin):
         dest_dir = self.input_dest_dir.value
         print(f" Backup dest_dir:  {dest_dir}")
         if not dest_dir:
-            self.progress_label.set_text("Select a Destination Directory.")
+            self.progress_label.set_text(t("select_dest_dir"))
             return
 
         session_dirname = self.session_dirname.value.strip()
@@ -1622,7 +1622,7 @@ class AddManualSession(DbPageMixin):
         if result == 'Yes':
             await self.execute_import_files(dest_path)
         else:
-            self.progress_label.set_text("Backup canceled.")
+            self.progress_label.set_text(t("transfer_canceled"))
 
     def error_execute(self, message, type):
         ui.notify(message, type=type)
@@ -1652,17 +1652,17 @@ class AddManualSession(DbPageMixin):
             self.error_execute("No files to copy.", type="info")
             return
         else:
-            self.progress_label.set_text(f"Starting copying {total_files} files...")
+            self.progress_label.set_text(t("starting_copy", total=total_files))
         ui.notify(t("starting"))
 
         result = await self.import_files(dest_path, self.progress, self.cancel_btn)
 
         if result:
-            self.progress_label.set_text(f"End of Backup")
+            self.progress_label.set_text(t("end_of_backup"))
             ui.notify(f"✅ All files saved in: {dest_path}", type="positive")
 
         else:
-            self.progress_label.set_text(f"Backup interrupted!")
+            self.progress_label.set_text(t("backup_interrupted"))
 
     async def import_files(self, dest_path, progress_bar, cancel_btn):
         """
@@ -1923,7 +1923,7 @@ class AddManualSession(DbPageMixin):
                         )
                         _params["back_url"] = _back
                         _explore_url = "/ManualExplore/?" + urllib.parse.urlencode(_params)
-                        self.view_session_button.set_text("🔭 View Session in Explore")
+                        self.view_session_button.set_text(t("view_session_explore"))
                         self.view_session_button.on("click", lambda u=_explore_url: ui.navigate.to(u))
                         self.view_session_button.visible = True
 

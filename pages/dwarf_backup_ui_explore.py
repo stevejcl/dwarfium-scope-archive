@@ -2005,16 +2005,16 @@ class ExploreApp(DbPageMixin):
                 has_backup_drives = bool(self.backup_options)
                 if self.mode != "backup" and self.only_on_dwarf.value and self.selected_path:
                     if has_backup_drives:
-                        self.backup_session_icon.set_text("Backup Session")
+                        self.backup_session_icon.set_text(t("backup_session_label"))
                         self.backup_session_icon.visible = True
                         self.backup_session_icon.enable()
                     else:
                         # No backup drive configured — show hint button instead
-                        self.backup_session_icon.set_text("⚠️ Create a Backup Drive first")
+                        self.backup_session_icon.set_text(t("no_backup_drive"))
                         self.backup_session_icon.visible = True
                         self.backup_session_icon.enable()
                 elif self.mode == "backup" and self.BackupDriveId and self.only_on_backup.value and self.selected_path:
-                    self.backup_session_icon.set_text("Restore Session")
+                    self.backup_session_icon.set_text(t("restore_session_label"))
                     self.backup_session_icon.visible = True
                     self.backup_session_icon.enable()
                 else:

@@ -832,7 +832,7 @@ class TransferApp:
         if self.mode != "Archive" and self.transfert_mode_select.value == "FTP":
             if int(self.dwarf_type) != 1: #only D2 is not read-only
                 self.notify_me.refresh("FTP is read-only: Restore not allowed.")
-                self.progress_label.set_text("FTP is read-only.")
+                self.progress_label.set_text(t("ftp_readonly"))
                 return
             else:
                 self.cancel_btn.visible = True
@@ -889,7 +889,7 @@ class TransferApp:
             self.cancel_backup = False
             background_tasks.create(self.execute_backup(self.input_src_dir.value, dest_path, isFullBackup))
         else:
-            self._safe_ui(lambda: self.progress_label.set_text("Backup canceled."))
+            self._safe_ui(lambda: self.progress_label.set_text(t("transfer_canceled")))
             self.cancel_btn.visible = False
             self.StartBackup.visible = True
 
@@ -969,10 +969,10 @@ class TransferApp:
             total_files = len(list_files)
 
         if total_files == 0:
-            self._safe_ui(lambda: self.progress_label.set_text("No files to copy."))
+            self._safe_ui(lambda: self.progress_label.set_text(t("no_files_to_copy")))
             return True
         else:
-            self._safe_ui(lambda: self.progress_label.set_text(f"{'Full Backup, ' if isFullBackup else ''}Starting copying {total_files} files..."))
+            self._safe_ui(lambda: self.progress_label.set_text(t("full_backup_starting", total=total_files) if isFullBackup else t("starting_copy", total=total_files)))
         self._safe_ui(lambda: ui.notify(t("starting")))
 
         if self.mode == "Repair":
@@ -1010,7 +1010,7 @@ class TransferApp:
             result = await _copy_task  # wait for the already-running task
 
         if result:
-            self._safe_ui(lambda: self.progress_label.set_text("End of Backup"))
+            self._safe_ui(lambda: self.progress_label.set_text(t("end_of_backup")))
             self._safe_ui(lambda: ui.notify(t("backup_verified")))
             self._write_transfer_journal(dest_path, src_dir, result=True)
 
@@ -1021,7 +1021,7 @@ class TransferApp:
             if not is_multi:
                 await self._execute_sync_with_optional_dialog(src_dir, dest_path, isFullBackup)
         else:
-            self._safe_ui(lambda: self.progress_label.set_text("Backup interrupted!"))
+            self._safe_ui(lambda: self.progress_label.set_text(t("backup_interrupted")))
             self._write_transfer_journal(dest_path, src_dir, result=False)
 
         return result
@@ -1308,7 +1308,7 @@ class TransferApp:
 
     def _reset_progress_ui(self, clear_paths=True):
         """Reset progress UI to idle state and clear storage so badge disappears."""
-        self.bg_status_label.text = "Idle..."
+        self.bg_status_label.text = t("status_idle")
         self.bg_progress.value = 0
         self._show_bg_progress(False)
         app.storage.general.pop('transfer_progress', None)

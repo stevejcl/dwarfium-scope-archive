@@ -127,12 +127,12 @@ class TransferApp(DbPageMixin):
 
         self.destination_dir = self.destination_input.value
         if not self.destination_dir:
-            progress_label.set_text("Select a destination Directory.")
+            progress_label.set_text(t("select_dest_dir"))
             ui.notify(t("no_dest_dir"), type='warning')
             return
 
         if not subdir_name:
-            progress_label.set_text("Select a source directory.")
+            progress_label.set_text(t("select_src_dir_msg"))
             ui.notify(t("no_source_dir"), type='warning')
             return
 
@@ -159,11 +159,11 @@ class TransferApp(DbPageMixin):
         if result == 'Yes':
             await self.execute_backup(device_id, subdir_name, progress_bar, progress_label)
         else:
-            progress_label.set_text("Backup canceled.")
+            progress_label.set_text(t("transfer_canceled"))
 
     async def execute_backup(self, device_id, subdir_name, progress_bar, progress_label):
 
-        self.notification_label.set_text("Check Files...")
+        self.notification_label.set_text(t("status_checking"))
 
         list_files = await self.mtp.get_files_from_mtp(
             device_id,
@@ -175,11 +175,11 @@ class TransferApp(DbPageMixin):
             total_files = len(list_files)
 
         if total_files == 0:
-            progress_label.set_text("No files to copy.")
-            self.notification_label.set_text("Idle...")
+            progress_label.set_text(t("no_files_to_copy"))
+            self.notification_label.set_text(t("status_idle"))
             return
 
-        self.notification_label.set_text("Starting...")
+        self.notification_label.set_text(t("status_starting"))
         destination_path = os.path.join(self.destination_dir, subdir_name)
 
         dest_folder = await self.mtp.get_folder_from_mtp(destination_path)
@@ -190,16 +190,16 @@ class TransferApp(DbPageMixin):
         return
 
     def copy_files_with_progress(self, list_files, dest_folder, total_files, progress_bar, progress_label):
-        self.notification_label.set_text("Copy...")
+        self.notification_label.set_text(t("status_copying"))
         for i, item in enumerate(list_files):
             print(f"Copying: {item.Name}")
             self.mtp.copy_file_from_mtp(item.Name, dest_folder)
             progress = round((i + 1) / total_files * 100)
             self.update_progress(progress_bar, progress_label, progress, i + 1, total_files)
 
-        self.notification_label.set_text("End...")
+        self.notification_label.set_text(t("status_end"))
 
     # Function to update the UI from the main thread
     def update_progress(self, progress_bar, progress_label, progress, copied, total):
         progress_bar.value = progress
-        progress_label.set_text(f"Copied {copied}/{total} files")
+        progress_label.set_text(t("copied_files", copied=copied, total=total))
