@@ -6,6 +6,7 @@ import os
 import re
 import socket
 from components.i18n import t, set_language, get_language, SUPPORTED_LANGUAGES
+from tools.db_report_pdf import generate_report
 
 def _get_app_version():
     """Read version from version.py (built executable) or CHANGELOG.md (dev mode)."""
@@ -42,6 +43,7 @@ from nicegui import ui, app
 
 from components.menu import menu
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import set_setting_text, get_setting_text
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
 
@@ -54,7 +56,7 @@ def astro_settings(InitDwarfLocal = True):
     ui.context.settings_app =  SettingsApp(DB_NAME, InitDwarfLocal=InitDwarfLocal)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
-class SettingsApp:
+class SettingsApp(DbPageMixin):
     def __init__(self, database, InitDwarfLocal = True):
         self.database = database
         self.InitDwarfLocal = InitDwarfLocal
@@ -87,6 +89,7 @@ class SettingsApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         current_path = None
 
         with ui.column().classes("w-full max-w-2xl mx-auto gap-4 mt-4"):
@@ -129,11 +132,6 @@ class SettingsApp:
 
                 def export_pdf_report():
                     try:
-                        import sys
-                        tools_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools")
-                        if tools_path not in sys.path:
-                            sys.path.insert(0, tools_path)
-                        from db_report_pdf import generate_report
                         out = generate_report(self.database)
                         self._last_report_path = out
                         export_status.set_text(f"✅ {os.path.basename(out)}")

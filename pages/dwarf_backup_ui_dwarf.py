@@ -6,6 +6,7 @@ import os
 import subprocess
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive,  get_directory_size_format, empty_local_archive_dwarf_dir
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
@@ -31,7 +32,7 @@ async def dwarf_settings(DwarfId:int = None, FirstInit=False):
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
     
 
-class ConfigApp:
+class ConfigApp(DbPageMixin):
     def __init__(self, database, DwarfId=None, FirstInit=False):
         self.FirstInit = FirstInit
         self.database = database
@@ -60,6 +61,7 @@ class ConfigApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         sizeBTN='w-56'
 
         self.dwarf_type_name_to_id = {v: k for k, v in self.dwarf_type_map.items()}

@@ -72,10 +72,13 @@ class TransferApp:
         # Dark library download: force destination to CALI_FRAME dir (locked)
         self.dest_override = DestOverride  # e.g. "X:\DWARF_MINI_NEW\CALI_FRAME"
 
-        self.src_dir = '' # 'G:\\Astronomy\\DWARF_RAW_WIDE_C 20_EXP_15_GAIN_80_2025-04-28-04-21-24-416'
-        self.dest_dir = '' # 'T:\\DWARFLAB_2\\DATA4\\DATA_OBJECTS\\NGC7000_North_American_Nebula'
-        self.src_main_dir = '' # 'G:\\Astronomy\\DWARF_RAW_WIDE_C 20_EXP_15_GAIN_80_2025-04-28-04-21-24-416'
-        self.dest_main_dir = '' # 'T:\\DWARFLAB_2\\DATA4\\DATA_OBJECTS\\NGC7000_North_American_Nebula'
+        self.src_dir = ''
+        self.dest_dir = ''
+        self.src_main_dir = ''
+        self.dest_main_dir = ''
+        self.backup_path = ''
+        self.backup_location = ''
+        self.backup_astrodir = ''
 
         self.MultiSession = False
         self.ftp_dwarf_dir = None
@@ -83,6 +86,9 @@ class TransferApp:
         self.dwarf_type = None
         self.usb_available = False
         self.ftp_available = False
+        
+        self.manual_update_dir = False
+        
         self._client_id = client.id
         self.build_ui()
         self.set_mode_UI()
@@ -541,9 +547,11 @@ class TransferApp:
            else:
                self.usb_status_label.text = t("path_not_detected")
                self.usb_available = False
+               self.manual_update_dir = False
         else:
             self.usb_status_label.text = ""
             self.usb_available = False
+            self.manual_update_dir = False
 
     async def check_status_dwarf(self):
         self.usb_available = False
@@ -562,8 +570,9 @@ class TransferApp:
             if current_ip == self.dwarf_ip_sta_mode:
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
-
-                self.update_transfert_mode()
+                # update only if the user doesn't already change it
+                if not self.session and not self.manual_update_dir:
+                    self.update_transfert_mode()
 
     def update_transfert_mode(self):
         available_modes = []
@@ -582,6 +591,7 @@ class TransferApp:
         self.update_dwarf_directory()
 
     def change_transfert_mode(self):
+        self.manual_update_dir = False
         self.update_dwarf_directory()
         self.set_mode_UI()
 
@@ -630,10 +640,17 @@ class TransferApp:
                self.backup_status_label.text = t("path_not_detected")
 
     async def open_source_select(self):
-        await self.client.run_javascript(f"document.querySelector('[aria-label=\"{self.input_src_dir.label}\"]').click();")
+        try:
+            await self.client.run_javascript(f"document.querySelector('[aria-label=\"{self.input_src_dir.label}\"]').click();")
+            self.manual_update_dir = True
+        except Exception:
+            pass
 
     async def open_destination_select(self):
-        await self.client.run_javascript(f"document.querySelector('[aria-label=\"{self.input_dest_dir.label}\"]').click();")
+        try:
+            await self.client.run_javascript(f"document.querySelector('[aria-label=\"{self.input_dest_dir.label}\"]').click();")
+        except Exception:
+            pass
 
     async def select_source_folder(self):
         # Repair mode: local folder picker constrained to src_root (backup directory)
@@ -654,6 +671,7 @@ class TransferApp:
                 else:
                     folder_norm = os.path.normpath(selected)
                     self.input_src_dir.set_options([folder_norm], value=folder_norm)
+                    self.manual_update_dir = True
             return
 
         if self.mode == "Archive" and self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
@@ -709,12 +727,16 @@ class TransferApp:
                 ui.notify(folder[0])
                 folder = os.path.normpath(folder[0])
                 self.input_src_dir.set_options([folder], value = folder)
+                self.manual_update_dir = True
 
     async def resize_input(self):
-        await self.client.run_javascript(f'''
-        const input = document.querySelector('input');
-        input.style.width = ((input.value.length + 1) * 8) + 'px';
-        ''')
+        try:
+            await self.client.run_javascript(f'''
+            const input = document.querySelector('input');
+            if (input) input.style.width = ((input.value.length + 1) * 8) + 'px';
+            ''')
+        except Exception:
+            pass
 
     async def select_destination_folder(self):
         if self.mode == "Restore" and self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
@@ -970,7 +992,7 @@ class TransferApp:
             app.storage.general['dwarfId']  = self.DwarfId
             app.storage.general['backupId']  = self.BackupId
             app.storage.general['mode']  = self.mode
-            app.storage.general['session']  = self.session
+            app.storage.general['session']  = self.session or self.get_session_name(src_dir, False)
             app.storage.general['dest_override']  = self.dest_override
             if self.mode == "Archive":
                 app.storage.general['transfer_last_dest'] = self.input_dest_dir.value
@@ -1183,9 +1205,6 @@ class TransferApp:
                 timeout=10000,
             )
 
-        # Read journal from backup root if available
-        self._show_last_journal()
-
         try:
             mode = app.storage.general.get('mode', '')
             if not mode:
@@ -1221,6 +1240,9 @@ class TransferApp:
                        print(f"[Restore1] DwarfId={self.DwarfId} BackupId={self.BackupId} mode={self.mode} session={self.session}")
         except Exception as e:
             print(f"[Restore1] Error: {e}")
+        finally:
+            # Read journal from backup root if available
+            self._show_last_journal()
 
     def _restore_transfer_state_2(self):
         """Called after UI build — restore src/dest dropdowns and progress."""
@@ -1236,16 +1258,22 @@ class TransferApp:
                     if last_dest and not self.input_dest_dir.value:
                         self.input_dest_dir.set_options([last_dest], value=last_dest)
                         print(f"[Restore2] dest restored: {last_dest}")
+                    if not self.session and last_src :
+                        self.input_src_dir.set_options([last_src], value=last_src)
                 elif self.mode == "Restore":
                     if last_src and not self.input_src_dir.value:
                         self.input_src_dir.set_options([last_src], value=last_src)
                         self.src_main_dir = os.path.dirname(last_src)
                         print(f"[Restore2] src restored: {last_src}")
+                    if not self.session and last_dest :
+                        self.input_dest_dir.set_options([last_dest], value=last_dest)
                 elif self.mode == "Merge" or self.mode == "Repair" :
                     if last_src and not self.input_src_dir.value:
                         self.input_src_dir.set_options([last_src], value=last_src)
                         self.src_main_dir = os.path.dirname(last_src)
                         print(f"[Restore2] src restored: {last_src}")
+                    if not self.session and last_dest :
+                        self.input_dest_dir.set_options([last_dest], value=last_dest)
         except Exception as e:
             print(f"[Restore2] Error: {e}")
 
@@ -1292,6 +1320,21 @@ class TransferApp:
             app.storage.general.pop('mode', None)
             app.storage.general.pop('session', None)
             app.storage.general.pop('dest_override', None)
+
+    def get_session_name(self, src_dir, on_journal = False):
+        # Determine session name — more descriptive than just basename(src_dir)
+        src_basename = os.path.basename(src_dir.rstrip('/\\'))
+        if src_dir == self.src_main_dir or src_dir == self.dest_main_dir:
+            if on_journal:
+                session_name = f"(Full Backup — {src_basename})"
+            else:
+                session_name = ""
+        elif src_basename:
+            session_name = src_basename
+        else:
+            session_name = src_dir
+
+        return session_name
 
     def _write_transfer_journal_multi(self, dest_dir: str, session_names: str, result: bool, copied: int, total: int):
         """Write journal for a multi-session transfer — overrides progress-based counts."""
@@ -1410,13 +1453,7 @@ class TransferApp:
             dwarf_name  = next((name for did, name in self.dwarf_options  if did == self.DwarfId),  str(self.DwarfId))
             backup_name = next((name for bid, name, *_ in self.backup_options if bid == self.BackupId), str(self.BackupId))
             # Determine session name — more descriptive than just basename(src_dir)
-            src_basename = os.path.basename(src_dir.rstrip('/\\'))
-            if src_dir == self.src_main_dir or src_dir == self.dest_main_dir:
-                session_name = f"(Full Backup — {src_basename})"
-            elif src_basename:
-                session_name = src_basename
-            else:
-                session_name = src_dir
+            session_name = self.get_session_name(src_dir, True)
 
             entry = {
                 "timestamp":    _dt.now().isoformat(timespec='seconds'),

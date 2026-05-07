@@ -1,4 +1,51 @@
 from multiprocessing import freeze_support
+import sys, pathlib as _pl, os as _os
+
+# ── Windows build: redirect stdout/stderr to log file ────────────────────────
+def _setup_logging():
+    """Redirect print() and exceptions to a log file when running as PyInstaller exe."""
+    if not getattr(sys, "frozen", False):
+        return  # dev mode — keep console output as-is
+
+    # Log file next to the exe: DwarfiumScopeArchive.log
+    exe_dir = _pl.Path(sys.executable).parent
+    log_path = exe_dir / "DwarfiumScopeArchive.log"
+
+    import logging
+    logging.basicConfig(
+        filename=str(log_path),
+        filemode="a",
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        encoding="utf-8",
+    )
+
+    # Redirect stdout / stderr to the log file
+    import io
+    class _LogWriter(io.TextIOBase):
+        def __init__(self, level):
+            self._level = level
+        def write(self, msg):
+            msg = msg.rstrip("\n")
+            if msg:
+                logging.log(self._level, msg)
+            return len(msg)
+        def flush(self):
+            pass
+
+    sys.stdout = _LogWriter(logging.INFO)
+    sys.stderr = _LogWriter(logging.ERROR)
+
+    # Catch unhandled exceptions
+    def _excepthook(exc_type, exc_value, exc_tb):
+        logging.critical("Unhandled exception", exc_info=(exc_type, exc_value, exc_tb))
+    sys.excepthook = _excepthook
+
+    logging.info(f"=== DwarfiumScopeArchive started (exe: {sys.executable}) ===")
+    logging.info(f"Log file: {log_path}")
+
+_setup_logging()
 
 # Repair corrupted or empty storage BEFORE NiceGUI loads it
 import pathlib, json as _json

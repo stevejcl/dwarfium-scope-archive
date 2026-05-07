@@ -7,13 +7,14 @@ import os
 from nicegui import native, app, run, ui, background_tasks
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, list_error_integrity  
 
 from api.dwarf_backup_db_api import get_dwarf_Names, get_sessions_backup
 from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
 from api.dwarf_backup_db_api import get_session_present_in_backupDrive
 from api.dwarf_backup_db_api import has_related_backup_entries, has_related_manual_entries, delete_backup_entries_and_dwarf_data, delete_manual_entries
-from tools.quality_scan import ensure_quality_table, get_sessions_to_score, score_entry_ids
+from tools.quality_scan import get_sessions_to_score, score_entry_ids
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
@@ -27,7 +28,7 @@ async def backup_settings(BackupId:int = None):
     ConfigApp(DB_NAME, BackupId=BackupId)
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
-class ConfigApp:
+class ConfigApp(DbPageMixin):
     def __init__(self, database, BackupId=None):
         self.database = database
         self.dwarfs = []
@@ -46,6 +47,7 @@ class ConfigApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         sizeBTN='w-56'
         sizeBTN2='w-58'
 
@@ -464,13 +466,12 @@ class ConfigApp:
             if total >= 0:
                 async def _auto_score():
                     def _get_and_score():
-                        conn2 = connect_db(DB_NAME)
-                        ensure_quality_table(conn2)
+                        conn2 = connect_db(self.database)
                         sessions = get_sessions_to_score(conn2, None, None, False, backup_drive_id)
                         close_db(conn2)
                         entry_ids = [s["id"] for s in sessions]
                         if entry_ids:
-                            return score_entry_ids(DB_NAME, entry_ids)
+                            return score_entry_ids(self.database, entry_ids)
                         return 0
                     scored = await run.io_bound(_get_and_score)
                     print(f"[AutoScore] {scored} new session(s) scored after backup scan.")

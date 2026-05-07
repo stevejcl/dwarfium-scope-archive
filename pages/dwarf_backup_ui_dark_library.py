@@ -5,6 +5,7 @@ import os
 from nicegui import app, run, ui
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import (
     get_dwarf_Names,
     get_backupDrive_list_dwarfId,
@@ -24,7 +25,7 @@ async def dark_library_page(LibraryId: int = None):
     DarkLibraryApp(DB_NAME, LibraryId=LibraryId)
 
 
-class DarkLibraryApp:
+class DarkLibraryApp(DbPageMixin):
     def __init__(self, database, LibraryId=None):
         self.database  = database
         self.library_id = LibraryId   # pre-selected library id from URL
@@ -39,6 +40,7 @@ class DarkLibraryApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         sizeBTN='w-56'
         sizeBTN2='w-58'
 

@@ -22,6 +22,7 @@ from api.dwarf_mosaic_check import (
     orientation_confidence_label,
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, get_backupDrive_detail, get_sessions_dwarf, get_sessions_backup, get_session_dwarf_details, get_session_backup_details
 from api.dwarf_backup_db_api import get_dwarf_sessions_error
 from components.win_log import WinLog
@@ -50,7 +51,7 @@ async def mosaic_page(
     ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId)
 
 
-class MosaicApp:
+class MosaicApp(DbPageMixin):
     def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Repair", BackupId=None,  BackUrl=None):
         self.client = client
         self.database = database
@@ -118,6 +119,7 @@ class MosaicApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         sizeBTN='w-56'
         sizeBTN2='w-64'
 

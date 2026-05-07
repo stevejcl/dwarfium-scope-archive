@@ -6,6 +6,7 @@ import subprocess
 import asyncio
 
 from api.dwarf_backup_db import DB_NAME, start_db, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import insert_default_groups 
 from api.dwarf_backup_db_api import ensure_dwarf_local_path, get_dwarf_favorites, get_backup_favorites, get_manual_favorites
 
@@ -88,12 +89,13 @@ async def home_page():
     # (browser tab closed, page navigated away, window closed)
     ui.context.client.on_disconnect(home.cancel_timer)
   
-class HomeApp:
+class HomeApp(DbPageMixin):
     def __init__(self, database, ON_AIR):
         self.database = database
         self.ON_AIR = ON_AIR
         self.image_detail_click_set = False
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         self.gallery_timer = None
         self.build_ui()
 
@@ -195,6 +197,7 @@ class HomeApp:
             })
 
         close_db(self.conn)
+        self.conn = None
 
         # display Sample if no image yet
         if len(image_data) == 0 :

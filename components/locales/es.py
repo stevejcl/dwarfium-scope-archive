@@ -767,4 +767,7 @@ TRANSLATIONS: dict[str, str] = {
     "dso_cleared":                  '✅ DSO association removed.',  # TODO
     "clear":                        'Clear',  # TODO
 
+    "no_unused_astro":              'No unused objects to delete.',  # TODO
+    "confirm_delete_unused_astro":  '{count} unused object(s) will be permanently deleted. Continue?',  # TODO
+
 }

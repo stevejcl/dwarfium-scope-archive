@@ -30,6 +30,7 @@ from nicegui import ui, app
 from components.i18n import t
 from components.session_notes import session_notes_widget
 from api.dwarf_backup_db import DB_NAME, connect_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import (
     get_dwarf_Names,
     get_backupDrive_Names,
@@ -133,7 +134,7 @@ async def manual_explore_page(
 # Main application class
 # ===========================================================================
 
-class ManualExploreApp:
+class ManualExploreApp(DbPageMixin):
     """
     Explore page for ManualSession / ManualSessionEntry records.
 
@@ -208,6 +209,7 @@ class ManualExploreApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
 
         # Pre-process DSO catalog for target identification
         preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE)

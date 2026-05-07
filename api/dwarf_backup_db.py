@@ -296,7 +296,7 @@ def create_quality_table_sql():
     return """
         CREATE TABLE IF NOT EXISTS SessionQuality (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            backup_entry_id   INTEGER NOT NULL REFERENCES BackupEntry(id) ON DELETE CASCADE,
+            backup_entry_id   INTEGER NOT NULL UNIQUE REFERENCES BackupEntry(id) ON DELETE CASCADE,
             quality_score     REAL,
             total_exp_seconds REAL,
             score_a           REAL,
@@ -338,7 +338,7 @@ def start_db(database: str = DB_NAME):
         if not os.path.exists(db_dir):
             os.makedirs(db_dir)
 
-        conn = sqlite3.connect(database)
+        conn = sqlite3.connect(database, check_same_thread=False)
         if conn:
             conn.execute("PRAGMA foreign_keys = ON")
             init_db(conn)
@@ -354,7 +354,7 @@ def connect_db(database: str = DB_NAME):
         if not os.path.exists(db_dir):
             os.makedirs(db_dir)
 
-        conn = sqlite3.connect(database)
+        conn = sqlite3.connect(database, check_same_thread=False)
         if conn:
             conn.execute("PRAGMA foreign_keys = ON")
         return conn
@@ -371,7 +371,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 10
+CURRENT_DB_VERSION = 11
 
 def init_db(conn):
     try:
@@ -492,10 +492,6 @@ def init_db(conn):
         """)
 
         cursor.execute(create_quality_table_sql())
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sessionquality_entry ON SessionQuality(backup_entry_id);
-        """)
 
         # Stamp current version so future startups skip migrations
         if _is_fresh:
@@ -858,6 +854,41 @@ def migrate_v10(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v10: {e}")
 
+def migrate_v11(conn):
+    try:
+        print("Migrating Database to V11..")
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF")
+
+        # Fix SessionQuality: add UNIQUE constraint on backup_entry_id
+        # (required for ON CONFLICT upsert — was missing in V10)
+        row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='SessionQuality'"
+        ).fetchone()
+        if row and 'UNIQUE' not in row[0]:
+            cursor.execute("ALTER TABLE SessionQuality RENAME TO SessionQuality_old")
+            cursor.execute(create_quality_table_sql())
+            cursor.execute("""
+                INSERT INTO SessionQuality
+                    (id, backup_entry_id, quality_score, total_exp_seconds,
+                     score_a, score_c, scored_at)
+                SELECT id, backup_entry_id, quality_score, total_exp_seconds,
+                       score_a, score_c, scored_at
+                FROM SessionQuality_old
+            """)
+            cursor.execute("DROP TABLE SessionQuality_old")
+            print("SessionQuality rebuilt with UNIQUE constraint on backup_entry_id.")
+        else:
+            print("SessionQuality already has UNIQUE constraint — skipping rebuild.")
+
+        cursor.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+        print("Migration v11 applied.")
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v11: {e}")
+
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -869,6 +900,7 @@ MIGRATIONS = {
     8: migrate_v8,
     9: migrate_v9,
     10: migrate_v10,
+    11: migrate_v11,
     # Add more later...
 }
 

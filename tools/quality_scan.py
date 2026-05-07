@@ -73,11 +73,14 @@ def _bar(score: float, width: int = 20) -> str:
 # ── DB setup ─────────────────────────────────────────────────────────────────
 
 def ensure_quality_table(conn: sqlite3.Connection):
-    """Create SessionQuality table if it doesn't exist."""
+    """Create SessionQuality table if it doesn't exist.
+    Also migrates existing table to add UNIQUE constraint on backup_entry_id
+    (required for ON CONFLICT upsert to work in SQLite).
+    """
     conn.execute("""
         CREATE TABLE IF NOT EXISTS SessionQuality (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            backup_entry_id   INTEGER NOT NULL REFERENCES BackupEntry(id) ON DELETE CASCADE,
+            backup_entry_id   INTEGER NOT NULL UNIQUE REFERENCES BackupEntry(id) ON DELETE CASCADE,
             quality_score     REAL,
             total_exp_seconds REAL,
             score_a           REAL,
@@ -85,11 +88,36 @@ def ensure_quality_table(conn: sqlite3.Connection):
             scored_at         TEXT NOT NULL
         )
     """)
-    conn.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_sessionquality_entry
-        ON SessionQuality(backup_entry_id)
-    """)
     conn.commit()
+
+    # Migration: if table exists without inline UNIQUE, recreate it
+    # Check by looking at the CREATE TABLE statement stored in sqlite_master
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='SessionQuality'"
+    ).fetchone()
+    if row and 'UNIQUE' not in row[0]:
+        # Recreate with UNIQUE constraint
+        conn.execute("ALTER TABLE SessionQuality RENAME TO SessionQuality_old")
+        conn.execute("""
+            CREATE TABLE SessionQuality (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_entry_id   INTEGER NOT NULL UNIQUE REFERENCES BackupEntry(id) ON DELETE CASCADE,
+                quality_score     REAL,
+                total_exp_seconds REAL,
+                score_a           REAL,
+                score_c           REAL,
+                scored_at         TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            INSERT INTO SessionQuality
+                (id, backup_entry_id, quality_score, total_exp_seconds, score_a, score_c, scored_at)
+            SELECT id, backup_entry_id, quality_score, total_exp_seconds, score_a, score_c, scored_at
+            FROM SessionQuality_old
+        """)
+        conn.execute("DROP TABLE SessionQuality_old")
+        conn.commit()
+        print("[DB] SessionQuality migrated — UNIQUE constraint added on backup_entry_id")
 
 
 def get_sessions_to_score(conn: sqlite3.Connection,
@@ -447,7 +475,7 @@ def main():
         print(_c(RED, f"Database not found: {db_path}"))
         sys.exit(1)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = connect_db(str(db_path))
     ensure_quality_table(conn)
 
     if args.report:
@@ -544,8 +572,7 @@ def score_entry_ids(db_path: str, entry_ids: list, threshold: float = 40.0) -> i
     Reuses all existing scoring logic.
     Returns the number of sessions scored.
     """
-    import sqlite3
-    conn = sqlite3.connect(db_path)
+    conn = connect_db(db_path)
     ensure_quality_table(conn)
 
     # Build session dicts using same query as get_sessions_to_score

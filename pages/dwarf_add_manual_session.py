@@ -24,6 +24,7 @@ from api.dwarf_backup_fct import (
     show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref, safe_copy2
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId, insert_astro_object, get_astro_object_description, get_sessions_backup, get_session_backup_details, get_setting_text, insert_ManualSession, insert_ManualSessionEntry, get_ManualSession_by_entry_id, get_or_create_ManualSessionDrive, update_manual_session
 from api.astrometry_resolver import auto_resolve, get_fits_center_coordinates
 
@@ -66,7 +67,7 @@ async def manual_session_page(client: Client, DwarfId:int = None, session:str = 
     client.on_disconnect(lambda: final_cleanup_temp_files())
 
 
-class AddManualSession:
+class AddManualSession(DbPageMixin):
     def __init__(self, client: Client, database, DwarfId=None, Session=None, BackupDriveId=None, ManualEntryId=None, BackUrl=None):
         self.client = client
         self.mode_stellar = "Stellar Studio" # Default mode
@@ -442,6 +443,7 @@ class AddManualSession:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         nbcol = 3 if self.BackUrl else 1
 
         # Load the preprocessed catalog once at app start
@@ -822,28 +824,31 @@ class AddManualSession:
         name = re.sub(r'[<>"/\\|?*]', '', name)
         return name
 
-    def resize_input(self, component):
-        ui.run_javascript(f"""
-            const el = document.getElementById('{component.id}');
-            if (!el) return;
+    async def resize_input(self, component):
+        try:
+            await self.client.run_javascript(f'''
+                const el = document.getElementById('{component.id}');
+                if (!el) return;
 
-            const span = document.createElement('span');
-            span.style.visibility = 'hidden';
-            span.style.whiteSpace = 'nowrap';
-            span.innerText = el.value || el.placeholder || '';
-            document.body.appendChild(span);
+                const span = document.createElement('span');
+                span.style.visibility = 'hidden';
+                span.style.whiteSpace = 'nowrap';
+                span.innerText = el.value || el.placeholder || '';
+                document.body.appendChild(span);
 
-            let width = span.offsetWidth + 40;  // padding
-            document.body.removeChild(span);
+                let width = span.offsetWidth + 40;  // padding
+                document.body.removeChild(span);
 
-            // Clamp limits
-            width = Math.min(width, 600);   // max-w-[600px]
-            width = Math.max(width, 350);   // min-w-[350px]
+                // Clamp limits
+                width = Math.min(width, 600);   // max-w-[600px]
+                width = Math.max(width, 350);   // min-w-[350px]
 
-            el.style.width = width + 'px';
-        """)
+                el.style.width = width + 'px';
+            ''')
+        except Exception:
+            pass
 
-    def on_session_select(self, e):
+    async def on_session_select(self, e):
         session_id = e.value  # The selected session ID
         session_dir = None
         session_name = None
@@ -875,7 +880,7 @@ class AddManualSession:
             self.selected_session_dirname = session_dir
             print(f"Session Dir: {self.selected_session_dirname}")
             self.session_dirname.set_value(self.selected_session_dirname)
-            self.resize_input(self.session_dirname)
+            await self.resize_input(self.session_dirname)
             self.selected_session_name = self.sanitize_session_name(session_name)
             print(f"Session Name: {self.selected_session_name}")
             self.linked_data.update({
@@ -889,11 +894,11 @@ class AddManualSession:
                 "session_full_name": ""
             })
 
-    def on_check_session_dirname(self, e):
+    async def on_check_session_dirname(self, e):
         """Called when the user edits the session name field."""
         safe_name = self.sanitize_session_name(e.value)
         self.session_dirname.set_value(safe_name)
-        self.resize_input(self.session_dirname)
+        await self.resize_input(self.session_dirname)
         self.check_exist_dir_session_name()
 
     def on_check_session_tag(self, e):

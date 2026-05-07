@@ -324,7 +324,7 @@ def main():
         print(_c(RED, f"Database not found: {db_path}"))
         sys.exit(1)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = connect_db(str(db_path))
     ensure_skybot_table(conn)
 
     # ── Report only ───────────────────────────────────────────────────────────

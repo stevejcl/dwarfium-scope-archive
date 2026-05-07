@@ -26,7 +26,7 @@ from api.dwarf_backup_db_api import (
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
     has_related_manual_sessions, get_ManualSession_by_backup_entry_id,
-    find_matching_darks, generate_siril_session_json,
+    find_matching_darks, generate_siril_session_json, get_backupDrive_id_from_backupEntry, 
     get_dwarf_session_error_by_dir, get_sky_filter_entry_ids
 )
 from api.dwarf_backup_fct import (
@@ -42,6 +42,7 @@ from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
+from components.db_page_mixin import DbPageMixin
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
@@ -100,7 +101,7 @@ def _quality_dot(score) -> str:
     return "🔴"
 
 
-class ExploreApp:
+class ExploreApp(DbPageMixin):
     def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None, SessionId=None, OnlyOnDwarf=False):
         self.database = database
         self.BackupDriveId = BackupDriveId
@@ -174,6 +175,7 @@ class ExploreApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
+        self.register_conn_close()
         # Load the preprocessed catalog once at app start
         preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE)
 
@@ -621,10 +623,7 @@ class ExploreApp:
         # session[0]=id, cols include backup_drive_id via JOIN
         # Ensure the correct backup drive is selected
         try:
-            cursor = self.conn.cursor()
-            row = cursor.execute(
-                "SELECT backup_drive_id FROM BackupEntry WHERE id=?", (self.SessionId,)
-            ).fetchone()
+            row = get_backupDrive_id_from_backupEntry(self.conn)
             if row and row[0]:
                 self.BackupDriveId = row[0]
                 # Update backup filter display WITHOUT triggering on_change

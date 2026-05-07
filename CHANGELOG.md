@@ -1,5 +1,19 @@
 # Changelog
 
+## [V3.1.6_RC4] - 2026-05-07
+
+### Add
+    DB v11 migration, DbPageMixin and UI/tool fixes
+    Bump DB to v11 and add migration to enforce UNIQUE on SessionQuality.backup_entry_id (rebuilds table when needed). 
+
+    Open SQLite connections with check_same_thread=False and update tools to use connect_db.
+    Add api helpers (get_backupDrive_id_from_backupEntry, count_unused_astro_objects, load_catalog_data) and update catalog UI to use them.
+    Introduce components/db_page_mixin.DbPageMixin to auto-close page DB connections on client disconnect and apply it across multiple pages.
+    Add Windows exe logging in dwarfium_scope_archive
+    
+### BugFix#
+    Improve Transfer/App UI robustness (async JS calls, manual_update_dir, session naming, journal restore)
+
 ## [V3.1.6_RC3] - 2026-05-07
 
 ### BugFix#

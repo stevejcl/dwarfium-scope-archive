@@ -5,6 +5,7 @@ from nicegui import ui, run, app, Client
 import os
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import device_exists_in_db, get_mtp_devices, add_mtp_device_to_db, get_dwarf_mtp_drive
 
 from api.dwarf_backup_mtp_handler import MTPManager 
@@ -19,7 +20,7 @@ async def mtp_page(client: Client):
     # Launch the GUI
     TransferApp(client, DB_NAME)
 
-class TransferApp:
+class TransferApp(DbPageMixin):
     def __init__(self, client: Client, database):
         self.client = client
         self.database = database
@@ -37,6 +38,8 @@ class TransferApp:
             return
 
         self.conn = connect_db(self.database)
+
+        self.register_conn_close()
 
         with ui.card().classes("w-full p-4 mt-4 items-center"):
             ui.label(t("mtp_devices"))
@@ -92,12 +95,15 @@ class TransferApp:
                         ui.label(t("no_subfolders"))
 
     async def resize_input(self):
-        await self.client.run_javascript('''
-            const input = document.querySelector('input');
-            if (input) {
-                input.style.width = ((input.value.length + 1) * 8) + 'px';
-           }
-    ''')
+        try:
+            await self.client.run_javascript('''
+                const input = document.querySelector('input');
+                if (input) {
+                    input.style.width = ((input.value.length + 1) * 8) + 'px';
+               }
+            ''')
+        except Exception:
+            pass
     
     async def select_local_folder(self):
         """Open folder selection dialog."""

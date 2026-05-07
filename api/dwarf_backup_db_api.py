@@ -283,6 +283,21 @@ def get_backupDrive_id_from_location(conn: sqlite3.Connection, location=None):
         print(f"[DB ERROR] Failed to fetch backup drive from location {location}: {e}")
         return []
 
+def get_backupDrive_id_from_backupEntry(conn: sqlite3.Connection, backupEntry=None):
+    try:
+        if backupEntry:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT backup_drive_id FROM BackupEntry WHERE id=?", (self.SessionId,)
+            )
+            return cursor.fetchone()
+        else:
+           return []
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup drive from backupEntry {backupEntry}: {e}")
+        return []
+
 def get_backupDrive_list(conn: sqlite3.Connection):
     try:
         cursor = conn.cursor()
@@ -382,6 +397,30 @@ def del_backupDrive(conn: sqlite3.Connection, backupDrive_id=None):
     except Exception as e:
         print(f"[DB ERROR] Failed to delete backupDrive {backupDrive_id}: {e}")
         return False
+
+def count_unused_astro_objects(conn: sqlite3.Connection) -> int:
+    """Count AstroObjects not linked to any session."""
+    try:
+        row = conn.execute("""
+            SELECT COUNT(*) FROM AstroObject
+            WHERE id NOT IN (
+                SELECT astro_object_id FROM BackupEntry WHERE astro_object_id IS NOT NULL
+                UNION
+                SELECT astro_object_id FROM DwarfEntry WHERE astro_object_id IS NOT NULL
+                UNION
+                SELECT astro_object_id FROM ManualSessionEntry WHERE astro_object_id IS NOT NULL
+                UNION
+                SELECT astro_group_id FROM BackupEntry WHERE astro_group_id IS NOT NULL
+                UNION
+                SELECT astro_group_id FROM DwarfEntry WHERE astro_group_id IS NOT NULL
+                UNION
+                SELECT astro_group_id FROM ManualSessionEntry WHERE astro_group_id IS NOT NULL
+            )
+        """).fetchone()
+        return row[0] if row else 0
+    except Exception as e:
+        print(f"[DB ERROR] count_unused_astro_objects: {e}")
+        return 0
 
 def delete_unused_astro_objects(conn: sqlite3.Connection) -> bool:
     try:
@@ -3667,6 +3706,25 @@ def delete_astro_object(conn: sqlite3.Connection, astro_object_id: int) -> bool:
     except Exception as e:
         print(f"[DB ERROR] delete_astro_object: {e}")
         return False
+
+def load_catalog_data(conn: sqlite3.Connection):
+
+    try:
+        placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
+        rows = conn.execute(f"""
+            SELECT AO.id, AO.name, AO.description,
+                   COALESCE(DSO.designation, '') AS dso_name, AO.is_group
+            FROM AstroObject AO
+            LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
+            WHERE AO.name NOT IN ({placeholders})
+            ORDER BY AO.name
+        """, DEFAULT_GROUP_NAMES).fetchall()
+
+        return rows
+
+    except Exception as e:
+        print(f"[DB ERROR] load_catalog_data: {e}")
+        return []
 
 ########################
 # MTP DEVICES functions

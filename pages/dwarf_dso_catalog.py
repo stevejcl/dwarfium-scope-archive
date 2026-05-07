@@ -1,14 +1,15 @@
 from components.i18n import t
-from nicegui import native,ui,app,events
+from nicegui import native,ui,app,events, run
 import sqlite3
 from typing import Dict
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, commit_db
-from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, insert_default_groups, clear_astro_object
+from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, count_unused_astro_objects, insert_default_groups, clear_astro_object, load_catalog_data
 
 from components.menu import menu
 from components.astro_object_associate import show_assign_dialog
 from components.win_log import WinLog
+from components.db_page_mixin import DbPageMixin
 
 @ui.page('/Catalog/')
 async def dwarf_catalog():
@@ -32,7 +33,7 @@ def _fetch_catalog_data(database):
         close_db(conn)
 
 
-class CatalogApp:
+class CatalogApp(DbPageMixin):
     def __init__(self, database):
         self.database = database
         self.data = []
@@ -42,7 +43,8 @@ class CatalogApp:
 
     def build_ui(self):
         self.conn = connect_db(self.database)
-
+        self.register_conn_close()
+       
         # UI Components
         with ui.column().classes('w-full p-4'):
             ui.label(t("dso_astro_assoc")).classes('text-2xl')
@@ -67,22 +69,12 @@ class CatalogApp:
 
     async def load_data(self):
         """Load catalog data in a thread so spinner renders first."""
-        from nicegui import run
         def _fetch():
-            from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
-            import sqlite3 as _sq
-            c = _sq.connect(self.database)
-            placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
-            rows = c.execute(f"""
-                SELECT AO.id, AO.name, AO.description,
-                       COALESCE(DSO.designation, '') AS dso_name, AO.is_group
-                FROM AstroObject AO
-                LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
-                WHERE AO.name NOT IN ({placeholders})
-                ORDER BY AO.name
-            """, DEFAULT_GROUP_NAMES).fetchall()
-            c.close()
-            return rows
+            conn2 = connect_db(self.database)
+            try:
+                return load_catalog_data(conn2)
+            finally:
+                close_db(conn2)
         self._preloaded_rows = await run.io_bound(_fetch)
         self.reload()
         if hasattr(self, 'loading_spinner'):
@@ -95,22 +87,42 @@ class CatalogApp:
 
     # Delete Button
     async def on_delete_click(self):
+        # Count unused objects to show in confirmation
+        def _count():
+            conn2 = connect_db(self.database)
+            try:
+                return count_unused_astro_objects(conn2)
+            finally:
+                close_db(conn2)
+        count = await run.io_bound(_count)
 
+        if count == 0:
+            ui.notify(t("no_unused_astro"), type="info")
+            return
+
+        msg = t("confirm_delete_unused_astro", count=count)
         await WinLog().show(
-            "Confirm Deletion",
-            "Are you sure you want to delete all the data?",
+            t("delete_unused"),
+            msg,
             self.ok_confirm_and_delete
         )
 
     async def ok_confirm_and_delete(self):
-        from nicegui import run
-        ok = await run.io_bound(delete_unused_astro_objects, self.conn)
+        def _delete_and_recreate():
+            # Open a new connection in this thread — avoids SQLite thread constraint
+            conn2 = connect_db(self.database)
+            try:
+                ok = delete_unused_astro_objects(conn2)
+                insert_default_groups(conn2)
+                return ok
+            finally:
+                close_db(conn2)
+
+        ok = await run.io_bound(_delete_and_recreate)
         if ok:
             ui.notify(t("astro_purged"))
         else:
             ui.notify(t("error_astro_purge"))
-        # recreate default if need
-        await run.io_bound(insert_default_groups, self.conn)
         self.reload()
 
     def get_row_by_id(self, ao_id):
@@ -130,14 +142,7 @@ class CatalogApp:
         else:
             from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
             placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
-            rows = self.conn.execute(f"""
-                SELECT AO.id, AO.name, AO.description,
-                       COALESCE(DSO.designation, '') AS dso_name, AO.is_group
-                FROM AstroObject AO
-                LEFT JOIN DsoCatalog DSO ON AO.dso_id = DSO.id
-                WHERE AO.name NOT IN ({placeholders})
-                ORDER BY AO.name
-            """, DEFAULT_GROUP_NAMES).fetchall()
+            rows = load_catalog_data(self.conn)
         self.data = [(r[0], r[1], r[2], None) for r in rows]
         self.table.rows = [
             {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3],

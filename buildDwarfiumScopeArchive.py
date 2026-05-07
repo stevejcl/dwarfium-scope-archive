@@ -16,7 +16,7 @@ sep = os.pathsep  # Cross-platform separator: ; on Windows, : on Unix/macOS
 extra_data = [
     f"{citation_path}{sep}astroquery",
     f"astroquery/simbad/data/query_criteria_fields.json{sep}astroquery/simbad/data",
-    f"tools{sep}tools",
+#    f"tools{sep}tools",
 ]
    
 APP_NAME = "DwarfiumScopeArchive"
@@ -29,7 +29,7 @@ DIST_IMAGE_DIR      = DIST_DIR / "image"
 DIST_DB_DIR         = DIST_DIR / "db"
 DIST_LOCALES_DIR    = DIST_DIR / "components" / "locales"
 DIST_HELP_LOCALES_DIR = DIST_DIR / "components" / "help_locales"
-DIST_TOOLS_DIR       = DIST_DIR / "tools"
+#DIST_TOOLS_DIR       = DIST_DIR / "tools"
 
 print("Current working directory:", os.getcwd())
 
@@ -113,16 +113,62 @@ for locale_file in Path("components/help_locales").glob("*.py"):
     shutil.copy2(locale_file, dest)
 
 # Copy tools/ into dist/tools/ (quality_scan, skybot_scan, etc.)
-DIST_TOOLS_DIR = DIST_DIR / "tools"
-DIST_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+#DIST_TOOLS_DIR = DIST_DIR / "tools"
+#DIST_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
 # Ensure __init__.py exists for package import
-tools_init = Path("tools") / "__init__.py"
-if not tools_init.exists():
-    tools_init.write_text("# tools package\n")
-for tool_file in Path("tools").glob("*.py"):
-    dest = DIST_TOOLS_DIR / tool_file.name
-    print(f"Copying {tool_file} to {dest}")
-    shutil.copy2(tool_file, dest)
+#tools_init = Path("tools") / "__init__.py"
+#if not tools_init.exists():
+#    tools_init.write_text("# tools package\n")
+#for tool_file in Path("tools").glob("*.py"):
+#    dest = DIST_TOOLS_DIR / tool_file.name
+#    print(f"Copying {tool_file} to {dest}")
+#    shutil.copy2(tool_file, dest)
+
+# Copy .bat launchers into dist/ root
+#for bat_file in Path(".").glob("*.bat"):
+#    dest = DIST_DIR / bat_file.name
+#    print(f"Copying {bat_file} to {dest}")
+#    shutil.copy2(bat_file, dest)
+
+# Step 3b – Build CLI tools as standalone console executables
+print("Building CLI tools...")
+
+cli_tools = [
+    ("tools/quality_scan.py",  "quality_scan"),
+    ("tools/skybot_scan.py",   "skybot_scan"),
+]
+
+# CLI tools only need astroquery CITATION + api/ and tools/ — not the full extra_data
+import astroquery as _aq
+_aq_citation = str(Path(_aq.__file__).parent / "CITATION")
+_aq_simbad   = str(Path(_aq.__file__).parent / "simbad" / "data" / "query_criteria_fields.json")
+
+# Use absolute paths — pyinstaller resolves relative paths from --workpath, not cwd
+_root = Path(os.getcwd()).resolve()
+cli_extra_data = [
+    f"{_aq_citation}{sep}astroquery",
+    f"{_aq_simbad}{sep}astroquery/simbad/data",
+    f"{_root / 'api'}{sep}api",
+    f"{_root / 'tools'}{sep}tools",
+    f"{_root / 'components'}{sep}components",
+    f"{_root / 'db'}{sep}db",
+]
+
+for source, name in cli_tools:
+    print(f"  Building {name}.exe...")
+    subprocess.run([
+        "pyinstaller",
+        "--onefile",
+        "--console",
+        "--name", name,
+        "--distpath", str(DIST_DIR),
+        "--workpath", str(BUILD_DIR / name),
+        "--specpath", str(BUILD_DIR / name),
+        "--noconfirm",
+        *[arg for data in cli_extra_data for arg in ["--add-data", data]],
+        source,
+    ], check=True)
+    print(f"  ✅ {name}.exe built → {DIST_DIR / name}.exe")
 
 # Step 4 – Zip everything in dist
 import platform
