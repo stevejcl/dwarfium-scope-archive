@@ -52,6 +52,9 @@ def build_help():
         .help-content p, .help-content li { font-size: 0.85rem; }
         .help-content ul, .help-content ol { padding-left: 1.2rem; }
         .help-content pre, .help-content code { white-space: pre-wrap; word-break: break-all; font-size: 0.78rem; }
+        .help-content table { font-size: 0.78rem; border-collapse: collapse; width: 100%; }
+        .help-content th, .help-content td { padding: 0.25rem 0.5rem; border: 1px solid #ccc; }
+        .help-content th { font-weight: 600; background: rgba(0,0,0,0.05); }
     """)
 
 def open_help(force_open = False):

@@ -419,18 +419,58 @@ Copy sessions between the Dwarf and a backup drive.
         'content': '''
 ## Purpose
 
-Configure global application settings.
+Configure global application settings including language, local storage path,
+astrometry solvers, and mosaic parameters.
 
-## Options
+## Language
 
-- **Theme** — switch between light and dark mode
-- **Storage paths** — configure where local session data is cached
-- **API Keys** — set astrometry.net key for automatic target resolution
+Switch between English and French. The UI reloads immediately.
 
-## Tips
+## Local Storage Path
 
-- Dark mode and light mode can also be toggled quickly from the menu
-- Settings are saved per user in browser storage
+The folder where processed session data (FITS, PNG, JPG) is cached locally.
+Choose a drive with enough free space — this can exceed 10 GB with many sessions.
+
+## Nova API Key (online solver)
+
+[Astrometry.net](https://nova.astrometry.net) is a free online plate solver.
+Create an account, generate an API key, and paste it here.
+Nova is used as a fallback when ASTAP fails.
+
+## ASTAP (local solver)
+
+ASTAP is a fast, offline astrometry solver that runs locally on your machine.
+It is strongly recommended for Windows users — no internet required.
+
+**Download:** [https://www.hnsky.org/astap.htm](https://www.hnsky.org/astap.htm)
+
+### Star databases
+
+ASTAP requires a star database installed alongside the executable:
+
+| Database | Size | Best for |
+|----------|------|----------|
+| **D50** | ~5 GB | General use — recommended default |
+| **D20** | ~2 GB | Faster, slightly less accurate |
+| **D80** | ~8 GB | Long focal length, narrow fields (<1°) |
+| **G05** | ~1 GB | Wide fields >5° (Dwarf in WIDE mode) |
+
+- **Narrow FOV** (< 5°) — use D50 or D20
+- **Wide FOV** (> 5°, e.g. 24 mm lens) — use G05
+
+The application automatically switches to G05 when the estimated field of
+view exceeds 5°. Both databases can be installed simultaneously.
+
+### Solving workflow
+
+1. ASTAP attempts to solve the image locally (fast, ~1–5 s)
+2. If ASTAP fails, Nova is used as an online fallback
+3. Results are stored in the database and displayed on the Sky Map
+
+## Mosaic Parameters
+
+Configure stitching parameters for mosaic sessions.
+See the **Mosaic** page help for details.
 ''',
     },
 
@@ -519,6 +559,54 @@ target identification and session classification.
 - Use **{t:identify_target_btn}** on any unresolved session in Explore to
   manually link it to a catalog object
 - The catalog is based on standard DSO databases (NGC, IC, Messier)
+''',
+    },
+
+    '/SkyMap': {
+        'title': 'Sky Map',
+        'content': '''
+## Purpose
+
+The Sky Map displays all your astrometry-resolved sessions on an interactive
+celestial map powered by Aladin Lite. Each coloured rectangle represents one
+observation session, colour-coded by quality score.
+
+## Quality colours
+
+- 🟢 **Green** — score ≥ 80 (excellent)
+- 🟡 **Orange** — score 65–79 (good)
+- 🔴 **Red** — score < 65 (low)
+- ⬜ **Grey** — no score
+
+## Scanning sessions
+
+Each Dwarf has its own row in the table showing:
+- **Total** — all sessions in the database
+- **Solved** — sessions with astrometry resolved
+- **Pending** — unsolved sessions above the quality threshold
+- **No score** — sessions without a quality score
+
+Use the **Min quality** slider to adjust which sessions are eligible for scanning.
+Click **{t:sky_map_btn_scan}** to launch the astrometry solver for that Dwarf.
+
+## Opening the map
+
+Click **{t:sky_map_open_browser}** to open the interactive Aladin Lite map in
+your browser.
+
+## Navigating the map
+
+- **Click** a footprint to see session details and a preview image
+- **Rotate** the preview with the ↻ button
+- **Zoom** the preview with + / −
+- Each Dwarf has its own **layer** in Aladin — toggle visibility from the
+  layer control panel (top-left of the map)
+- If several sessions overlap, a list lets you choose which one to open
+
+## Mosaic sessions
+
+Mosaic sessions show a bounding box covering all resolved panels.
+If the mosaic was re-stitched, the global WCS is used instead of individual panels.
 ''',
     },
 

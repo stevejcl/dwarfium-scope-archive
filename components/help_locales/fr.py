@@ -416,18 +416,58 @@ Copiez des sessions entre le Dwarf et un disque de sauvegarde.
         'content': '''
 ## Objectif
 
-Configurez les paramètres globaux de l'application.
+Configurez les paramètres globaux de l'application : langue, chemin de stockage local,
+solveurs astrométriques et paramètres de mosaïque.
 
-## Options
+## Langue
 
-- **Thème** — basculer entre le mode clair et le mode sombre
-- **Chemins de stockage** — configurer où les données de session locales sont mises en cache
-- **Clés API** — définir la clé astrometry.net pour la résolution automatique des cibles
+Basculez entre l'anglais et le français. L'interface se recharge immédiatement.
 
-## Conseils
+## Chemin de stockage local
 
-- Le mode sombre et le mode clair peuvent aussi être basculés rapidement depuis le menu
-- Les paramètres sont sauvegardés par utilisateur dans le stockage du navigateur
+Le dossier où les données de session traitées (FITS, PNG, JPG) sont mises en cache localement.
+Choisissez un disque avec suffisamment d'espace — cela peut dépasser 10 Go avec de nombreuses sessions.
+
+## Clé API Nova (solveur en ligne)
+
+[Astrometry.net](https://nova.astrometry.net) est un solveur de plaque gratuit en ligne.
+Créez un compte, générez une clé API et collez-la ici.
+Nova est utilisé en secours quand ASTAP échoue.
+
+## ASTAP (solveur local)
+
+ASTAP est un solveur astrométrique rapide qui fonctionne localement sur votre machine.
+Il est fortement recommandé pour les utilisateurs Windows — pas de connexion internet requise.
+
+**Téléchargement :** [https://www.hnsky.org/astap.htm](https://www.hnsky.org/astap.htm)
+
+### Bases de données d'étoiles
+
+ASTAP nécessite une base de données d'étoiles installée à côté de l'exécutable :
+
+| Base | Taille | Idéal pour |
+|------|--------|-----------|
+| **D50** | ~5 Go | Usage général — recommandé par défaut |
+| **D20** | ~2 Go | Plus rapide, légèrement moins précis |
+| **D80** | ~8 Go | Longue focale, champs étroits (<1°) |
+| **G05** | ~1 Go | Grands champs >5° (Dwarf en mode WIDE) |
+
+- **Petit FOV** (< 5°) — utilisez D50 ou D20
+- **Grand FOV** (> 5°, ex: objectif 24 mm) — utilisez G05
+
+L'application bascule automatiquement vers G05 quand le champ de vue estimé
+dépasse 5°. Les deux bases peuvent être installées simultanément.
+
+### Workflow de résolution
+
+1. ASTAP tente de résoudre l'image localement (rapide, ~1–5 s)
+2. Si ASTAP échoue, Nova est utilisé en secours en ligne
+3. Les résultats sont stockés en base de données et affichés sur la Carte du Ciel
+
+## Paramètres de mosaïque
+
+Configurez les paramètres d'assemblage pour les sessions mosaïque.
+Consultez l'aide de la page **Mosaïque** pour plus de détails.
 ''',
     },
 
@@ -516,6 +556,54 @@ automatique des cibles et la classification des sessions.
 - Utilisez **{t:identify_target_btn}** sur toute session non résolue dans Explorer pour
   la lier manuellement à un objet du catalogue
 - Le catalogue est basé sur les bases de données DSO standard (NGC, IC, Messier)
+''',
+    },
+
+    '/SkyMap': {
+        'title': 'Carte du Ciel',
+        'content': '''
+## Objectif
+
+La Carte du Ciel affiche toutes vos sessions résolues par astrométrie sur une
+carte céleste interactive propulsée par Aladin Lite. Chaque rectangle coloré
+représente une session d'observation, avec un code couleur selon le score de qualité.
+
+## Couleurs de qualité
+
+- 🟢 **Vert** — score ≥ 80 (excellent)
+- 🟡 **Orange** — score 65–79 (bon)
+- 🔴 **Rouge** — score < 65 (faible)
+- ⬜ **Gris** — pas de score
+
+## Scanner les sessions
+
+Chaque Dwarf a sa propre ligne dans le tableau indiquant :
+- **Total** — toutes les sessions dans la base de données
+- **Résolues** — sessions avec astrométrie résolue
+- **En attente** — sessions non résolues au-dessus du seuil de qualité
+- **Sans score** — sessions sans score de qualité
+
+Utilisez le curseur **Qualité min** pour ajuster les sessions éligibles au scan.
+Cliquez sur **{t:sky_map_btn_scan}** pour lancer le solveur astrométrique pour ce Dwarf.
+
+## Ouvrir la carte
+
+Cliquez sur **{t:sky_map_open_browser}** pour ouvrir la carte interactive Aladin Lite
+dans votre navigateur.
+
+## Navigation dans la carte
+
+- **Cliquez** sur un footprint pour voir les détails et un aperçu de l'image
+- **Faites pivoter** l'aperçu avec le bouton ↻
+- **Zoomez** l'aperçu avec + / −
+- Chaque Dwarf possède sa propre **couche** dans Aladin — activez/désactivez
+  la visibilité depuis le panneau de contrôle des couches (en haut à gauche de la carte)
+- Si plusieurs sessions se chevauchent, une liste vous permet de choisir laquelle ouvrir
+
+## Sessions mosaïque
+
+Les sessions mosaïque affichent un cadre englobant couvrant tous les panels résolus.
+Si la mosaïque a été re-stichée, le WCS global est utilisé à la place des panels individuels.
 ''',
     },
 
