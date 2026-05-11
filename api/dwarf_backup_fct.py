@@ -2148,7 +2148,32 @@ def list_error_integrity(conn,  backup_drive_id, backupDrive_location, session_l
                     **result,
                     "session_id": session_id,
                     "session_dir": session_dir,
-                })                
+                })
+
+            # Check stacked FITS size — a valid stacked FITS should be > 1MB
+            MIN_STACKED_FITS_SIZE = 1 * 1024 * 1024  # 1 MB
+            if stacked_fits_path:
+                full_fits_path = get_Backup_fullpath(conn, backupDrive_location, "", stacked_fits_path)
+                try:
+                    fits_size = os.path.getsize(win_long_path(full_fits_path))
+                    if fits_size < MIN_STACKED_FITS_SIZE:
+                        session_name2 = os.path.basename(os.path.dirname(stacked_fits_path))
+                        print_log(
+                            f"❌ Corrupted stacked FITS: {os.path.basename(stacked_fits_path)} "
+                            f"({fits_size // 1024} KB — expected > 1 MB)", log, style='text-red'
+                        )
+                        print_log(f"📂 {full_fits_path}", log)
+                        errors.append({
+                            "status": "corrupted_stacked_fits",
+                            "path": full_fits_path,
+                            "session": session_name2,
+                            "reason": f"stacked FITS too small: {fits_size // 1024} KB",
+                            "fits_count": 0,
+                            "session_id": session_id,
+                            "session_dir": session_dir,
+                        })
+                except Exception:
+                    pass                
 
         else : 
             print_log(f"  Ignoring session:{session[1]} no stacked jpg and fits path", log)

@@ -307,11 +307,11 @@ class TransferAppUSB:
     async def confirm_overwrite(self, dest_path, isFullBackup):
 
         print("confirm_overwrite")
-        ui.notify(t("dest_already_exists", path=dest_path), type="warning")
+        ui.notify(t("dest_already_exists",dest_path=dest_path), type="warning")
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
-            ui.label(t('dest_already_exists').format(dest_path=dest_path))
+            ui.label(t('dest_already_exists',dest_path=dest_path).format(dest_path=dest_path))
             with ui.row():
                 ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
                 ui.button(t("no"), on_click=lambda: dialog.submit('No'))

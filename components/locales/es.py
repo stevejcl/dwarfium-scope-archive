@@ -60,7 +60,7 @@ TRANSLATIONS: dict[str, str] = {
     "size_label":                   "Size",  # TODO
     "no_data":                      "No data available",  # TODO
     "refresh_label":                "Refresh",  # TODO
-    "back_btn":                     "🔙 Back",  # TODO
+    "back_btn":                     "Back",  # TODO
 
     # ── Navigation / Menu ─────────────────────────────────────────────────────────
     "menu_home":                    "Home",  # TODO
@@ -163,7 +163,7 @@ TRANSLATIONS: dict[str, str] = {
     "description":                  "Description",  # TODO
     "type_label":                   "Type",  # TODO
     "astronomy_dir":                "Astronomy Directory",  # TODO
-    "ip_sta_mode":                  "Ip Address STA Mode",  # TODO
+    "ip_sta_mode":                  "IP Address STA Mode",  # TODO
     "last_scan":                    "Last Scan on:",  # TODO
     "backup_drive_name":            "Backup Drive Name",  # TODO
     "backup_drive_loc":             "Backup Drive Location",  # TODO
@@ -221,7 +221,12 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_config":                 "🔭 Configuration of Dwarf Local Parent directory",  # TODO
     "select_dwarf_dir":             "Select a directory to store Dwarf data locally for offline use.",  # TODO
     "save_key":                     "💾 Save key",  # TODO
-
+    "dwarf_local_disk":             "⚠️ This folder stores a local index of your sessions\n— stacked results only (FITS, PNG, JPG) not the individual raw frames.\nDepending on the number of sessions this can still reach 10 GB or more.\nChoose a drive with enough free space.",  # TODO
+    "astap_path":                   "✅ ASTAP found: {path}",  # TODO
+    "astap_path_not_found":         "⚠️ ASTAP not found.",  # TODO
+    "astap_download_link":          "Download ASTAP (fast local solver, recommended for Windows)",  # TODO
+    "astap_db_label":               "narrow FOV (<5°)",  # TODO
+    "astap_wide_db_label":          "wide FOV (>5°)",  # TODO
     # ── Dwarf device ──────────────────────────────────────────────────────────────
     "dwarf_device":                 "Dwarf Device",  # TODO
     "dwarf_connect":                "Dwarf Connect",  # TODO
@@ -730,7 +735,7 @@ TRANSLATIONS: dict[str, str] = {
     "file_open_error":              'Cannot open file: {error}',  # TODO
     "file_upload_ok":               '✅ Uploaded {name}',  # TODO
     "folder_selected":              '✅ Selected Folder: {path}',  # TODO
-    "temp_file_deleted":            '🧹 Deleted temp file: {path}',  # TODO
+    "folder_delete_error":          'Error deleting folder:\n{error}',  # TODO    "temp_file_deleted":            '🧹 Deleted temp file: {path}',  # TODO
     "temp_file_delete_error":       'Error deleting temp file: {error}',  # TODO
     "temp_folder_created":          '✅ Temp folder created: {path}',  # TODO
     "output_folder_selected":       '✅ Output folder: {path}',  # TODO
@@ -763,12 +768,22 @@ TRANSLATIONS: dict[str, str] = {
     "quality_filter_label":         'Quality:',  # TODO
     "quality_filter_tooltip":       'Filter by quality score — 🌐 all · 🟢 good (≥65) · 🟡 fair (≥40)\nUnscored sessions always shown',  # TODO
 
-    "confirm_clear_dso":            'Remove the DSO association from this object?',  # TODO
-    "dso_cleared":                  '✅ DSO association removed.',  # TODO
-    "clear":                        'Clear',  # TODO
+    # ── Quality scoring ─────────────────────────────────────────────────────────
+    "score_session_btn":            '🌟 Score', # TODO
+    "score_no_sessions":            'No sessions to score for this object.', # TODO
+    "score_running":                'Scoring {count} session(s)...', # TODO
+    "score_done":                   '✅ {count} session(s) scored.', # TODO
 
-    "no_unused_astro":              'No unused objects to delete.',  # TODO
-    "confirm_delete_unused_astro":  '{count} unused object(s) will be permanently deleted. Continue?',  # TODO
+    # ── DSO Catalog ─────────────────────────────────────────────────────────────
+    "confirm_delete_astro":         'Delete this object? Sessions linked to it will lose their object assignment.', # TODO
+    "astro_deleted":                '✅ Object deleted.', # TODO
+
+    "confirm_clear_dso":            'Remove the DSO association from this object?', # TODO
+    "dso_cleared":                  '✅ DSO association removed.', # TODO
+    "clear":                        'Clear', # TODO
+
+    "no_unused_astro":              'No unused objects to delete.', # TODO
+    "confirm_delete_unused_astro":  '{count} unused object(s) will be permanently deleted. Continue?', # TODO
 
     # ── Transfer / Mosaic / MTP status messages ────────────────────────────────
     "ftp_readonly":                 'FTP is read-only.',  # TODO
@@ -796,5 +811,20 @@ TRANSLATIONS: dict[str, str] = {
     "mosaic_complete":              '✅ Process complete.',  # TODO
     "mosaic_failed_cancelled":      '❌ Process failed or was cancelled.',  # TODO
     "transfer_successful":          '✅ {mode} successful!',  # TODO
+
+    # ── Sky Map Features ───────────────────────────────────────────────────────
+    "sky_map_menu":                 "Sky Map", # TODO
+    "sky_map_title":                "Sky Map — Solved Sessions", # TODO
+    "sky_map_open_browser":         "Open the Sky Map web page", # TODO
+    "sky_map_open_hint":            "Opens the interactive sky map in your web browser", # TODO
+    "sky_map_min_quality":          "Min quality:", # TODO
+    "sky_map_sessions_ready":       "{n} sessions ready • ASTAP: {astap} • Nova: {nova}", # TODO
+    "sky_map_col_dwarf":            "Dwarf", # TODO
+    "sky_map_col_total":            "Total", # TODO
+    "sky_map_col_solved":           "Solved", # TODO
+    "sky_map_col_pending":          "Pending", # TODO
+    "sky_map_col_no_score":         "No score", # TODO
+    "sky_map_btn_scan":             "Scan", # TODO
+    "sky_map_mosaic_centers":       "Mosaic centers", # TODO
 
 }

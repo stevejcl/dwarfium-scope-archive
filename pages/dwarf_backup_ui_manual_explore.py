@@ -21,6 +21,7 @@ import sys
 import re
 import json
 import subprocess
+import asyncio
 import urllib.parse
 from dataclasses import dataclass
 from collections import defaultdict
@@ -157,6 +158,7 @@ class ManualExploreApp(DbPageMixin):
         self.dwarf_options      = []
         self.backup_options     = []
         self.objects            = []          # list of (id, display_name, dso_id, is_group)
+        self._initializing      = True        # Prevent on_change load_objects during init
         self.all_files_rows     = []          # raw rows from get_ObjectSelect_manual
         self.label_to_index     = {}          # session label -> index in all_files_rows
 
@@ -220,7 +222,7 @@ class ManualExploreApp(DbPageMixin):
         # Mobile nav bar
         with ui.row().classes('w-full items-center gap-2 mobile-nav-bar'):
             self.mobile_back_btn = ui.button(t("back"), on_click=self._mobile_go_left) \
-                .props('flat dense').classes('text-sm')
+                .classes('text-sm')
 
         # Force initial mobile layout
         ui.run_javascript('''
@@ -241,29 +243,44 @@ class ManualExploreApp(DbPageMixin):
             with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid'):
 
                 # ---- LEFT COLUMN: filters + object list -------------------
-                with ui.column().classes('w-full mobile-left-col') as self.mobile_left_col:
-                    nbcolumns = 3 if self.BackUrl else 2
-                    with ui.grid(columns=nbcolumns):
-                    # Back button (optional)
+                with ui.column().classes('w-full min-w-[300px] mobile-left-col') as self.mobile_left_col:
+                    with ui.grid(columns=12).classes('w-full items-end gap-2'):
+                        # back button
                         if self.BackUrl:
                             ui.button(
                                 t("back_btn"),
+                                icon='arrow_back',
                                 on_click=lambda: ui.navigate.to(self.BackUrl)
-                            ).style('width: 100px')
+                            ).classes(
+                                '''
+                                col-span-12 sm:col-span-2 md:col-span-2
+                                w-full sm:w-auto
+                                '''
+                            )
 
-                        with ui.column():
+                        # backup drive
+                        with ui.column().classes(
+                            'col-span-12 sm:col-span-5 md:col-span-5'
+                        ) as self.backup_filter_col:
+
                             ui.label(t("backup_drive"))
+
                             self.backup_filter = ui.select(
                                 options=[],
-                                on_change=self.on_backup_filter_change,
-                            ).props('outlined')
+                                on_change=self.on_backup_filter_change
+                            ).props('outlined').classes('w-full')
 
-                        with ui.column():
+                        # dwarf device
+                        with ui.column().classes(
+                            'col-span-12 sm:col-span-5 md:col-span-5'
+                        ) as self.dwarf_filter_col:
+
                             ui.label(t("dwarf_device"))
+
                             self.dwarf_filter = ui.select(
                                 options=[],
-                                on_change=self.load_objects,
-                            ).props('outlined')
+                                on_change=self.load_objects
+                            ).props('outlined').classes('w-full')
 
                     self.count_label = ui.label(t("total_sessions_zero"))
 
@@ -282,8 +299,7 @@ class ManualExploreApp(DbPageMixin):
                                 .props('flat round dense')
                                 .bind_visibility_from(self.object_filter, 'value', lambda v: bool(v))
                             )
-                        self.loading_spinner = ui.spinner(size='lg').classes('m-4')
-                        self.loading_spinner.visible = False
+                            self.loading_spinner = ui.spinner(size='lg').classes('m-4')
                         self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
 
                 # ---- RIGHT COLUMN: session selector + detail panel --------
@@ -353,8 +369,12 @@ class ManualExploreApp(DbPageMixin):
 
         self.fullscreen_image.visible = False
         self.preview_image.visible    = False
+        self.loading_spinner.set_visibility(False)
+
+        self._initializing = False  # Allow load_objects now
 
         self.populate_backup_filter()
+
         self.selected_path = ""
 
     # -----------------------------------------------------------------------
@@ -373,7 +393,7 @@ class ManualExploreApp(DbPageMixin):
 
         self.backup_filter.set_options(names, value=initial_value)
 
-    def on_backup_filter_change(self):
+    async def on_backup_filter_change(self):
         prev_backup_id = self.BackupDriveId
         selected = self.backup_filter.value
 
@@ -389,7 +409,7 @@ class ManualExploreApp(DbPageMixin):
 
         # Reload only when the backup changed but the dwarf stayed the same
         if prev_backup_id != self.BackupDriveId and self.get_selected_dwarf_id() == self.get_selected_dwarf_id():
-            self.load_objects()
+            await self.load_objects()
 
     def populate_dwarf_filter(self):
         if self.BackupDriveId:
@@ -420,16 +440,20 @@ class ManualExploreApp(DbPageMixin):
     # Object list loading  (mirrors ExploreApp.load_objects / load_objects_ui)
     # -----------------------------------------------------------------------
 
-    def load_objects(self):
+    async def load_objects(self):
         """Show spinner via JS immediately, then defer DB work to next tick."""
+        if self._initializing:
+            return
+        self.loading_spinner.set_visibility(True)
+        await asyncio.sleep(0.15)
         # Use JavaScript to show the spinner instantly — Python's event loop
         # won't paint a visibility change before the synchronous work starts.
-        ui.run_javascript(f"""
-            const el = document.getElementById('{self.loading_spinner.id}');
-            if (el) el.style.display = 'block';
-            const list = document.getElementById('{self.object_list.id}');
-            if (list) list.innerHTML = '';
-        """)
+        #ui.run_javascript(f"""
+        #    const el = document.getElementById('{self.loading_spinner.id}');
+        #    if (el) el.style.display = 'block';
+        #    const list = document.getElementById('{self.object_list.id}');
+        #    if (list) list.innerHTML = '';
+        #""")
         ui.timer(0.05, self._load_objects_work, once=True)
 
     def _load_objects_work(self):
@@ -456,15 +480,16 @@ class ManualExploreApp(DbPageMixin):
         self.load_objects_ui()
 
         if self.loading_spinner:
-            self.loading_spinner.visible = False
-            ui.run_javascript(f"""
-                const el = document.getElementById('{self.loading_spinner.id}');
-                if (el) el.style.display = 'none';
-            """)
+            self.loading_spinner.set_visibility(False)
+            #ui.run_javascript(f"""
+            #    const el = document.getElementById('{self.loading_spinner.id}');
+            #    if (el) el.style.display = 'none';
+            #""")
 
         # Auto-select a specific session if SessionId was passed in the URL
         if not self.AutoSelection_done and self.SessionId:
             self.AutoSelection_done = True
+            self.loading_spinner.set_visibility(True)
             ui.timer(0.2, lambda: self.auto_select_session(), once=True)
 
     def auto_select_session(self):
@@ -725,6 +750,7 @@ class ManualExploreApp(DbPageMixin):
         """Load session rows for the selected AstroObject and populate the file list."""
         dwarf_id = self.get_selected_dwarf_id()
         self.clear_selected_object()
+        self._mobile_go_right()  # slide to right panel on mobile
 
         files = get_ObjectSelect_manual(
             self.conn,
@@ -1298,10 +1324,13 @@ class ManualExploreApp(DbPageMixin):
  
         dialog.open()
  
-    def show_fullscreen_image(self):
+    async def show_fullscreen_image(self):
         if self.fullscreen_image.visible:
             self.image_dialog.open()
-            ui.notify(t("press_esc"), position="top", type="info")
+            width = await ui.run_javascript('window.innerWidth')
+
+            if width >= 768:  # pas mobile
+                ui.notify(t("press_esc"), position="top", type="info")
 
     def open_folder(self):
         folder = self.selected_path
@@ -1396,7 +1425,7 @@ class ManualExploreApp(DbPageMixin):
                 ui.notify(t("db_removal_failed"), type="warning")
 
             # 3. Reload the object list
-            self.load_objects()
+            await self.load_objects()
 
         msg = (
             f"⚠️ Are you sure you want to delete this session?\n\n"

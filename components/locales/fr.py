@@ -59,7 +59,7 @@ TRANSLATIONS: dict[str, str] = {
     "size_label":                   "Taille",
     "no_data":                      "Aucune donnée disponible",
     "refresh_label":                "Actualiser",
-    "back_btn":                     "🔙 Retour",
+    "back_btn":                     "Retour",
 
     # ── Navigation / Menu ─────────────────────────────────────────────────────────
     "menu_home":                    "Accueil",
@@ -215,11 +215,17 @@ TRANSLATIONS: dict[str, str] = {
     "nova_no_key":                  "⚠️ Pas de clé API Astrométrie — résolution NOVA ignorée.",
     "nova_go_settings":             "Allez dans les paramètres pour enregistrer une clé NOVA_ASTRO_API.",
     "solve_not_found":              "❌ solve-field introuvable.",
-    "solve_available":              "✅ solve-field n'est pas disponible sur ce système.",
+    "solve_available":              "✅ solve-field est disponible sur ce système.",
     "install_not_supported":        "Installation automatique non supportée pour ce système.",
     "dwarf_config":                 "🔭 Configuration du répertoire parent local Dwarf",
     "select_dwarf_dir":             "Sélectionnez un répertoire pour stocker les données Dwarf localement.",
     "save_key":                     "💾 Enregistrer la clé",
+    "dwarf_local_disk":             "⚠️ Ce dossier stocke un index local de vos sessions\n— résultats empilés uniquement (FITS, PNG, JPG), pas les frames brutes individuelles.\nSelon le nombre de sessions, cela peut dépasser 10 Go.\nChoisissez un disque avec suffisamment d'espace libre.",
+    "astap_path":                   "✅ ASTAP disponible: {path}",
+    "astap_path_not_found":         "⚠️ ASTAP introuvable.",
+    "astap_download_link":          "Télécharger ASTAP (solveur local rapide, recommandé pour Windows)",
+    "astap_db_label":               "champ de vision étroit (<5°)",
+    "astap_wide_db_label":          "champ de vision large (>5°)",
 
     # ── Dwarf device ──────────────────────────────────────────────────────────────
     "dwarf_device":                 "Appareil Dwarf",
@@ -719,8 +725,8 @@ TRANSLATIONS: dict[str, str] = {
     "launching_restore":            'Lancement de la restauration pour {count} session(s)...',
     "launching_backup":             'Lancement de la sauvegarde pour {count} session(s)...',
     "folder_delete_error":          'Erreur lors de la suppression du dossier :\n{error}',
- 
-  # ── Extra notification keys ────────────────────────────────────────────────
+
+    # ── Extra notification keys ────────────────────────────────────────────────
     "item_deleted":                 '🗑️ Supprimé : {name}',
     "auto_install_unsupported":     'Installation automatique non supportée pour ce système.',
 
@@ -807,5 +813,20 @@ TRANSLATIONS: dict[str, str] = {
     "mosaic_complete":              '✅ Processus terminé.',
     "mosaic_failed_cancelled":      '❌ Processus échoué ou annulé.',
     "transfer_successful":          '✅ {mode} réussi !',
+
+    # ── Sky Map Features ───────────────────────────────────────────────────────
+    "sky_map_menu":                 "Carte du Ciel",
+    "sky_map_title":                "Carte du Ciel — Sessions résolues",
+    "sky_map_open_browser":         "Ouvrir la page web de la carte du ciel",
+    "sky_map_open_hint":            "Ouvre la carte du ciel interactive dans votre navigateur web",
+    "sky_map_min_quality":          "Qualité min :",
+    "sky_map_sessions_ready":       "{n} sessions prêtes • ASTAP : {astap} • Nova : {nova}",
+    "sky_map_col_dwarf":            "Dwarf",
+    "sky_map_col_total":            "Total",
+    "sky_map_col_solved":           "Résolues",
+    "sky_map_col_pending":          "En attente",
+    "sky_map_col_no_score":         "Sans score",
+    "sky_map_btn_scan":             "Scanner",
+    "sky_map_mosaic_centers":       "Centres mosaïque",
 
 }

@@ -305,6 +305,31 @@ def create_quality_table_sql():
         )
         """
 
+def create_session_wcs_table_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS SessionWCS (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_type      TEXT NOT NULL,
+            entry_id        INTEGER NOT NULL,
+            panel_num       INTEGER NOT NULL DEFAULT 0,
+            ra_center       REAL,
+            dec_center      REAL,
+            crpix1          REAL,
+            crpix2          REAL,
+            crval1          REAL,
+            crval2          REAL,
+            cd1_1           REAL,
+            cd1_2           REAL,
+            cd2_1           REAL,
+            cd2_2           REAL,
+            plate_scale     REAL,
+            orientation     REAL,
+            wcs_file        TEXT,
+            solver          TEXT,
+            solved_at       TEXT NOT NULL
+        )
+        """
+
 SCHEMAS = {
     "DsoCatalog": create_DsoCatalog_sql,
     "AstroObject": create_AstroObject_sql,
@@ -324,6 +349,7 @@ SCHEMAS = {
     "SessionNotes": create_SessionNotes_sql,
     "SkyBotResult": create_skybot_table_sql,
     "SessionQuality": create_quality_table_sql,
+    "SessionWCS": create_session_wcs_table_sql,
 }
 
 # Sanity check — catch wrong mappings at import time, not at runtime
@@ -371,7 +397,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 11
+CURRENT_DB_VERSION = 12
 
 def init_db(conn):
     try:
@@ -492,6 +518,13 @@ def init_db(conn):
         """)
 
         cursor.execute(create_quality_table_sql())
+
+        cursor.execute(create_session_wcs_table_sql())
+
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sessionwcs_entry
+            ON SessionWCS(entry_type, entry_id, panel_num)
+        """)
 
         # Stamp current version so future startups skip migrations
         if _is_fresh:
@@ -888,6 +921,29 @@ def migrate_v11(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v11: {e}")
 
+def migrate_v12(conn):
+    try:
+        print("Migrating Database to V12..")
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF")
+
+        # Migration : aadd panel_num if not present
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(SessionWCS)").fetchall()]
+        if 'panel_num' not in cols:
+        
+            rebuild_tables( conn, ["SessionWCS"])
+
+            conn.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_sessionwcs_entry
+                ON SessionWCS(entry_type, entry_id, panel_num)
+            """)
+
+        cursor.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+        print("Migration v12 applied.")
+
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v12: {e}")
 
 MIGRATIONS = {
     1: migrate_v1,
@@ -901,6 +957,7 @@ MIGRATIONS = {
     9: migrate_v9,
     10: migrate_v10,
     11: migrate_v11,
+    12: migrate_v12,
     # Add more later...
 }
 

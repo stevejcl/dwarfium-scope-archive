@@ -260,8 +260,7 @@ class TransferApp:
             self._progress_timer = ui.timer(1.0, self._poll_transfer_progress)
 
         self.populate_dwarf_filter()
-        self._restore_transfer_state_2()
-        self.notify_me(None)
+        ui.timer(0.1, lambda: (self._restore_transfer_state_2(), self.notify_me(None)), once=True)
 
     def populate_dwarf_filter(self):
         self.ftp_spinner.set_visibility(False)
@@ -875,11 +874,11 @@ class TransferApp:
     async def confirm_overwrite(self, dest_path, isFullBackup):
 
         print("confirm_overwrite")
-        ui.notify(f"{t('notify_dest_already_exists')}", type='warning')
+        ui.notify(f"{t('notify_dest_already_exists', dest_path=dest_path)}", type='warning')
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
-            ui.label(f"{t('dest_already_exists')}")
+            ui.label(f"{t('dest_already_exists',dest_path=dest_path)}")
             with ui.row():
                 ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
                 ui.button(t("no"), on_click=lambda: dialog.submit('No'))
@@ -989,15 +988,22 @@ class TransferApp:
         #result = await run.io_bound(self.copy_with_progress_async, list_files, self.progress, self.cancel_btn)
         # Save current dropdown values so Transfer page can restore them after reload
         try:
-            app.storage.general['dwarfId']  = self.DwarfId
-            app.storage.general['backupId']  = self.BackupId
-            app.storage.general['mode']  = self.mode
-            app.storage.general['session']  = self.session or self.get_session_name(src_dir, False)
-            app.storage.general['dest_override']  = self.dest_override
             if self.mode == "Archive":
-                app.storage.general['transfer_last_dest'] = self.input_dest_dir.value
+                key_transfer_last_src = ''
+                key_transfer_last_dest = self.input_dest_dir.value
             else:
-                app.storage.general['transfer_last_src']  = self.input_src_dir.value or src_dir
+                key_transfer_last_src  = self.input_src_dir.value or src_dir
+                key_transfer_last_dest = ''
+      
+            app.storage.general['transfer_context'] = {
+                'dwarfId':            self.DwarfId,
+                'backupId':           self.BackupId,
+                'mode':               self.mode,
+                'session':            self.session or self.get_session_name(src_dir, False),
+                'dest_override':      self.dest_override,
+                'transfer_last_src':  key_transfer_last_src,
+                'transfer_last_dest': key_transfer_last_dest,
+            }
         except Exception:
             pass
 
@@ -1206,32 +1212,33 @@ class TransferApp:
             )
 
         try:
-            mode = app.storage.general.get('mode', '')
+            ctx = app.storage.general.get('transfer_context', {})
+            mode = ctx.get('mode', '')
             if not mode:
                 return
             else:
                 self.mode = mode
                 
-                dwarfId = app.storage.general.get('dwarfId', None)
+                dwarfId = ctx.get('dwarfId', None)
                 if dwarfId:
                     self.DwarfId = dwarfId
                     self.DwarfId_Init = dwarfId
-                backupId = app.storage.general.get('backupId', None)
+                backupId = ctx.get('backupId', None)
                 if backupId:
                     self.BackupId = backupId
                     self.BackupId_Init = backupId
-                session = app.storage.general.get('session', '')
+                session = ctx.get('session', '')
                 if session:
                     self.session = session
 
                 if self.mode == "Merge" or self.mode == "Repair" :
                     # Transfert Mosaic
-                    last_src  = app.storage.general.get('transfer_last_src', '')
+                    last_src = ctx.get('transfer_last_src', '')
                     self.src_override = last_src
                     print(f"[Restore1] DwarfId={self.DwarfId} BackupId={self.BackupId} mode={self.mode} session={self.session} src_override={self.src_override}")
                 else: 
                     # Transfert Dark Library
-                    dest_override  = app.storage.general.get('dest_override', '')
+                    dest_override = ctx.get('dest_override', '')
                     if dest_override:
                         self.dest_override = dest_override
                         print(f"[Restore1] DwarfId={self.DwarfId} BackupId={self.BackupId} mode={self.mode} session={self.session} dest_override={self.dest_override}")
@@ -1247,15 +1254,18 @@ class TransferApp:
     def _restore_transfer_state_2(self):
         """Called after UI build — restore src/dest dropdowns and progress."""
         try:
-            mode = app.storage.general.get('mode', '')
+            ctx  = app.storage.general.get('transfer_context', {})
+            mode = ctx.get('mode', '')
             if not mode:
+                print("_restore_transfer_state_2 cancelled")
                 return
             else:
-                last_src  = app.storage.general.get('transfer_last_src', '')
-                last_dest = app.storage.general.get('transfer_last_dest', '')
-                dest_override  = app.storage.general.get('dest_override', '')
+                print("_restore_transfer_state_2 action")
+                last_src      = ctx.get('transfer_last_src', '')
+                last_dest     = ctx.get('transfer_last_dest', '')
+                dest_override = ctx.get('dest_override', '')
                 if self.mode == "Archive" and not dest_override:
-                    if last_dest and not self.input_dest_dir.value:
+                    if last_dest:
                         self.input_dest_dir.set_options([last_dest], value=last_dest)
                         print(f"[Restore2] dest restored: {last_dest}")
                     if not self.session and last_src :
@@ -1283,7 +1293,22 @@ class TransferApp:
             self._update_bg_progress_ui(p)
             # Clear final states after showing to user
             if p.get('status') in ('done', 'error', 'cancelled'):
-                ui.timer(5.0, lambda: app.storage.general.pop('transfer_progress', None), once=True)
+                ui.timer(5.0, lambda: self.cleanup_transfer_keys(), once=True)
+        else:
+            # Cleanup Transfer Keys after Restore
+            print("CLEANUP: cleanup_transfer_context")
+            app.storage.general.pop('transfer_context', None)
+
+    def cleanup_transfer_keys(self):
+        # Cleanup Transfer Keys after Restore
+        # only if transfer is not running
+        print("CLEANUP: All cleanup_transfer_keys")
+        app.storage.general.pop('transfer_progress', None)
+        tp = app.storage.general.get('transfer_progress', {})
+        if tp.get('status') in ('done', 'error', 'cancelled'):
+            for key in ('transfer_context', 'transfer_copy_totals',
+                        'transfer_cancel_requested', 'transfer_progress'):
+                app.storage.general.pop(key, None)
 
     def _poll_transfer_progress(self):
         """Called every second by ui.timer — syncs UI from storage on page return."""
@@ -1313,13 +1338,7 @@ class TransferApp:
         self._show_bg_progress(False)
         app.storage.general.pop('transfer_progress', None)
         if clear_paths:
-            app.storage.general.pop('transfer_last_src', None)
-            app.storage.general.pop('transfer_last_dest', None)
-            app.storage.general.pop('dwarfId', None)
-            app.storage.general.pop('backupId', None)
-            app.storage.general.pop('mode', None)
-            app.storage.general.pop('session', None)
-            app.storage.general.pop('dest_override', None)
+            app.storage.general.pop('transfer_context', None)
 
     def get_session_name(self, src_dir, on_journal = False):
         # Determine session name — more descriptive than just basename(src_dir)
@@ -1569,8 +1588,9 @@ class TransferApp:
         elif status == 'error':
             last = os.path.basename(current) if current else ""
             last_info = f" — last: {last}" if last else ""
-            src  = app.storage.general.get('transfer_last_src', '')
-            dest = app.storage.general.get('transfer_last_dest', '')
+            _ctx = app.storage.general.get('transfer_context', {})
+            src  = _ctx.get('transfer_last_src', '')
+            dest = _ctx.get('transfer_last_dest', '')
             path_info = f" | 📂 {src} → {dest}" if src and dest else ""
             self.bg_status_label.text = f"❌ Error after {copied}/{total}: {error}{last_info}{path_info}"
             self.StartBackup.visible = True
@@ -1585,6 +1605,9 @@ class TransferApp:
 
     def cancel(self):
         self.cancel_backup = True
+        # Write to storage so the background task detects it
+        # even after a page reload (self.cancel_backup would be False otherwise)
+        app.storage.general['transfer_cancel_requested'] = True
 
     async def get_files_old(self, src_dir, dest_dir, isFullBackup):
         all_files = []

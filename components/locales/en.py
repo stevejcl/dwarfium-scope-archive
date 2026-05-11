@@ -59,7 +59,7 @@ TRANSLATIONS: dict[str, str] = {
     "size_label":                   "Size",
     "no_data":                      "No data available",
     "refresh_label":                "Refresh",
-    "back_btn":                     "🔙 Back",
+    "back_btn":                     "Back",
 
     # ── Navigation / Menu ─────────────────────────────────────────────────────────
     "menu_home":                    "Home",
@@ -215,11 +215,17 @@ TRANSLATIONS: dict[str, str] = {
     "nova_no_key":                  "⚠️ No Astrometry API key — NOVA astrometry resolution skipped.",
     "nova_go_settings":             "Go to Settings to register a NOVA_ASTRO_API key.",
     "solve_not_found":              "❌ solve-field not found.",
-    "solve_available":              "✅ solve-field is not available on this system.",
+    "solve_available":              "✅ solve-field is available on this system.",
     "install_not_supported":        "Automatic installation not supported for this system.",
     "dwarf_config":                 "🔭 Configuration of Dwarf Local Parent directory",
     "select_dwarf_dir":             "Select a directory to store Dwarf data locally for offline use.",
     "save_key":                     "💾 Save key",
+    "dwarf_local_disk":             "⚠️ This folder stores a local index of your sessions\n— stacked results only (FITS, PNG, JPG) not the individual raw frames.\nDepending on the number of sessions this can still reach 10 GB or more.\nChoose a drive with enough free space.",
+    "astap_path":                   "✅ ASTAP found: {path}",
+    "astap_path_not_found":         "⚠️ ASTAP not found.",
+    "astap_download_link":          "Download ASTAP (fast local solver, recommended for Windows)",
+    "astap_db_label":               "narrow FOV (<5°)",
+    "astap_wide_db_label":          "wide FOV (>5°)",
 
     # ── Dwarf device ──────────────────────────────────────────────────────────────
     "dwarf_device":                 "Dwarf Device",
@@ -285,7 +291,7 @@ TRANSLATIONS: dict[str, str] = {
     "backup_info_updated":          "BackupDrive info updated",
     "no_backup_drive_sel":          "No backup drive selected.",
     "dest_already_exists":          "The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?",
-    "notify_dest_already_exists":   "The destination: '{dest_path}' already exists!}",
+    "notify_dest_already_exists":   "The destination: '{dest_path}' already exists!",
     "please_backup_dir":            "Please choose the main backup directory for your Dwarf astrophotography images or dark files.",
     "please_astro_dir":             "Please select the Astronomy directory within the mapped USB drive.",
     "select_astro_info":            "You can select a specific subfolder where your astrophotography session images are stored.",
@@ -730,6 +736,7 @@ TRANSLATIONS: dict[str, str] = {
     "file_open_error":              'Cannot open file: {error}',
     "file_upload_ok":               '✅ Uploaded {name}',
     "folder_selected":              '✅ Selected Folder: {path}',
+    "folder_delete_error":          'Error deleting folder:\n{error}',
     "temp_file_deleted":            '🧹 Deleted temp file: {path}',
     "temp_file_delete_error":       'Error deleting temp file: {error}',
     "temp_folder_created":          '✅ Temp folder created: {path}',
@@ -806,5 +813,20 @@ TRANSLATIONS: dict[str, str] = {
     "mosaic_complete":              '✅ Process complete.',
     "mosaic_failed_cancelled":      '❌ Process failed or was cancelled.',
     "transfer_successful":          '✅ {mode} successful!',
+
+    # ── Sky Map Features ───────────────────────────────────────────────────────
+    "sky_map_menu":                 "Sky Map",
+    "sky_map_title":                "Sky Map — Solved Sessions",
+    "sky_map_open_browser":         "Open the Sky Map web page",
+    "sky_map_open_hint":            "Opens the interactive sky map in your web browser",
+    "sky_map_min_quality":          "Min quality:",
+    "sky_map_sessions_ready":       "{n} sessions ready • ASTAP: {astap} • Nova: {nova}",
+    "sky_map_col_dwarf":            "Dwarf",
+    "sky_map_col_total":            "Total",
+    "sky_map_col_solved":           "Solved",
+    "sky_map_col_pending":          "Pending",
+    "sky_map_col_no_score":         "No score",
+    "sky_map_btn_scan":             "Scan",
+    "sky_map_mosaic_centers":       "Mosaic centers",
 
 }

@@ -982,13 +982,13 @@ class AddManualSession(DbPageMixin):
         # To DO - Add Astro Resolution - Ignore File => delete from the widget (not working yet) 
         if file_type == "fits":
 
-            ui.run_javascript("document.body.style.cursor='wait'")
+            await self.client.run_javascript("document.body.style.cursor='wait'")
             with ui.dialog().props('persistent') as dialog_fits:
 
                 try:
                     dialog_fits.open()
 
-                    ui.run_javascript("document.body.style.cursor='default'")
+                    await self.client.run_javascript("document.body.style.cursor='default'")
 
                     # Analyse File
                     print(f"Temp: {tmp_path}")
@@ -1079,7 +1079,7 @@ class AddManualSession(DbPageMixin):
                 }}
             }}
         """
-        ui.run_javascript(js)
+        await self.client.run_javascript(js)
 ###############################################
 
     def remove_selected_file(self):
@@ -1139,10 +1139,10 @@ class AddManualSession(DbPageMixin):
 
         url = self.link_input.value.strip()
         if not url or not url.lower().endswith((".fits", ".fit", ".fts")):
-            ui.notify(t("not_fits_url"), type='warning')
+            await self.client.ui.notify(t("not_fits_url"), type='warning')
             return
 
-        ui.run_javascript("document.body.style.cursor='wait'")
+        await self.client.run_javascript("document.body.style.cursor='wait'")
         with ui.dialog().props('persistent') as dialog_fits:
             ui.label(t("downloading_fits"))
             try:
@@ -1155,7 +1155,7 @@ class AddManualSession(DbPageMixin):
                     tmp_path = tmp.name
                     self.track_temp_file(tmp_path)
 
-                ui.run_javascript("document.body.style.cursor='default'")
+                await self.client.run_javascript("document.body.style.cursor='default'")
 
                 # Analyse File — use suffix from selector to build a meaningful name
                 _suffix = self.url_suffix_select.value.strip() if self.url_suffix_select.value else ""
@@ -1164,7 +1164,7 @@ class AddManualSession(DbPageMixin):
 
             except Exception as ex:
                 # On error: restore cursor, close dialog, show message
-                ui.run_javascript("document.body.style.cursor='default'")
+                await self.client.ui.run_javascript("document.body.style.cursor='default'")
                 try:
                     dialog_fits.close()
                 except Exception:

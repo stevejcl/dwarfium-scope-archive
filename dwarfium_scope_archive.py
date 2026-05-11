@@ -101,6 +101,7 @@ import pages.dwarf_backup_ui_manual_explore
 import pages.dwarf_dso_catalog
 import pages.astro_settings
 import pages.dwarf_backup_ui_dark_library
+import pages.page_sky_map
 
 from api.image_preview import serve_preview
 

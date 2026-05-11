@@ -153,18 +153,13 @@ class SettingsApp(DbPageMixin):
             with ui.card().classes("w-full p-4") as info_dwarf_local:
                 current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
                 self.path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
-                ui.label(
-                    "⚠️ This folder stores a local index of your sessions\n"
-                    "— stacked results only (FITS, PNG, JPG) not the individual raw frames.\n"
-                    "Depending on the number of sessions this can still reach 10 GB or more.\n"
-                    "Choose a drive with enough free space."
-                ).classes("text-sm text-orange-600 mt-2").style('white-space: pre-wrap;')
+                ui.label(t("dwarf_local_disk")).classes("text-sm text-orange-600 mt-2").style('white-space: pre-wrap;')
                 if current_path == "Not Defined":
                     self.InitDwarfLocal = False
                     ui.notify('Select a directory to store Dwarf data locally for offline use.', type='warning')
                     current_path = "."
 
-                ui.button("📂 Browse", on_click= lambda: self.choose_folder(target_input=self.path_input)).classes("mt-2")
+                ui.button(t("open_folder"), on_click= lambda: self.choose_folder(target_input=self.path_input)).classes("mt-2")
 
                 def save_path():
                     new_path = self.path_input.value.strip()
@@ -205,10 +200,40 @@ class SettingsApp(DbPageMixin):
             with ui.card().classes("w-full"):
                 ui.label(t("nova_local"))
 
-                if self.check_solve_field():
-                    ui.label("✅ solve-field is not available on this system.")
+                from api.astrometry_resolver import has_astap, find_astap
+                if has_astap():
+                    ui.label(t("astap_path", path=find_astap())).classes("text-green-600")
+                    astap_db      = get_setting_text(self.conn, "ASTAP_DB")      or "D50"
+                    astap_db_wide = get_setting_text(self.conn, "ASTAP_DB_WIDE") or "G05"
+                    with ui.row().classes('gap-4 items-end'):
+                        ui.select(
+                            {
+                                "D50": "D50 (~5GB)",
+                                "D20": "D20 (~2GB)",
+                                "D80": "D80 (~8GB)",
+                            },
+                            value=astap_db,
+                            label=t("astap_db_label"),
+                            on_change=lambda e: set_setting_text(self.conn, "ASTAP_DB", e.value),
+                        ).classes("w-52")
+                        ui.select(
+                            {
+                                "G05": "G05 wide (~1GB)",
+                                "V05": "V05 wide (~1GB)",
+                            },
+                            value=astap_db_wide,
+                            label=t("astap_wide_db_label"),
+                            on_change=lambda e: set_setting_text(self.conn, "ASTAP_DB_WIDE", e.value),
+                        ).classes("w-52")
                 else:
-                    ui.label("❌ solve-field not found.")
+                    ui.label(t("astap_path_not_found")).classes("text-orange-500")
+                    ui.link(t("astap_download_link"),
+                            "https://www.hnsky.org/astap.htm", new_tab=True).classes("text-sm text-blue-600")
+
+                if self.check_solve_field():
+                    ui.label(t("solve_available")).classes("text-green-600")
+                else:
+                    ui.label(t("solve_not_found")).classes("text-gray-400 text-sm")
                     ui.button(t("nova_install"), on_click=self.install_local_astrometry)
 
             with ui.card().classes("w-full"):

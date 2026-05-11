@@ -128,6 +128,7 @@ class ExploreApp(DbPageMixin):
         self.backup_options = []
         self.all_files_rows = []
         self.objects = []
+        self._initializing = True  # Prevent on_change load_objects during init
         self.base_folder = None
         self.selected_object = None
         self.selected_object_id = None
@@ -174,6 +175,11 @@ class ExploreApp(DbPageMixin):
         self.build_ui()
 
     def build_ui(self):
+        # Capture client context here — in UI thread, before any background tasks
+        try:
+            self._ui_client = ui.context.client
+        except Exception:
+            self._ui_client = None
         self.conn = connect_db(self.database)
         self.register_conn_close()
         # Load the preprocessed catalog once at app start
@@ -188,7 +194,7 @@ class ExploreApp(DbPageMixin):
         # Mobile nav bar - hidden initially, shown when on right panel
         with ui.row().classes('w-full items-center gap-2 mobile-nav-bar') as self.mobile_nav:
             self.mobile_back_btn = ui.button(t("back"), on_click=self._mobile_go_left) \
-                .props('flat dense').classes('text-sm')
+                .classes('text-sm')
 
         # Force initial mobile layout
         ui.run_javascript('''
@@ -210,19 +216,47 @@ class ExploreApp(DbPageMixin):
 
         with ui.row().classes('w-full items-start'):
             with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid'):
-                with ui.column().classes('w-full mobile-left-col') as self.mobile_left_col:
+                with ui.column().classes('w-full min-w-[300px] mobile-left-col') as self.mobile_left_col:
                     if self.mode == "backup":
-                        nbcolumns = 3 if self.BackUrl else 2
-                        with ui.grid(columns=nbcolumns):
+                        with ui.grid(columns=12).classes('w-full items-end gap-2'):
+                            # back button
                             if self.BackUrl:
-                                ui.button(t("back_btn"), on_click=lambda: ui.navigate.to(f"{self.BackUrl}{self.BackupDriveId if self.BackupDriveId else self.BackupDriveId_Init}")).style('width: 100px')
-                            with ui.column() as self.backup_filter_col:
-                                ui.label(t("backup_drive"))
-                                self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
+                                ui.button(
+                                    t("back_btn"),
+                                    icon='arrow_back',
+                                    on_click=lambda: ui.navigate.to(
+                                        f"{self.BackUrl}{self.BackupDriveId if self.BackupDriveId else self.BackupDriveId_Init}"
+                                    )
+                                ).classes(
+                                    '''
+                                    col-span-12 sm:col-span-2 md:col-span-2
+                                    w-full sm:w-auto
+                                    '''
+                                )
 
-                            with ui.column() as self.dwarf_filter_col:
+                            # backup drive
+                            with ui.column().classes(
+                                'col-span-12 sm:col-span-5 md:col-span-5'
+                            ) as self.backup_filter_col:
+
+                                ui.label(t("backup_drive"))
+
+                                self.backup_filter = ui.select(
+                                    options=[],
+                                    on_change=self.on_backup_filter_change
+                                ).props('outlined').classes('w-full')
+
+                            # dwarf device
+                            with ui.column().classes(
+                                'col-span-12 sm:col-span-5 md:col-span-5'
+                            ) as self.dwarf_filter_col:
+
                                 ui.label(t("dwarf_device"))
-                                self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
+
+                                self.dwarf_filter = ui.select(
+                                    options=[],
+                                    on_change=self.load_objects
+                                ).props('outlined').classes('w-full')
 
                         with ui.card().tight().classes('pr-3').bind_visibility_from(self.dwarf_filter, "value", lambda value: value != t("all_dwarfs")):
                             self.only_on_dwarf = ui.checkbox(t("only_backed_up"),on_change = self.on_change_only_on_dwarf)
@@ -230,18 +264,13 @@ class ExploreApp(DbPageMixin):
                             self.only_duplicates_backup = ui.checkbox(t("only_duplicates"),on_change = self.load_objects)
                     else:
                         if self.BackUrl:
-                            with ui.grid(columns=2):
-                                ui.button(t("back_btn"), on_click=lambda: ui.navigate.to(f"{self.BackUrl}{self.get_selected_dwarf_id() if self.get_selected_dwarf_id() else self.DwarfId}")).style('width: 100px')
+                            ui.button(t("back_btn"), icon='arrow_back',
+                                      on_click=lambda: ui.navigate.to(f"{self.BackUrl}{self.get_selected_dwarf_id() if self.get_selected_dwarf_id() else self.DwarfId}")) \
+                                .props('size=sm').classes('mb-1')
 
-                                with ui.row().classes('w-full') as self.dwarf_filter_col:
-                                    ui.label(t("dwarf_device"))
-                                    self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
-
-                        else:
-
-                            with ui.row().classes('w-full') as self.dwarf_filter_col:
-                                ui.label(t("dwarf_device"))
-                                self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
+                        with ui.row().classes('w-full') as self.dwarf_filter_col:
+                            ui.label(t("dwarf_device"))
+                            self.dwarf_filter = ui.select(options=[], on_change=self.load_objects).props('outlined')
 
                         with ui.row().classes('w-full'):
                             with ui.card().tight().bind_visibility_from(self.dwarf_filter, "value", lambda value: value != t("all_dwarfs")):
@@ -267,7 +296,7 @@ class ExploreApp(DbPageMixin):
                                 "🔭",
                                 on_click=lambda: open_sky_search_dialog(self._on_sky_result, conn=self.conn),
                             ).props('flat round dense').tooltip(t("sky_search_title"))
-                            self.object_spinner = ui.spinner(size="lg")
+                            self.loading_spinner = ui.spinner(size="lg")
 
                         # Sky filter badge (hidden by default)
                         with ui.row().classes("w-full items-center gap-1 px-2 pb-1") as self.sky_badge_row:
@@ -349,7 +378,9 @@ class ExploreApp(DbPageMixin):
 
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
-        self.object_spinner.set_visibility(False)
+        self.loading_spinner.set_visibility(False)
+
+        self._initializing = False  # Allow load_objects now
 
         if self.mode == "backup":
             self.populate_backup_filter()
@@ -358,10 +389,13 @@ class ExploreApp(DbPageMixin):
 
         self.selected_path = ""
 
-    def show_fullscreen_image(self):
+    async def show_fullscreen_image(self):
         if self.fullscreen_image.visible: 
             self.image_dialog.open()
-            ui.notify(t("press_esc"), position="top", type="info")
+            width = await ui.run_javascript('window.innerWidth')
+
+            if width >= 768:  # pas mobile
+                ui.notify(t("press_esc"), position="top", type="info")
 
     def populate_backup_filter(self):
         print(f"backup_filter: {self.BackupDriveId}")
@@ -494,7 +528,8 @@ class ExploreApp(DbPageMixin):
         except (TypeError, ValueError):
             val = 0
         self.quality_filter = None if val == 0 else val
-        ui.timer(0.05, self.load_objects, once=True)
+        if not self._initializing:
+            ui.timer(0.05, self.load_objects, once=True)
 
     def _on_sky_result(self, ra_deg: float, dec_deg: float, label: str, radius_deg: float):
         """Called by the sky search dialog when the user clicks Show sessions."""
@@ -527,8 +562,18 @@ class ExploreApp(DbPageMixin):
         background_tasks.create(self.load_objects())
 
     async def load_objects(self):
+        if self._initializing:
+            print("Cancelling load_objects")
+            return
 
-        self.object_spinner.set_visibility(True)
+        print("Starting load_objects")
+        # Capture client context — needed when called from background_tasks
+        try:
+            _client_ctx = ui.context.client
+        except Exception:
+            _client_ctx = None
+
+        self.loading_spinner.set_visibility(True)
         dwarf_id = self.get_selected_dwarf_id()
         # Save current selection — restore it after reload if still in list
         saved_object      = self.selected_object
@@ -575,15 +620,22 @@ class ExploreApp(DbPageMixin):
         print (f"Total objects: {len(self.objects)}")
         print (f"Total objects: {[f'{oid} - {name} {dso_id} {"G" if is_group else ""}' for oid, name, dso_id, is_group in self.objects]}")
 
+        def _create_timer(fn):
+            _client = getattr(self, '_ui_client', None) or _client_ctx
+            if _client:
+                with _client:
+                    ui.timer(0.1, fn, once=True)
+            else:
+                ui.timer(0.1, fn, once=True)
+
         # Restore previous selection if it still exists in the new list
         visible_names = [name for _, name, _, _ in self.objects]
         if saved_object == ALL_SESSIONS:
-            # ALL_SESSIONS is always available — restore and re-trigger
             self.selected_object             = saved_object
             self.selected_object_description = saved_description
             self.selected_object_is_group    = saved_is_group
             self.load_objects_ui()
-            ui.timer(0.1, lambda: self._handle_object_click_work(None, None, True), once=True)
+            _create_timer(lambda: self._handle_object_click_work(None, None, True))
         elif saved_object and saved_object in visible_names:
             self.selected_object             = saved_object
             self.selected_object_description = saved_description
@@ -591,19 +643,19 @@ class ExploreApp(DbPageMixin):
             for oid, name, dso_id, is_group in self.objects:
                 if name == saved_object:
                     self.load_objects_ui()
-                    ui.timer(0.1, lambda o=oid, d=dso_id, g=is_group: self._handle_object_click_work(o, d, g), once=True)
+                    _create_timer(lambda o=oid, d=dso_id, g=is_group: self._handle_object_click_work(o, d, g))
                     break
         else:
             self.selected_object = None
             self.selected_object_description = None
             self.selected_object_is_group = False
             self.load_objects_ui()
-        self.object_spinner.set_visibility(False)
+        self.loading_spinner.set_visibility(False)
 
         # ✅ Auto-select session if provided and at first
         if not self.AutoSelection_done and self.SessionId:
             self.AutoSelection_done = True
-            self.object_spinner.set_visibility(True)
+            self.loading_spinner.set_visibility(True)
             await self.auto_select_session()
  
     async def auto_select_session(self):
@@ -906,20 +958,27 @@ class ExploreApp(DbPageMixin):
 
         self.object_list.update()
         ui.update()
-        self.object_spinner.set_visibility(False)
+        self.loading_spinner.set_visibility(False)
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id = None):
-        self.object_spinner.set_visibility(True)
+        self.loading_spinner.set_visibility(True)
         self.selected_object = name
         self.selected_object_id = oid
         self.selected_object_description = desc 
         self.selected_object_is_group = is_group
-        ui.timer(0.05, lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id), once=True)
+        fn = lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id)
+        _client = getattr(self, '_ui_client', None)
+        if _client:
+            with _client:
+                ui.timer(0.05, fn, once=True)
+        else:
+            ui.timer(0.05, fn, once=True)
 
-    def _handle_object_click_work(self, oid, dso_id, is_group, session_id = None):
+    def _handle_object_click_work(self, oid, dso_id, is_group, session_id=None):
+        print(f'[click_work] oid={oid} is_group={is_group} session_id={session_id}', flush=True)
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
-        self.object_spinner.set_visibility(False)
+        self.loading_spinner.set_visibility(False)
 
     def clear_selected_object(self):
         self.fullscreen_image.visible = False
@@ -962,7 +1021,7 @@ class ExploreApp(DbPageMixin):
                 }
             ''')
 
-    def select_object(self, object_id, dso_id, is_group, session_id = None):
+    def select_object(self, object_id, dso_id, is_group, session_id=None):
         dwarf_id = self.get_selected_dwarf_id()
         details = []
         self.clear_selected_object()
@@ -2484,7 +2543,7 @@ class ExploreApp(DbPageMixin):
         import json, webview, os
         from pathlib import Path
 
-        self.object_spinner.set_visibility(True)
+        self.loading_spinner.set_visibility(True)
         try:
             data = await generate_siril_session_json(
                 self.conn,
@@ -2494,9 +2553,9 @@ class ExploreApp(DbPageMixin):
             )
         except Exception as e:
             ui.notify(t("fits_json_error", error=e), type="negative")
-            self.object_spinner.set_visibility(False)
+            self.loading_spinner.set_visibility(False)
             return
-        self.object_spinner.set_visibility(False)
+        self.loading_spinner.set_visibility(False)
 
         json_str = json.dumps(data, indent=2, ensure_ascii=False)
 

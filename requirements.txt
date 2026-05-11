@@ -12,3 +12,4 @@ requests
 portalocker
 astroalign
 reportlab
+psutil

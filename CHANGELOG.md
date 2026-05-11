@@ -1,5 +1,22 @@
 # Changelog
 
+## [V3.1.7_RC1] - 2026-05-11
+
+### Add
+    Introduce local ASTAP integration and a Sky Map WCS feature.
+
+    - Add ASTAP discovery, configuration and solve functions
+    - enhance auto_resolve to prefer ASTAP, then solve-field, then Nova API.
+    - Improve online upload by sending plate-scale hints extracted from FITS headers to Nova (scale_lower/scale_upper).
+    - Add SessionWCS DB table, unique index and migration to DB version 12
+    - Add sky map UI: new component components/sky_map_wcs.py
+
+    - Add integrity check for stacked FITS size in backup functions to detect corrupted stacked FITS.
+
+### BugFix#
+    Improve UI in Explore / Manual Explore
+    Corrected Missing Translations
+
 ## [V3.1.6_RC5] - 2026-05-07
 
 ### Add
