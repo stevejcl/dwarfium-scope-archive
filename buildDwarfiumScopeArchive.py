@@ -168,7 +168,7 @@ for source, name in cli_tools:
         *[arg for data in cli_extra_data for arg in ["--add-data", data]],
         source,
     ], check=True)
-    print(f"  ✅ {name}.exe built → {DIST_DIR / name}.exe")
+    print(f"  {name}.exe built → {DIST_DIR / name}.exe")
 
 # Step 4 – Zip everything in dist
 import platform
