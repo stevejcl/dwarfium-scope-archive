@@ -1224,9 +1224,8 @@ class ExploreApp(DbPageMixin):
                 def update_buttons():
                     # Enable/disable buttons depending on selection
                     has_selection = len(selected_sessions) > 0
-                    restore_button.enabled = has_selection
-                    archive_button.enabled = has_selection
-                    delete_button.enabled = has_selection
+                    self.backup_session_icon.enabled = has_selection
+                    self.delete_session_icon.enabled = has_selection
 
                 def toggle_select_all(state: bool):
                     for cb in checkboxes:

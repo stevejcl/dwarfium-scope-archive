@@ -831,43 +831,40 @@ def get_local_dwarf_dir(conn: sqlite3.Connection, dwarf_id = None):
     else:
         return local_Main_Dwarf_dir
 
-def empty_local_archive_dwarf_dir(dwarf_id = None):
-    local_Main_Dwarf_dir = os.path.join(".", "Dwarf_Local")
-    if dwarf_id:
-        local_Dwarf_dir = os.path.join(local_Main_Dwarf_dir, f"DWARF_{dwarf_id}")
+def empty_local_archive_dwarf_dir(local_Dwarf_dir = None):
+    safe_print(f"Local Directory {local_Dwarf_dir}")
 
-        if not os.path.exists(local_Dwarf_dir):
-            safe_print(f"Local Directory not found: {local_Dwarf_dir}")
-            return False
-
-        archive_Dwarf_dir = os.path.join(local_Dwarf_dir, "Archive")
-
-        # empty subdirs
-        if not os.path.exists(archive_Dwarf_dir):
-            safe_print(f"Archive Directory not found: {archive_Dwarf_dir}")
-            return False
-
-        # Loop through everything inside the DWARF_x directory
-        for item in os.listdir(archive_Dwarf_dir):
-            item_path = os.path.join(archive_Dwarf_dir, item)
-            # Prefix to handle long Windows paths
-            abs_path = os.path.abspath(item_path)
-            if os.name == "nt":
-                abs_path = "\\\\?\\" + abs_path
-
-            try:
-                if os.path.isfile(abs_path) or os.path.islink(abs_path):
-                    os.remove(abs_path)  # remove file or symlink
-                elif os.path.isdir(abs_path):
-                    shutil.rmtree(abs_path)  # remove directory recursively
-            except FileNotFoundError:
-                print(f"Already gone: {item_path}")
-            except Exception as e:
-                safe_print(f"Failed to delete {item_path}. Reason: {e}")
-
-        return True
-    else:
+    if not local_Dwarf_dir or not os.path.exists(local_Dwarf_dir):
+        safe_print(f"Local Directory not found: {local_Dwarf_dir}")
         return False
+
+    archive_Dwarf_dir = os.path.join(local_Dwarf_dir, "Archive")
+    safe_print(f"archive_Dwarf_dir Directory {archive_Dwarf_dir}")
+
+    # empty subdirs
+    if not os.path.exists(archive_Dwarf_dir):
+        safe_print(f"Archive Directory not found: {archive_Dwarf_dir}")
+        return False
+
+    # Loop through everything inside the DWARF_x directory
+    for item in os.listdir(archive_Dwarf_dir):
+        item_path = os.path.join(archive_Dwarf_dir, item)
+        # Prefix to handle long Windows paths
+        abs_path = os.path.abspath(item_path)
+        if os.name == "nt":
+            abs_path = "\\\\?\\" + abs_path
+
+        try:
+            if os.path.isfile(abs_path) or os.path.islink(abs_path):
+                os.remove(abs_path)  # remove file or symlink
+            elif os.path.isdir(abs_path):
+                shutil.rmtree(abs_path)  # remove directory recursively
+        except FileNotFoundError:
+            print(f"Already gone: {item_path}")
+        except Exception as e:
+            safe_print(f"Failed to delete {item_path}. Reason: {e}")
+
+    return True
 
 def is_path_local_dwarf_dir(full_path):
     return "Dwarf_Local" in str(full_path)

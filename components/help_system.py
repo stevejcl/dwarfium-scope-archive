@@ -57,15 +57,16 @@ def build_help():
         .help-content th { font-weight: 600; background: rgba(0,0,0,0.05); }
     """)
 
-def open_help(force_open = False):
+def open_help(force_open=False):
     global help_drawer
 
     if help_drawer is None:
         return
 
-    # toggle state
     current = app.storage.user.get('help_open', False)
-    new_state = force_open or not help_drawer.value
+
+    new_state = force_open or not current
+    #new_state = force_open or not help_drawer.value
 
     if current != new_state:
         app.storage.user['help_open'] = new_state

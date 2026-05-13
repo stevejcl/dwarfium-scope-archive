@@ -665,6 +665,7 @@ TRANSLATIONS: dict[str, str] = {
     "notif_api_key_saved":          "API key saved successfully!",
     "notif_backup_saved":           "Backup drive saved.",
     "notif_dwarf_deleted":          "Dwarf deleted.",
+    "notify_archive_cleaned":       "Archive cleanup completed",
     "notif_db_failed":              "DB removal failed.",
     "notif_backup_entries_deleted": "Backup entries and DwarfData deleted.",
     "notif_select_dso_first":       "Please select a DSO first.",

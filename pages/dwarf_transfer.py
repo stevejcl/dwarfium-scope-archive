@@ -268,7 +268,7 @@ class TransferApp:
             self._progress_timer = ui.timer(1.0, self._poll_transfer_progress)
 
         self.populate_dwarf_filter()
-        ui.timer(0.1, lambda: (self._restore_transfer_state_2(), self.notify_me(None)), once=True)
+        ui.timer(0.5, lambda: (self._restore_transfer_state_2(), self.notify_me(None)), once=True)
 
     def populate_dwarf_filter(self):
         self.ftp_spinner.set_visibility(False)
@@ -1255,13 +1255,13 @@ class TransferApp:
                        print(f"[Restore1] DwarfId={self.DwarfId} BackupId={self.BackupId} mode={self.mode} session={self.session}")
         except Exception as e:
             print(f"[Restore1] Error: {e}")
-        finally:
-            # Read journal from backup root if available
-            self._show_last_journal()
 
     def _restore_transfer_state_2(self):
         """Called after UI build — restore src/dest dropdowns and progress."""
         try:
+            # Read journal from backup root if available
+            self._show_last_journal()
+
             ctx  = app.storage.general.get('transfer_context', {})
             mode = ctx.get('mode', '')
             if not mode:
@@ -1311,11 +1311,16 @@ class TransferApp:
         # Cleanup Transfer Keys after Restore
         # only if transfer is not running
         print("CLEANUP: All cleanup_transfer_keys")
-        app.storage.general.pop('transfer_progress', None)
         tp = app.storage.general.get('transfer_progress', {})
         if tp.get('status') in ('done', 'error', 'cancelled'):
             for key in ('transfer_context', 'transfer_copy_totals',
                         'transfer_cancel_requested', 'transfer_progress'):
+                app.storage.general.pop(key, None)
+
+        # cleanup if some others are still here
+        if not tp:
+            for key in ('transfer_context', 'transfer_copy_totals',
+                        'transfer_cancel_requested'):
                 app.storage.general.pop(key, None)
 
     def _poll_transfer_progress(self):

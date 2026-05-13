@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.1.8_RC2] - 2026-05-14
+
+### BugFix#
+    Refactor empty_local_archive_dwarf_dir to accept a local directory path.
+    Use storage-based help drawer state when toggling help
+    run MTP availability check off the main thread for responsiveness
+    Add correct notify_archive_cleaned translation to send that notification.
+    Correct button namings to avoid errors
+
 ## [V3.1.8_RC1] - 2026-05-13
 
 ### Add

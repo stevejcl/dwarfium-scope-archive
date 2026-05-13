@@ -418,7 +418,11 @@ class ConfigApp(DbPageMixin):
         add_new = False
         mtp = MTPManager()
 
-        if mtp.is_MTP_available():
+        available = await run.io_bound(
+                mtp.is_MTP_available
+            )
+
+        if available:
             self.mtp_devices = mtp.list_mtp_devices()
             print(f"detect_mtp_devices {len(self.mtp_devices)}")
         
@@ -673,9 +677,9 @@ class ConfigApp(DbPageMixin):
 
     async def ok_confirm_and_delete_dwarf_archive(self):
         # Delete the Archive
-        empty_local_archive_dwarf_dir(self.dwarf_id)
+        local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
 
-        print(f"Deleted Dwarf {self.dwarf_id}.")
+        await run.io_bound(empty_local_archive_dwarf_dir(local_Dwarf_dir))
+
         self.refresh_dwarf_list()
-        await self.set_new_dwarf()
-        ui.notify(t("dwarf_deleted"), type="positive")
+        ui.notify(t("notify_archive_cleaned"), type="positive")
