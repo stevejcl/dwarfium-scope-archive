@@ -24,6 +24,13 @@ Options:
     --entry-type        Filter by entry type: backup | manual
     --astap-db D20|D50  ASTAP star database (default: D50)
     --astap-path PATH   Force ASTAP executable path
+    --re-solver SOLVER    Re-solve only sessions solved by this solver (nova, astap)
+    --crop                Crop 20%% borders before solving (fixes stacking artefacts)
+    --crop-margin N       Crop margin on each side (default: 0.20 = 20%%)
+    --dwarf NAME        Filter by Dwarf name (exact match, e.g. "Dwarf Mini")
+    --max-quality N     Max quality score filter (optional, e.g. 69)
+    --delay N           Delay in seconds between sessions (default: 2)
+    --fix-null-ra       Re-solve sessions with missing RA/DEC in SessionWCS
     --db PATH           Path to database (default: auto-detect)
 """
 

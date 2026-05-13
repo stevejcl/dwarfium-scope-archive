@@ -13,6 +13,17 @@ def setStyle(color_primary = '#00ae83'):
 
 def menu(title):
 
+    # Thin window scrollbar — applied globally on all pages
+    ui.add_head_html("""
+    <style>
+        html::-webkit-scrollbar { width: 6px; }
+        html::-webkit-scrollbar-track { background: transparent; }
+        html::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+        html::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
+        html { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.2) transparent; }
+    </style>
+    """)
+
     dark = ui.dark_mode()
     if app.storage.user.get('ui_mode',0) == 'dark' :
         dark.enable()

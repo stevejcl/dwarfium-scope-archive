@@ -13,7 +13,7 @@ import webbrowser
 from nicegui import ui, app
 from components.i18n import t
 from api.image_preview import build_preview_url, set_base_folder
-from api.dwarf_backup_fct import get_session_file_ref
+from api.dwarf_backup_fct import get_relative_file_path
 
 _DWARF_FOV = {
     2.75: (3856, 2180),
@@ -1028,7 +1028,7 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
                     full_path = image_path.replace('/', os.sep).replace('\\', os.sep)
                     if os.path.exists(full_path):
                         base_folder = str(os.path.dirname(location))
-                        img_url     = build_preview_url(get_session_file_ref(base_folder, full_path))
+                        img_url     = build_preview_url(get_relative_file_path(base_folder, full_path))
                     else:
                         drive = location or ''
                         if drive:

@@ -142,21 +142,25 @@ class MosaicApp(DbPageMixin):
             ).classes("text-sm text-gray-500")
 
             # Dwarf + Backup selector row
-            with ui.grid(columns=2):
-                with ui.column().classes('w-50 items-center'):
-                    ui.label(t("select_dwarf")).classes("text-lg font-semibold")
-                    self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
-                    with ui.row().classes('items-center gap-2'):
-                        self.usb_status_label = ui.label("").classes('pb-2')
-                        self.refresh_btn = (
-                            ui.button(icon='refresh', on_click=self.check_dir_dwarf)
-                            .props('flat round dense')
-                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
-                        )
-                with ui.column().classes('w-50 items-center'):
-                    ui.label(t("backup_drive")).classes("text-lg font-semibold")
-                    self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
-                    self.backup_status_label = ui.label("").classes('pb-2')
+            with ui.grid(columns=2).classes("w-full gap-4"):
+                with ui.row().classes('items-start gap-4'):
+                    with ui.column().classes('gap-1'):
+                        ui.label(t("select_dwarf")).classes("text-lg font-semibold")
+                        self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
+                    with ui.column().classes('gap-1 justify-center pt-6'):
+                        with ui.row().classes('items-center gap-2'):
+                            self.usb_status_label = ui.label("").classes('')
+                            self.refresh_btn = (
+                                ui.button(icon='refresh', on_click=self.check_dir_dwarf)
+                                .props('flat round dense')
+                                .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
+                            )
+                with ui.row().classes('items-start gap-4'):
+                    with ui.column().classes('gap-1'):
+                        ui.label(t("backup_drive")).classes("text-lg font-semibold")
+                        self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
+                    with ui.column().classes('gap-1 justify-center pt-6'):
+                        self.backup_status_label = ui.label("").classes('')
 
         # ── Primary session card ─────────────────────────────────────────
         with ui.card().classes("w-full p-4 mt-1 items-center"):
@@ -167,17 +171,18 @@ class MosaicApp(DbPageMixin):
                     {'Dwarf': t('dwarf_device'), 'Backup': t('menu_backup_settings')},
                     value='Dwarf', on_change=self.on_primary_source_change,
                 ).props('dense')
-            self.input_primary_dir = (
-                ui.select(
-                    label=t("primary_session_dir"),
-                    value=self.primary_session_dir,
-                    options=[self.primary_session_dir],
-                    on_change=self.on_primary_dir_change,
+            with ui.row().classes('w-full items-center gap-4'):
+                self.input_primary_dir = (
+                    ui.select(
+                        label=t("primary_session_dir"),
+                        value=self.primary_session_dir,
+                        options=[self.primary_session_dir],
+                        on_change=self.on_primary_dir_change,
+                    )
+                    .props('stack-label outlined')
+                    .classes("flex-grow min-w-[300px] overflow-x-auto whitespace-nowrap")
                 )
-                .props('stack-label outlined')
-                .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            )
-            ui.button(t("select_primary"), on_click=self.select_primary_folder).classes(sizeBTN2)
+                ui.button(t("select_primary"), on_click=self.select_primary_folder).classes(sizeBTN2)
 
             with ui.row().classes('w-full items-start'):
                 # LEFT COLUMN
@@ -199,17 +204,18 @@ class MosaicApp(DbPageMixin):
                     {'Dwarf': t('dwarf_device'), 'Backup': t('menu_backup_settings')},
                     value='Dwarf', on_change=self.on_secondary_source_change,
                 ).props('dense')
-            self.input_secondary_dir = (
-                ui.select(
-                    label=t("secondary_session_dir"),
-                    value=self.secondary_session_dir,
-                    options=[self.secondary_session_dir],
-                    on_change=self.on_secondary_dir_change,
+            with ui.row().classes('w-full items-center gap-4'):
+                self.input_secondary_dir = (
+                    ui.select(
+                        label=t("secondary_session_dir"),
+                        value=self.secondary_session_dir,
+                        options=[self.secondary_session_dir],
+                        on_change=self.on_secondary_dir_change,
+                    )
+                    .props('stack-label outlined')
+                    .classes("flex-grow min-w-[300px] overflow-x-auto whitespace-nowrap")
                 )
-                .props('stack-label outlined')
-                .classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            )
-            ui.button(t("select_secondary"), on_click=self.select_secondary_folder).classes(sizeBTN2)
+                ui.button(t("select_secondary"), on_click=self.select_secondary_folder).classes(sizeBTN2)
 
             with ui.row().classes('w-full items-start'):
                 # LEFT COLUMN

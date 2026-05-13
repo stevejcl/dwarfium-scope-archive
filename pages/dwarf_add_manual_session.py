@@ -1,6 +1,6 @@
 from components.i18n import t
 import webview
-from nicegui import ui, app, Client
+from nicegui import ui, app, run, Client
 from components.session_notes import session_notes_widget
 
 import os
@@ -21,7 +21,7 @@ from astropy.wcs import WCS
 from components.menu import menu
 from api.dwarf_backup_fct import ( 
     hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
-    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref, safe_copy2
+    show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref, safe_copy2, get_relative_file_path
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from components.db_page_mixin import DbPageMixin
@@ -186,6 +186,8 @@ class AddManualSession(DbPageMixin):
         backup_drive_id = row[21]
         dwarf_id        = row[22]
         session_id      = row[23]
+        manualdrive_dir = row[26]
+        manualdrive_location = row[27]
 
         # --- Pre-fill session name and tag inputs ---
         print(f"session name input: {session_name}")
@@ -462,22 +464,25 @@ class AddManualSession(DbPageMixin):
                         import urllib.parse
                         decoded_back = urllib.parse.unquote(self.BackUrl) if self.BackUrl else "/"
                         ui.button(
-                            "🔙 Back",
+                            t("back_btn"),
                             on_click=lambda: ui.navigate.to(decoded_back),
                         ).style('width: 160px').classes('mb-2')
 
-                    self.mode_toggle = ui.toggle([self.mode_stellar, self.mode_manual], value=self.mode_stellar, on_change=self.switch_mode)
 
             with ui.grid(columns=2):
-                with ui.column():
-                    ui.label(t("select_dwarf")).classes("text-lg font-semibold")
-                    self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
-                    self.usb_status_label = ui.label("").classes('pb-2')
+                with ui.row().classes('items-start gap-20'):
+                    with ui.column().classes('gap-1'):
+                        self.mode_toggle = ui.toggle([self.mode_stellar, self.mode_manual], value=self.mode_stellar, on_change=self.switch_mode)
+                    with ui.column().classes('gap-1'):
+                        ui.label(t("select_dwarf")).classes("text-lg font-semibold")
+                        self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
 
-                with ui.column():
-                    ui.label(t("backup_drive")).classes("text-lg font-semibold")
-                    self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
-                    self.backup_status_label = ui.label("").classes('pb-2')
+                with ui.row().classes('items-start gap-4'):
+                    with ui.column().classes('gap-1'):
+                        ui.label(t("backup_drive")).classes("text-lg font-semibold")
+                        self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
+                    with ui.column().classes('gap-1 justify-center pt-6'):
+                        self.backup_status_label = ui.label("").classes('pb-2')
 
             with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
                 ui.label(f'Backup {self.mode} Files')
@@ -1164,7 +1169,7 @@ class AddManualSession(DbPageMixin):
 
             except Exception as ex:
                 # On error: restore cursor, close dialog, show message
-                await self.client.ui.run_javascript("document.body.style.cursor='default'")
+                await self.client.run_javascript("document.body.style.cursor='default'")
                 try:
                     dialog_fits.close()
                 except Exception:
@@ -1609,11 +1614,11 @@ class AddManualSession(DbPageMixin):
     async def confirm_overwrite(self, dest_path):
 
         print("confirm_overwrite")
-        ui.notify(f"The destination '{dest_path}' already exists.!", type='warning')
+        ui.notify(t('notify_dest_already_exists', dest_path=dest_path), type='warning')
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
-            ui.label(f"The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?")
+            ui.label(t('dest_already_exists',dest_path=dest_path))
             with ui.row():
                 ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
                 ui.button(t("no"), on_click=lambda: dialog.submit('No'))
@@ -1841,15 +1846,19 @@ class AddManualSession(DbPageMixin):
                     session_tag    = (self.session_tag.value or "").strip()
                     session_type   = self.mode
                     print("before insert/update")
+                    
+                    # saved files path from self.backup_location
+                    db_begin_path = get_relative_file_path(self.backup_location, dest_path)
+                    print(f"begin_path: {db_begin_path}")
 
                     # Build shared kwargs for insert or update
                     _db_kwargs = dict(
                         session_name      = session_name,
                         session_tag       = session_tag,
                         session_type      = session_type,
-                        jpeg_path         = get_session_file_ref(dest_path, jpeg_path),
+                        jpeg_path         = get_session_file_ref(db_begin_path, jpeg_path),
                         modification_time = mtime,
-                        thumbnail_path    = get_session_file_ref(dest_path, thumbnail_path),
+                        thumbnail_path    = get_session_file_ref(db_begin_path, thumbnail_path),
                         file_size         = total_size,
                         description       = description,
                         dec               = dec,
@@ -1858,8 +1867,8 @@ class AddManualSession(DbPageMixin):
                         IR_filter         = IR_filter,
                         maxTemp           = maxTemp,
                         minTemp           = minTemp,
-                        stacked_png_path  = get_session_file_ref(dest_path, stacked_png_path),
-                        stacked_fits_path = get_session_file_ref(dest_path, stacked_fits_path),
+                        stacked_png_path  = get_session_file_ref(db_begin_path, stacked_png_path),
+                        stacked_fits_path = get_session_file_ref(db_begin_path, stacked_fits_path),
                         stacked_fits_md5  = stacked_fits_md5,
                     )
 

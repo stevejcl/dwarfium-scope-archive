@@ -193,38 +193,46 @@ class TransferApp:
                     self.mode_toggle = None
                     ui.label(t("merge_transfer")).classes("col-span-1 justify-self-center text-base font-semibold text-orange-600")
 
-            with ui.grid(columns=2):
-                with ui.column().classes('w-50 items-center'):
-                    ui.label(t("select_dwarf")).classes("text-lg font-semibold")
-                    self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
-                    with ui.row().classes('items-center gap-2'):
-                        self.usb_status_label = ui.label("").classes('pb-2')
-                        self.refresh_btn = (
-                            ui.button(icon='refresh', on_click=self.check_status_dwarf)
-                            .props('flat round dense')
-                            .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
-                        )
-                    with ui.element('div').classes('pt-0 pb-0 relative w-fit h-fit'):
-                        self.ftp_status_label = ui.label("").classes('pt-0 pb-2')
-                        self.ftp_spinner = (
-                            ui.spinner(size="2em")
-                            .style('position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10')
-                        )
-                with ui.column().classes('w-50 items-center'):
-                    ui.label(t("backup_drive")).classes("text-lg font-semibold")
-                    self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
-                    self.backup_status_label = ui.label("").classes('pb-2')
+            with ui.grid(columns=2).classes("w-full gap-4"):
+                # Dwarf column — dropdown left, statuts right
+                with ui.row().classes('items-start gap-4'):
+                    with ui.column().classes('gap-1'):
+                        ui.label(t("select_dwarf")).classes("text-lg font-semibold")
+                        self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
+                    with ui.column().classes('gap-1 justify-center pt-6'):
+                        with ui.row().classes('items-center gap-2'):
+                            self.usb_status_label = ui.label("").classes('')
+                            self.refresh_btn = (
+                                ui.button(icon='refresh', on_click=self.check_status_dwarf)
+                                .props('flat round dense')
+                                .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
+                            )
+                        with ui.element('div').classes('relative w-fit h-fit'):
+                            self.ftp_status_label = ui.label("").classes('')
+                            self.ftp_spinner = (
+                                ui.spinner(size="2em")
+                                .style('position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10')
+                            )
+                # Backup column — dropdown left, statuts right
+                with ui.row().classes('items-start gap-4'):
+                    with ui.column().classes('gap-1'):
+                        ui.label(t("backup_drive")).classes("text-lg font-semibold")
+                        self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
+                    with ui.column().classes('gap-1 justify-center pt-6'):
+                        self.backup_status_label = ui.label("").classes('')
 
             self.transfert_mode_select = ui.select(label=t("transfer_mode"),options=[], on_change=self.change_transfert_mode).props('stack-label').props('outlined').classes('w-40').classes("min-w-[200px] w-auto overflow-x-auto whitespace-nowrap")
 
             self.SourceDirectory = ui.label(t("source_usb")).classes("text-lg font-semibold")
-            self.input_src_dir = ui.select(label=t("source_directory"), value = self.src_dir, options=[self.src_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            ui.button(t("select_source"), on_click=lambda : self.select_source_folder()).classes(sizeBTN)
+            with ui.row().classes('w-full items-center gap-4'):
+                self.input_src_dir = ui.select(label=t("source_directory"), value = self.src_dir, options=[self.src_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('flex-grow min-w-[300px] overflow-x-auto whitespace-nowrap')
+                ui.button(t("select_source"), on_click=lambda : self.select_source_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-1 items-center"):
             self.DestinationDirectory = ui.label(t("backup_destination")).classes("text-lg font-semibold")
-            self.input_dest_dir = ui.select(label=t("destination_dir"), value = self.dest_dir, options=[self.dest_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('w-40').classes("min-w-[600px] w-auto overflow-x-auto whitespace-nowrap")
-            ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
+            with ui.row().classes('w-full items-center gap-4'):
+                self.input_dest_dir = ui.select(label=t("destination_dir"), value = self.dest_dir, options=[self.dest_dir], on_change=lambda: self.resize_input()).props('stack-label').props('outlined').classes('flex-grow min-w-[300px] overflow-x-auto whitespace-nowrap')
+                ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder()).classes(sizeBTN)
 
         with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
             self.progress_label = ui.label(t("idle"))
@@ -878,7 +886,7 @@ class TransferApp:
 
         # Display confirmation dialog
         with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
-            ui.label(f"{t('dest_already_exists',dest_path=dest_path)}")
+            ui.label(t('dest_already_exists',dest_path=dest_path))
             with ui.row():
                 ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
                 ui.button(t("no"), on_click=lambda: dialog.submit('No'))

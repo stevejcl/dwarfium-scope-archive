@@ -1472,6 +1472,8 @@ def get_ObjectSelect_manual(conn: sqlite3.Connection, object_id=None, dso_id=Non
         [24] ManualSessionEntry.id              <- own PK, used for delete / favorite toggle
         [25] Dwarf.name                         <- may be NULL if dwarf not set
         [26] BackupDrive.name                   <- may be NULL if drive not set
+        [27] ManualSessionDrive.manualsession_dir
+        [28] ManualSessionDrive.location
     """
     try:
         cursor = conn.cursor()
@@ -1504,13 +1506,16 @@ def get_ObjectSelect_manual(conn: sqlite3.Connection, object_id=None, dso_id=Non
                 ManualSessionEntry.backup_entry_id,
                 ManualSessionEntry.id,
                 Dwarf.name,
-                BackupDrive.name
+                BackupDrive.name,
+                ManualSessionDrive.manualsession_dir,
+                ManualSessionDrive.location
             FROM ManualSessionEntry
             JOIN ManualSession ON ManualSessionEntry.manual_session_id = ManualSession.id
             JOIN AstroObject   ON ManualSessionEntry.astro_object_id  = AstroObject.id
             LEFT JOIN AstroObject AS AstroGroup ON ManualSessionEntry.astro_group_id = AstroGroup.id
             LEFT JOIN Dwarf       ON ManualSessionEntry.dwarf_id       = Dwarf.id
             LEFT JOIN BackupDrive ON ManualSessionEntry.backup_drive_id = BackupDrive.id
+            LEFT JOIN ManualSessionDrive ON ManualSessionEntry.manual_session_drive = ManualSessionDrive.id
         """
 
         where_clauses = []
@@ -1599,7 +1604,7 @@ def get_ManualSession_by_entry_id(conn: sqlite3.Connection, entry_id: int):
     Load a single ManualSession + ManualSessionEntry row by ManualSessionEntry.id.
     Used by AddManualSession when opened in edit mode (ManualEntryId URL parameter).
 
-    Returns the same column layout as get_ObjectSelect_manual (26 columns), or [].
+    Returns the same column layout as get_ObjectSelect_manual (29 columns), or [].
     """
     return get_ObjectSelect_manual(conn, session_id=entry_id)
 
@@ -1613,7 +1618,7 @@ def get_ManualSession_by_backup_entry_id(conn: sqlite3.Connection, backup_drive_
     target imported at different times or with different session types), so this
     intentionally returns all of them — not just the first one.
 
-    Each row uses the same 26-column layout as get_ObjectSelect_manual.
+    Each row uses the same 29-column layout as get_ObjectSelect_manual.
     Returns [] if nothing is linked or on error.
     """
     try:
@@ -1678,8 +1683,14 @@ def get_backup_favorites(conn: sqlite3.Connection):
                 Dwarf.name AS dwarf_name,
                 BackupDrive.name AS backup_drive_name,
                 BackupDrive.location,
-                AstroObject.description AS description
-            FROM BackupEntry
+                AstroObject.description AS description,
+                DwarfData.exp_time,
+                DwarfData.gain,
+                DwarfData.ircut,
+                DwarfData.shotsStacked,
+                DwarfData.id,
+                DwarfData.stacked_fits_path
+                FROM BackupEntry
             LEFT JOIN AstroObject ON BackupEntry.astro_object_id = AstroObject.id
             LEFT JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id
             LEFT JOIN Dwarf ON BackupEntry.dwarf_id = Dwarf.id
@@ -1736,6 +1747,9 @@ def get_manual_favorites(conn: sqlite3.Connection):
         [7] ManualSession.description
         [8] ManualSessionEntry.session_dir
         [9] ManualSession.session_type
+        [10] ManualSession.session_tag
+        [11] ManualSessionDrive.manualsession_dir
+        [12] ManualSessionDrive.location
     """
     try:
         cursor = conn.cursor()
@@ -1750,11 +1764,15 @@ def get_manual_favorites(conn: sqlite3.Connection):
                 bd.location,
                 ms.description,
                 mse.session_dir,
-                ms.session_type
+                ms.session_type,
+                ms.session_tag,
+                ManualSessionDrive.manualsession_dir as manual_session_dir,
+                ManualSessionDrive.location as manual_location
             FROM ManualSessionEntry mse
             JOIN ManualSession ms  ON mse.manual_session_id = ms.id
             LEFT JOIN BackupDrive bd ON mse.backup_drive_id = bd.id
             LEFT JOIN Dwarf d        ON mse.dwarf_id        = d.id
+            LEFT JOIN ManualSessionDrive ON mse.manual_session_drive = ManualSessionDrive.id
             WHERE mse.favorite = 1
             ORDER BY mse.session_date DESC
         """)
@@ -2640,7 +2658,7 @@ def update_manual_session_image(conn: sqlite3.Connection, manual_session_id: int
         print(f"[DB ERROR] update_manual_session_image: {e}")
         return False
 
-def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive_id=None):
+def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive=None):
     try:
         # Insert entry in BackupEntry
         cursor = conn.execute("""
@@ -2654,7 +2672,7 @@ def insert_ManualSessionEntry(conn: sqlite3.Connection, manual_session_id, backu
                 session_dir=excluded.session_dir,
                 astro_group_id=excluded.astro_group_id,
                 manual_session_drive=excluded.manual_session_drive
-        """, (manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive_id))
+        """, (manual_session_id, backup_drive_id, dwarf_id, astro_object_id, backup_entry_id, session_dt_str, session_dir, astro_group_id, manual_session_drive))
 
         if cursor.rowcount > 0:
             manualSessionEntry_id = cursor.lastrowid

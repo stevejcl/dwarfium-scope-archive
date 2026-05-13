@@ -421,6 +421,7 @@ TRANSLATIONS: dict[str, str] = {
     "no_thumbnail":                 "(no thumbnail available)",  # TODO
     "favorite_add":                 "Click to Add to Favorites",  # TODO
     "favorite_remove":              "Click to Remove from Favorites",  # TODO
+    "confirm_favorite_remove":      "Are you sure you want to remove this image from your favorites?",  # TODO
     "press_esc":                    "Press ESC to close the image",  # TODO
     "show_fullscreen_img":          "Show Fullscreen Image",  # TODO
     "show_fullscreen_btn":          "Show fullscreen",  # TODO
@@ -828,4 +829,39 @@ TRANSLATIONS: dict[str, str] = {
     "sky_map_btn_scan":             "Scan", # TODO
     "sky_map_mosaic_centers":       "Mosaic centers", # TODO
 
+    # ── Video export ────────────────────────────────────────────────────────────
+    "export_video":                 'Export Video', # TODO
+    "signature_name":               'Your name', # TODO
+    "your_name":                    'e.g. John Doe', # TODO
+    "signature_text":               'Custom text (optional)', # TODO
+    "optional_text":                'e.g. My astrophotography gallery', # TODO
+    "font_choice":                  'Font', # TODO
+    "font_size":                    'Font size', # TODO
+    "duration_per_photo":           'Duration per photo (sec)', # TODO
+    "video_resolution":             'Resolution', # TODO
+    "video_extra_info":             'Add Imaging Session Details', # TODO
+    "video_resolution":             'Résolution', # TODO
+    "video_generating":             'Generating video...', # TODO
+    "video_saved":                  'Video saved', # TODO
+    "generate":                     'Generate', # TODO
+
+    "filter_favorites_only":        'Show favorites only', # TODO
+
+    # ── Video music ─────────────────────────────────────────────────────────────
+    "background_music":             'Background music', # TODO
+    "no_music":                     'No music', # TODO
+    "my_music":                     'My music', # TODO
+    "music_file_path":              'Music file path', # TODO
+    "browse_music":                 'Browse...', # TODO
+    "music_copyright_warning":      'Make sure you have the rights to use this music for sharing', # TODO
+
+    # ── FFmpeg ──────────────────────────────────────────────────────────────────
+    "ffmpeg_config":                'FFmpeg (Video/Audio)', # TODO
+    "ffmpeg_used_for_music":        'Used for adding background music to exported videos.', # TODO
+    "ffmpeg_needed_for_music":      'Install ffmpeg to add background music to your videos.', # TODO
+    "ffmpeg_install_hint":          '→ Extract and place ffmpeg.exe in extern/windows/', # TODO
+
+    "music_folder":                'Music folder', # TODO
+    "upload_music":                'Upload music file', # TODO
+    "music_uploaded":              'added to music folder', # TODO
 }

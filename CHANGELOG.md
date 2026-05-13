@@ -1,5 +1,18 @@
 # Changelog
 
+## [V3.1.8_RC1] - 2026-05-13
+
+### Add
+    Add video export & slideshow / music strings and assets
+    FFmpeg status UI and helper tool integration;
+    add astrometry_scan.bat and a new tools/video_export.py. Introduce path utility helpers (h) and adjust session path handling across manual session code to store/use relative DB paths. Extend DB queries and manual session API to include ManualSessionDrive fields and update related insert/update call signature.
+    Improve robustness (date parsing fallback),
+    UI tweaks (thin global scrollbar, layout/scroll behavior, favorite-filter button)
+    
+### BugFix#
+    Various locale files updated with new translations and minor bugfixes (date index fix in Explore listing). 
+    get_relative_file_path, get_basefolder_from_db_path correction
+       
 ## [V3.1.7_RC1] - 2026-05-11
 
 ### Add

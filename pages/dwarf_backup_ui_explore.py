@@ -139,6 +139,7 @@ class ExploreApp(DbPageMixin):
         self.slideshow_image_data = []
         self.slideshow_timer_anim = None
         self.slideshow_timer = None
+        self.slideshow_image_full = False
         self.show_gallery_icon = {}
         self.open_folder_icon = {}
         self.preview_icons = {}
@@ -215,8 +216,8 @@ class ExploreApp(DbPageMixin):
         ''')
 
         with ui.row().classes('w-full items-start'):
-            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid'):
-                with ui.column().classes('w-full min-w-[300px] mobile-left-col') as self.mobile_left_col:
+            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid').style('height: calc(100vh - 100px)'):
+                with ui.column().classes('w-full min-w-[300px] h-full flex flex-col min-h-0 mobile-left-col') as self.mobile_left_col:
                     if self.mode == "backup":
                         with ui.grid(columns=12).classes('w-full items-end gap-2'):
                             # back button
@@ -280,7 +281,7 @@ class ExploreApp(DbPageMixin):
                                 self.only_on_backup = ui.checkbox(t("only_already_backed"),on_change = self.on_change_only_on_backup)
 
                     self.count_label = ui.label(t("total_sessions_zero"))
-                    with ui.card().tight().classes('w-full'):
+                    with ui.card().tight().classes('w-full flex-1 flex overflow-hidden'):
                         with ui.row().classes('items-center m-4 gap-2'):
                             self.object_filter = (
                                 ui.input(placeholder=t('filter_objects'), on_change=lambda e: self.load_objects_ui() if e.value else self.load_objects())
@@ -314,7 +315,16 @@ class ExploreApp(DbPageMixin):
                                 on_change=self._on_quality_filter_change,
                             ).props("dense").tooltip(t("quality_filter_tooltip"))
 
-                        self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
+                        self.object_list = ui.list().classes('w-full flex-1 overflow-y-scroll min-h-0 object-list-scroll').style(
+    'scrollbar-width: thin; scrollbar-gutter: stable;'
+)
+                        ui.button(icon='keyboard_arrow_up',
+                            on_click=lambda: ui.run_javascript(
+                                'document.querySelector(".object-list-scroll").scrollTo({top: 0, behavior: "smooth"})'
+                            )
+                        ).props('round dense flat color=primary') \
+                         .classes('sticky bottom-2 left-full z-10 opacity-60 hover:opacity-100') \
+                         .tooltip(t('top'))
 
                 with ui.column().classes('w-full mobile-right-col') as self.mobile_right_col:
                     # Create the dialog that simulates fullscreen
@@ -326,7 +336,15 @@ class ExploreApp(DbPageMixin):
 
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):
-                            ui.label(t("session_list"))
+                            with ui.row().classes('items-center gap-2'):
+                                ui.label(t("session_list"))
+                                self.fav_filter_btn = (
+                                    ui.button(icon='star', on_click=self._toggle_fav_filter)
+                                    .props('flat round dense')
+                                    .tooltip(t("filter_favorites_only"))
+                                )
+                                self.fav_filter_active = False
+                                self._update_fav_filter_icon()
                             self.file_list = ui.select(options=[], on_change=self.on_file_selected).props('outlined').style('overflow-x: auto;')
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
 
@@ -367,7 +385,7 @@ class ExploreApp(DbPageMixin):
                             #self.preview_icons['png'].on('click', lambda e: ui.notify(t("png_icon_clicked")))
                             #self.preview_icons['fits'].on('click', lambda e: ui.notify(t("fits_icon_clicked")))
 
-                    with ui.row().classes('w-full'):
+                    with ui.row().classes('w-full').style('scrollbar-width: thin; scrollbar-gutter: stable;'):
                         with ui.card().tight().classes('w-full'):
                             # List on the side
                             self.details_files = ui.list().classes('w-full overflow-y-auto')
@@ -511,7 +529,7 @@ class ExploreApp(DbPageMixin):
                         )
                     if match:
                         oid, dso_id, is_group = match
-                        self.load_objects_ui()
+                        self.loading_spinner.set_visibility(True)
                         ui.timer(0.1, lambda o=oid, d=dso_id, g=is_group, sid=current_sid:
                                  self._handle_object_click_work(o, d, g, session_id=sid), once=True)
                     else:
@@ -577,6 +595,7 @@ class ExploreApp(DbPageMixin):
         dwarf_id = self.get_selected_dwarf_id()
         # Save current selection — restore it after reload if still in list
         saved_object      = self.selected_object
+        saved_object_id   = self.selected_object_id
         saved_description = self.selected_object_description
         saved_is_group    = self.selected_object_is_group
         self.clear_selected_object()
@@ -632,17 +651,17 @@ class ExploreApp(DbPageMixin):
         visible_names = [name for _, name, _, _ in self.objects]
         if saved_object == ALL_SESSIONS:
             self.selected_object             = saved_object
+            self.selected_object_id          = saved_object_id
             self.selected_object_description = saved_description
             self.selected_object_is_group    = saved_is_group
-            self.load_objects_ui()
             _create_timer(lambda: self._handle_object_click_work(None, None, True))
         elif saved_object and saved_object in visible_names:
             self.selected_object             = saved_object
+            self.selected_object_id          = saved_object_id
             self.selected_object_description = saved_description
             self.selected_object_is_group    = saved_is_group
             for oid, name, dso_id, is_group in self.objects:
-                if name == saved_object:
-                    self.load_objects_ui()
+                if oid == saved_object_id:
                     _create_timer(lambda o=oid, d=dso_id, g=is_group: self._handle_object_click_work(o, d, g))
                     break
         else:
@@ -1021,6 +1040,30 @@ class ExploreApp(DbPageMixin):
                 }
             ''')
 
+    def _update_fav_filter_icon(self):
+        """Update the favorite filter button icon based on active state."""
+        if not hasattr(self, 'fav_filter_btn'):
+            return
+        if self.fav_filter_active:
+            self.fav_filter_btn.props('color=warning')
+        else:
+            self.fav_filter_btn.props('color=grey')
+
+    def _toggle_fav_filter(self):
+        """Toggle favorites-only filter on the session list."""
+        print("_toggle_fav_filter")
+        print(self.selected_object)
+        self.fav_filter_active = not self.fav_filter_active
+        self._update_fav_filter_icon()
+        # Reload current object with new filter
+        if self.selected_object == ALL_SESSIONS:
+            self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True)
+        else:
+            for oid, name, dso_id, is_group in self.objects:
+                if oid == self.selected_object_id:
+                    self._handle_object_click(oid, name, self.selected_object_description, dso_id, is_group)
+                    break
+ 
     def select_object(self, object_id, dso_id, is_group, session_id=None):
         dwarf_id = self.get_selected_dwarf_id()
         details = []
@@ -1152,6 +1195,10 @@ class ExploreApp(DbPageMixin):
 
                 # If label already exists (duplicate), append a small invisible suffix
                 count = 0
+                # Skip non-favorites when filter is active
+                if getattr(self, 'fav_filter_active', False) and not is_favorite:
+                    continue
+
                 base_label = f"{star_icon}{_qdot} {bad_icon}{label_text}"
                 details_text = base_label
                 while details_text in self.label_to_index:
@@ -1535,7 +1582,8 @@ class ExploreApp(DbPageMixin):
             full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
             self.selected_path = os.path.dirname(full_path)
             self.current_session_full_dir = self.selected_path
-
+            print(f"Full PAth: {full_path}")
+            print(f"file_path: {file_path}")
             # Store the base folder once
             self.base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
             set_base_folder(full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0])
@@ -1977,7 +2025,7 @@ class ExploreApp(DbPageMixin):
         with self.icon_row:
             if not self.show_gallery_icon:
                 self.show_gallery_icon = ui.button(t("show_gallery"), on_click=lambda: self._navigate_backup()).classes('h-16')
-            elif len(self.all_files_rows) > 1 and not self.selected_path and self.get_slideshow_image_data():
+            elif len(self.all_files_rows) > 1 and not self.selected_path and self.test_slideshow_image_data():
                 self.show_gallery_icon.visible = True
                 self.show_gallery_icon.enable()
             else:
@@ -2161,12 +2209,67 @@ class ExploreApp(DbPageMixin):
             path = await run.io_bound(generate_fits_preview,path)
         return path
 
-    def get_slideshow_image_data(self):
+    def test_slideshow_image_data(self):
 
         # --- slideshow ---
         self.first_image = True
         self.current_file_index = 0
         self.slideshow_image_data = []
+        self.slideshow_image_full = False
+
+        for idx, row in enumerate(self.all_files_rows):
+            # extract DB Values
+            file_path = row[1]
+            exp_time = row[2]
+            gainDB = row[3]
+            IR_filter  = row[4]
+            stacks = row[5] if row[5] is not None else 0
+            backup_path = row[6]  # location from BackupDrive or USB Dwarf
+            session_date = row[7]
+            session_dir = row[8]
+            dwarf_name = row[9]
+            descriptionDB = row[19]
+
+            lens = "(W) " if ("_WIDE_") in session_dir else ""
+            exp = f"{exp_time}s" if exp_time is not None else "N/A"
+            exp_value = parse_exposure(exp) if exp != "N/A" else 0
+            gain = gainDB if gainDB is not None else "N/A"
+            astro_filter = f"{IR_filter}" if IR_filter else "No Filter"
+
+            info_stack = t("restack") if is_Restacked(session_dir) else t("taken")
+            details_session = f"⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}"
+
+            full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
+            base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
+            object_name,_ =  get_name_object(descriptionDB)
+
+            url_path = build_preview_url(file_path)
+            if os.path.exists(full_path):
+                self.slideshow_image_data.append({
+                    "url": url_path,
+                    "object_name": object_name or "Unknown Object",
+                    "dwarf_name": dwarf_name or "Unknown Device",
+                    "session_date": show_date_session(session_date),
+                    "type_session": info_stack,
+                    "details_session": details_session,
+                    "file_path": full_path,
+                    "base_folder": base_folder,
+                    "row_index": idx,
+                })
+                return True
+
+        return False
+
+    def get_slideshow_image_data(self):
+
+        if self.slideshow_image_full:
+            return
+
+        # --- slideshow ---
+        self.first_image = True
+        self.current_file_index = 0
+        self.slideshow_image_data = []
+        self.slideshow_image_full = False
 
         for idx, row in enumerate(self.all_files_rows):
             # extract DB Values
@@ -2210,12 +2313,10 @@ class ExploreApp(DbPageMixin):
 
         print (f"slideshow found {len(self.slideshow_image_data)} images")
 
-        if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
-            return False
-        else:
-            return True
+        if self.slideshow_image_data and len(self.slideshow_image_data) > 0:
+            self.slideshow_image_full = True
 
-    def show_gallery(self):
+    async def show_gallery(self):
 
         if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
             return False
@@ -2227,7 +2328,8 @@ class ExploreApp(DbPageMixin):
         if getattr(self, "slideshow_timer_anim", None):
             self.slideshow_timer_anim.cancel()
             self.slideshow_timer_anim = None
-        
+        loading_spinner = False
+
         with ui.dialog() as dialog:
             with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
                 with ui.row().classes('w-full justify-center'):
@@ -2236,6 +2338,7 @@ class ExploreApp(DbPageMixin):
 
                 with ui.column().classes("w-full").classes("items-center"):
 #                    ui.label(t("astro_gallery")).classes("text-center text-lg font-semibold")
+                    loading_spinner = ui.spinner(size="lg")
 
                     if self.slideshow_image_data:
                         slideshow_image = ui.image("") \
@@ -2267,15 +2370,14 @@ class ExploreApp(DbPageMixin):
 
                         def reaactive_timer():
                             if self.slideshow_timer:
-                                    self.slideshow_timer.cancel()
+                                self.slideshow_timer.cancel()
                             self.slideshow_timer = ui.timer(10, next_image, immediate=False, once=False)
 
                         def next_image():
-                            if self.first_image:
-                                self.current_file_index = (self.current_file_index) % len(self.slideshow_image_data)
-                                self.first_image = False
-                            else:
-                                self.current_file_index = (self.current_file_index + 1) % len(self.slideshow_image_data)
+                            if not self.slideshow_image_data:
+                                return
+
+                            self.current_file_index = (self.current_file_index + 1) % len(self.slideshow_image_data)
                             show_image()
 
                         def next_image_click():
@@ -2283,6 +2385,9 @@ class ExploreApp(DbPageMixin):
                             next_image()
 
                         def prev_image():
+                            if not self.slideshow_image_data:
+                                return
+
                             self.current_file_index = (self.current_file_index - 1) % len(self.slideshow_image_data)
                             show_image()
 
@@ -2305,8 +2410,11 @@ class ExploreApp(DbPageMixin):
                             ui.button(t("select"), on_click=select_from_gallery)
                             ui.button(t("next_arrow"), on_click=next_image_click)
 
+                        #show First Image
+                        self.current_file_index = 0
+                        show_image()
                         # Automatic slideshow with 5s interval
-                        self.slideshow_timer = ui.timer(interval=10, callback=next_image)
+                        self.slideshow_timer = ui.timer(interval=10, callback=next_image, immediate=False)
 
                     else:
                         ui.label(t("no_images"))
@@ -2324,6 +2432,14 @@ class ExploreApp(DbPageMixin):
             dialog.on('hide', on_close)
 
         dialog.open()
+
+        loading_spinner.set_visibility(True)
+        await run.io_bound(self.get_slideshow_image_data)
+        loading_spinner.set_visibility(False)
+
+        if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
+            dialog.close()
+
 
     def open_stitch_params(self):
         with ui.dialog() as d, ui.card():
@@ -2644,7 +2760,7 @@ class ExploreApp(DbPageMixin):
                 name       = row[1] or "—"
                 stype      = row[2] or ""
                 backup_entry_id = row[23] or ""  # col[23]=backup_entry_id
-                date_str   = show_short_date_session(row[14])
+                date_str   = show_short_date_session(row[15])
                 label      = f"📁 {name}  |  {stype}  |  📅 {date_str}"
                 ui.button(
                     label,

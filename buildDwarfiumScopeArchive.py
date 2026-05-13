@@ -136,6 +136,7 @@ print("Building CLI tools...")
 cli_tools = [
     ("tools/quality_scan.py",  "quality_scan"),
     ("tools/skybot_scan.py",   "skybot_scan"),
+    ("tools/astrometry_scan.py",   "astrometry_scan"),
 ]
 
 # CLI tools only need astroquery CITATION + api/ and tools/ — not the full extra_data

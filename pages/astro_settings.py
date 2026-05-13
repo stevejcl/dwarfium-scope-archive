@@ -236,6 +236,23 @@ class SettingsApp(DbPageMixin):
                     ui.label(t("solve_not_found")).classes("text-gray-400 text-sm")
                     ui.button(t("nova_install"), on_click=self.install_local_astrometry)
 
+            # ── FFmpeg status ─────────────────────────────────────────────────────────
+            ui.label(t("ffmpeg_config")).classes("text-xl font-bold")
+            with ui.card().classes("w-full"):
+                from tools.video_export import find_ffmpeg
+                ffmpeg_path = find_ffmpeg()
+                if ffmpeg_path:
+                    ui.label(f"✅ ffmpeg found: {ffmpeg_path}").classes("text-green-600")
+                    ui.label(t("ffmpeg_used_for_music")).classes("text-sm text-gray-500")
+                else:
+                    ui.label("❌ ffmpeg not found").classes("text-red-500")
+                    ui.label(t("ffmpeg_needed_for_music")).classes("text-sm text-gray-500")
+                    with ui.row().classes("gap-2 mt-2"):
+                        ui.link("📥 Download ffmpeg (Windows)",
+                            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+                            new_tab=True).classes("text-sm text-blue-600")
+                        ui.label(t("ffmpeg_install_hint")).classes("text-sm text-gray-400")
+
             with ui.card().classes("w-full"):
                 ui.label(t("mosaic_params")).classes("text-xl font-bold")
                 StitchParamsEditor(self.conn)  # no on_change → Save button

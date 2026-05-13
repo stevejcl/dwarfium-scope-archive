@@ -421,6 +421,7 @@ TRANSLATIONS: dict[str, str] = {
     "no_thumbnail":                 "(aucune miniature disponible)",
     "favorite_add":                 "Ajouter aux favoris",
     "favorite_remove":              "Retirer des favoris",
+    "confirm_favorite_remove":      "Êtes-vous sûr de vouloir retirer cette image de vos favoris ?",
     "press_esc":                    "Appuyez sur ESC pour fermer l'image",
     "show_fullscreen_img":          "Afficher en plein écran",
     "show_fullscreen_btn":          "Plein écran",
@@ -828,5 +829,40 @@ TRANSLATIONS: dict[str, str] = {
     "sky_map_col_no_score":         "Sans score",
     "sky_map_btn_scan":             "Scanner",
     "sky_map_mosaic_centers":       "Centres mosaïque",
+
+    # ── Video export ────────────────────────────────────────────────────────────
+    "export_video":                 'Exporter en vidéo',
+    "signature_name":               'Votre nom',
+    "your_name":                    'ex. Jean Dupont',
+    "signature_text":               'Texte personnalisé (optionnel)',
+    "optional_text":                "ex. Ma galerie d'astrophotographie",
+    "font_choice":                  'Police',
+    "font_size":                    'Taille de police',
+    "duration_per_photo":           'Durée par photo (sec)',
+    "video_extra_info":             'Ajouter les paramètres d’acquisition',
+    "video_resolution":             'Résolution',
+    "video_generating":             'Génération de la vidéo...',
+    "video_saved":                  'Vidéo sauvegardée',
+    "generate":                     'Générer',
+
+    "filter_favorites_only":       'Afficher uniquement les favoris',
+
+    # ── Video music ─────────────────────────────────────────────────────────────
+    "background_music":             'Musique de fond',
+    "no_music":                     'Sans musique',
+    "my_music":                     'Ma musique',
+    "music_file_path":              'Chemin du fichier audio',
+    "browse_music":                 'Parcourir...',
+    "music_copyright_warning":      "Vérifiez que vous avez le droit d'utiliser cette musique pour le partage",
+
+    # ── FFmpeg ──────────────────────────────────────────────────────────────────
+    "ffmpeg_config":                'FFmpeg (Vidéo/Audio)',
+    "ffmpeg_used_for_music":        'Utilisé pour ajouter de la musique aux vidéos exportées.',
+    "ffmpeg_needed_for_music":      'Installez ffmpeg pour ajouter de la musique à vos vidéos.',
+    "ffmpeg_install_hint":          '→ Extraire et placer ffmpeg.exe dans extern/windows/',
+
+    "music_folder":                'Dossier de musique',
+    "upload_music":                'Uploader un fichier audio',
+    "music_uploaded":              'added to music folder',
 
 }

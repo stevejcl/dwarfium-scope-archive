@@ -52,9 +52,8 @@ from api.dwarf_backup_fct import (
     format_seconds_hms,
     check_files,
     get_name_object,
-    get_session_file_ref,
-    get_root_manual_session_dir,
     count_session_fits_files,
+    get_relative_file_path
 )
 from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
@@ -163,6 +162,7 @@ class ManualExploreApp(DbPageMixin):
         self.label_to_index     = {}          # session label -> index in all_files_rows
 
         self.selected_object             = None
+        self.selected_object_id          = None
         self.selected_object_description = None
         self.selected_object_is_group    = False
         self.selected_entry_data         = None   # ManualEntryData for the currently shown row
@@ -240,10 +240,10 @@ class ManualExploreApp(DbPageMixin):
         ''')
 
         with ui.row().classes('w-full items-start'):
-            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid'):
+            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid').style('height: calc(100vh - 100px)'):
 
                 # ---- LEFT COLUMN: filters + object list -------------------
-                with ui.column().classes('w-full min-w-[300px] mobile-left-col') as self.mobile_left_col:
+                with ui.column().classes('w-full min-w-[300px] h-full flex flex-col min-h-0 mobile-left-col') as self.mobile_left_col:
                     with ui.grid(columns=12).classes('w-full items-end gap-2'):
                         # back button
                         if self.BackUrl:
@@ -284,7 +284,7 @@ class ManualExploreApp(DbPageMixin):
 
                     self.count_label = ui.label(t("total_sessions_zero"))
 
-                    with ui.card().tight().classes('w-full'):
+                    with ui.card().tight().classes('w-full flex flex-col overflow-hidden flex-1'):
                         with ui.row().classes('items-center m-4 gap-2'):
                             self.object_filter = (
                                 ui.input(
@@ -300,7 +300,16 @@ class ManualExploreApp(DbPageMixin):
                                 .bind_visibility_from(self.object_filter, 'value', lambda v: bool(v))
                             )
                             self.loading_spinner = ui.spinner(size='lg').classes('m-4')
-                        self.object_list = ui.list().classes('w-full max-h-400 overflow-y-auto')
+                        self.object_list = ui.list().classes('w-full flex-1 overflow-y-scroll min-h-0 object-list-scroll').style(
+    'scrollbar-width: thin; scrollbar-gutter: stable;'
+)
+                        ui.button(icon='keyboard_arrow_up',
+                            on_click=lambda: ui.run_javascript(
+                                'document.querySelector(".object-list-scroll").scrollTo({top: 0, behavior: "smooth"})'
+                            )
+                        ).props('round dense flat color=primary') \
+                         .classes('sticky bottom-2 left-full z-10 opacity-60 hover:opacity-100') \
+                         .tooltip(t('top'))
 
                 # ---- RIGHT COLUMN: session selector + detail panel --------
                 with ui.column().classes('w-full mobile-right-col') as self.mobile_right_col:
@@ -315,7 +324,15 @@ class ManualExploreApp(DbPageMixin):
 
                     with ui.row().classes('w-full'):
                         with ui.column().classes('w-full'):
-                            ui.label(t("session_list"))
+                            with ui.row().classes('items-center gap-2'):
+                                ui.label(t("session_list"))
+                                self.fav_filter_btn = (
+                                    ui.button(icon='star', on_click=self._toggle_fav_filter)
+                                    .props('flat round dense')
+                                    .tooltip(t("filter_favorites_only"))
+                                )
+                                self.fav_filter_active = False
+                                self._update_fav_filter_icon()
                             self.file_list = (
                                 ui.select(options=[], on_change=self.on_file_selected)
                                 .props('outlined')
@@ -355,7 +372,7 @@ class ManualExploreApp(DbPageMixin):
                             self.delete_session_icon.visible = False
 
                     with ui.row().classes('w-full'):
-                        with ui.card().tight().classes('w-full'):
+                        with ui.card().tight().classes('w-full flex flex-col overflow-hidden flex-1'):
                             self.details_files   = ui.list().classes('w-full overflow-y-auto')
                             self.details_preview = ui.list().classes('w-full overflow-y-auto')
 
@@ -441,19 +458,10 @@ class ManualExploreApp(DbPageMixin):
     # -----------------------------------------------------------------------
 
     async def load_objects(self):
-        """Show spinner via JS immediately, then defer DB work to next tick."""
         if self._initializing:
             return
         self.loading_spinner.set_visibility(True)
         await asyncio.sleep(0.15)
-        # Use JavaScript to show the spinner instantly — Python's event loop
-        # won't paint a visibility change before the synchronous work starts.
-        #ui.run_javascript(f"""
-        #    const el = document.getElementById('{self.loading_spinner.id}');
-        #    if (el) el.style.display = 'block';
-        #    const list = document.getElementById('{self.object_list.id}');
-        #    if (list) list.innerHTML = '';
-        #""")
         ui.timer(0.05, self._load_objects_work, once=True)
 
     def _load_objects_work(self):
@@ -475,22 +483,45 @@ class ManualExploreApp(DbPageMixin):
 
         self.count_label.text = f"{t('total_matching')} {count}"
         self.selected_object             = None
+        self.selected_object_id          = None
         self.selected_object_description = None
         self.selected_object_is_group    = False
         self.load_objects_ui()
 
         if self.loading_spinner:
             self.loading_spinner.set_visibility(False)
-            #ui.run_javascript(f"""
-            #    const el = document.getElementById('{self.loading_spinner.id}');
-            #    if (el) el.style.display = 'none';
-            #""")
 
         # Auto-select a specific session if SessionId was passed in the URL
         if not self.AutoSelection_done and self.SessionId:
             self.AutoSelection_done = True
             self.loading_spinner.set_visibility(True)
             ui.timer(0.2, lambda: self.auto_select_session(), once=True)
+
+    def _update_fav_filter_icon(self):
+        if not hasattr(self, 'fav_filter_btn'):
+            return
+        if self.fav_filter_active:
+            self.fav_filter_btn.props('color=warning')
+        else:
+            self.fav_filter_btn.props('color=grey')
+
+    def _toggle_fav_filter(self):
+        self.fav_filter_active = not self.fav_filter_active
+        self._update_fav_filter_icon()
+        # Reload current object with new filter
+        if self.selected_object == ALL_SESSIONS:
+            self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True)
+        else:
+            for oid, name, dso_id, is_group in self.objects:
+                if oid == self.selected_object_id:
+                    self._handle_object_click(
+                        oid,
+                        name,
+                        self.selected_object_description,
+                        dso_id,
+                        is_group
+                    )
+                    break
 
     def auto_select_session(self):
         """Directly select the ALL SESSIONS node and let on_file_selected pick the right row."""
@@ -648,6 +679,8 @@ class ManualExploreApp(DbPageMixin):
 
             def handle_click(data):
                 self.selected_object = data["name"]
+                self.selected_object_id = data["oid"]
+                self.selected_object_description = data["desc"]
                 self._handle_object_click(
                     data["oid"], data["name"], data["desc"], data["dso_id"], data["is_group"]
                 )
@@ -686,17 +719,31 @@ class ManualExploreApp(DbPageMixin):
 
         if self.selected_object not in visible_names:
             self.selected_object = None
+            self.selected_object_id = None
             self.clear_selected_object()
 
         self.object_list.update()
         ui.update()
 
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
+        self.loading_spinner.set_visibility(True)
         self.selected_object             = name
+        self.selected_object_id          = oid
         self.selected_object_description = desc
         self.selected_object_is_group    = is_group
+        fn = lambda: self._handle_object_click_work(oid, dso_id, is_group, session_id)
+        _client = getattr(self, '_ui_client', None)
+        if _client:
+            with _client:
+                ui.timer(0.05, fn, once=True)
+        else:
+            ui.timer(0.05, fn, once=True)
+
+    def _handle_object_click_work(self, oid, dso_id, is_group, session_id=None):
+        print(f'[click_work] oid={oid} is_group={is_group} session_id={session_id}', flush=True)
         self.select_object(oid, dso_id, is_group, session_id)
         self.load_objects_ui()
+        self.loading_spinner.set_visibility(False)
 
     # -----------------------------------------------------------------------
     # Session selection
@@ -806,6 +853,10 @@ class ManualExploreApp(DbPageMixin):
                     f"📅 {session_date} | ⚙️ Exp {exp}, {ircut_filter} | "
                     f"🛰️ {description}"
                 )
+
+                # Skip non-favorites when filter is active
+                if getattr(self, 'fav_filter_active', False) and not is_favorite:
+                    continue
 
                 # Make duplicate labels unique with invisible characters
                 base   = f"{star_icon}{label_text}"
@@ -941,6 +992,8 @@ class ManualExploreApp(DbPageMixin):
         entry_id            = row[24]   # ManualSessionEntry.id
         dwarf_name          = row[25]   or "N/A"
         backup_drive_name   = row[26]   or "N/A"
+        manualdrive_dir     = row[27]
+        manualdrive_location = row[28]
 
         star_icon    = '⭐ ' if is_favorite else '☆ '
         details_files_text = f"{star_icon}{session_type} {t("with_label")} 🔭 {dwarf_name} {t("on_label")} 📅 {show_short_date_session(session_date)}"
@@ -1058,12 +1111,12 @@ class ManualExploreApp(DbPageMixin):
                         preview_path = os.path.join(session_dir, fname)
                         break
 
-        self._update_preview(preview_path)
+        self._update_preview(manualdrive_location, preview_path)
 
         # --- Action buttons ---
         self._update_action_buttons(is_favorite, backup_entry_id, backup_drive_id, session_dir, session_tag)
 
-    def _update_preview(self, image_path: str | None):
+    def _update_preview(self, manualdrive_location: str, image_path: str | None):
         """Display the preview image if the file exists."""
         self.preview_image.visible    = False
         self.fullscreen_image.visible = False
@@ -1088,11 +1141,9 @@ class ManualExploreApp(DbPageMixin):
 
         try:
             # ser parent name of session_dir/session_tag for preview
-            base_folder_path = get_root_manual_session_dir( self.selected_path, image_path)
-            print(f"base_folder_path: {base_folder_path}")
+            base_folder_path = manualdrive_location
             set_base_folder(base_folder_path)
-            url = build_preview_url(image_path)
-            print(f"url: {url}")
+            url = build_preview_url(get_relative_file_path( manualdrive_location, full_path))
             self.preview_image.visible = True
             self.preview_image.source = url
             self.fullscreen_image.visible = True
@@ -1145,18 +1196,23 @@ class ManualExploreApp(DbPageMixin):
  
         row = self.all_files_rows[idx]
         # Column layout from get_ObjectSelect_manual — see docstring there
-        session_tag      = row[2]  or ""
-        jpeg_path        = row[4]
-        thumbnail_path   = row[5]
-        stacked_png_path = row[13]
-        session_date     = row[15]
-        session_dir      = row[16]
-        description_db   = row[20]
-        dwarf_name       = row[25] or "?"
-
+        session_tag         = row[2]  or ""
+        jpeg_path           = row[4]
+        thumbnail_path      = row[5]
+        stacked_png_path    = row[13]
+        session_date        = row[15]
+        session_dir         = row[16]
+        description_db      = row[20]
+        dwarf_name          = row[25] or "?"
+        dwarf_name          = row[25] or "?"
+        manual_session_dir  = row[27]
+        manual_location     = row[28]
+        
         obj_name, _ = get_name_object(description_db)
         date_str     = show_short_date_session(session_date)
         label        = f"🛰️ {obj_name or '?'}  🔭 {dwarf_name}  📅 {date_str}"
+
+        set_base_folder(manual_location)
 
         full_path = session_dir
         # Pick the available image files
@@ -1172,7 +1228,7 @@ class ManualExploreApp(DbPageMixin):
                         continue   # no image found for this session
  
                     try:
-                        url = build_preview_url(get_session_file_ref(session_dir, candidate))
+                        url = build_preview_url(get_relative_file_path(manual_location, candidate))
                         print(f"url: {url}")
                     except Exception:
                         continue
@@ -1183,6 +1239,7 @@ class ManualExploreApp(DbPageMixin):
                         "label":       label,
                         "session_dir": session_dir or "",
                         "row_index":   idx,
+                        "base_folder": manual_location
                     })
  
     def show_gallery(self):
@@ -1236,6 +1293,7 @@ class ManualExploreApp(DbPageMixin):
                     def _do_update_image():
                         print(f"Update Image: n°{self.gallery_current_index}")
                         entry = self.gallery_image_data[self.gallery_current_index]
+                        set_base_folder(entry['base_folder'])
                         slideshow_img.source = entry["url"]
                         slideshow_img.classes(remove="opacity-5", add="opacity-100").update()
                         caption_label.set_text(
@@ -1257,29 +1315,17 @@ class ManualExploreApp(DbPageMixin):
                     def _next_auto():
                         if not ui.context.client.connected:
                             return
-                        if self.gallery_first_image:
-                            self.gallery_current_index = (
-                                (self.gallery_current_index) % len(self.gallery_image_data)
-                            )
-                            self.gallery_first_image = False
-                        else:
-                            """Called by the auto-advance timer."""
-                            self.gallery_current_index = (
-                                (self.gallery_current_index + 1) % len(self.gallery_image_data)
-                            )
+                        """Called by the auto-advance timer."""
+                        self.gallery_current_index = (
+                            (self.gallery_current_index + 1) % len(self.gallery_image_data)
+                        )
                         _show_with_fade()
  
                     def _on_next():
                         _reset_auto_timer()
-                        if self.gallery_first_image:
-                            self.gallery_current_index = (
-                                (self.gallery_current_index) % len(self.gallery_image_data)
-                            )
-                            self.gallery_first_image = False
-                        else :
-                            self.gallery_current_index = (
-                                (self.gallery_current_index + 1) % len(self.gallery_image_data)
-                            )
+                        self.gallery_current_index = (
+                            (self.gallery_current_index + 1) % len(self.gallery_image_data)
+                        )
                         _show_with_fade()
  
                     def _on_prev():
@@ -1288,23 +1334,10 @@ class ManualExploreApp(DbPageMixin):
                             (self.gallery_current_index - 1) % len(self.gallery_image_data)
                         )
                         _show_with_fade()
- 
-                    def _on_select():
-                        """Jump to the corresponding session in the dropdown and close."""
-                        entry     = self.gallery_image_data[self.gallery_current_index]
-                        row_index = entry["row_index"]
-                        options   = list(self.file_list.options)
-                        # options[0] is the placeholder "Select a session for …"
-                        # actual entries start at index 1 matching all_files_rows[0]
-                        target_option_idx = row_index + 1
-                        if 0 < target_option_idx < len(options):
-                            self.file_list.set_value(options[target_option_idx])
-                        dialog.close()
- 
+
                     # Controls row
                     with ui.row().classes("gap-4 mt-2 mb-4 items-center"):
                         ui.button(t("previous_arrow"), on_click=_on_prev)
-                        ui.button(t("select_this_session"), on_click=_on_select)
                         ui.button(t("next_arrow"), on_click=_on_next)
  
                     # Start auto-advance timer (first tick shows the first image)

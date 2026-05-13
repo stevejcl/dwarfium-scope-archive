@@ -10,6 +10,7 @@ BASE_FOLDER = None  # This should be set in your app
 def set_base_folder(path: str):
     global BASE_FOLDER
     BASE_FOLDER = path
+    #print (f"Base Folder: {path}")
 
 def build_preview_url(file_path: str) -> str:
     """Builds a URL-safe preview URL for an image with cache busting."""
@@ -19,7 +20,7 @@ def build_preview_url(file_path: str) -> str:
         full_path = os.path.abspath(os.path.join(BASE_FOLDER, file_path.replace("\\", "/")))
         if os.path.exists(full_path) and os.path.isfile(full_path):
             mtime = int(os.path.getmtime(full_path))
-    
+    #print (f"build_preview_url: {file_path}")
     if mtime:
         return f'/preview/{quote(file_path.replace("\\", "/"))}?v={mtime}'
     else:

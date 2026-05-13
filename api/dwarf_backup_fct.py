@@ -163,7 +163,27 @@ def get_file_path(full_path, base_folder):
     # Get the relative path
     return os.path.relpath(full_path, base_folder)
 
+def get_relative_file_path(root_dir, full_path):
+    # with root_dir: X:\AstroPhoto\DWARFLAB_2\DWARF_MINI_NEW
+    # with full_path: X:\AstroPhoto\DWARFLAB_2\DWARF_MINI_NEW\STELLAR_SESSION\RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369\New
+    # give: STELLAR_SESSION\RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369\New
+
+    if not root_dir or not full_path:
+        return None
+
+    # get relative path : the result starts with the common path
+    try:
+        return str(Path(full_path).relative_to(Path(root_dir)))
+    except ValueError:
+        return str(Path(full_path))
+
+# not use anymore ??
 def get_session_file_ref(session_dir, full_path):
+    # with session_dir: "DATA_OBJECTS\RESTACKED"
+    # with full_path: "X:\AstroPhoto\DWARFLAB_2\DWARF_MINI_NEW\DATA_OBJECTS\RESTACKED\RESTACKED_DWARF_RAW_TELE_MOSAIC_Unknown_Duo-Band_20260104-090112996\stacked.jpg"
+    # give: "DATA_OBJECTS\RESTACKED\RESTACKED_DWARF_RAW_TELE_MOSAIC_Unknown_Duo-Band_20260104-090112996\stacked.jpg"
+
+    # the result starts with the session_dir that must be a relative path
     if not session_dir or not full_path:
         return None
 
@@ -180,10 +200,13 @@ def get_session_file_ref(session_dir, full_path):
 
 # get the root directory (ManualSessionDrive) from the Session Dir and a path of a image (with or without tag)
 # use for preview image
-def get_root_manual_session_dir(session_dir, image_path):
+def get_root_manual_session_dir(full_path, image_path):
+    #full_path = "X:\AstroPhoto\DWARFLAB_2\DWARF_MINI_NEW\DATA_OBJECTS\RESTACKED\ABC\stacked.jpg"
+    #image_path = "DATA_OBJECTS\RESTACKED\ABC\stacked.jpg"
+    #result = "X:/AstroPhoto/DWARFLAB_2/DWARF_MINI_NEW"
 
     # 1. Normalize selected_path
-    p2 = Path(session_dir).resolve()
+    p2 = Path(full_path).resolve()
     # 2. Remove the relative image_path from the end of selected_path
     base = p2
     for part in reversed(Path(image_path).parts):
@@ -191,6 +214,14 @@ def get_root_manual_session_dir(session_dir, image_path):
             base = base.parent
 
     return base
+
+# better that previous function
+def get_basefolder_from_db_path(full_path, file_path):
+    #full_path = "X:\AstroPhoto\DWARFLAB_2\DWARF_MINI_NEW\DATA_OBJECTS\RESTACKED\ABC\stacked.jpg"
+    #file_path = "DATA_OBJECTS\RESTACKED\ABC\stacked.jpg"
+    #result = "X:/AstroPhoto/DWARFLAB_2/DWARF_MINI_NEW"
+
+   return full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
    
 def get_extension(file_path):
     return os.path.splitext(file_path)[1].lower().lstrip('.')
@@ -936,21 +967,27 @@ def extract_target_json(astro_path):
 
 def show_date_session(date_db):
     from components.i18n import get_language
-    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-    if get_language() == 'fr':
-        months = ['janvier','février','mars','avril','mai','juin',
-                  'juillet','août','septembre','octobre','novembre','décembre']
-        return f"{dt.day} {months[dt.month-1]} {dt.year} à {dt.strftime('%H:%M:%S')}"
-    return dt.strftime("%B %d, %Y at %I:%M:%S %p")
+    try:
+        dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
+        if get_language() == 'fr':
+            months = ['janvier','février','mars','avril','mai','juin',
+                      'juillet','août','septembre','octobre','novembre','décembre']
+            return f"{dt.day} {months[dt.month-1]} {dt.year} à {dt.strftime('%H:%M:%S')}"
+        return dt.strftime("%B %d, %Y at %I:%M:%S %p")
+    except Exception as e:
+        return "N/A"
 
 def show_short_date_session(date_db):
     from components.i18n import get_language
-    dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
-    if get_language() == 'fr':
-        months = ['jan','fév','mar','avr','mai','jun',
-                  'jul','aoû','sep','oct','nov','déc']
-        return f"{dt.day} {months[dt.month-1]} {dt.year} {dt.strftime('%H:%M')}"
-    return dt.strftime("%b %d, %Y %I:%M %p")
+    try:
+        dt = datetime.strptime(date_db, "%Y-%m-%d %H:%M:%S.%f")
+        if get_language() == 'fr':
+            months = ['jan','fév','mar','avr','mai','jun',
+                      'jul','aoû','sep','oct','nov','déc']
+            return f"{dt.day} {months[dt.month-1]} {dt.year} {dt.strftime('%H:%M')}"
+        return dt.strftime("%b %d, %Y %I:%M %p")
+    except Exception as e:
+        return "N/A"
 
 def extract_astro_name_from_folder(folder_name: str) -> str | None:
     """

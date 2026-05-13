@@ -421,6 +421,7 @@ TRANSLATIONS: dict[str, str] = {
     "no_thumbnail":                 "(no thumbnail available)",
     "favorite_add":                 "Click to Add to Favorites",
     "favorite_remove":              "Click to Remove from Favorites",
+    "confirm_favorite_remove":      "Are you sure you want to remove this image from your favorites?",
     "press_esc":                    "Press ESC to close the image",
     "show_fullscreen_img":          "Show Fullscreen Image",
     "show_fullscreen_btn":          "Show fullscreen",
@@ -829,4 +830,39 @@ TRANSLATIONS: dict[str, str] = {
     "sky_map_btn_scan":             "Scan",
     "sky_map_mosaic_centers":       "Mosaic centers",
 
+    # ── Video export ────────────────────────────────────────────────────────────
+    "export_video":                 'Export Video',
+    "signature_name":               'Your name',
+    "your_name":                    'e.g. John Doe',
+    "signature_text":               'Custom text (optional)',
+    "optional_text":                'e.g. My astrophotography gallery',
+    "font_choice":                  'Font',
+    "font_size":                    'Font size',
+    "duration_per_photo":           'Duration per photo (sec)',
+    "video_resolution":             'Resolution',
+    "video_extra_info":             'Add Imaging Session Details',
+    "video_resolution":             'Résolution',
+    "video_generating":             'Generating video...',
+    "video_saved":                  'Video saved',
+    "generate":                     'Generate',
+
+    "filter_favorites_only":        'Show favorites only',
+
+    # ── Video music ─────────────────────────────────────────────────────────────
+    "background_music":             'Background music',
+    "no_music":                     'No music',
+    "my_music":                     'My music',
+    "music_file_path":              'Music file path',
+    "browse_music":                 'Browse...',
+    "music_copyright_warning":      'Make sure you have the rights to use this music for sharing',
+
+    # ── FFmpeg ──────────────────────────────────────────────────────────────────
+    "ffmpeg_config":                'FFmpeg (Video/Audio)',
+    "ffmpeg_used_for_music":        'Used for adding background music to exported videos.',
+    "ffmpeg_needed_for_music":      'Install ffmpeg to add background music to your videos.',
+    "ffmpeg_install_hint":          '→ Extract and place ffmpeg.exe in extern/windows/',
+
+    "music_folder":                'Music folder',
+    "upload_music":                'Upload music file',
+    "music_uploaded":              'added to music folder',
 }
