@@ -1,5 +1,11 @@
 # Changelog
 
+## [V3.1.8_RC3] - 2026-05-14
+
+### BugFix#
+   Remove print_log been replaced by claude in Mosaic stiching
+   Ignore wcs.fits files when replace fits
+
 ## [V3.1.8_RC2] - 2026-05-14
 
 ### BugFix#
