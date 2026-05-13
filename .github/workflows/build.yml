@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - evolution
-      - evolution-test
+      - evolution-main
   workflow_dispatch:
 
 permissions:
@@ -69,7 +69,7 @@ jobs:
         run: |
           VERSION=${{ env.BASE_VERSION }}
 
-          if [ "${{ github.ref_name }}" = "evolution-test" ]; then
+          if [ "${{ github.ref_name }}" = "evolution-main" ]; then
             RUN=${{ github.run_number }}
             VERSION="${VERSION}-beta.${RUN}"
           fi
