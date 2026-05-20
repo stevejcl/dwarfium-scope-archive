@@ -46,7 +46,7 @@ from components.db_page_mixin import DbPageMixin
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
-from tools.quality_scan import score_entry_ids
+from tools.quality_scan import score_entry_ids, scan_folder_sizes, scan_dwarf_session_sizes
 
 ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
 ALL_DWARFS = "(All Dwarfs)"
@@ -65,7 +65,7 @@ def safe_print(text):
         print(text.encode(sys.stdout.encoding, errors='replace').decode())
 
 @ui.page('/Explore/')
-async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None, only_on_dwarf: int = 0):
+async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str = 'backup', back_url:str = None, SessionId: int = None, only_on_dwarf: int = 0, only_already_backed: int = 0):
 
     menu(t("page_explore"))
     await ui.context.client.connected()
@@ -75,8 +75,19 @@ async def dwarf_explore(BackupDriveId:int = None, DwarfId:int = None, mode:str =
     print(f" mode: {mode}")
 
     # Launch the GUI with the parameters
-    ui.context.explore_app =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId, OnlyOnDwarf=bool(only_on_dwarf))
-    #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
+    app_instance =  ExploreApp(DB_NAME, BackupDriveId=BackupDriveId, DwarfId=DwarfId, mode=mode, BackUrl=back_url, SessionId=SessionId, OnlyOnDwarf=bool(only_on_dwarf), OnlyAlreadyBacked=bool(only_already_backed))
+
+    ui.context.explore_app = app_instance
+
+    # Cancel any running timers when the client disconnects
+    async def on_disconnect():
+        if app_instance.slideshow_timer:
+            app_instance.slideshow_timer.cancel()
+            app_instance.slideshow_timer = None
+        if app_instance.slideshow_timer_anim:
+            app_instance.slideshow_timer_anim.active = False
+
+    ui.context.client.on_disconnect(on_disconnect)
 
 
 def _quality_stars(score) -> str:
@@ -102,7 +113,7 @@ def _quality_dot(score) -> str:
 
 
 class ExploreApp(DbPageMixin):
-    def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None, SessionId=None, OnlyOnDwarf=False):
+    def __init__(self, database, BackupDriveId=None, DwarfId=None, mode='backup', BackUrl=None, SessionId=None, OnlyOnDwarf=False, OnlyAlreadyBacked=False):
         self.database = database
         self.BackupDriveId = BackupDriveId
         self.BackupDriveId_Init = BackupDriveId
@@ -118,6 +129,7 @@ class ExploreApp(DbPageMixin):
         self.DwarfId = DwarfId
         self.mode = mode
         self.OnlyOnDwarf = OnlyOnDwarf
+        self.OnlyAlreadyBacked = OnlyAlreadyBacked
         import urllib.parse as _up
         self.BackUrl = _up.unquote(BackUrl) if BackUrl else BackUrl
         self.SessionId = SessionId
@@ -140,6 +152,15 @@ class ExploreApp(DbPageMixin):
         self.slideshow_timer_anim = None
         self.slideshow_timer = None
         self.slideshow_image_full = False
+        # Persistent gallery dialog refs
+        self.gallery_dialog      = None
+        self.gallery_img         = None
+        self.gallery_info        = None
+        self.gallery_detail      = None
+        self.gallery_spinner     = None
+        self._gallery_btn_prev   = None
+        self._gallery_btn_next   = None
+        self._gallery_btn_select = None
         self.show_gallery_icon = {}
         self.open_folder_icon = {}
         self.preview_icons = {}
@@ -222,6 +243,7 @@ class ExploreApp(DbPageMixin):
                         with ui.grid(columns=12).classes('w-full items-end gap-2'):
                             # back button
                             if self.BackUrl:
+                                print(f"[explore] BackUrl={self.BackUrl!r} BackupDriveId={self.BackupDriveId} BackupDriveId_Init={self.BackupDriveId_Init}")
                                 ui.button(
                                     t("back_btn"),
                                     icon='arrow_back',
@@ -265,6 +287,7 @@ class ExploreApp(DbPageMixin):
                             self.only_duplicates_backup = ui.checkbox(t("only_duplicates"),on_change = self.load_objects)
                     else:
                         if self.BackUrl:
+                            print(f"[explore dwarf] BackUrl={self.BackUrl!r} DwarfId={self.DwarfId}")
                             ui.button(t("back_btn"), icon='arrow_back',
                                       on_click=lambda: ui.navigate.to(f"{self.BackUrl}{self.get_selected_dwarf_id() if self.get_selected_dwarf_id() else self.DwarfId}")) \
                                 .props('size=sm').classes('mb-1')
@@ -278,7 +301,7 @@ class ExploreApp(DbPageMixin):
                                 ui.label("")
                                 self.only_on_dwarf = ui.checkbox(t("only_not_backed"), value=self.OnlyOnDwarf, on_change = self.on_change_only_on_dwarf)
                                 ui.label("")
-                                self.only_on_backup = ui.checkbox(t("only_already_backed"),on_change = self.on_change_only_on_backup)
+                                self.only_on_backup = ui.checkbox(t("only_already_backed"), value=self.OnlyAlreadyBacked, on_change = self.on_change_only_on_backup)
 
                     self.count_label = ui.label(t("total_sessions_zero"))
                     with ui.card().tight().classes('w-full flex-1 flex overflow-hidden'):
@@ -306,14 +329,15 @@ class ExploreApp(DbPageMixin):
                                 "✖", on_click=self._clear_sky_filter
                             ).props("flat dense round size=xs").classes("hidden")
 
-                        # Quality filter
-                        with ui.row().classes("w-full items-center gap-1 px-2 pb-1"):
+                        # Quality filter — hidden in dwarf mode (no BackupEntry = no score)
+                        with ui.row().classes("w-full items-center gap-1 px-2 pb-1") as _quality_filter_row:
                             ui.label(t("quality_filter_label")).classes("text-xs text-gray-400")
                             self.quality_filter_select = ui.toggle(
                                 {0: "🌐", 65: "🟢", 40: "🟡"},
                                 value=0,
                                 on_change=self._on_quality_filter_change,
                             ).props("dense").tooltip(t("quality_filter_tooltip"))
+                        _quality_filter_row.visible = (self.mode != "dwarf")
 
                         self.object_list = ui.list().classes('w-full flex-1 overflow-y-scroll min-h-0 object-list-scroll').style(
     'scrollbar-width: thin; scrollbar-gutter: stable;'
@@ -368,6 +392,8 @@ class ExploreApp(DbPageMixin):
                             self.action_fits_files_icon = ui.button("", on_click=lambda: self.action_cleanup_restore_fits()).classes('h-16')
                             self.score_session_icon = ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object()).classes('h-16')
                             self.score_session_icon.visible = False
+                            if self.mode == "dwarf":
+                                self.score_session_icon.visible = False
                             self.action_fits_files_icon.visible = False
                             self.siril_json_icon = ui.button(
                                 t("prepare_siril"),
@@ -406,6 +432,9 @@ class ExploreApp(DbPageMixin):
             self.populate_dwarf_filter()
 
         self.selected_path = ""
+
+        # Persistent gallery dialog created once in the main page context
+        self._build_persistent_dialog()
 
     async def show_fullscreen_image(self):
         if self.fullscreen_image.visible: 
@@ -497,6 +526,7 @@ class ExploreApp(DbPageMixin):
         if self.current_session_row:
             entry_ids = [self.current_session_row[22]] if self.current_session_row[22] is not None else []
         else:
+            print(f"_current_files: {len(self._current_files)}")
             entry_ids = [row[22] for row in self._current_files if row[22] is not None]
         if not entry_ids:
             ui.notify(t("score_no_sessions"), type="warning")
@@ -678,28 +708,38 @@ class ExploreApp(DbPageMixin):
             await self.auto_select_session()
  
     async def auto_select_session(self):
-        print(f"Auto-select session: {self.SessionId}")
+        print(f"[auto_select] SessionId={self.SessionId} mode={self.mode}")
 
         if not self.SessionId:
             return
 
-        # Search by session_id alone — BackupEntry.id is globally unique
+        if self.mode == "dwarf":
+            # SessionId is a DwarfEntry.id in dwarf mode
+            from api.dwarf_backup_db_api import get_sessions_dwarf
+            sessions = get_sessions_dwarf(self.conn, dwarf_id=self.DwarfId, session_id=self.SessionId)
+            if not sessions:
+                # Fallback: try with session_id only (no dwarf filter)
+                sessions = get_sessions_dwarf(self.conn, session_id=self.SessionId)
+            if not sessions:
+                print(f"[auto_select] No DwarfEntry found for id={self.SessionId}")
+                return
+            print(f"[auto_select] Found DwarfEntry: {sessions[0]}")
+            self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
+            return
+
+        # Backup mode — SessionId is a BackupEntry.id
         sessions = get_sessions_backup(self.conn, session_id=self.SessionId)
+        print(f"[auto_select] backup sessions found: {len(sessions)}")
 
         if not sessions:
-            print("No session found for auto-selection")
+            print(f"[auto_select] No BackupEntry found for id={self.SessionId}")
             return
 
         session = sessions[0]
-        # session[0]=id, cols include backup_drive_id via JOIN
-        # Ensure the correct backup drive is selected
         try:
             row = get_backupDrive_id_from_backupEntry(self.conn)
             if row and row[0]:
                 self.BackupDriveId = row[0]
-                # Update backup filter display WITHOUT triggering on_change
-                # (set_value fires on_backup_filter_change → load_objects
-                #  which would overwrite the session pre-selection)
                 for bid, name in self.backup_options:
                     if bid == self.BackupDriveId:
                         self.backup_filter._props["model-value"] = name
@@ -708,7 +748,7 @@ class ExploreApp(DbPageMixin):
         except Exception as e:
             print(f"[auto_select] could not set BackupDriveId: {e}")
 
-        print("Auto-selecting session via ALL_SESSIONS")
+        print("[auto_select] selecting session via ALL_SESSIONS")
         self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, self.SessionId)
 
     def _update_expanded_nodes(self, expanded_keys: list[str]):
@@ -1402,17 +1442,21 @@ class ExploreApp(DbPageMixin):
                 else:
                     ui.notify(t("fits_deleted_none"), color="positive")
 
+                # Recalculate session size in DB
+                be_id = get_backup_entry_id_by_dwarf_data(self.conn, self._get_current_dwarf_data_id())
+                if be_id:
+                    await run.io_bound(scan_folder_sizes, self.database, [be_id], None, True, None)
+                    await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
+
             except Exception as e:
                 ui.notify(t("fits_cleanup_error", error=e), color="negative")
             finally:
-                await self.load_objects()
+                await self.on_file_selected()
 
         # Ask for confirmation
         await self.WinLog.show(
-            "Confirm FITS Cleanup on Dwarf",
-            f"⚠️ Are you sure you want to clean up FITS files on the Dwarf for this session?\n\n"
-            "All raw FITS files will be permanently removed.\n"
-            "The final stacked FITS file will be kept.\n\n",
+            t("fits_cleanup_confirm_title"),
+            t("fits_cleanup_confirm_msg"),
             ok_confirm_cleanup_fits
         )
 
@@ -1452,19 +1496,36 @@ class ExploreApp(DbPageMixin):
                     ui.notify(t("restore_cancelled", restored=restored_count, total=total_fits_files, skipped=skipped_count), color="warning")
                 else:
                     ui.notify(t("restore_completed", restored=restored_count, total=total_fits_files, skipped=skipped_count), color="positive")
+                    # Recalculate session size in DB
+                    _ddid = self._get_current_dwarf_data_id()
+                    be_id = get_backup_entry_id_by_dwarf_data(self.conn, _ddid)
+                    print(f"[restore] dwarf_data_id={_ddid} be_id={be_id}")
+                    if be_id:
+                        n1 = await run.io_bound(scan_folder_sizes, self.database, [be_id], None, True, None)
+                        n2 = await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
+                        print(f"[restore] size recalc: backup={n1} dwarf={n2}")
 
             except Exception as e:
                 ui.notify(t("restore_error", error=e), color="negative")
             finally:
                 progress_dialog.close()
-                await self.load_objects()
+                await self.on_file_selected()
 
         # Ask for confirmation
         await self.WinLog.show(
-            "Confirm FITS Restore on Dwarf",
-            f"⚠️ Are you sure you want to restore FITS files on the Dwarf for this session?\n\n",
+            t("fits_restore_confirm_title"),
+            t("fits_restore_confirm_msg"),
             ok_confirm_restore_fits
         )
+
+    def _get_current_dwarf_data_id(self):
+        """Return the dwarf_data_id of the currently selected session."""
+        if self.selected_DeleteEntryInfo and self.selected_DeleteEntryInfo.dwarf_data_id:
+            return self.selected_DeleteEntryInfo.dwarf_data_id
+        # Fallback: first row in current file list
+        if self.all_files_rows:
+            return self.all_files_rows[0][0]
+        return None
 
     def show_full_image(self, path):
         with ui.dialog().props('maximized') as full_dialog:
@@ -1659,9 +1720,13 @@ class ExploreApp(DbPageMixin):
 
                 _qdot = _quality_dot(_qscore) if _qscore is not None else ""
                 _qstr2 = f"  {_quality_stars(_qscore)}" if _qscore is not None else ""
+                # --- Session Notes + score button (need backup_entry_id) ---
+                _be_id = get_backup_entry_id_by_dwarf_data(self.conn, dwarf_data_id)
+
+                _quality_str = f" - {t('image_quality')} {_qdot} {_qstr2}" if self.mode != "dwarf" else ""
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time} - {t('image_quality')} {_qdot} {_qstr2}").classes(color)
-                    if not _qscore:
+                    ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time}{_quality_str}").classes(color)
+                    if not _qscore and _be_id and self.mode != "dwarf":
                         ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object())
 
                 # --- Dark match badge ---
@@ -1719,7 +1784,6 @@ class ExploreApp(DbPageMixin):
                 #   ui.item(data_detail)
 
                 # --- Session Notes ---
-                _be_id = get_backup_entry_id_by_dwarf_data(self.conn, dwarf_data_id)
                 if _be_id:
                     with ui.item():
                         session_notes_widget(self.conn, backup_entry_id=_be_id)
@@ -2023,15 +2087,15 @@ class ExploreApp(DbPageMixin):
     def update_gallery_icon(self):
         with self.icon_row:
             if not self.show_gallery_icon:
-                self.show_gallery_icon = ui.button(t("show_gallery"), on_click=lambda: self._navigate_backup()).classes('h-16')
-            elif len(self.all_files_rows) > 1 and not self.selected_path and self.test_slideshow_image_data():
+                self.show_gallery_icon = ui.button(t("show_gallery"), on_click=lambda: self.show_gallery()).classes('h-16')
+            if len(self.all_files_rows) > 1 and not self.selected_path and self.test_slideshow_image_data():
                 self.show_gallery_icon.visible = True
                 self.show_gallery_icon.enable()
             else:
                 self.show_gallery_icon.visible = False
                 self.show_gallery_icon.disable()
 
-            if len(self.all_files_rows) > 1 and not self.selected_path:
+            if len(self.all_files_rows) > 1 and not self.selected_path and self.mode != "dwarf":
                 self.score_session_icon.visible = True
             else:
                 self.score_session_icon.visible = False
@@ -2211,7 +2275,6 @@ class ExploreApp(DbPageMixin):
     def test_slideshow_image_data(self):
 
         # --- slideshow ---
-        self.first_image = True
         self.current_file_index = 0
         self.slideshow_image_data = []
         self.slideshow_image_full = False
@@ -2265,7 +2328,6 @@ class ExploreApp(DbPageMixin):
             return
 
         # --- slideshow ---
-        self.first_image = True
         self.current_file_index = 0
         self.slideshow_image_data = []
         self.slideshow_image_full = False
@@ -2315,129 +2377,111 @@ class ExploreApp(DbPageMixin):
         if self.slideshow_image_data and len(self.slideshow_image_data) > 0:
             self.slideshow_image_full = True
 
-    async def show_gallery(self):
+    # ── Gallery slideshow — persistent dialog, class-level methods ──────────
 
-        if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
-            return False
-
-        # --- Stop previous timers ---
-        if getattr(self, "slideshow_timer", None):
-            self.slideshow_timer.cancel()
-            self.slideshow_timer = None
-        if getattr(self, "slideshow_timer_anim", None):
-            self.slideshow_timer_anim.cancel()
-            self.slideshow_timer_anim = None
-        loading_spinner = False
-
-        with ui.dialog() as dialog:
+    def _build_persistent_dialog(self):
+        """Persistent gallery dialog created once in the main page slot context."""
+        with ui.dialog() as self.gallery_dialog:
             with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
                 with ui.row().classes('w-full justify-center'):
                     ui.label(t("astro_gallery2")).classes("text-center mt-2 text-lg font-semibold")
-                    ui.button(t("close"), on_click=dialog.close).classes("mt-4 ml-auto")
+                    ui.button(t("close"), on_click=self.gallery_dialog.close).classes("mt-4 ml-auto")
+                with ui.column().classes("w-full items-center"):
+                    self.gallery_spinner = ui.spinner(size="lg")
+                    self.gallery_img     = ui.image("").classes(
+                        "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
+                        "transition-opacity duration-1000 opacity-100"
+                    )
+                    self.gallery_info    = ui.label("").classes("text-center mt-2 text-sm")
+                    self.gallery_detail  = ui.label("").classes("text-center text-xs text-gray-400")
+                    with ui.row().classes("gap-4 mt-2 mb-4"):
+                        self._gallery_btn_prev   = ui.button(t("previous_arrow"), on_click=self._gallery_on_prev)
+                        self._gallery_btn_select = ui.button(t("select"),         on_click=self._gallery_select)
+                        self._gallery_btn_next   = ui.button(t("next_arrow"),     on_click=self._gallery_on_next)
 
-                with ui.column().classes("w-full").classes("items-center"):
-#                    ui.label(t("astro_gallery")).classes("text-center text-lg font-semibold")
-                    loading_spinner = ui.spinner(size="lg")
+        self.slideshow_timer     = ui.timer(10,  self._gallery_next_auto, active=False, immediate=False, once=False)
+        self.slideshow_timer_anim = ui.timer(0.2, self._gallery_do_update, active=False, immediate=False, once=False)
 
-                    if self.slideshow_image_data:
-                        slideshow_image = ui.image("") \
-                            .classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
+    def _gallery_do_update(self):
+        self.slideshow_timer_anim.active = False
+        if not self.slideshow_image_data:
+            return
+        entry = self.slideshow_image_data[self.current_file_index]
+        set_base_folder(entry['base_folder'])
+        self.gallery_img.source = entry['url']
+        self.gallery_img.classes('opacity-95').update()
+        self.gallery_info.text = (
+            f"🛰️ {entry['object_name']} "
+            f"🔭 {entry['type_session']} on {entry['dwarf_name']} "
+            f"{entry['details_session']} "
+            f"📅 {entry['session_date']}"
+        )
+        self.gallery_detail.text = entry['file_path']
 
-                        image_info = ui.label("").classes("text-center mt-2 text-sm")
-                        image_detail = ui.label("").classes("text-center text-xs text-gray-400")
+    def _gallery_show_with_fade(self):
+        self.gallery_img.classes('opacity-5').update()
+        self.slideshow_timer_anim.active = True
 
-                        def show_image():
-                            # Crossfade effect
-                            slideshow_image.classes('opacity-5').update()
-                            self.slideshow_timer_anim = ui.timer(0.2, lambda: update_image(), once=True)
+    def _gallery_next_auto(self):
+        if not self.slideshow_image_data:
+            return
+        self.current_file_index = (self.current_file_index + 1) % len(self.slideshow_image_data)
+        self._gallery_show_with_fade()
 
-                        def update_image():
-                            #print(f"Update Image: n°{self.current_file_index}")
-                            set_base_folder(self.slideshow_image_data[self.current_file_index]['base_folder'])
-                            slideshow_image.source = self.slideshow_image_data[self.current_file_index]['url']
-                            slideshow_image.classes('opacity-95').update()
+    def _gallery_reset_auto(self):
+        self.slideshow_timer_anim.active = False
+        if self.slideshow_timer:
+            self.slideshow_timer.cancel()
+            self.slideshow_timer = None
+        self.slideshow_timer = ui.timer(10, self._gallery_next_auto, active=True, immediate=False, once=False)
 
-                            info_text = (
-                                f"🛰️ {self.slideshow_image_data[self.current_file_index]['object_name']} "
-                                f"🔭 {self.slideshow_image_data[self.current_file_index]['type_session']} on {self.slideshow_image_data[self.current_file_index]['dwarf_name']} "
-                                f"{self.slideshow_image_data[self.current_file_index]['details_session']} "
-                                f"📅 {self.slideshow_image_data[self.current_file_index]['session_date']}"
-                            )
-                            image_info.text = info_text
+    def _gallery_on_next(self):
+        if getattr(self, '_gallery_nav_lock', False):
+            return
+        self._gallery_nav_lock = True
+        self._gallery_reset_auto()
+        self.current_file_index = (self.current_file_index + 1) % len(self.slideshow_image_data)
+        self._gallery_show_with_fade()
+        ui.timer(0.5, lambda: setattr(self, '_gallery_nav_lock', False), once=True)
 
-                            image_detail.text = f"{self.slideshow_image_data[self.current_file_index]['file_path']}"
+    def _gallery_on_prev(self):
+        if getattr(self, '_gallery_nav_lock', False):
+            return
+        self._gallery_nav_lock = True
+        self._gallery_reset_auto()
+        self.current_file_index = (self.current_file_index - 1) % len(self.slideshow_image_data)
+        self._gallery_show_with_fade()
+        ui.timer(0.5, lambda: setattr(self, '_gallery_nav_lock', False), once=True)
 
-                        def reaactive_timer():
-                            if self.slideshow_timer:
-                                self.slideshow_timer.cancel()
-                            self.slideshow_timer = ui.timer(10, next_image, immediate=False, once=False)
+    def _gallery_select(self):
+        current = self.slideshow_image_data[self.current_file_index]
+        row_index = current["row_index"]
+        if self.all_files_rows:
+            options = list(self.file_list.options)
+            self.file_list.value = options[row_index + 1]
+        self.gallery_dialog.close()
 
-                        def next_image():
-                            if not self.slideshow_image_data:
-                                return
+    async def show_gallery(self):
+        if not self.test_slideshow_image_data():
+            return False
 
-                            self.current_file_index = (self.current_file_index + 1) % len(self.slideshow_image_data)
-                            show_image()
+        # Reset state
+        self.slideshow_timer_anim.active = False
+        if self.slideshow_timer:
+            self.slideshow_timer.cancel()
+            self.slideshow_timer = None
 
-                        def next_image_click():
-                            reaactive_timer()
-                            next_image()
+        self.current_file_index = 0
+        self.gallery_spinner.set_visibility(True)
+        self.gallery_dialog.open()
+        self._gallery_do_update()
+        self.slideshow_timer = ui.timer(10, self._gallery_next_auto, active=True, immediate=False, once=False)
 
-                        def prev_image():
-                            if not self.slideshow_image_data:
-                                return
-
-                            self.current_file_index = (self.current_file_index - 1) % len(self.slideshow_image_data)
-                            show_image()
-
-                        def prev_image_click():
-                            reaactive_timer()
-                            prev_image()
-
-                        def select_from_gallery():
-                            current = self.slideshow_image_data[self.current_file_index]
-                            row_index = current["row_index"]
-
-                            if self.all_files_rows: 
-                                options = list(self.file_list.options)
-                                self.file_list.value = options[row_index+1]
-                                dialog.close()
-
-                        # Controls
-                        with ui.row().classes("gap-4 mt-2 mb-4"):
-                            ui.button(t("previous_arrow"), on_click=prev_image_click)
-                            ui.button(t("select"), on_click=select_from_gallery)
-                            ui.button(t("next_arrow"), on_click=next_image_click)
-
-                        #show First Image
-                        self.current_file_index = 0
-                        show_image()
-                        # Automatic slideshow with 5s interval
-                        self.slideshow_timer = ui.timer(interval=10, callback=next_image, immediate=False)
-
-                    else:
-                        ui.label(t("no_images"))
-
-            # Stop timer when dialog closes
-            def on_close():
-                if self.slideshow_timer:
-                    self.slideshow_timer.cancel()
-                    self.slideshow_timer = None
-
-                if self.slideshow_timer_anim:
-                    self.slideshow_timer_anim.cancel()
-                    self.slideshow_timer_anim = None
-
-            dialog.on('hide', on_close)
-
-        dialog.open()
-
-        loading_spinner.set_visibility(True)
         await run.io_bound(self.get_slideshow_image_data)
-        loading_spinner.set_visibility(False)
+        self.gallery_spinner.set_visibility(False)
 
         if not self.slideshow_image_data or len(self.slideshow_image_data) == 0:
-            dialog.close()
+            self.gallery_dialog.close()
 
 
     def open_stitch_params(self):

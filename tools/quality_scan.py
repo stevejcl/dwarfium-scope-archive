@@ -33,6 +33,7 @@ Usage:
 
 import argparse
 import math
+import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -43,7 +44,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from api.dwarf_backup_db import connect_db, DB_NAME
-from api.dwarf_backup_fct import is_Restacked, get_total_exposure, get_total_mosaic_exposure
+from api.dwarf_backup_fct import is_Restacked, get_total_exposure, get_total_mosaic_exposure, get_directory_size, get_fits_raw_size
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 GREEN  = "\033[92m"
@@ -85,7 +86,9 @@ def ensure_quality_table(conn: sqlite3.Connection):
             total_exp_seconds REAL,
             score_a           REAL,
             score_c           REAL,
-            scored_at         TEXT NOT NULL
+            scored_at         TEXT NOT NULL,
+            folder_size_bytes INTEGER,
+            folder_sized_at   TEXT
         )
     """)
     conn.commit()
@@ -106,7 +109,9 @@ def ensure_quality_table(conn: sqlite3.Connection):
                 total_exp_seconds REAL,
                 score_a           REAL,
                 score_c           REAL,
-                scored_at         TEXT NOT NULL
+                scored_at         TEXT NOT NULL,
+                folder_size_bytes INTEGER,
+                folder_sized_at   TEXT
             )
         """)
         conn.execute("""
@@ -118,6 +123,13 @@ def ensure_quality_table(conn: sqlite3.Connection):
         conn.execute("DROP TABLE SessionQuality_old")
         conn.commit()
         print("[DB] SessionQuality migrated — UNIQUE constraint added on backup_entry_id")
+
+    # Add folder_size columns if this is an older DB (safe no-op if already present)
+    for col, coltype in [("folder_size_bytes", "INTEGER"), ("folder_sized_at", "TEXT")]:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(SessionQuality)").fetchall()]
+        if col not in cols:
+            conn.execute(f"ALTER TABLE SessionQuality ADD COLUMN {col} {coltype}")
+            conn.commit()
 
 
 def get_sessions_to_score(conn: sqlite3.Connection,
@@ -635,6 +647,347 @@ def score_entry_ids(db_path: str, entry_ids: list, threshold: float = 40.0) -> i
     conn.close()
     return scored
 
+def scan_folder_sizes(db_path: str, entry_ids: list | None = None,
+                      backup_drive_id: int | None = None,
+                      force: bool = False,
+                      progress_callback=None) -> int:
+    """
+    Compute and store the on-disk folder size for BackupEntry sessions.
+
+    Walks each session directory and stores the total in
+    SessionQuality.folder_size_bytes.  Only sessions whose
+    folder_size_bytes IS NULL are processed unless force=True.
+
+    entry_ids        : restrict to a specific list of BackupEntry.id
+    backup_drive_id  : restrict to a specific drive
+    force            : re-measure even if already stored
+    progress_callback: optional callable(current_dir, done, total)
+
+    Returns the number of sessions measured.
+    """
+    conn = connect_db(db_path)
+    ensure_quality_table(conn)
+
+    # Build the candidate list
+    query = """
+        SELECT
+            BackupEntry.id,
+            BackupEntry.session_dir,
+            BackupDrive.location,
+            BackupDrive.astronomy_dir,
+            SessionQuality.folder_size_bytes,
+            DwarfData.file_path
+        FROM BackupEntry
+        JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+        JOIN DwarfData   ON BackupEntry.dwarf_data_id   = DwarfData.id
+        LEFT JOIN SessionQuality ON BackupEntry.id = SessionQuality.backup_entry_id
+        WHERE BackupEntry.dwarf_data_id IS NOT NULL
+    """
+    params: list = []
+
+    if not force:
+        query += " AND (SessionQuality.folder_size_bytes IS NULL)"
+    if backup_drive_id:
+        query += " AND BackupEntry.backup_drive_id = ?"
+        params.append(backup_drive_id)
+    if entry_ids:
+        placeholders = ",".join("?" * len(entry_ids))
+        query += f" AND BackupEntry.id IN ({placeholders})"
+        params.extend(entry_ids)
+
+    rows = conn.execute(query, params).fetchall()
+    total   = len(rows)
+    measured = 0
+
+    for done, (eid, session_dir, location, astro_dir, _, file_path) in enumerate(rows, 1):
+        if not location:
+            continue
+
+        root = os.path.join(location, astro_dir) if astro_dir else location
+
+        # Prefer DwarfData.file_path to resolve the session folder —
+        # file_path is relative to backup_root (location), not to astro_dir,
+        # e.g. "DATA_OBJECTS\M 31\DWARF_RAW_TELE_...\stacked.jpg"
+        folder = None
+        if file_path:
+            candidate = os.path.join(location, os.path.dirname(file_path))
+            if os.path.isdir(candidate):
+                folder = candidate
+
+        # Fallback: try session_dir at known locations
+        if not folder and session_dir:
+            for candidate in [
+                os.path.join(root, session_dir),
+                os.path.join(root, "RESTACKED", session_dir),
+                os.path.join(root, "STARTRAILS", session_dir),
+            ]:
+                if os.path.isdir(candidate):
+                    folder = candidate
+                    break
+
+        if progress_callback:
+            try:
+                progress_callback(os.path.basename(session_dir), done, total)
+            except Exception:
+                pass
+
+        if not folder:
+            print(f"[scan_folder_sizes] not found: {session_dir!r} | file_path={file_path!r} | root={root!r}")
+            continue
+
+        try:
+            size_bytes = get_directory_size(folder)
+        except Exception as e:
+            print(f"[scan_folder_sizes] {folder}: {e}")
+            continue
+
+        sized_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("""
+            INSERT INTO SessionQuality
+                (backup_entry_id, scored_at, folder_size_bytes, folder_sized_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(backup_entry_id) DO UPDATE SET
+                folder_size_bytes = excluded.folder_size_bytes,
+                folder_sized_at   = excluded.folder_sized_at
+        """, (eid, sized_at, size_bytes, sized_at))
+        conn.commit()
+        measured += 1
+
+    conn.close()
+    return measured
+
+
+def get_sessions_with_sizes(db_path: str,
+                             backup_drive_id: int | None = None,
+                             dwarf_id:        int | None = None,
+                             order_by:        str = "size",   # "size" | "date"
+                             limit:           int = 50) -> list[dict]:
+    """
+    Return sessions with their folder sizes for the Report page.
+
+    order_by="size" → biggest first
+    order_by="date" → most recent first
+
+    Each row dict:
+        backup_entry_id, session_dir, session_date, object_name,
+        dwarf_name, drive_name, drive_location, folder_size_bytes,
+        folder_size_str, quality_score
+    """
+    from api.dwarf_backup_fct import format_size
+
+    conn = connect_db(db_path)
+    ensure_quality_table(conn)
+
+    order_clause = (
+        "SessionQuality.folder_size_bytes DESC NULLS LAST"
+        if order_by == "size"
+        else "BackupEntry.session_date DESC"
+    )
+
+    query = f"""
+        SELECT
+            BackupEntry.id                      AS backup_entry_id,
+            BackupEntry.session_dir             AS session_dir,
+            BackupEntry.session_date            AS session_date,
+            COALESCE(
+                NULLIF(TRIM(AstroObject.description), ''),
+                NULLIF(TRIM(AstroObject.name), ''),
+                NULLIF(TRIM(DwarfData.target), ''),
+                '?')                                AS object_name,
+            Dwarf.name                          AS dwarf_name,
+            BackupDrive.name                    AS drive_name,
+            BackupDrive.location                AS drive_location,
+            BackupDrive.astronomy_dir           AS drive_astro_dir,
+            BackupEntry.backup_drive_id         AS backup_drive_id,
+            BackupEntry.dwarf_id                AS dwarf_id,
+            (SELECT DwarfEntry.id FROM DwarfEntry
+             WHERE DwarfEntry.session_dir = BackupEntry.session_dir
+               AND DwarfEntry.dwarf_id    = BackupEntry.dwarf_id
+             LIMIT 1)                           AS dwarf_entry_id,
+            SessionQuality.folder_size_bytes    AS folder_size_bytes,
+            SessionQuality.quality_score        AS quality_score,
+            SessionQuality.dwarf_size_bytes          AS dwarf_size_bytes,
+            SessionQuality.dwarf_size_no_fits_bytes  AS dwarf_size_no_fits_bytes,
+            DwarfData.exp_time                  AS exp_time,
+            DwarfData.shotsStacked              AS shots_stacked,
+            DwarfData.ircut                     AS ir_filter
+        FROM BackupEntry
+        JOIN DwarfData    ON BackupEntry.dwarf_data_id  = DwarfData.id
+        JOIN BackupDrive  ON BackupEntry.backup_drive_id = BackupDrive.id
+        LEFT JOIN Dwarf        ON BackupEntry.dwarf_id        = Dwarf.id
+        LEFT JOIN AstroObject  ON BackupEntry.astro_object_id = AstroObject.id
+        LEFT JOIN SessionQuality ON BackupEntry.id = SessionQuality.backup_entry_id
+        WHERE BackupEntry.dwarf_data_id IS NOT NULL
+    """
+    params: list = []
+    if backup_drive_id:
+        query += " AND BackupEntry.backup_drive_id = ?"
+        params.append(backup_drive_id)
+    if dwarf_id:
+        query += " AND BackupEntry.dwarf_id = ?"
+        params.append(dwarf_id)
+
+    query += f" ORDER BY {order_clause} LIMIT ?"
+    params.append(limit)
+
+    cursor = conn.execute(query, params)
+    cols   = [d[0] for d in cursor.description]
+    rows   = [dict(zip(cols, r)) for r in cursor.fetchall()]
+    conn.close()
+
+    for r in rows:
+        sz = r.get("folder_size_bytes")
+        r["folder_size_str"] = format_size(sz) if sz else "—"
+        dsz = r.get("dwarf_size_bytes")
+        r["dwarf_size_str"] = format_size(dsz) if dsz else "—"
+        nfsz = r.get("dwarf_size_no_fits_bytes")
+        r["dwarf_size_no_fits_str"] = format_size(nfsz) if nfsz else "—"
+
+    return rows
+
+
+def scan_dwarf_session_sizes(db_path: str,
+                              backup_drive_id: int | None = None,
+                              dwarf_id:        int | None = None,
+                              force:           bool = False,
+                              progress_callback=None,
+                              entry_ids:       list | None = None) -> int:
+    """
+    For each BackupEntry session that also exists on a Dwarf local copy,
+    measure:
+      - dwarf_size_bytes        : total folder size on the local Dwarf copy
+      - dwarf_size_no_fits_bytes: size after cleanup_fits (raw FITS removed)
+
+    Only sessions where dwarf_size_bytes IS NULL are processed unless force=True.
+    Returns the number of sessions measured.
+    """
+    from api.dwarf_backup_db_api import get_dwarf_detail, get_session_present_in_Dwarf
+    from api.dwarf_backup_fct   import get_local_dwarf_dir
+
+    conn = connect_db(db_path)
+    ensure_quality_table(conn)
+
+    # Add new columns if this is a pre-v14 DB
+    for col, coltype in [
+        ("dwarf_size_bytes",        "INTEGER"),
+        ("dwarf_size_no_fits_bytes","INTEGER"),
+        ("dwarf_sized_at",          "TEXT"),
+    ]:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(SessionQuality)").fetchall()]
+        if col not in cols:
+            conn.execute(f"ALTER TABLE SessionQuality ADD COLUMN {col} {coltype}")
+            conn.commit()
+
+    query = """
+        SELECT
+            BackupEntry.id,
+            BackupEntry.session_dir,
+            BackupEntry.dwarf_id       AS b_dwarf_id,
+            BackupDrive.location,
+            BackupDrive.astronomy_dir,
+            SessionQuality.dwarf_size_bytes
+        FROM BackupEntry
+        JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
+        LEFT JOIN SessionQuality ON BackupEntry.id = SessionQuality.backup_entry_id
+        WHERE BackupEntry.dwarf_data_id IS NOT NULL
+    """
+    params: list = []
+    if not force:
+        query += " AND (SessionQuality.dwarf_size_bytes IS NULL)"
+    if backup_drive_id:
+        query += " AND BackupEntry.backup_drive_id = ?"
+        params.append(backup_drive_id)
+    if dwarf_id:
+        query += " AND BackupEntry.dwarf_id = ?"
+        params.append(dwarf_id)
+    if entry_ids:
+        placeholders = ",".join("?" * len(entry_ids))
+        query += f" AND BackupEntry.id IN ({placeholders})"
+        params.extend(entry_ids)
+
+    rows = conn.execute(query, params).fetchall()
+    print(query)
+    print(params)
+    total    = len(rows)
+    measured = 0
+
+    for done, (eid, session_dir, b_dwarf_id, location, astro_dir, _) in enumerate(rows, 1):
+        if not session_dir:
+            continue
+
+        if progress_callback:
+            try:
+                progress_callback(os.path.basename(session_dir), done, total)
+            except Exception:
+                pass
+
+        folder = None
+        # check if Dwarf is connected
+        if b_dwarf_id:
+            row = get_dwarf_detail(conn, b_dwarf_id)
+            if row:
+                dwarf_astroDir = row[2] or ""
+
+                if dwarf_astroDir and os.path.isdir(dwarf_astroDir):
+
+                    for candidate in [
+                        os.path.join(dwarf_astroDir, session_dir),
+                        os.path.join(dwarf_astroDir, "RESTACKED", session_dir),
+                        os.path.join(dwarf_astroDir, "STARTRAILS", session_dir),
+                    ]:
+                        if os.path.isdir(candidate):
+                            folder = candidate
+                            break
+
+        if not folder:
+
+            # Resolve the Dwarf local folder
+            dwarf_row = get_session_present_in_Dwarf(conn, session_dir)
+            if not dwarf_row:
+                continue
+
+            d_dwarf_id = dwarf_row[0]
+            local_dwarf_root = get_local_dwarf_dir(conn, d_dwarf_id)
+
+            # Probe normal, RESTACKED and STARTRAILS sub-paths
+            folder = None
+            for candidate in [
+                os.path.join(local_dwarf_root, session_dir),
+                os.path.join(local_dwarf_root, "RESTACKED", session_dir),
+                os.path.join(local_dwarf_root, "STARTRAILS", session_dir),
+            ]:
+                if os.path.isdir(candidate):
+                    folder = candidate
+                    break
+
+        if not folder:
+            continue
+
+        try:
+            print(f"[scan_dwarf_sizes] {folder}")
+            total_size   = get_directory_size(folder)
+            fits_size    = get_fits_raw_size(folder)
+            no_fits_size = total_size - fits_size
+        except Exception as e:
+            print(f"[scan_dwarf_sizes] {folder}: {e}")
+            continue
+
+        sized_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("""
+            INSERT INTO SessionQuality
+                (backup_entry_id, scored_at, dwarf_size_bytes, dwarf_size_no_fits_bytes, dwarf_sized_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(backup_entry_id) DO UPDATE SET
+                dwarf_size_bytes         = excluded.dwarf_size_bytes,
+                dwarf_size_no_fits_bytes = excluded.dwarf_size_no_fits_bytes,
+                dwarf_sized_at           = excluded.dwarf_sized_at
+        """, (eid, sized_at, total_size, no_fits_size, sized_at))
+        conn.commit()
+        measured += 1
+
+    conn.close()
+    return measured
+
+
 if __name__ == "__main__":
     main()
-

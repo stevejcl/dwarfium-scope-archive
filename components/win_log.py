@@ -1,4 +1,5 @@
 from nicegui import ui
+from components.i18n import t
 import inspect
 
 class WinLog:
@@ -11,8 +12,8 @@ class WinLog:
             ui.label().bind_text_from(self, "popup_title").classes("text-lg font-bold")
             ui.label().bind_text_from(self, "popup_text").classes("text-md").style('white-space: pre-wrap') 
             with ui.row():
-                ui.button("Yes", on_click=self._on_yes_clicked)
-                ui.button("No", on_click=lambda: self.popup_dialog.submit("No"))
+                ui.button(t("yes"), on_click=self._on_yes_clicked)
+                ui.button(t("no"), on_click=lambda: self.popup_dialog.submit("No"))
 
     async def show(self, title: str, text: str, on_yes: callable = None):
         """Display the popup with a title and message. Optionally call `on_yes` if user confirms."""

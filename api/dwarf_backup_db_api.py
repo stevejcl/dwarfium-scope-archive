@@ -2245,7 +2245,7 @@ def get_session_backup_details(conn: sqlite3.Connection, backupEntryId = None):
         print(f"[DB ERROR] Failed to fetch get_session_backup_details: {e}")
         return []
 
-def get_sessions_dwarf(conn: sqlite3.Connection, dwarf_id=None, session_dir=None):
+def get_sessions_dwarf(conn: sqlite3.Connection, dwarf_id=None, session_dir=None, session_id=None):
     try:
         cursor = conn.cursor()
 
@@ -2264,7 +2264,7 @@ def get_sessions_dwarf(conn: sqlite3.Connection, dwarf_id=None, session_dir=None
         conditions = []
         params = []
 
-        if dwarf_id:  # not "(All Dwarfs)"
+        if dwarf_id:
             conditions.append("DwarfEntry.dwarf_id = ?")
             params.append(dwarf_id)
 
@@ -2272,15 +2272,16 @@ def get_sessions_dwarf(conn: sqlite3.Connection, dwarf_id=None, session_dir=None
             conditions.append("DwarfEntry.session_dir = ?")
             params.append(session_dir)
 
+        if session_id:
+            conditions.append("DwarfEntry.id = ?")
+            params.append(session_id)
+
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += f"""
-            ORDER BY DwarfEntry.session_date DESC
-        """
+        query += " ORDER BY DwarfEntry.session_date DESC"
 
         cursor.execute(query, params)
-
         return cursor.fetchall()
 
     except Exception as e:
@@ -3948,12 +3949,26 @@ def delete_session_note(conn, note_id):
 
 
 def get_backup_entry_id_by_dwarf_data(conn, dwarf_data_id):
-    """Get BackupEntry.id from DwarfData.id."""
+    """Get BackupEntry.id from DwarfData.id.
+    First tries direct link via BackupEntry.dwarf_data_id,
+    then falls back via DwarfEntry.session_dir match."""
     with conn:
+        # Direct link
         row = conn.execute(
             "SELECT id FROM BackupEntry WHERE dwarf_data_id=? LIMIT 1",
             (dwarf_data_id,)
         ).fetchone()
+        if row:
+            return row[0]
+
+        # Fallback: DwarfEntry → session_dir → BackupEntry
+        row = conn.execute("""
+            SELECT BackupEntry.id
+            FROM DwarfEntry
+            JOIN BackupEntry ON BackupEntry.session_dir = DwarfEntry.session_dir
+            WHERE DwarfEntry.dwarf_data_id = ?
+            LIMIT 1
+        """, (dwarf_data_id,)).fetchone()
         return row[0] if row else None
 
 

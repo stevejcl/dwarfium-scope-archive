@@ -99,6 +99,7 @@ def menu(title):
                 ui.separator()
                 ui.menu_item(t("menu_catalog"), on_click=lambda: ui.navigate.to('/Catalog'))
                 ui.menu_item(t('sky_map_menu'), on_click=lambda: ui.navigate.to('/SkyMap'))
+                ui.menu_item(t("menu_report"), on_click=lambda: ui.navigate.to('/Report')).classes('whitespace-nowrap')
                 ui.separator()
                 ui.menu_item(t("menu_mtp"), on_click=lambda: ui.navigate.to('/MtpDevice'))
                 ui.menu_item(t("menu_settings"), on_click=lambda: ui.navigate.to('/Settings'))

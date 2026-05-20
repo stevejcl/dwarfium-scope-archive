@@ -1141,11 +1141,57 @@ class TransferApp:
                 local_Dwarf_session = os.path.join(local_Dwarf_dir, startrails_session)
             print(local_Dwarf_session)
 
-            total_dwarf, deleted_dwarf, _ = await loop.run_in_executor(None, scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log)
+            # ── Pre-count top-level dirs for both scan roots ──────────────────
+            # Gives a stable grand_total before any scan starts so the progress
+            # bar is accurate even when the two scans run sequentially.
+            _skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed"}
+
+            def _count_scan_dirs(root, astro_sub=""):
+                """Count eligible top-level directories in a scan root."""
+                if not root:
+                    return 0
+                scan_root = os.path.join(root, astro_sub) if astro_sub else root
+                try:
+                    return sum(
+                        1 for d in os.listdir(scan_root)
+                        if d not in _skip_dirs and os.path.isdir(os.path.join(scan_root, d))
+                    )
+                except Exception:
+                    return 0
+
+            do_backup_scan = (
+                self.mode != "Repair"
+                and self.mode != "Merge"
+                and dir_backup_session is not None
+            )
+            dwarf_dir_count  = _count_scan_dirs(local_Dwarf_dir)
+            backup_dir_count = _count_scan_dirs(self.backup_location, self.backup_astrodir or "") if do_backup_scan else 0
+            grand_total      = dwarf_dir_count + backup_dir_count
+
+            # Shared scan-progress state across the two scan calls.
+            # offset is updated after the dwarf scan so backup dirs continue
+            # from where the dwarf scan left off.
+            scan_state = {"offset": 0}
+
+            def _make_scan_callback():
+                def _cb(current_dir, done, _dirs_total):
+                    grand_done = scan_state["offset"] + done
+                    self._set_progress(
+                        'scanning', 0, 0,
+                        current_file=current_dir,
+                        scan_dirs_done=grand_done,
+                        scan_dirs_total=grand_total,
+                    )
+                return _cb
+
+            total_dwarf, deleted_dwarf, _ = await loop.run_in_executor(None, scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.DwarfId, None, local_Dwarf_session, log, _make_scan_callback())
+
+            # Advance the offset so the backup scan's counter continues from here
+            scan_state["offset"] = dwarf_dir_count
 
             # In Repair mode the backup drive is unchanged — skip backup scan
-            if self.mode != "Repair" and self.mode != "Merge" and dir_backup_session is not None:
-                total_backup, deleted_backup, rebuild_result = await loop.run_in_executor(None, scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log)
+            if do_backup_scan:
+                total_backup, deleted_backup, rebuild_result = await loop.run_in_executor(None, scan_backup_folder, DB_NAME, self.backup_location, self.backup_astrodir, self.DwarfId, self.BackupId, dir_backup_session, log, _make_scan_callback())
                 _ui(lambda: ui.notify(t("analysis_complete_backup", total=total_backup), type="positive"))
                 if rebuild_result["rebuilt"] > 0:
                     _ui(lambda: ui.notify(t('manual_sessions_relinked', count=rebuild_result['rebuilt']), type='positive'))
@@ -1174,14 +1220,16 @@ class TransferApp:
 
     # ── Background transfer progress ──────────────────────────────────────────
 
-    def _set_progress(self, status, copied, total, current_file="", error=""):
+    def _set_progress(self, status, copied, total, current_file="", error="", scan_dirs_done=0, scan_dirs_total=0):
         """Write progress to general storage AND push to UI via client context."""
         data = {
-            'status':       status,
-            'copied':       copied,
-            'total':        total,
-            'current_file': current_file,
-            'error':        error,
+            'status':          status,
+            'copied':          copied,
+            'total':           total,
+            'current_file':    current_file,
+            'error':           error,
+            'scan_dirs_done':  scan_dirs_done,
+            'scan_dirs_total': scan_dirs_total,
         }
         # Use fixed key — client_id changes on navigation so don't use it
         try:
@@ -1576,9 +1624,17 @@ class TransferApp:
             self.cancel_btn.visible = False
             self._running_banner.visible = True
         elif status == 'scanning':
-            self.bg_status_label.text = current
+            scan_done  = p.get('scan_dirs_done',  0)
+            scan_total = p.get('scan_dirs_total', 0)
+            current_dir = current  # may be a plain label (sync phase) or a dir name (scan phase)
+            if scan_total > 0:
+                pct = f" ({round(scan_done / scan_total * 100)}%)"
+                self.bg_status_label.text = f"🔍 [{scan_done}/{scan_total}]{pct} — {current_dir}"
+                self.bg_progress.value = scan_done / scan_total
+            else:
+                self.bg_status_label.text = current_dir
+                self.bg_progress.value = 0
             self._show_bg_progress(True)
-            self.bg_progress.value = 0
             self.StartBackup.visible = False
             self.cancel_btn.visible = False
             self._reset_btn.visible = True

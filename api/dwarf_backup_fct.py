@@ -155,6 +155,50 @@ def format_size(size_bytes: int) -> str:
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
 
+def get_disk_space_info(path: str) -> dict:
+    """
+    Return disk space information for the volume containing *path*.
+
+    Keys:
+        online     – bool: path exists and disk_usage succeeded
+        total      – int bytes total
+        used       – int bytes used
+        free       – int bytes free
+        free_pct   – float 0-100: percentage of space still available
+        total_str  – human-readable total  (e.g. "931.5 GB")
+        used_str   – human-readable used
+        free_str   – human-readable free
+        warning    – bool: free_pct < 15
+        critical   – bool: free_pct < 5
+    """
+    result = {
+        "online": False,
+        "total": 0, "used": 0, "free": 0,
+        "free_pct": 0.0,
+        "total_str": "—", "used_str": "—", "free_str": "—",
+        "warning": False, "critical": False,
+    }
+    if not path or not os.path.exists(path):
+        return result
+    try:
+        usage = shutil.disk_usage(path)
+        free_pct = (usage.free / usage.total * 100) if usage.total else 0.0
+        result.update({
+            "online":    True,
+            "total":     usage.total,
+            "used":      usage.used,
+            "free":      usage.free,
+            "free_pct":  round(free_pct, 1),
+            "total_str": format_size(usage.total),
+            "used_str":  format_size(usage.used),
+            "free_str":  format_size(usage.free),
+            "warning":   free_pct < 15,
+            "critical":  free_pct < 5,
+        })
+    except Exception as e:
+        safe_print(f"[disk_space] {path}: {e}")
+    return result
+
 def get_file_path(full_path, base_folder):
     # Normalize both paths to use forward slashes and strip trailing slashes
     full_path = os.path.normpath(full_path)
@@ -427,6 +471,38 @@ def count_fits_files(directory):
     except Exception as e:
         safe_print(f"Could not access {directory}: {e}")
 
+def get_fits_raw_size(directory: str) -> int:
+    """
+    Return the total size in bytes of all raw FITS files in a session directory
+    (same files that cleanup_fits_files would delete — excludes stacked-16_* and failed_*).
+    """
+    total = 0
+    if not os.path.exists(directory):
+        return 0
+    try:
+        is_mosaic = "_MOSAIC_" in directory and has_subdirectories(directory)
+        walk_roots = []
+        if is_mosaic:
+            for sub in os.listdir(directory):
+                sub_path = os.path.join(directory, sub)
+                if os.path.isdir(sub_path):
+                    walk_roots.append(sub_path)
+        else:
+            walk_roots.append(directory)
+
+        for root in walk_roots:
+            for dirpath, _, filenames in os.walk(root):
+                for f in filenames:
+                    if f.lower().endswith(".fits") and not f.startswith("stacked-16_"):
+                        try:
+                            total += os.path.getsize(os.path.join(dirpath, f))
+                        except Exception:
+                            pass
+    except Exception as e:
+        safe_print(f"[get_fits_raw_size] {directory}: {e}")
+    return total
+
+
 def count_failed_fits_files(directory):
     return sum(
         1 for f in os.listdir(directory)
@@ -448,24 +524,19 @@ def count_failed_tiff_files(directory):
 def cleanup_fits_files(directory: str, dry_run: bool = False) -> None:
     """
     Remove all FITS files in a directory tree except those starting with 'stacked-16_'.
-
-    Args:
-        directory (str): Root directory of the session
-        dry_run (bool): If True, only prints what would be deleted
+    Uses win_long_path() to handle Windows paths > 260 chars (mosaic sessions).
     """
 
-    if not os.path.exists(directory):
+    if not os.path.exists(win_long_path(directory)):
         raise ValueError(f"Directory does not exist: {directory}")
 
     deleted_count = 0
     kept_count = 0
 
-    for dirpath, _, filenames in os.walk(directory):
+    for dirpath, _, filenames in os.walk(win_long_path(directory)):
         for filename in filenames:
-            # Normalize case just in case (.FITS, .fits, etc.)
             if filename.lower().endswith(".fits"):
-                
-                # Keep stacked-16_* files
+
                 if filename.startswith("stacked-16_"):
                     kept_count += 1
                     continue
@@ -486,24 +557,18 @@ def cleanup_fits_files(directory: str, dry_run: bool = False) -> None:
     print(f"  Deleted FITS files: {deleted_count}")
     print(f"  Kept stacked FITS: {kept_count}")
 
-    return deleted_count 
- 
+    return deleted_count
 def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry_run: bool = False):
     """
     Restore FITS files from backup to the Dwarf session folder.
     Preserves subfolders and skips existing files.
-
-    Args:
-        src_backup_folder (str): Path to the backup session folder
-        dst_session_folder (str): Path to the session folder on Dwarf
-        dry_run (bool): If True, only prints what would be copied
+    Uses win_long_path() to handle Windows paths > 260 chars (mosaic sessions).
     """
 
-    if not os.path.exists(src_backup_folder):
+    if not os.path.exists(win_long_path(src_backup_folder)):
         raise ValueError(f"Backup folder does not exist: {src_backup_folder}")
 
-    os.makedirs(dst_session_folder, exist_ok=True)
-
+    os.makedirs(win_long_path(dst_session_folder), exist_ok=True)
     restored_count = 0
     skipped_count = 0
     files_to_copy = []
@@ -512,31 +577,33 @@ def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry
     for root, dirs, files in os.walk(src_backup_folder):
         # Determine relative path to preserve folder structure
         rel_path = os.path.relpath(root, src_backup_folder)
-        target_dir = os.path.join(dst_session_folder, rel_path)
-        os.makedirs(target_dir, exist_ok=True)
-        i = 0
+        if rel_path == ".":
+            target_dir = dst_session_folder
+        else:
+            target_dir = os.path.join(dst_session_folder, rel_path)
+        os.makedirs(win_long_path(target_dir), exist_ok=True)
 
         for f in files:
             if f.lower().endswith(".fits") and not f.startswith("stacked-16_"):
                 src_file = os.path.join(root, f)
                 dst_file = os.path.join(target_dir, f)
 
-                if os.path.exists(dst_file):
-                    skipped_count +=1
-                    continue  # skip existing files
-                files_to_copy.append((src_file, dst_file))               
                 total_fits_files += 1
+                if os.path.exists(win_long_path(dst_file)):
+                    skipped_count += 1
+                    continue  # skip existing files
+                files_to_copy.append((src_file, dst_file))
 
     for i, (src_file, dst_file) in enumerate(files_to_copy, 1):
         if app.cancel_restore:
-            break  # stop restoring if cancel requested
+            break
 
-        progress = round((i + 1) / total_fits_files * 100)
+        progress = round(i / len(files_to_copy) * 100) if files_to_copy else 0
 
         if dry_run:
             print(f"[DRY RUN] Would copy: {src_file} → {dst_file}")
         else:
-            result_copy = safe_copy2(src_file, dst_file)
+            result_copy = safe_copy2(win_long_path(src_file), win_long_path(dst_file))
             if not result_copy:
                 raise Exception(f"Copy failed without exception: {src_file}")
             restored_count += 1
@@ -547,9 +614,9 @@ def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry
     print(f"  Restored FITS files: {restored_count}")
     print(f"  Skipped (already exist): {skipped_count}")
     print(f"  Total files: {total_fits_files}")
-    
+
     app.cancel_button.visible = False
-    
+
     return restored_count, skipped_count, total_fits_files
 #################
 # FITS Functions
@@ -1507,7 +1574,7 @@ def insert_dwarf_data(conn, root, filepath, astro_object_id = None, new_astro_ob
 # SYNC Main functions
 ######################
 
-def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", session_name=None, log=None):
+def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", session_name=None, log=None, progress_callback=None):
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
     archive_dir = os.path.join(dwarf_dir, "Archive")
     os.makedirs(archive_dir, exist_ok=True)
@@ -1582,7 +1649,13 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     safe_print(local_sessions)
     print_log(f"\n🔄 Syncing {len(all_sessions)} sessions from source...\n", log)
 
-    for session in all_sessions:
+    sessions_total = len(all_sessions)
+    for sessions_done, session in enumerate(all_sessions, 1):
+        if progress_callback:
+            try:
+                progress_callback(os.path.basename(session), sessions_done, sessions_total)
+            except Exception:
+                pass
         print_log(f"✅ Checking local session {session}.", log)
         src_session = os.path.join(source_root, session)
         dst_session = (
@@ -1640,7 +1713,7 @@ def count_session_fits_files(directory):
         return 0
 
 
-def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None):
+def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_drive_id = None, session_dir_path = None, log=None, progress_callback=None):
     if not db_name:
         print_log(f"❌ database name can not be empty!",log)
         return 0,0
@@ -1677,7 +1750,15 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     total_added = 0
     deleted = 0
 
+    # Pre-count eligible top-level dirs so callers can show a progress bar
     skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed"}
+    all_astro_dirs = [
+        d for d in os.listdir(data_root)
+        if d not in skip_dirs and os.path.isdir(os.path.join(data_root, d))
+    ]
+    dirs_total = len(all_astro_dirs)
+    dirs_done  = 0
+
     for astro_dir in os.listdir(data_root):
         if astro_dir in skip_dirs:
             safe_print(f"Skip: {astro_dir}")
@@ -1690,16 +1771,28 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         if session_dir_main_dir and not (session_dir_main_dir == astro_dir):
             continue
 
+        dirs_done += 1
+        # Report progress to the caller before heavy work starts
         if session_dir_main_dir:
             if is_session_dir:
                 print_log(f"🔍 Processing Session Dir: {session_dir}",log)
                 safe_print(f"Processing Session Dir: {session_dir}")
+                if progress_callback:
+                    try:
+                        progress_callback(session_dir, dirs_done, dirs_total)
+                    except Exception:
+                        pass
 
         else:
             print_log(f"🔍 Processing Dir:",log)
             print_log(f"🔍 {astro_dir}",log)
             safe_print(f"astro_path Dir: {astro_path}")
             safe_print(f"Processing Dir: {astro_dir}")
+            if progress_callback:
+                try:
+                    progress_callback(astro_dir, dirs_done, dirs_total)
+                except Exception:
+                    pass
     
         found_data = False
         astro_group_id = None

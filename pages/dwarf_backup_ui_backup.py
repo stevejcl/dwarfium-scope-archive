@@ -18,6 +18,7 @@ from tools.quality_scan import get_sessions_to_score, score_entry_ids
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+from components.disk_space_widget import disk_space_widget
 
 @ui.page('/Backup')
 async def backup_settings(BackupId:int = None):
@@ -42,6 +43,7 @@ class ConfigApp(DbPageMixin):
         self.backup_integrity_list = None
         self.errors = None
         self.selected_error = {"value": None}
+        self._disk_widget = None
         self.WinLog = WinLog()
         self.build_ui()
 
@@ -97,6 +99,9 @@ class ConfigApp(DbPageMixin):
                             .style("min-width: 260px; max-width: 400px;")
                         )
                         ui.button(t("select_folder"), on_click=self.select_folder).classes('w-46')
+
+                    # Disk space info — updated when a drive is selected
+                    self._disk_widget = disk_space_widget(None, drive_type="backup")
 
                     with ui.row().classes('items-center gap-4'):
                         self.backupDrive_astroDir = ui.input(t("astronomy_dir")).classes('w-55') or ""
@@ -234,10 +239,12 @@ class ConfigApp(DbPageMixin):
         self.button_explore_session.visible=False
         self.results_container.clear()
 
-    def load_selected_backupDrive(self, _):
+    async def load_selected_backupDrive(self, _):
         value = self.backupDrive_selector.value
         if not value:
             self.history_log.visible = False
+            if self._disk_widget:
+                await self._disk_widget.refresh(None)
             return
         if value in self.backupDrive_map:
             self.backupDrive_id, path = self.backupDrive_map[value]
@@ -261,6 +268,14 @@ class ConfigApp(DbPageMixin):
             # Load transfer history from journal file
             backup_path = os.path.join(row[2], row[3]) if row[3] else row[2]
             self._load_transfer_history(backup_path)
+            # Refresh disk space info
+            if self._disk_widget:
+                await self._disk_widget.refresh(
+                    row[2],
+                    drive_type="backup",
+                    drive_id=self.backupDrive_id,
+                    name=row[0],
+                )
 
     def _resize_location_input(self):
         """Auto-resize the location input to fit its content."""
@@ -449,16 +464,28 @@ class ConfigApp(DbPageMixin):
             close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label(t("scanning_backup_location", location=f"{location}-{astroDir}"))
             spinner = ui.spinner(size="lg")
+            scan_progress_bar   = ui.linear_progress(value=0, show_value=False).classes("w-full")
+            scan_progress_label = ui.label("").classes("text-sm text-gray-500")
             log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
         dialog.open()  # show the dialog
         spinner.set_visibility(True)
 
+        def _on_scan_progress(current_dir, done, total):
+            """Called from the io_bound thread for each top-level folder scanned."""
+            try:
+                scan_progress_bar.set_value(done / total if total else 0)
+                scan_progress_label.set_text(f"[{done}/{total}] 🔍 {current_dir}")
+            except Exception:
+                pass
+
         try:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
 
             ui.notify(t("scanning_location", location=f"{location}-{astroDir}"))
-            total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log)
+            total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log, _on_scan_progress)
+            scan_progress_bar.set_value(1)
+            scan_progress_label.set_text(t("analysis_complete", total=total, deleted=deleted))
             ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
             spinner.set_visibility(False)
 

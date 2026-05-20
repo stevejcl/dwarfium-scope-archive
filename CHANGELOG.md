@@ -1,5 +1,18 @@
 # Changelog
 
+## [V3.1.9_RC1] - 2026-05-20
+
+### Add
+    Scan/sync functions (local and FTP) now accept optional progress_callback and report per-folder progress.
+    Add main Gallery for Manual Session
+    Add disk-space cache, widget and report
+    Persist and display disk usage and add support for storage reporting.
+    Add a persistent diskinfo.json cache and disk space widget
+    that shows live or cached values when drives are offline.
+    Database schema bumped to v14
+    Help/locales updated
+    Report page scaffold added
+
 ## [V3.1.8_RC3] - 2026-05-14
 
 ### BugFix#

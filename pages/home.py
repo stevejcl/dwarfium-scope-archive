@@ -1,5 +1,5 @@
 from components.i18n import t
-from nicegui import ui, app
+from nicegui import ui, app, run, Client
 
 import os, datetime
 import subprocess
@@ -44,7 +44,7 @@ async def ensure_init():
 
 
 @ui.page('/')
-async def home_page():
+async def home_page(client: Client):
     status = None
     curent_init = is_app_started
     if not is_app_started:
@@ -59,8 +59,6 @@ async def home_page():
     if not is_app_started and status:
         status.set_text(t('initializing_db'))
     await ensure_init()
-
-    await ui.context.client.connected(timeout=10.0)
 
     # Check settings and handle directory setup
     conn = connect_db(DB_NAME)
@@ -86,23 +84,27 @@ async def home_page():
             ui.label(title).classes("text-2xl font-bold my-2 mr-auto")
 
     # Launch the GUI
-    home = HomeApp(DB_NAME, ON_AIR)
+    home = HomeApp(client, DB_NAME, ON_AIR)
 
     # Cancel the slideshow timer when the client discon nects
     # (browser tab closed, page navigated away, window closed)
-    ui.context.client.on_disconnect(home.cancel_timer)
+    ui.context.client.on_disconnect(home.on_disconnect)
   
 class HomeApp(DbPageMixin):
-    def __init__(self, database, ON_AIR):
+    def __init__(self, client: Client, database, ON_AIR):
+        self.client = client
         self.database = database
         self.ON_AIR = ON_AIR
         self.image_detail_click_set = False
-        self.conn = connect_db(self.database)
-        self.register_conn_close()
         self.gallery_timer = None
         self.button_cancel_generate = None
+        self.end_background_task = False
         self.build_ui()
 
+    def on_disconnect(self):
+        self.end_background_task = True
+        self.cancel_timer()
+        
     def get_name_object(self, name, desc):
         name_object = name 
 
@@ -124,65 +126,78 @@ class HomeApp(DbPageMixin):
 
         return main_part
 
-    def build_ui(self):
-        # Fetch favorite images
-        files = get_backup_favorites(self.conn)
-        image_data = []
+    def _sample_image(self):
+        """Return the placeholder image entry shown while real favorites are loading."""
+        base_folder = os.getcwd()
+        full_path = os.path.join(base_folder, "image/sample_favorite.jpg")
+        return {
+            "url":          build_preview_url("image/sample_favorite.jpg"),
+            "object_name":  "🛰️ Rosette Nebula",
+            "dwarf_name":   "🔭 Dwarf3",
+            "session_date": "📅 2025.11.21 07:47",
+            "file_path":    full_path,
+            "base_folder":  base_folder,
+            "_is_sample":   True,
+        }
 
-        for row in files:
-            session_date = row[1]  # session_date
-            astro_object_name = row[2]  # astro_object_name
-            file_path = row[3]  # image path
-            dwarf_name = row[4]  # Dwarf Name
-            backup_path = row[6]  # Backup location
-            astro_object_description = row[7]  # astro_object_description
+    def _collect_all_favorites(self):
+        """
+        Blocking I/O — intended to run via run.io_bound().
+        Returns a list of image-data dicts for all backup + manual favorites.
+        """
+        conn = connect_db(self.database)
+        result = []
+        print("_collect_all_favorites")
+
+        # ── Backup favorites ─────────────────────────────────────────────────
+        for row in get_backup_favorites(conn):
+            session_date          = row[1]
+            astro_object_name     = row[2]
+            file_path             = row[3]
+            dwarf_name            = row[4]
+            backup_path           = row[6]
+            astro_object_description = row[7]
             exp_time   = row[8]  if len(row) > 8  else None
             gain       = row[9]  if len(row) > 9  else None
             ir_filter  = row[10] if len(row) > 10 else None
             shots      = row[11] if len(row) > 11 and row[11] is not None else None
             backup_data_entry = row[12] if len(row) > 12 else None
-            fits_path = row[13] if len(row) > 12 else None  # fits path
+            fits_path  = row[13] if len(row) > 13 else None
 
-            # Generate the full path and URL for the image
-            full_fits_path = get_Backup_fullpath(self.conn, backup_path, "", fits_path) if fits_path else None
-            full_path = get_Backup_fullpath(self.conn, backup_path, "", file_path)
+            full_fits_path = get_Backup_fullpath(conn, backup_path, "", fits_path) if fits_path else None
+            full_path = get_Backup_fullpath(conn, backup_path, "", file_path)
             base_folder = full_path.replace("\\", "/").rsplit(file_path.replace("\\", "/"), 1)[0]
             object_name = self.get_name_object(astro_object_name, astro_object_description)
 
             exp = f"{exp_time}s" if exp_time is not None else "N/A"
             exp_value = parse_exposure(exp) if exp != "N/A" else 0
-            exposure_time = format_seconds_hms(exp_value * shots)
+            exposure_time = format_seconds_hms(exp_value * shots) if shots else ""
 
             # get exposure for Restacked session
             if "RESTACKED" in full_path:
                 if "_MOSAIC_" in full_path:
                     exposure_time = format_seconds_hms(get_total_mosaic_exposure(os.path.dirname(full_path)))
-                else:
-                    if full_fits_path and os.path.isfile(full_fits_path):
-                        exposure_time = format_seconds_hms(get_total_exposure(full_fits_path))
+                elif full_fits_path and os.path.isfile(full_fits_path):
+                    exposure_time = format_seconds_hms(get_total_exposure(full_fits_path))
 
             url_path = build_preview_url(file_path)
             if os.path.exists(full_path):
-                image_data.append({
-                    "url": url_path,
-                    "object_name": f"🛰️ {object_name}" if object_name else "Unknown Object",
-                    "dwarf_name": f"🔭 {dwarf_name}" if dwarf_name else "Unknown Device",
-                    "session_date": f"📅 {show_date_session(session_date)}",
-                    "file_path": full_path,
-                    "base_folder": base_folder,
-                    "exp_time":   str(exp_time) if exp_time else "",
-                    "gain":       str(gain) if gain else "",
-                    "filter":     str(ir_filter) if ir_filter else "",
+                result.append({
+                    "url":            url_path,
+                    "object_name":    f"🛰️ {object_name}" if object_name else "Unknown Object",
+                    "dwarf_name":     f"🔭 {dwarf_name}" if dwarf_name else "Unknown Device",
+                    "session_date":   f"📅 {show_date_session(session_date)}",
+                    "file_path":      full_path,
+                    "base_folder":    base_folder,
+                    "exp_time":       str(exp_time) if exp_time else "",
+                    "gain":           str(gain) if gain else "",
+                    "filter":         str(ir_filter) if ir_filter else "",
                     "total_exposure": exposure_time,
-                    "entry":      backup_data_entry
-
+                    "entry":          backup_data_entry,
                 })
-        
+
         # ── Manual Session favorites ──────────────────────────────────────────
-        for row in get_manual_favorites(self.conn):
-            # [0]id [1]date [2]session_name [3]jpeg_path [4]dwarf [5]drive_name
-            # [6]location [7]description [8]session_dir [9]session_type [10] session_tag
-            #[11] manual_session_dir [12] manual_location
+        for row in get_manual_favorites(conn):
             manual_entry        = row[0]
             session_date        = row[1]
             session_name        = row[2]
@@ -196,10 +211,8 @@ class HomeApp(DbPageMixin):
             manual_session_dir  = row[11]
             manual_location     = row[12]
 
-            print(f"jpg path: {jpeg_path}")
-
             if not jpeg_path:
-                print(f"error jpg path: {jpeg_path}")
+                print(f"[home] error jpg path: {jpeg_path}")
                 continue
             # Resolve full path
             if os.path.isabs(jpeg_path):
@@ -209,16 +222,14 @@ class HomeApp(DbPageMixin):
             if not os.path.exists(full_path) and location:
                 full_path = os.path.join(location, jpeg_path)
             if not os.path.exists(full_path):
-                print(f"error full path: {full_path}")
+                print(f"[home] error full path: {full_path}")
                 continue
 
-            # Use same logic as ManualExplore: base_folder via manual_location
-            # jpeg_path may be relative (e.g. "stacked.jpg") or absolute
             set_base_folder(manual_location)
             url_path = build_preview_url(get_relative_file_path(manual_location, jpeg_path))
             label = description or session_name or "Manual Session"
             type_icon = "🖼️" if session_type == "Stellar Studio" else "📷"
-            image_data.append({
+            result.append({
                 "url":          url_path,
                 "object_name":  f"{type_icon} {label}",
                 "dwarf_name":   f"🔭 {dwarf_name}" if dwarf_name else "Manual",
@@ -226,135 +237,156 @@ class HomeApp(DbPageMixin):
                 "file_path":    full_path,
                 "base_folder":  manual_location,
                 "source":       "manual",
-                "entry":        manual_entry
+                "entry":        manual_entry,
             })
 
-        # TEST
-        test_full_path = "X:\\AstroPhoto\\DWARFLAB_2\\DWARF_MINI_NEW\\STELLAR_SESSION\\RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369\\New\\stacked.jpg"
-        test_location = "X:\\AstroPhoto\\DWARFLAB_2\\DWARF_MINI_NEW\\STELLAR_SESSION"
-        test_session_dir = "RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369"
-        test_session_tag = "RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369\\New"
-        test_jpg_tag = "New\\stacked.jpg"
-        test_jpg = "stacked.jpg"
-        full_jpg = test_full_path
-        mini_path1 = "X:\\AstroPhoto\\DWARFLAB_2\\DWARF_MINI_NEW\\STELLAR_SESSION\\RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369\\New"
-        mini_path2 = "X:\\AstroPhoto\\DWARFLAB_2\\DWARF_MINI_NEW\\STELLAR_SESSION\\RESTACKED_DWARF_RAW_TELE_Cave Nebula_Duo-Band_20260409-065403369"
-        
-        close_db(self.conn)
-        self.conn = None
+        close_db(conn)
+        print(f"[home] favorites loaded: {len(result)}")
+        return result
 
-        # display Sample if no image yet
-        if len(image_data) == 0 :
-            base_folder = os.getcwd() 
-            image_path = "image/sample_favorite.jpg"
-            full_path = os.path.join(base_folder, image_path)
-            url_path = build_preview_url("image/sample_favorite.jpg")
-            image_data.append({
-                "url": url_path,
-                "object_name": "🛰️ Rosette Nebula",
-                "dwarf_name": f"🔭 Dwarf3",
-                "session_date": f"📅 2025.11.21 07:47",
-                "file_path": full_path,
-                "base_folder": base_folder
-            })
+    def build_ui(self):
+        """Build the slideshow UI — starts immediately with the sample image,
+        then loads all real favorites in the background via run.io_bound."""
 
-        # UI - Slideshow
-        self.first_image = True
-        self.current_index = 0  # Index for slideshow
+        # ── Slideshow state ──────────────────────────────────────────────────
+        self.current_index = 0
         if self.gallery_timer:
-            self.gallery_timer.cancel()
+            self.gallery_timer.cancel(with_current_invocation=True)
             self.gallery_timer = None
 
-        with ui.column().classes("w-full").classes("items-center"):
+        # Start with the sample placeholder so the UI renders immediately
+        image_data = [self._sample_image()]
+
+        # ── UI build ─────────────────────────────────────────────────────────
+        with ui.column().classes("w-full items-center"):
             ui.label(t("favorites_gallery")).classes("text-center mt-0 text-lg font-semibold")
-            if image_data:
-                slideshow_image = ui.image("").classes("w-full h-auto max-w-screen-xl rounded-lg shadow-md transition-opacity duration-1000 opacity-100")
-                image_info = ui.label("").classes("text-center mt-2 text-lg font-semibold")
-                image_detail = ui.label("").classes("text-center mt-0 text-md")
 
-                def show_image():
-                    if not ui.context.client.connected:
+            slideshow_image = ui.image("").classes(
+                "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
+                "transition-opacity duration-1000 opacity-100"
+            )
+            image_info   = ui.label("").classes("text-center mt-2 text-lg font-semibold")
+            image_detail = ui.label("").classes("text-center mt-0 text-md")
+
+            # ── Slideshow helpers ────────────────────────────────────────────
+            def show_image():
+                if not self.client:
+                    return
+                slideshow_image.classes('opacity-5').update()
+                ui.timer(0.2, update_image, once=True)
+
+            def update_image():
+                entry = image_data[self.current_index]
+                set_base_folder(entry['base_folder'])
+                slideshow_image.source = entry['url']
+                slideshow_image.classes('opacity-95').update()
+
+                info_text = (
+                    f"{entry['object_name']} "
+                    f"{entry['dwarf_name']} "
+                    f"{entry['session_date']}"
+                )
+                image_info.text = info_text
+
+                if not self.ON_AIR:
+                    image_detail.text = entry['file_path']
+                    if not self.image_detail_click_set:
+                        image_detail.on(
+                            'click',
+                            lambda: self.open_folder(
+                                os.path.dirname(image_data[self.current_index]['file_path'])
+                            )
+                        ).classes("text-green-600 pl-4 pr-4 pb-2 cursor-pointer hover:underline")
+                        self.image_detail_click_set = True
+
+            def reaactive_timer():
+                if self.gallery_timer:
+                    self.gallery_timer.cancel(with_current_invocation=True)
+                self.gallery_timer = ui.timer(10, next_image, immediate=False, once=False)
+
+            def next_image():
+                try: 
+                    if not self.client:
                         return
-
-                    # Crossfade effect
-                    slideshow_image.classes('opacity-5').update()
-                    ui.timer(0.2, lambda: update_image(), once=True)
-
-                def update_image():
-                    set_base_folder(image_data[self.current_index]['base_folder'])
-                    slideshow_image.source = image_data[self.current_index]['url']
-                    slideshow_image.classes('opacity-95').update()
-
-                    # Update image info
-                    info_text = (
-                        f"{image_data[self.current_index]['object_name']} "
-                        f"{image_data[self.current_index]['dwarf_name']} "
-                        f"{image_data[self.current_index]['session_date']}"
-                    )
-                    image_info.text = info_text
-                    if not self.ON_AIR:
-                        image_detail.text = f"{image_data[self.current_index]['file_path']}"
-                        if not self.image_detail_click_set:
-                            image_detail.on(
-                                'click', 
-                                lambda: self.open_folder(os.path.dirname(image_data[self.current_index]['file_path']))
-                            ).classes("text-green-600 pl-4 pr-4 pb-2 cursor-pointer hover:underline")
-                            self.image_detail_click_set = True
-                def next_image():
-                    if not ui.context.client.connected:
-                        return
-
-                    if self.first_image:
-                        self.current_index = (self.current_index) % len(image_data)
-                        self.first_image = False
-                    else:
-                        self.current_index = (self.current_index + 1) % len(image_data)
+                    self.current_index = (self.current_index + 1) % len(image_data)
                     show_image()
+                except Exception:
+                    print("exception in next_image") 
+                    pass
+ 
+            def next_image_click():
+                reaactive_timer()
+                next_image()
 
-                def prev_image():
-                    self.current_index = (self.current_index - 1) % len(image_data)
+            def prev_image():
+                self.current_index = (self.current_index - 1) % len(image_data)
+                show_image()
+
+            def prev_image_click():
+                reaactive_timer()
+                prev_image()
+
+            async def remove_favorite():
+                if self.current_index and 'entry' in image_data[self.current_index]:
+                    self.cancel_timer()
+                    with ui.dialog().props('persistent') as dialog, ui.card().style('width: 400px; max-width: none'):
+                        ui.label(t('confirm_favorite_remove'))
+                        with ui.row():
+                            ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
+                            ui.button(t("no"), on_click=lambda: dialog.submit('No'))
+
+                    result = await dialog
+                    if result == 'Yes':
+                        conn = connect_db(self.database)
+                        entry = image_data[self.current_index]
+                        if entry.get('source') == "manual":
+                            print(f"Manual Entry:  {entry['entry']}")
+                            toggle_favorite_manual(conn, entry['entry'])
+                        else:
+                            print(f"Backup Data Entry:  {entry['entry']}")
+                            toggle_favorite(conn, entry['entry'], "backup")
+                        close_db(conn)
+
+                        del image_data[self.current_index]
+                        if self.current_index >= len(image_data):
+                            self.current_index = max(0, len(image_data) - 1)
+
                     show_image()
+                    reaactive_timer()
 
-                async def remove_favorite():
-                    if self.current_index and 'entry' in image_data[self.current_index]:
-                        self.cancel_timer()
-                        # Display confirmation dialog
-                        with ui.dialog().props('persistent') as dialog, ui.card().style('width: 400px; max-width: none'):
-                            ui.label(t('confirm_favorite_remove'))
-                            with ui.row():
-                                ui.button(t("yes"), on_click=lambda: dialog.submit('Yes'))
-                                ui.button(t("no"), on_click=lambda: dialog.submit('No'))
+            # Automatic slideshow — starts immediately on the sample image
+            show_image()
 
-                        result = await dialog
-                        if result == 'Yes':
-                            self.conn = connect_db(self.database)
-                            if 'source' in image_data[self.current_index] and image_data[self.current_index]['source'] == "manual":
-                                print(f"Manual Entry:  {image_data[self.current_index]['entry']}")
-                                toggle_favorite_manual(self.conn, image_data[self.current_index]['entry'])
-                            else:
-                                print(f"Backup Data Entry:  {image_data[self.current_index]['entry']}")
-                                toggle_favorite(self.conn, image_data[self.current_index]['entry'], "backup")
+            with ui.row().classes("gap-4 mb-0 items-center"):
+                ui.button('⭐', on_click=remove_favorite).tooltip(t("favorite_remove"))
+                ui.button(t("previous"), on_click=prev_image_click)
+                ui.button(t("next"), on_click=next_image_click)
+                ui.button("🎬 " + t("export_video"), on_click=lambda: self._open_video_dialog(image_data))
 
-                            close_db(self.conn)
-                            self.conn = None
+        # ── Background loading ───────────────────────────────────────────────
+        async def _load_favorites_bg():
+            print("_load_favorites_bg")
+            favorites = await run.io_bound(self._collect_all_favorites)
+            if not favorites:
+                # No real favorites — keep the sample image as-is
+                return
+            if self.end_background_task:
+                print("no more client!") 
+                return
+            print("continue..._load_favorites_bg") 
 
-                            del image_data[self.current_index]
-                            if self.current_index >= len(image_data):
-                                self.current_index = max(0, len(image_data) - 1)
+            # Replace sample with real data, preserving current position
+            was_on_sample = image_data[self.current_index].get('_is_sample', False)
+            image_data.clear()
+            image_data.extend(favorites)
 
-                        # restart timer
-                        self.gallery_timer = ui.timer(interval=10, callback=next_image)
+            # If we were still on the placeholder, jump to the first real image
+            if was_on_sample:
+                self.current_index = 0
+                show_image()
+                reaactive_timer()
 
-                # Automatic slideshow with 10s interval
-                self.gallery_timer = ui.timer(interval=10, callback=next_image)
-
-                with ui.row().classes("gap-4 mb-0 items-center"):
-                    ui.button('⭐', on_click=remove_favorite).tooltip(t("favorite_remove"))
-                    ui.button(t("previous"), on_click=prev_image)
-                    ui.button(t("next"), on_click=next_image)
-                    ui.button("🎬 " + t("export_video"), on_click=lambda: self._open_video_dialog(image_data))
-            else:
-                ui.label(t("no_fav_images"))
+        ui.timer(0.1, _load_favorites_bg, once=True)
 
     def open_folder(self, directory = None):
         if not directory:
@@ -598,6 +630,7 @@ class HomeApp(DbPageMixin):
         dialog.open()
 
     def cancel_timer(self):
+        print("cancel_timer")
         if self.gallery_timer:
-            self.gallery_timer.cancel()
+            self.gallery_timer.cancel(with_current_invocation=True)
             self.gallery_timer = None

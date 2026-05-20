@@ -26,16 +26,23 @@ Dwarfium Scope Archive helps you back up, organise and explore your Dwarf telesc
 - **{t:menu_manual_sessions}** — import custom stacked FITS/PNG/JPG files from any tool
 - **{t:page_darks}** — manage calibration frames (darks) for Siril processing
 - **{t:transfer}** — copy sessions between the Dwarf and a backup drive
+- **{t:menu_report}** — view session sizes and disk usage by drive
+
+## Home slideshow
+
+The home page displays a slideshow of your favourite sessions.
+The first image appears immediately; the remaining favourites load in the background.
+Use ⭐ to remove a session from your favourites.
 
 ## Typical workflow
 
 1. Configure your Dwarf on the **{t:dwarf_label}** page
 2. Use **{t:analyze_dwarf_drive}** to index the sessions on your Dwarf
-2. Configure your backup drive on the **{t:menu_backup}** page
-3. Use **{t:analyze_drive}** on the **{t:page_backup}** page to index the sessions
-4. Use the **{t:transfer}** page to copy sessions from the Dwarf to your backup
-5. Browse everything on the **{t:page_explore}** page
-6. The **{t:page_explore}** page allows also to Backup directly a selected session
+3. Configure your backup drive on the **{t:menu_backup}** page
+4. Use **{t:analyze_drive}** on the **{t:page_backup}** page to index the sessions
+5. Use the **{t:transfer}** page to copy sessions from the Dwarf to your backup
+6. Browse everything on the **{t:page_explore}** page
+7. Use **{t:menu_report}** to identify large sessions and free up space
 ''',
     },
 
@@ -122,12 +129,23 @@ Each backup drive is linked to one Dwarf.
 5. Select the **{t:dwarf_label}** this drive belongs to
 6. Click **{t:save_update_drive}**
 
+## Disk Space
+
+When a backup drive is selected, a disk space indicator shows free / total space
+with a colour-coded bar (green → yellow → orange → red as free space decreases).
+The last-known values are cached in `db/diskinfo.json` and displayed even when
+the drive is offline.
+
 ## Analyze Current Drive
 
 Scans the backup drive and indexes all sessions into the database.
 Run this after copying new sessions from the Dwarf.
+A progress bar shows the current folder being scanned and the overall count.
 
-Show the History of Session Transfer with date, session and status.
+## Transfer History
+
+Shows the history of session transfers with date, session name and status.
+
 ## Check Session Integrity
 
 Compare the number of FITS files present to those registered in the session.
@@ -136,9 +154,7 @@ The counts may differ if bad frames were removed on the Dwarf.
 ## Show All Current Backup Data
 
 Opens the **{t:page_explore}** page to view data stored on your drive.
-You can then restore them to your dwarf.
-Enable **{t:only_backed_not_dwarf}** 
-to list deleted sessions and display the Restore button..
+Enable **{t:only_backed_not_dwarf}** to list deleted sessions and show the Restore button.
 
 ## Delete Backup Entries
 
@@ -146,16 +162,11 @@ Removes all indexed session data for this drive from the database.
 The files on disk are **not** deleted. After deleting, run
 **{t:analyze_drive}** to re-index.
 
-## Delete Manual Entries
-
-Removes ManualSessionEntry links for this drive.
-The ManualSession metadata is kept so sessions can be re-linked
-automatically from `shotsInfo.json` files when you re-analyze.
-
 ## Tips
 
 - You can have multiple backup drives per Dwarf
 - The backup drive does not need to be connected to save its configuration
+- Use **{t:menu_report}** to see session sizes and identify large sessions
 ''',
     },
 
@@ -166,19 +177,22 @@ automatically from `shotsInfo.json` files when you re-analyze.
 
 Browse and search all sessions indexed from your backup drives.
 To view sessions currently stored on your Dwarf, go to the **{t:page_dwarf}** page
- and click the "Show Dwarf Data" button.
+and click the "Show Dwarf Data" button.
 
 ## Filters
 
-- **{t:backup_drive}** — filter by backup drive (or show all)
+- **{t:backup_drive}** — filter by backup drive (or show all). A disk space indicator
+  shows free / total space for the selected drive, with cached values when offline.
 - **{t:dwarf_label}** — filter by Dwarf device
 - **{t:filter_objects}** — search by target name
-- **{t:quality_filter_label}** — filter sessions by image quality score:
-  - 🌐 All sessions (default)
-  - 🟢 Good (score ≥ 65)
-  - 🟡 Fair (score ≥ 40)
-  - Unscored sessions are always shown regardless of the filter
-- **{t:sky_search_title}** — find sessions within a sky radius around a DSO or custom coordinates
+- **{t:quality_filter_label}** — filter sessions by image quality score
+- **{t:sky_search_title}** — find sessions within a sky radius around a DSO
+
+## Gallery
+
+When multiple sessions exist for an object, a **{t:show_gallery}** button appears.
+The gallery opens immediately with the first image and loads the rest in the background.
+Use Previous / Next to browse, or Select to jump directly to that session.
 
 ## Session detail
 
@@ -194,44 +208,26 @@ Click a target in the left panel, then select a session from the
 
 Each session can be scored on a scale of 0–100 based on two passes:
 
-- **Pass A (metadata)** — stack rate, total exposure time, dark calibration, sensor type (Dwarf 3 / Mini score higher)
+- **Pass A (metadata)** — stack rate, total exposure time, dark calibration, sensor type
 - **Pass B (image analysis)** — dynamic range, contrast and entropy of the stacked JPEG
 
-Score thresholds:
-- ⭐⭐⭐⭐⭐ Excellent (≥ 80)
-- ⭐⭐⭐⭐ Good (≥ 65)
-- ⭐⭐⭐ Average (≥ 50)
-- ⭐⭐ Fair (≥ 35)
-- ⭐ Poor (< 35)
-
-Sessions are scored automatically after each backup scan.
-You can also score manually using the **{t:score_session_btn}** button in the action bar
-(scores all sessions for the current object) or the **{t:score_session_btn}** button
-in the session detail panel (scores the selected session only).
+Score thresholds: ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Good (≥ 65) · ⭐⭐⭐ Average (≥ 50) · ⭐⭐ Fair (≥ 35) · ⭐ Poor (< 35)
 
 ## Actions
 
 - **{t:open_folder_btn}** — open the session folder in Windows Explorer
 - **{t:show_fullscreen_btn}** — view the stacked image fullscreen
 - **{t:score_session_btn}** — score all sessions for the selected object
-- **Backup/Restore** — Allows you to perform actions on the selected session.
-- **Availability** — Depends on the selected checkboxes. See tips for more details.
-- **{t:delete_session}** — Permanently removes all session data from the backup drive.
-- **{t:delete_session}** — Available only if a backup exists.
-    Access it via the **{t:show_dwarf_data}** button in the Dwarf Settings page.
+- **{t:backup_session}** / **{t:restore_mode}** — copy sessions between Dwarf and backup drive
+- **{t:delete_session}** — permanently removes all session data from the backup drive
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
-- **Add/Remove Favorite** — Toggle the session title to show or hide it on the home page
-- **{t:show_details}** — toggle file stats and directory info
+- **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 
 ## Tips
 
-- Use the **Only Show Session on Dwarf** / **Only on Backup** checkboxes to find sessions
-  that exist in one place but not the other
-- Use the **Only on Dwarf** / **Only on Backup** checkboxes to find sessions
-  that exist in one place but not the other
-- The 🎯 badge shows dark match status — green = temp in range, orange = closest temp, red = no match
-- Sessions with no score yet always appear regardless of the quality filter
-- Run a full quality scan from the command line: `python tools/quality_scan.py --report`
+- Use **{t:only_not_backed}** / **{t:only_already_backed}** checkboxes to find sessions in one place only
+- The 🎯 badge shows dark match status — green = temp in range, orange = closest, red = no match
+- Use **{t:menu_report}** to view session sizes and identify sessions to clean or delete
 ''',
     },
 
@@ -249,6 +245,13 @@ Siril, GraXpert or any other processing tool.
 - **{t:dwarf_label}** — filter by Dwarf device
 - **{t:session_list}** — select a specific session to view
 
+## Gallery
+
+When multiple sessions exist for an object, a **{t:show_gallery}** button appears
+in the action bar. The gallery shows one image per session and lets you browse
+and jump directly to any session. A separate **{t:show_gallery}** button inside
+the session detail shows all images found within that single session.
+
 ## Session detail
 
 Selecting a session shows:
@@ -263,13 +266,12 @@ Selecting a session shows:
 - **{t:open_folder_btn}** — open the session folder in Explorer
 - **{t:show_fullscreen_btn}** — view the stacked image fullscreen
 - **{t:view_linked_dwarf}** — jump to the original raw session in Explore
-- **Add Favorite / Remove Favorite** — mark for processing
+- **{t:favorite_add}** / **{t:favorite_remove}** — mark for processing
 - **{t:edit_session}** — update metadata or add more files
 - **{t:delete_session_btn}** — remove files and database entry
 
 ## Tips
 
-- To Backup a Dwarf session, selct the 
 - Sessions are grouped by target object in the left panel
 - The **manual** group contains sessions without a recognised DSO target
 - Use **{t:edit_session}** to add Starless or Denoise variants after processing
@@ -492,8 +494,8 @@ fields that are stitched together into a single wide-field image.
 
 ## Actions
 
-- **Show Panel** — preview an individual mosaic panel
-- **Generate Panorama** — stitch selected panels into a wide-field image
+- **{t:show_panel}** — preview an individual mosaic panel
+- **{t:generate_panorama}** — stitch selected panels into a wide-field image
 - **{t:repair_transfer}** — fix a mosaic that was partially transferred
 - **{t:merge_transfer}** — merge panels from multiple sessions
 
@@ -559,6 +561,55 @@ target identification and session classification.
 - Use **{t:identify_target_btn}** on any unresolved session in Explore to
   manually link it to a catalog object
 - The catalog is based on standard DSO databases (NGC, IC, Messier)
+''',
+    },
+
+    '/Report': {
+        'title': 'Storage Report',
+        'content': '''
+## Purpose
+
+The Storage Report helps you identify which sessions take the most space
+and decide what to clean or delete — especially useful when a Dwarf disk
+or backup drive is nearly full.
+
+## Drive selector
+
+Choose between **Backup** and **Dwarf** mode, then select a specific drive.
+A disk space indicator shows free / total space with a colour-coded bar.
+Values are cached in `db/diskinfo.json` and displayed even when the drive is offline.
+
+## Session table
+
+Each row shows:
+
+- **Date** — session date
+- **Object** — target name (hover the session dir for the full path)
+- **Backup size** — total size of the session on the backup drive
+- **Dwarf total** — total size on the local Dwarf copy (if present)
+- **Dwarf -FITS** — size after removing raw FITS files (what Clean Fits would free)
+- **Quality** — image quality score (colour-coded)
+- **Explore** — opens the session directly in the Explore page
+
+## Sorting and filtering
+
+- **{t:report_biggest}** — sort by backup size, largest first
+- **{t:report_latest}** — sort by date, most recent first
+- **{t:report_show}** — limit to 20 / 50 / 100 sessions, or **{t:report_all}**
+
+## Calculating sizes
+
+- **{t:report_calc_sizes}** — measures folder sizes for backup sessions not yet calculated.
+- **{t:report_calc_dwarf_sizes}** — measures sizes for sessions present on the local Dwarf copy,
+  computing both the total size and the size after a Clean Fits operation.
+
+## Tips
+
+- Sessions showing `—` for size have not been measured yet — click **{t:report_calc_sizes}**
+- **Dwarf -FITS** = size that would remain after **Clean Fits** — compare to **Dwarf total**
+  to see how much space you would reclaim without losing the stacked result
+- Click **Explore** to open the session and run Clean Fits or delete it directly
+- The back button in Explore returns to this report with the same filters active
 ''',
     },
 

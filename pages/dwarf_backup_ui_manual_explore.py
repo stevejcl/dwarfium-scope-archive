@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 from datetime import datetime
 
-from nicegui import ui, app
+from nicegui import ui, app, run
 from components.i18n import t
 from components.session_notes import session_notes_widget
 from api.dwarf_backup_db import DB_NAME, connect_db
@@ -120,12 +120,26 @@ async def manual_explore_page(
 
     # Cancel any running timers when the client disconnects
     async def on_disconnect():
+        for timer in app_instance.pending_timers:
+            try:
+                timer.cancel(
+                    with_current_invocation=True
+                )
+            except:
+                pass
+
+        app_instance.pending_timers.clear()
+
         if app_instance.gallery_timer:
             app_instance.gallery_timer.cancel()
             app_instance.gallery_timer = None
         if app_instance.gallery_timer_anim:
-            app_instance.gallery_timer_anim.cancel()
-            app_instance.gallery_timer_anim = None
+            app_instance.gallery_timer_anim.active = False
+        if app_instance.multi_gallery_timer:
+            app_instance.multi_gallery_timer.cancel()
+            app_instance.multi_gallery_timer = None
+        if app_instance.multi_gallery_timer_anim:
+            app_instance.multi_gallery_timer_anim.active = False
 
     ui.context.client.on_disconnect(on_disconnect)
 
@@ -192,12 +206,30 @@ class ManualExploreApp(DbPageMixin):
         self.delete_session_icon   = None
         self.classified_label      = None
 
-        # Gallery / slideshow state
-        self.gallery_image_data    = []   # list of {url, path, label, session_dir, row_index}
+        # Gallery / slideshow state (single-session: images within one session)
+        self.gallery_image_data    = []
         self.gallery_current_index = 0
-        self.gallery_first_image   = True
         self.gallery_timer         = None
         self.gallery_timer_anim    = None
+        self.gallery_dialog        = None   # persistent dialog
+        self.gallery_img           = None   # persistent UI elements
+        self.gallery_caption       = None
+        self.gallery_path_label    = None
+
+        # Multi-session gallery state (one image per session, like ExploreApp)
+        self.multi_gallery_image_data    = []
+        self.multi_gallery_image_full    = False
+        self.multi_gallery_timer         = None
+        self.multi_gallery_timer_anim    = None
+        self.show_gallery_icon           = None
+        self.multi_gallery_dialog        = None   # persistent dialog
+        self.multi_gallery_img           = None
+        self.multi_gallery_caption       = None
+        self.multi_gallery_path_label    = None
+        self.multi_gallery_spinner       = None
+        self.multi_current_index         = 0
+ 
+        self.pending_timers = []
  
         self.WinLog = WinLog()
         self.mobile_panel = 0
@@ -205,6 +237,25 @@ class ManualExploreApp(DbPageMixin):
         self.mobile_right_col = None
         self.build_ui()
 
+
+    # -----------------------------------------------------------------------
+    # Timer Protections
+    # -----------------------------------------------------------------------
+    def add_timer(self, delay, callback, **kwargs):
+        try:
+            timer = ui.timer(
+                delay,
+                callback,
+                **kwargs
+            )
+
+            self.pending_timers.append(timer)
+            return timer
+        
+        except Exception as e:
+            print(f"Timer exception: {e}")
+            pass
+    
     # -----------------------------------------------------------------------
     # UI construction
     # -----------------------------------------------------------------------
@@ -342,6 +393,11 @@ class ManualExploreApp(DbPageMixin):
 
                         # Action buttons (shown/hidden depending on selection)
                         with ui.row().classes('items-center gap-4') as self.icon_row:
+                            self.show_gallery_icon = ui.button(
+                                t("show_gallery"), on_click=lambda: self.show_gallery()
+                            ).classes('h-16')
+                            self.show_gallery_icon.visible = False
+
                             self.open_folder_icon = ui.button(
                                 t("open_folder_btn"), on_click=self.open_folder
                             ).classes('h-16')
@@ -393,6 +449,9 @@ class ManualExploreApp(DbPageMixin):
         self.populate_backup_filter()
 
         self.selected_path = ""
+
+        # Persistent dialogs created once in the main page context
+        self._build_persistent_dialogs()
 
     # -----------------------------------------------------------------------
     # Filter helpers
@@ -462,7 +521,7 @@ class ManualExploreApp(DbPageMixin):
             return
         self.loading_spinner.set_visibility(True)
         await asyncio.sleep(0.15)
-        ui.timer(0.05, self._load_objects_work, once=True)
+        self.add_timer(0.05, self._load_objects_work, once=True)
 
     def _load_objects_work(self):
         dwarf_id = self.get_selected_dwarf_id()
@@ -495,7 +554,7 @@ class ManualExploreApp(DbPageMixin):
         if not self.AutoSelection_done and self.SessionId:
             self.AutoSelection_done = True
             self.loading_spinner.set_visibility(True)
-            ui.timer(0.2, lambda: self.auto_select_session(), once=True)
+            self.add_timer(0.2, lambda: self.auto_select_session(), once=True)
 
     def _update_fav_filter_icon(self):
         if not hasattr(self, 'fav_filter_btn'):
@@ -725,6 +784,51 @@ class ManualExploreApp(DbPageMixin):
         self.object_list.update()
         ui.update()
 
+    def _build_persistent_dialogs(self):
+        """Persistent dialogs created once in the page context"""
+
+        # ── Session gallery (images d'une session) ───────────────────────────
+        with ui.dialog() as self.gallery_dialog:
+            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
+                with ui.row().classes('w-full items-center justify-between mb-2'):
+                    self._gallery_title = ui.label("").classes("text-lg font-semibold")
+                    ui.button(t("close"), on_click=self.gallery_dialog.close).classes("ml-auto")
+                with ui.column().classes("w-full items-center"):
+                    self.gallery_img = ui.image("").classes(
+                        "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
+                        "transition-opacity duration-500 opacity-100"
+                    )
+                    self.gallery_caption     = ui.label("").classes("text-center mt-2 text-sm")
+                    self.gallery_path_label  = ui.label("").classes("text-center text-xs text-gray-400 mb-2")
+                    with ui.row().classes("gap-4 mt-2 mb-4 items-center"):
+                        self._gallery_btn_prev = ui.button(t("previous_arrow"), on_click=self._gallery_on_prev)
+                        self._gallery_btn_next = ui.button(t("next_arrow"),     on_click=self._gallery_on_next)
+
+        self.gallery_timer = ui.timer(10,   self._gallery_next_auto, active=False, immediate=False, once=False)
+        self.gallery_timer_anim = ui.timer(0.15, self._gallery_do_update, active=False, immediate=False, once=False)
+
+        # ── Multi-session gallery (une image par session) ────────────────────
+        with ui.dialog() as self.multi_gallery_dialog:
+            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
+                with ui.row().classes('w-full justify-center'):
+                    ui.label(t("astro_gallery2")).classes("text-center mt-2 text-lg font-semibold")
+                    ui.button(t("close"), on_click=self.multi_gallery_dialog.close).classes("mt-4 ml-auto")
+                with ui.column().classes("w-full items-center"):
+                    self.multi_gallery_spinner  = ui.spinner(size="lg")
+                    self.multi_gallery_img      = ui.image("").classes(
+                        "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
+                        "transition-opacity duration-500 opacity-100"
+                    )
+                    self.multi_gallery_caption  = ui.label("").classes("text-center mt-2 text-sm")
+                    self.multi_gallery_path_label = ui.label("").classes("text-center text-xs text-gray-400 mb-2")
+                    with ui.row().classes("gap-4 mt-2 mb-4 items-center"):
+                        self._multi_gallery_btn_prev   = ui.button(t("previous_arrow"), on_click=self._multi_gallery_on_prev)
+                        self._multi_gallery_btn_select = ui.button(t("select"),         on_click=self._multi_gallery_select)
+                        self._multi_gallery_btn_next   = ui.button(t("next_arrow"),     on_click=self._multi_gallery_on_next)
+
+        self.multi_gallery_timer = ui.timer(10,   self._multi_gallery_next_auto, active=False, immediate=False, once=False)
+        self.multi_gallery_timer_anim = ui.timer(0.15, self._multi_gallery_do_update, active=False, immediate=False, once=False)
+
     def _handle_object_click(self, oid, name, desc, dso_id, is_group, session_id=None):
         self.loading_spinner.set_visibility(True)
         self.selected_object             = name
@@ -735,9 +839,9 @@ class ManualExploreApp(DbPageMixin):
         _client = getattr(self, '_ui_client', None)
         if _client:
             with _client:
-                ui.timer(0.05, fn, once=True)
+                self.add_timer(0.05, fn, once=True)
         else:
-            ui.timer(0.05, fn, once=True)
+            self.add_timer(0.05, fn, once=True)
 
     def _handle_object_click_work(self, oid, dso_id, is_group, session_id=None):
         print(f'[click_work] oid={oid} is_group={is_group} session_id={session_id}', flush=True)
@@ -762,6 +866,8 @@ class ManualExploreApp(DbPageMixin):
         self.selected_entry_data = None
 
     def _hide_action_buttons(self):
+        if self.show_gallery_icon:
+            self.show_gallery_icon.visible   = False
         if self.open_folder_icon:
             self.open_folder_icon.visible    = False
         if self.fullscreen_icon:
@@ -812,6 +918,10 @@ class ManualExploreApp(DbPageMixin):
 
         self.all_files_rows = [list(row) for row in files]
 
+        # Reset multi-session gallery state for the new object
+        self.multi_gallery_image_data = []
+        self.multi_gallery_image_full = False
+
         if not files:
             self.label_to_index = {}
             self.file_list.set_options([])
@@ -824,6 +934,8 @@ class ManualExploreApp(DbPageMixin):
             label = files[0][1]   # session_name
             self.label_to_index[label] = 0
             self.file_list.set_options([label], value=label)
+            if self.show_gallery_icon:
+                self.show_gallery_icon.visible = False
         else:
             labels = [f"{t('select_session_for')} {t(self.selected_object)}"]
             value_select = f"{t('select_session_for')} {self.selected_object}"
@@ -870,6 +982,13 @@ class ManualExploreApp(DbPageMixin):
                 labels.append(detail)
 
             self.file_list.set_options(labels, value=labels[0])
+
+            # Show the multi-session gallery button and kick off background data load
+            if self.show_gallery_icon:
+                self.show_gallery_icon.visible = True
+                self.show_gallery_icon.enable()
+            if self._test_first_multi_gallery_image():
+                self.add_timer(0.1, self._load_multi_gallery_bg, once=True)
 
             with self.details_files:
                 ui.item_label(f"{len(files)} {t('manual_sessions_found')}").props('header').classes('text-bold')
@@ -1011,8 +1130,8 @@ class ManualExploreApp(DbPageMixin):
         print(self.selected_path)
         preview_path = jpeg_path or stacked_png_path or thumbnail_path 
 
-        self._build_gallery_data(idx)
-        print(f"build_gallery_data: {len(self.gallery_image_data)} images found")
+        self._build_session_gallery_data(idx)
+        print(f"build_session_gallery_data: {len(self.gallery_image_data)} images found")
         
         # --- Detail panel ---
         self.details_files.clear()
@@ -1085,8 +1204,7 @@ class ManualExploreApp(DbPageMixin):
             # --- Gallery: scan the whole current object for images (not just this session) ---
             if len(self.gallery_image_data) > 1:
                 ui.label(f'📦 {len(self.gallery_image_data)} {t("images_found")}').classes('text-lg m-4')
-
-            ui.button(t("show_gallery"), on_click=lambda: self.show_gallery()).classes("m-4")
+                ui.button(t("show_gallery"), on_click=self.show_session_gallery).classes("m-4")
 
             ui.item(f"🔭 {t('dwarf_label')}: {dwarf_name}").classes('text-gray-600')
             ui.item(f"💾 {t('drive_label')}: {backup_drive_name}").classes('text-gray-600')
@@ -1176,7 +1294,7 @@ class ManualExploreApp(DbPageMixin):
     # Action handlers
     # -----------------------------------------------------------------------
 
-    def _build_gallery_data(self, idx):
+    def _build_session_gallery_data(self, idx):
         """
         Scan all rows in self.all_files_rows and collect every jpg/png image that
         exists on disk.  Prefers jpeg_path, falls back to stacked_png_path, then
@@ -1192,7 +1310,6 @@ class ManualExploreApp(DbPageMixin):
         """
         self.gallery_image_data    = []
         self.gallery_current_index = 0
-        self.gallery_first_image   = True
  
         row = self.all_files_rows[idx]
         # Column layout from get_ObjectSelect_manual — see docstring there
@@ -1242,121 +1359,282 @@ class ManualExploreApp(DbPageMixin):
                         "base_folder": manual_location
                     })
  
-    def show_gallery(self):
+    # -----------------------------------------------------------------------
+    # Multi-session gallery (one representative image per session row)
+    # Mirrors the lazy-load pattern used in ExploreApp.show_gallery()
+    # -----------------------------------------------------------------------
+
+    def _test_first_multi_gallery_image(self) -> bool:
         """
-        Open a modal slideshow dialog showing all jpg/png images collected in
-        self.gallery_image_data.  Controls: Previous / Next (auto-advance every
-        10 s) and a Select button that closes the dialog and selects the matching
-        session in the dropdown.
+        Find the first session row that has a usable image on disk and store it
+        as the single entry in self.multi_gallery_image_data.  Returns True if
+        at least one image was found so the caller can decide whether to show the
+        gallery button and trigger background loading.
         """
-        if not self.gallery_image_data:
-            ui.notify(t("no_images_object"), type="info")
+        self.multi_gallery_image_data = []
+        self.multi_gallery_image_full = False
+
+        for idx, row in enumerate(self.all_files_rows):
+            session_tag         = row[2]  or ""
+            jpeg_path           = row[4]
+            thumbnail_path      = row[5]
+            description_db      = row[20]
+            session_date        = row[15]
+            session_dir         = row[16]
+            stacked_png_path    = row[13]
+            dwarf_name          = row[25] or "?"
+            manual_location     = row[28]
+
+            preview_path = jpeg_path or stacked_png_path or thumbnail_path
+            if not preview_path:
+                continue
+
+            if os.path.isabs(preview_path):
+                full_path = preview_path
+            else:
+                full_path = os.path.join(session_dir, os.path.basename(preview_path)) if session_dir else preview_path
+
+            if not os.path.exists(full_path):
+                continue
+
+            obj_name, _ = get_name_object(description_db)
+            date_str     = show_short_date_session(session_date)
+            label        = f"🛰️ {obj_name or '?'}  🔭 {dwarf_name}  📅 {date_str}"
+
+            set_base_folder(manual_location)
+            try:
+                rel = get_relative_file_path(manual_location, full_path)
+                url = build_preview_url(rel)
+            except Exception:
+                continue
+
+            self.multi_gallery_image_data.append({
+                "url":         url,
+                "path":        full_path,
+                "label":       label,
+                "session_dir": session_dir or "",
+                "row_index":   idx,
+                "base_folder": manual_location,
+            })
+            return True
+
+        return False
+
+    def _collect_multi_gallery_data(self) -> list:
+        """
+        Blocking I/O — collect one representative image per session row.
+        Intended to run via run.io_bound().
+        Returns the complete list of image-data dicts.
+        """
+        result = []
+        for idx, row in enumerate(self.all_files_rows):
+            session_tag         = row[2]  or ""
+            jpeg_path           = row[4]
+            thumbnail_path      = row[5]
+            description_db      = row[20]
+            session_date        = row[15]
+            session_dir         = row[16]
+            stacked_png_path    = row[13]
+            dwarf_name          = row[25] or "?"
+            manual_location     = row[28]
+
+            preview_path = jpeg_path or stacked_png_path or thumbnail_path
+            if not preview_path:
+                continue
+
+            if os.path.isabs(preview_path):
+                full_path = preview_path
+            else:
+                full_path = os.path.join(session_dir, os.path.basename(preview_path)) if session_dir else preview_path
+
+            if not os.path.exists(full_path):
+                continue
+
+            obj_name, _ = get_name_object(description_db)
+            date_str     = show_short_date_session(session_date)
+            label        = f"🛰️ {obj_name or '?'}  🔭 {dwarf_name}  📅 {date_str}"
+
+            set_base_folder(manual_location)
+            try:
+                rel = get_relative_file_path(manual_location, full_path)
+                url = build_preview_url(rel)
+            except Exception:
+                continue
+
+            result.append({
+                "url":         url,
+                "path":        full_path,
+                "label":       label,
+                "session_dir": session_dir or "",
+                "row_index":   idx,
+                "base_folder": manual_location,
+            })
+
+        print(f"[ManualExplore] multi-gallery: {len(result)} images loaded")
+        return result
+
+    async def _load_multi_gallery_bg(self):
+        """Timer callback — loads all multi-gallery images in the background."""
+        all_data = await run.io_bound(self._collect_multi_gallery_data)
+
+        if not ui.context.client.connected:
             return
- 
-        # Stop any previously running timers from an earlier gallery open
+
+        if all_data:
+            print("End - _collect_multi_gallery_data")
+            self.multi_gallery_image_data = all_data
+            self.multi_gallery_image_full = True
+
+    # -----------------------------------------------------------------------
+    # Session gallery — class-level methods (persistent dialog)
+    # -----------------------------------------------------------------------
+
+    def _gallery_do_update(self):
+        self.gallery_timer_anim.active = False
+        if not self.gallery_image_data:
+            return
+        entry = self.gallery_image_data[self.gallery_current_index]
+        set_base_folder(entry['base_folder'])
+        self.gallery_img.source = entry["url"]
+        self.gallery_img.classes(remove="opacity-5", add="opacity-100").update()
+        self.gallery_caption.set_text(
+            f"[{self.gallery_current_index+1}/{len(self.gallery_image_data)}]  {entry['label']}"
+        )
+        self.gallery_path_label.set_text(entry["path"])
+
+    def _gallery_show_with_fade(self):
+        self.gallery_img.classes(remove="opacity-100", add="opacity-5").update()
+        self.gallery_timer_anim.active = True
+
+    def _gallery_next_auto(self):
+        if not self.gallery_image_data:
+            return
+        self.gallery_current_index = (self.gallery_current_index + 1) % len(self.gallery_image_data)
+        self._gallery_show_with_fade()
+
+    def _gallery_reset_auto(self):
+        self.gallery_timer_anim.active = False
         if self.gallery_timer:
             self.gallery_timer.cancel()
             self.gallery_timer = None
-        if self.gallery_timer_anim:
-            self.gallery_timer_anim.cancel()
-            self.gallery_timer_anim = None
- 
-        self.gallery_current_index = 0
-        self.gallery_first_image   = True
- 
-        with ui.dialog() as dialog:
-            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
- 
-                # Header row
-                with ui.row().classes('w-full items-center justify-between mb-2'):
-                    ui.label(
-                        f"🖼️ Gallery — {len(self.gallery_image_data)} image(s)"
-                    ).classes("text-lg font-semibold")
-                    ui.button(t("close"), on_click=dialog.close).classes("ml-auto")
- 
-                with ui.column().classes("w-full items-center"):
- 
-                    # Main image display
-                    slideshow_img = (
-                        ui.image("")
-                        .classes(
-                            "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
-                            "transition-opacity duration-500 opacity-100"
-                        )
-                    )
- 
-                    # Caption labels
-                    caption_label = ui.label("").classes("text-center mt-2 text-sm")
-                    path_label    = ui.label("").classes("text-center text-xs text-gray-400 mb-2")
- 
-                    # --- Internal helpers ---
-                    def _do_update_image():
-                        print(f"Update Image: n°{self.gallery_current_index}")
-                        entry = self.gallery_image_data[self.gallery_current_index]
-                        set_base_folder(entry['base_folder'])
-                        slideshow_img.source = entry["url"]
-                        slideshow_img.classes(remove="opacity-5", add="opacity-100").update()
-                        caption_label.set_text(
-                            f"[{self.gallery_current_index+1}/{len(self.gallery_image_data)}]  "
-                            + entry["label"]
-                        )
-                        path_label.set_text(entry["path"])
- 
-                    def _show_with_fade():
-                        """Fade out, then update image on the next tick."""
-                        slideshow_img.classes(remove="opacity-100", add="opacity-5").update()
-                        self.gallery_timer_anim = ui.timer(0.15, lambda: _do_update_image(), once=True)
- 
-                    def _reset_auto_timer():
-                        if self.gallery_timer:
-                            self.gallery_timer.cancel()
-                        self.gallery_timer = ui.timer(10, _next_auto, immediate=False, once=False)
- 
-                    def _next_auto():
-                        if not ui.context.client.connected:
-                            return
-                        """Called by the auto-advance timer."""
-                        self.gallery_current_index = (
-                            (self.gallery_current_index + 1) % len(self.gallery_image_data)
-                        )
-                        _show_with_fade()
- 
-                    def _on_next():
-                        _reset_auto_timer()
-                        self.gallery_current_index = (
-                            (self.gallery_current_index + 1) % len(self.gallery_image_data)
-                        )
-                        _show_with_fade()
- 
-                    def _on_prev():
-                        _reset_auto_timer()
-                        self.gallery_current_index = (
-                            (self.gallery_current_index - 1) % len(self.gallery_image_data)
-                        )
-                        _show_with_fade()
+        self.gallery_timer = ui.timer(10, self._gallery_next_auto, active=True, immediate=False, once=False)
 
-                    # Controls row
-                    with ui.row().classes("gap-4 mt-2 mb-4 items-center"):
-                        ui.button(t("previous_arrow"), on_click=_on_prev)
-                        ui.button(t("next_arrow"), on_click=_on_next)
- 
-                    # Start auto-advance timer (first tick shows the first image)
-                    self.gallery_timer = ui.timer(10, _next_auto, immediate=False, once=False)
-                    _do_update_image()   # show first image immediately without waiting
- 
-            # Clean up timers when the dialog is dismissed
-            def on_close():
-                if self.gallery_timer:
-                    self.gallery_timer.cancel()
-                    self.gallery_timer = None
-                if self.gallery_timer_anim:
-                    self.gallery_timer_anim.cancel()
-                    self.gallery_timer_anim = None
- 
-            dialog.on('hide', on_close)
- 
-        dialog.open()
- 
+    def _gallery_on_next(self):
+        if getattr(self, '_gallery_nav_lock', False):
+            return
+        self._gallery_nav_lock = True
+        self._gallery_reset_auto()
+        self.gallery_current_index = (self.gallery_current_index + 1) % len(self.gallery_image_data)
+        self._gallery_show_with_fade()
+        ui.timer(0.5, lambda: setattr(self, '_gallery_nav_lock', False), once=True)
+
+    def _gallery_on_prev(self):
+        if getattr(self, '_gallery_nav_lock', False):
+            return
+        self._gallery_nav_lock = True
+        self._gallery_reset_auto()
+        self.gallery_current_index = (self.gallery_current_index - 1) % len(self.gallery_image_data)
+        self._gallery_show_with_fade()
+        ui.timer(0.5, lambda: setattr(self, '_gallery_nav_lock', False), once=True)
+
+    def show_session_gallery(self):
+        if not self.gallery_image_data:
+            return
+        if len(self.gallery_image_data) <= 1:
+            return
+        self.gallery_current_index = 0
+        self._gallery_title.set_text(f"🖼️ Gallery — {len(self.gallery_image_data)} image(s)")
+        self.gallery_timer_anim.active = False
+        if self.gallery_timer:
+            self.gallery_timer.cancel()
+            self.gallery_timer = None
+        self._gallery_do_update()
+        self.gallery_timer = ui.timer(10, self._gallery_next_auto, active=True, immediate=False, once=False)
+        self.gallery_dialog.open()
+
+    # -----------------------------------------------------------------------
+    # Multi-session gallery — class-level methods (persistent dialog)
+    # -----------------------------------------------------------------------
+
+    def _multi_gallery_do_update(self):
+        self.multi_gallery_timer_anim.active = False
+        if not self.multi_gallery_image_data:
+            return
+        entry = self.multi_gallery_image_data[self.multi_current_index]
+        set_base_folder(entry['base_folder'])
+        self.multi_gallery_img.source = entry["url"]
+        self.multi_gallery_img.classes(remove="opacity-5", add="opacity-100").update()
+        self.multi_gallery_caption.set_text(
+            f"[{self.multi_current_index + 1}/{len(self.multi_gallery_image_data)}]  {entry['label']}"
+        )
+        self.multi_gallery_path_label.set_text(entry["path"])
+
+    def _multi_gallery_show_with_fade(self):
+        self.multi_gallery_img.classes(remove="opacity-100", add="opacity-5").update()
+        self.multi_gallery_timer_anim.active = True
+
+    def _multi_gallery_next_auto(self):
+        if not self.multi_gallery_image_data:
+            return
+        self.multi_current_index = (self.multi_current_index + 1) % len(self.multi_gallery_image_data)
+        self._multi_gallery_show_with_fade()
+
+    def _multi_gallery_reset_auto(self):
+        self.multi_gallery_timer_anim.active = False
+        if self.multi_gallery_timer:
+            self.multi_gallery_timer.cancel()
+            self.multi_gallery_timer = None
+        self.multi_gallery_timer = ui.timer(10, self._multi_gallery_next_auto, active=True, immediate=False, once=False)
+
+    def _multi_gallery_on_next(self):
+        if getattr(self, '_multi_gallery_nav_lock', False):
+            return
+        self._multi_gallery_nav_lock = True
+        self._multi_gallery_reset_auto()
+        self.multi_current_index = (self.multi_current_index + 1) % len(self.multi_gallery_image_data)
+        self._multi_gallery_show_with_fade()
+        ui.timer(0.5, lambda: setattr(self, '_multi_gallery_nav_lock', False), once=True)
+
+    def _multi_gallery_on_prev(self):
+        if getattr(self, '_multi_gallery_nav_lock', False):
+            return
+        self._multi_gallery_nav_lock = True
+        self._multi_gallery_reset_auto()
+        self.multi_current_index = (self.multi_current_index - 1) % len(self.multi_gallery_image_data)
+        self._multi_gallery_show_with_fade()
+        ui.timer(0.5, lambda: setattr(self, '_multi_gallery_nav_lock', False), once=True)
+
+    def _multi_gallery_select(self):
+        if not self.multi_gallery_image_data:
+            return
+        entry = self.multi_gallery_image_data[self.multi_current_index]
+        row_index = entry["row_index"]
+        options = list(self.file_list.options)
+        if row_index + 1 < len(options):
+            self.file_list.set_value(options[row_index + 1])
+        self.multi_gallery_dialog.close()
+
+    async def show_gallery(self):
+        if not self.multi_gallery_image_data:
+            ui.notify(t("no_images_object"), type="info")
+            return
+        self.multi_current_index = 0
+        self.multi_gallery_timer_anim.active = False
+        if self.multi_gallery_timer:
+            self.multi_gallery_timer.cancel()
+            self.multi_gallery_timer = None
+        self.multi_gallery_spinner.set_visibility(not self.multi_gallery_image_full)
+        self._multi_gallery_do_update()
+        self.multi_gallery_timer = ui.timer(10, self._multi_gallery_next_auto, active=True, immediate=False, once=False)
+        self.multi_gallery_dialog.open()
+
+        if not self.multi_gallery_image_full:
+            all_data = await run.io_bound(self._collect_multi_gallery_data)
+            self.multi_gallery_image_data = all_data
+            self.multi_gallery_image_full = True
+            self.multi_gallery_spinner.set_visibility(False)
+            self._multi_gallery_do_update()
+
     async def show_fullscreen_image(self):
         if self.fullscreen_image.visible:
             self.image_dialog.open()

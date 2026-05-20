@@ -76,6 +76,7 @@ TRANSLATIONS: dict[str, str] = {
     "menu_manual_sessions":         "Manual Sessions",  # TODO
     "menu_add_session":             "Add Session",  # TODO
     "menu_mtp":                     "MtpDevice",  # TODO
+    "menu_report":                  "Storage Report",  # TODO  
     "menu_dark_mode":               "🌙 Dark Mode",  # TODO
     "menu_light_mode":              "☀️ Light Mode",  # TODO
     "menu_help":                    "❓ Help",  # TODO
@@ -150,6 +151,7 @@ TRANSLATIONS: dict[str, str] = {
     "select_this_session":          "☑ Select this session",  # TODO
     "local_data_size":              "Local Data size:",  # TODO
     "local_archive_size":           "Local Archive size:",  # TODO
+    "local_free_size":              "Local Free space:",  # TODO                                                     
     "restoring_fits":               "Restoring FITS files...",  # TODO
     "downloading_fits":             "⏳ Downloading FITS file...",  # TODO
     "clean_fits":                   "Clean Up FITS files...",  # TODO
@@ -464,6 +466,8 @@ TRANSLATIONS: dict[str, str] = {
     "filter_objects":               "🔍 Filter objects...",  # TODO
     "view_linked_manual":           "🔗 View linked Manual session",  # TODO
     "show_panels":                  "🧩 Show Current Panels",  # TODO
+    "show_panel":                   "Show Panel",  # TODO
+    "generate_panorama":            "Generate Panorama",  # TODO
     "manual_sessions_found":        "manual sessions found.",  # TODO
     "last_scan_label":              "Last Scan on:",  # TODO
     "taken":                        "Taken",  # TODO
@@ -482,6 +486,8 @@ TRANSLATIONS: dict[str, str] = {
     "error_deleting_folder":        "Error deleting folder:\n{e}",  # TODO
     "fits_cleanup_confirm_title":   "Confirm FITS Cleanup on Dwarf",  # TODO
     "fits_cleanup_confirm_msg":     "⚠️ Are you sure you want to clean up FITS files on the Dwarf for this session?\n\nAll raw FITS files will be permanently removed.\nThe final stacked FITS file will be kept.\n\n",  # TODO
+    "fits_restore_confirm_title":   "Confirm FITS Cleanup on Dwarf",  # TODO
+    "fits_restore_confirm_msg":     "⚠️ Are you sure you want to restore FITS files on the Dwarf for this session?\n\n",  # TODO
     "image_quality":                "Images quality: ",  # TODO
 
     # ── Manual Session ────────────────────────────────────────────────────────────
@@ -737,7 +743,8 @@ TRANSLATIONS: dict[str, str] = {
     "file_open_error":              'Cannot open file: {error}',  # TODO
     "file_upload_ok":               '✅ Uploaded {name}',  # TODO
     "folder_selected":              '✅ Selected Folder: {path}',  # TODO
-    "folder_delete_error":          'Error deleting folder:\n{error}',  # TODO    "temp_file_deleted":            '🧹 Deleted temp file: {path}',  # TODO
+    "folder_delete_error":          'Error deleting folder:\n{error}',  # TODO
+    "temp_file_deleted":            '🧹 Deleted temp file: {path}',  # TODO
     "temp_file_delete_error":       'Error deleting temp file: {error}',  # TODO
     "temp_folder_created":          '✅ Temp folder created: {path}',  # TODO
     "output_folder_selected":       '✅ Output folder: {path}',  # TODO
@@ -864,4 +871,34 @@ TRANSLATIONS: dict[str, str] = {
     "music_folder":                'Music folder', # TODO
     "upload_music":                'Upload music file', # TODO
     "music_uploaded":              'added to music folder', # TODO
+
+    # Disk space widget
+    "disk_offline":                'Drive offline', # TODO
+    "disk_offline_cached":         'last seen', # TODO
+    "disk_free":                   'free', # TODO
+    "disk_free_short":             'free', # TODO
+    "disk_used":                   'Used', # TODO
+
+    # Report page
+    "page_report":                 'Storage Report', # TODO
+    "report_select_drive":         'Select a drive', # TODO
+    "report_biggest":              'Biggest sessions', # TODO
+    "report_latest":               'Latest sessions', # TODO
+    "report_session":              'Session', # TODO
+    "report_date":                 'Date', # TODO
+    "report_size":                 'Size', # TODO
+    "report_object":               'Object', # TODO
+    "report_quality":              'Quality', # TODO
+    "report_dwarf_size":           'Dwarf total', # TODO
+    "report_dwarf_no_fits":        'Dwarf -FITS', # TODO
+    "report_calc_sizes":           'Calculate sizes', # TODO
+    "report_calc_sizes_force":     'Force recalculate all sessions', # TODO
+    "report_force_warning":        '⚠️ This will recalculate sizes for ALL sessions on this drive. This may take a while. Continue?', # TODO
+     "report_calc_dwarf_sizes":     'Calculate Dwarf sizes', # TODO
+    "report_calc_running":         'Calculating…', # TODO
+    "report_no_sizes":             'No sizes calculated yet — click Calculate sizes', # TODO
+    "report_sized":                '{n} session(s) measured', # TODO
+    "report_drive_info":           'Drive information', # TODO
+    "report_show":                 'Show top', # TODO
+    "report_all":                  'All', # TODO
 }

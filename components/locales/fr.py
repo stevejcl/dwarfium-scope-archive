@@ -75,6 +75,7 @@ TRANSLATIONS: dict[str, str] = {
     "menu_manual_sessions":         "Sessions Manuelles",
     "menu_add_session":             "Ajouter Session",
     "menu_mtp":                     "Appareil MTP",
+    "menu_report":                  "Rapport Stockage",
     "menu_dark_mode":               "🌙 Mode Sombre",
     "menu_light_mode":              "☀️ Mode Clair",
     "menu_help":                    "❓ Aide",
@@ -149,6 +150,7 @@ TRANSLATIONS: dict[str, str] = {
     "select_this_session":          "☑ Sélectionner cette session",
     "local_data_size":              "Taille données locales :",
     "local_archive_size":           "Taille archive locale :",
+    "local_free_size":              "Espace libre local :",
     "restoring_fits":               "Restauration des fichiers FITS...",
     "downloading_fits":             "⏳ Téléchargement du fichier FITS...",
     "clean_fits":                   "Nettoyer les fichiers FITS...",
@@ -464,6 +466,8 @@ TRANSLATIONS: dict[str, str] = {
     "filter_objects":               "🔍 Filtrer les objets...",
     "view_linked_manual":           "🔗 Voir la session manuelle liée",
     "show_panels":                  "🧩 Afficher les panneaux",
+    "show_panel":                   "Afficher le panneau",
+    "generate_panorama":            "Générer le panorama",
     "manual_sessions_found":        "sessions manuelles trouvées.",
     "last_scan_label":              "Dernier scan le :",
     "taken":                        "Capturé",
@@ -482,6 +486,8 @@ TRANSLATIONS: dict[str, str] = {
     "error_deleting_folder":        "Erreur lors de la suppression du dossier :\n{e}",
     "fits_cleanup_confirm_title":   "Confirmer le nettoyage FITS sur le Dwarf",
     "fits_cleanup_confirm_msg":     "⚠️ Êtes-vous sûr de vouloir supprimer les fichiers FITS bruts sur le Dwarf pour cette session ?\n\nTous les fichiers FITS bruts seront supprimés définitivement.\nLe fichier FITS stacké final sera conservé.\n\n",
+    "fits_restore_confirm_title":   "Confirmer la restauration FITS sur le Dwarf",
+    "fits_restore_confirm_msg":     "⚠️ Êtes-vous sûr de vouloir restaurer les fichiers FITS bruts sur le Dwarf pour cette session ?\n\n",
     "image_quality":                "Qualité des images : ",
 
     # ── Manual Session ────────────────────────────────────────────────────────────
@@ -865,5 +871,34 @@ TRANSLATIONS: dict[str, str] = {
     "music_folder":                'Dossier de musique',
     "upload_music":                'Uploader un fichier audio',
     "music_uploaded":              'added to music folder',
+
+    # Disk space widget
+    "disk_offline":                'Disque non disponible',
+    "disk_offline_cached":         'vu le',
+    "disk_free":                   'libre',
+    "disk_free_short":             'libre',
+    "disk_used":                   'Utilisé',
+
+    # Report page
+    "page_report":                 'Rapport Stockage',
+    "report_select_drive":         'Sélectionner un disque',
+    "report_biggest":              'Sessions les plus volumineuses',
+    "report_latest":               'Sessions les plus récentes',
+    "report_session":              'Session',
+    "report_date":                 'Date',
+    "report_size":                 'Taille',
+    "report_object":               'Objet',
+    "report_quality":              'Qualité',
+    "report_dwarf_size":           'Dwarf total',
+    "report_dwarf_no_fits":        'Dwarf -FITS',
+    "report_calc_sizes":           'Calculer les tailles',
+    "report_calc_sizes_force":     'Forcer le recalcul de toutes les sessions',
+    "report_force_warning":        '⚠️ Ceci va recalculer les tailles de TOUTES les sessions de ce disque. Cela peut prendre du temps. Continuer ?',    "report_calc_dwarf_sizes":     'Calculer tailles Dwarf',
+    "report_calc_running":         'Calcul en cours…',
+    "report_no_sizes":             'Aucune taille calculée — cliquer sur Calculer les tailles',
+    "report_sized":                '{n} session(s) mesurée(s)',
+    "report_drive_info":           'Informations disque',
+    "report_show":                 'Afficher top',
+    "report_all":                  'Tout',
 
 }

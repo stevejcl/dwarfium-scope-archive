@@ -301,7 +301,12 @@ def create_quality_table_sql():
             total_exp_seconds REAL,
             score_a           REAL,
             score_c           REAL,
-            scored_at         TEXT NOT NULL
+            scored_at         TEXT NOT NULL,
+            folder_size_bytes INTEGER,
+            folder_sized_at   TEXT,
+            dwarf_size_bytes  INTEGER,
+            dwarf_size_no_fits_bytes INTEGER,
+            dwarf_sized_at    TEXT
         )
         """
 
@@ -397,7 +402,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 12
+CURRENT_DB_VERSION = 14
 
 def init_db(conn):
     try:
@@ -945,6 +950,27 @@ def migrate_v12(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v12: {e}")
 
+def migrate_v13(conn):
+    try:
+        print("Migrating Database to V13...")
+        # Add folder_size_bytes to SessionQuality for disk-usage reporting
+        add_column_if_not_exists(conn, "SessionQuality", "folder_size_bytes", "INTEGER")
+        conn.commit()
+        print("Migration v13 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v13: {e}")
+
+def migrate_v14(conn):
+    try:
+        print("Migrating Database to V14...")
+        add_column_if_not_exists(conn, "SessionQuality", "dwarf_size_bytes",        "INTEGER")
+        add_column_if_not_exists(conn, "SessionQuality", "dwarf_size_no_fits_bytes", "INTEGER")
+        add_column_if_not_exists(conn, "SessionQuality", "dwarf_sized_at",           "TEXT")
+        conn.commit()
+        print("Migration v14 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v14: {e}")
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -958,6 +984,8 @@ MIGRATIONS = {
     10: migrate_v10,
     11: migrate_v11,
     12: migrate_v12,
+    13: migrate_v13,
+    14: migrate_v14,
     # Add more later...
 }
 

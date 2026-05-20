@@ -246,7 +246,7 @@ def extract_target_json_ftp(ip_address, astro_path):
 # SYNC Main functions
 ######################
 
-def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_root="./Dwarf_Local", session_name=None, log=None):
+def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_root="./Dwarf_Local", session_name=None, log=None, progress_callback=None):
     dwarf_dir = os.path.join(local_root, f"DWARF_{dwarf_id}")
     archive_dir = os.path.join(dwarf_dir, "Archive")
     os.makedirs(archive_dir, exist_ok=True)
@@ -286,9 +286,16 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
         local_sessions += restacked_sessions
     print(f"local_sessions: {local_sessions}")
 
-    print_log(f"🔄 Syncing {len(sessions)} sessions from FTP...", log)
+    sessions_total = len(sessions)
+    print_log(f"🔄 Syncing {sessions_total} sessions from FTP...", log)
 
-    for session in sessions:
+    for sessions_done, session in enumerate(sessions, 1):
+        if progress_callback:
+            try:
+                progress_callback(os.path.basename(session), sessions_done, sessions_total)
+            except Exception:
+                pass
+
         remote_session_path = f"{source_root}/{session}"
         dst_session = os.path.join(dwarf_dir, session)
         os.makedirs(dst_session, exist_ok=True)

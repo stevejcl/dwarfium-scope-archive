@@ -7,7 +7,7 @@ import subprocess
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from components.db_page_mixin import DbPageMixin
-from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive,  get_directory_size_format, empty_local_archive_dwarf_dir
+from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive, get_directory_size_format, empty_local_archive_dwarf_dir, get_disk_space_info
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
 
@@ -20,6 +20,7 @@ from api.dwarf_backup_db_api import get_dwarf_sessions_error
 from components.win_log import WinLog
 from components.menu import menu, setStyle
 from components.help_system import open_help
+from components.disk_space_widget import disk_space_widget
 
 
 @ui.page('/Dwarf')
@@ -56,6 +57,8 @@ class ConfigApp(DbPageMixin):
         self.mtp_status_label = None
         self.dwarf_data_size = None
         self.dwarf_archive_size = None
+        self.dwarf_free_size = None
+        self._dwarf_usb_disk_widget = None
         self.WinLog = WinLog()
         self.build_ui()
 
@@ -118,18 +121,19 @@ class ConfigApp(DbPageMixin):
                         self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')
                         ui.button(t("select_usb_folder"), on_click=self.select_dwarf_folder).classes(sizeBTN)
 
-                    with ui.row().classes('items-center m-4 gap-2'):
-                        self.usb_status_label = ui.label("").classes('pb-2')
+                    with ui.row().classes('items-center mt-1 gap-2'):
+                        self.usb_status_label = ui.label("").classes('text-sm')
                         self.refresh_btn = (
-                            ui.button(icon='refresh', on_click=self.check_dir_dwarf)
+                            ui.button(icon='refresh', on_click=self.check_dir_dwarf).classes('text-sm')
                             .props('flat round dense')
                             .bind_visibility_from(self.usb_status_label, 'text', lambda v: (v == t("path_not_detected")))
                         )
 
                     with ui.grid(columns=2) as self.mtp_column:
                         self.render_mtp_section()
+                    self.mtp_column.visible = False
 
-                    self.mtp_status_label = ui.label("").classes('pb-2')
+                    self.mtp_status_label = ui.label("").classes('text-sm')
                     self.mtp_status_label.visible = False
 
                     with ui.grid(columns=2):
@@ -138,13 +142,16 @@ class ConfigApp(DbPageMixin):
                             validation={'Invalid IP address': lambda value: self.is_valid_ip(value)}
                         ).classes('w-55')
                         with ui.row().classes("gap-4 mt-4"):
-                            self.ftp_spinner = ui.spinner(size="2em")
-                            self.ftp_status_label = ui.label("").classes('pt-6')
+                            self.ftp_spinner = ui.spinner(size="1em")
+                            self.ftp_status_label = ui.label("").classes('pt-4')
 
-                    with ui.card().tight():
-                        ui.colors(brand='#A1A0A1')
-                        ui.item_label(t("last_scan")).props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
-                        self.dwarf_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
+                    with ui.grid(columns=2):
+                        with ui.card().tight():
+                            ui.colors(brand='#A1A0A1')
+                            ui.item_label(t("last_scan")).props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
+                            self.dwarf_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
+                        # Disk space of the Dwarf device itself (USB only)
+                        self._dwarf_usb_disk_widget = disk_space_widget(None)
 
             # ── Bottom: action buttons ────────────────────────────────────────
             ui.separator()
@@ -162,13 +169,14 @@ class ConfigApp(DbPageMixin):
                 with ui.column().classes('flex-1'):
                     with ui.card().tight().classes('w-full'):
                         ui.colors(brand='#A1A0A1')
-                        with ui.grid(columns=2).classes('w-full text-center gap-y-1'):
+                        with ui.grid(columns=3).classes('w-full text-center gap-y-1'):
                             ui.item_label(t('local_data_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand text-sm')
                             ui.item_label(t('local_archive_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand text-sm')
+                            ui.item_label(t('local_free_size')).props('stack-label').classes('pl-2 pr-1 pt-0 pb-1').classes('text-brand text-sm')
 
                             self.dwarf_data_size = ui.label("").classes('text-base')
                             self.dwarf_archive_size = ui.label("").classes('text-base')
-
+                            self.dwarf_free_size = ui.label("").classes('text-base')
 
         # need this button don't change if not
         setStyle()
@@ -189,6 +197,9 @@ class ConfigApp(DbPageMixin):
            if os.path.exists(self.dwarf_astroDir.value):
                self.dwarf_status = "USB"
                self.usb_status_label.text = t("path_detected")
+               # Show USB drive space immediately
+               if self._dwarf_usb_disk_widget:
+                   ui.timer(0, lambda: ui.timer(0, lambda: self._dwarf_usb_disk_widget.refresh(self.dwarf_astroDir.value.strip()), once=True), once=True)
            else:
                self.usb_status_label.text = t("path_not_detected")
 
@@ -249,7 +260,7 @@ class ConfigApp(DbPageMixin):
             if current_ip == self.dwarf_ip_sta_mode.value:
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
-                if not self.dwarf_status and status_text.startswith("✅ Connected"):
+                if not self.dwarf_status and status_text and status_text.startswith("✅ Connected"):
                     self.dwarf_status = "FTP"
 
     async def load_selected_dwarf(self, event):
@@ -350,9 +361,12 @@ class ConfigApp(DbPageMixin):
         self.mtp_column.clear()
 
         if not self.mtp_visible:
+            self.mtp_column.visible = False
             if self.mtp_status_label:
                 self.refesh_mtp_status()
             return
+
+        self.mtp_column.visible = True
 
         mtp_device_details = get_mtp_devices(self.conn)
 
@@ -559,23 +573,89 @@ class ConfigApp(DbPageMixin):
             close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
             ui.label(t("scanning_dwarf"))
             spinner = ui.spinner(size="lg")
-            log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
+            scan_progress_bar   = ui.linear_progress(value=0, show_value=False).classes("w-full")
+            scan_progress_label = ui.label("").classes("text-sm text-gray-500")
+            log = ui.log(max_lines=100).classes('w-full').style('height: 560px; overflow: hidden;')
 
         dialog.open()  # show the dialog
         spinner.set_visibility(True)
+
+        def _on_scan_progress(current_dir, done, total):
+            """Called from the io_bound thread for each top-level folder scanned."""
+            try:
+                scan_progress_bar.set_value(done / total if total else 0)
+                scan_progress_label.set_text(f"[{done}/{total}] 🔍 {current_dir}")
+            except Exception:
+                pass
 
         try:
             local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
             if local_Main_Dwarf_dir:
                 ui.notify(t("starting_sync"))
+
+                # ── Shared progress state: sync sessions + scan dirs ──────────
+                _skip_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS"}
+
+                def _count_sessions(root):
+                    """Count top-level session dirs (excluding special folders)."""
+                    if not root or not os.path.exists(root):
+                        return 0
+                    count = sum(
+                        1 for d in os.listdir(root)
+                        if d not in _skip_dirs and os.path.isdir(os.path.join(root, d))
+                    )
+                    for sub in ("RESTACKED", "STARTRAILS"):
+                        sub_path = os.path.join(root, sub)
+                        if os.path.isdir(sub_path):
+                            count += sum(
+                                1 for d in os.listdir(sub_path)
+                                if os.path.isdir(os.path.join(sub_path, d))
+                            )
+                    return count
+
+                def _count_scan_dirs(root):
+                    if not root or not os.path.exists(root):
+                        return 0
+                    return sum(
+                        1 for d in os.listdir(root)
+                        if d not in _skip_dirs and os.path.isdir(os.path.join(root, d))
+                    )
+
+                sync_total = _count_sessions(dwarf_location) if self.dwarf_status == "USB" else 0
+                # scan total is not yet known (local dir built after sync) — estimated from source
+                scan_total_estimate = _count_scan_dirs(dwarf_location) if self.dwarf_status == "USB" else 0
+                grand_total = sync_total + scan_total_estimate or 1
+
+                progress_state = {"offset": 0}
+
+                def _make_progress_cb(phase_label=""):
+                    def _cb(current_dir, done, phase_total):
+                        grand_done = progress_state["offset"] + done
+                        grand_ttl  = max(grand_total, progress_state["offset"] + phase_total)
+                        pct = round(grand_done / grand_ttl * 100) if grand_ttl else 0
+                        try:
+                            scan_progress_bar.set_value(grand_done / grand_ttl if grand_ttl else 0)
+                            scan_progress_label.set_text(
+                                f"[{grand_done}/{grand_ttl}] ({pct}%) {phase_label}{current_dir}"
+                            )
+                        except Exception:
+                            pass
+                    return _cb
+
                 if self.dwarf_status == "USB":
-                    await run.io_bound (sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
+                    await run.io_bound(sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log, _make_progress_cb("🔄 "))
                 if self.dwarf_status == "FTP":
-                    await run.io_bound (ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log)
+                    await run.io_bound(ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log, _make_progress_cb("🔄 "))
+
+                # Advance offset to sync_total before scan phase
+                progress_state["offset"] = sync_total
+
                 local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
                 print(local_Dwarf_dir)
                 ui.notify(t("starting_analysis"))
-                total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log)
+                total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log, _make_progress_cb("🔍 "))
+                scan_progress_bar.set_value(1)
+                scan_progress_label.set_text(t("analysis_complete", total=total, deleted=deleted))
                 ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
             else:
                ui.notify(t("dwarf_local_dir_create_error"), type="negative")
@@ -660,6 +740,25 @@ class ConfigApp(DbPageMixin):
 
             local_Dwarf_dir_archive = os.path.join(local_Dwarf_dir, "Archive")
             self.dwarf_archive_size.text = get_directory_size_format(local_Dwarf_dir_archive)
+
+            # Free space on the local drive
+            if self.dwarf_free_size:
+                info = await run.io_bound(get_disk_space_info, local_Dwarf_dir)
+                if info["online"]:
+                    color = "text-red-500" if info["critical"] else ("text-orange-400" if info["warning"] else "text-green-500")
+                    self.dwarf_free_size.set_text(f"{info['free_str']}")
+                    self.dwarf_free_size.classes(replace=f"text-base font-semibold {color}")
+                else:
+                    self.dwarf_free_size.set_text("—")
+                    self.dwarf_free_size.classes(replace="text-base text-gray-400")
+
+            # Disk space of the Dwarf device itself (USB only)
+            if self._dwarf_usb_disk_widget:
+                usb_path = self.dwarf_astroDir.value.strip() if self.dwarf_astroDir.value else None
+                if usb_path and os.path.exists(usb_path) and self.dwarf_status == "USB":
+                    await self._dwarf_usb_disk_widget.refresh(usb_path)
+                else:
+                    await self._dwarf_usb_disk_widget.refresh(None)
         else:
             self.local_info.visible = False
 
@@ -678,8 +777,6 @@ class ConfigApp(DbPageMixin):
     async def ok_confirm_and_delete_dwarf_archive(self):
         # Delete the Archive
         local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
-
-        await run.io_bound(empty_local_archive_dwarf_dir(local_Dwarf_dir))
-
-        self.refresh_dwarf_list()
+        await run.io_bound(empty_local_archive_dwarf_dir, local_Dwarf_dir)
+        await self.show_local_data()
         ui.notify(t("notify_archive_cleaned"), type="positive")
