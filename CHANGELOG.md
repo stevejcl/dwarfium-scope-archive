@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.2.0] - 2026-05-22
+
+### Add
+    Official Release 
+
 ## [V3.1.9_RC2] - 2026-05-21
 
 ### Add
