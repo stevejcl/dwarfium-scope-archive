@@ -25,13 +25,14 @@ from api.dwarf_backup_db_api import (
     get_Objects_backup, get_countObjects_backup, get_ObjectSelect_backup, delete_backup_entry_and_dwarf_data,
     get_Objects_duplicate_backup, get_countObjects_duplicate_backup, get_ObjectSelect_duplicate_backup,
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
-    has_related_manual_sessions, get_ManualSession_by_backup_entry_id,
+    has_related_manual_sessions, get_ManualSession_by_backup_entry_id, insert_session_quality_dwarf_folder_data,
     find_matching_darks, generate_siril_session_json, get_backupDrive_id_from_backupEntry, 
-    get_dwarf_session_error_by_dir, get_sky_filter_entry_ids
+    get_dwarf_session_error_by_dir, get_sky_filter_entry_ids, get_folder_size_bytes, insert_session_quality_folder_data
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
     get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files, get_png_name_from_zip, get_fits_name_from_zip,
+    get_fits_raw_size,
     hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure, get_total_mosaic_exposure, format_seconds_hms, 
     preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure, cleanup_fits_files, restore_fits_files, win_long_path
 )
@@ -1407,8 +1408,8 @@ class ExploreApp(DbPageMixin):
 
         # Ask for confirmation
         await self.WinLog.show(
-            "Confirm Deletion",
-            f"⚠️ Are you sure you want to delete this session?\n\nThe following folder will be completely removed!\n\n{folder_path}",
+            t("confirm_deletion"),
+            t("confirm_delete_session").format(folder_path=folder_path),
             ok_confirm_delete_session
         )
 
@@ -1722,7 +1723,6 @@ class ExploreApp(DbPageMixin):
                 _qstr2 = f"  {_quality_stars(_qscore)}" if _qscore is not None else ""
                 # --- Session Notes + score button (need backup_entry_id) ---
                 _be_id = get_backup_entry_id_by_dwarf_data(self.conn, dwarf_data_id)
-
                 _quality_str = f" - {t('image_quality')} {_qdot} {_qstr2}" if self.mode != "dwarf" else ""
                 with ui.row().classes('w-full gap-8 items-start'):
                     ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time}{_quality_str}").classes(color)
@@ -1909,10 +1909,12 @@ class ExploreApp(DbPageMixin):
         self.nb_tiff_files = None
         self.nb_failed_tiff_files = None
         restacked_session = False
+        size_dir_bytes = None
         try:
             directory = os.path.dirname(self.preview_image_path)
             restacked_session = is_Restacked(os.path.basename(directory))
-            size_dir_kb = get_directory_size(directory) / 1024
+            size_dir_bytes = get_directory_size(directory)
+            size_dir_kb = size_dir_bytes / 1024
             size_dir_mb = size_dir_kb / 1024
             size_kb = os.path.getsize(self.preview_image_path) / 1024
             size_mb = size_kb / 1024
@@ -1920,6 +1922,14 @@ class ExploreApp(DbPageMixin):
             self.nb_failed_fits_files = count_failed_fits_files(directory)
             self.nb_tiff_files = count_tiff_files(directory)
             self.nb_failed_tiff_files = count_failed_tiff_files(directory)
+
+            # Store size in SessionQuality if not already stored
+            be_id = self.current_session_row[22] if self.current_session_row else None
+
+            if be_id and size_dir_bytes is not None:
+                existing = get_folder_size_bytes(self.conn, be_id)
+                if not existing or existing[0] is None:
+                    insert_session_quality_folder_data(self.conn, be_id, size_dir_bytes)
 
         except FileNotFoundError:
             print("File not found")
@@ -2257,12 +2267,18 @@ class ExploreApp(DbPageMixin):
                     self.action_fits_files_icon.visible = True
                     self.action_fits_files_icon.enable()
                 else:
-                    print(f"Restore UP FITS files")
-                    # No FITS → allow restore from backup
-                    self.cleanup_fits_files_action = False
-                    self.action_fits_files_icon.text = "♻️ Restore FITS"
-                    self.action_fits_files_icon.visible = True
-                    self.action_fits_files_icon.enable()
+                    # No FITS — allow restore from backup, but not for RESTACKED sessions
+                    # (RESTACKED only has stacked-16_*.fits, no raw FITS to restore)
+                    session_dir = os.path.basename(os.path.normpath(self.selected_path))
+                    if is_Restacked(session_dir):
+                        self.action_fits_files_icon.visible = False
+                        self.action_fits_files_icon.disable()
+                    else:
+                        print(f"Restore UP FITS files")
+                        self.cleanup_fits_files_action = False
+                        self.action_fits_files_icon.text = "♻️ Restore FITS"
+                        self.action_fits_files_icon.visible = True
+                        self.action_fits_files_icon.enable()
             else:
                 self.action_fits_files_icon.visible = False
                 self.action_fits_files_icon.disable()

@@ -113,6 +113,7 @@ class ReportApp(DbPageMixin):
                     # Right: disk space widget — aligned with the selector
                     with ui.column().classes("flex-1 min-w-64 justify-end"):
                         self._disk_widget = disk_space_widget(None)
+                        self._dwarf_usb_status = ui.label("").classes("text-xs mt-1")
 
             # ── Options row ───────────────────────────────────────────
             with ui.row().classes("w-full items-center gap-4 flex-wrap"):
@@ -187,6 +188,26 @@ class ReportApp(DbPageMixin):
                 self._trigger_disk_widget()
                 ui.timer(0.1, self._load_table_async, once=True)
 
+    def _refresh_usb_status(self, dwarf_id: int | None = None):
+        """Show Dwarf USB connection status — only visible in dwarf mode."""
+        if not hasattr(self, '_dwarf_usb_status'):
+            return
+        if self._drive_type != "dwarf" or not dwarf_id:
+            self._dwarf_usb_status.set_text("")
+            return
+        from api.dwarf_backup_db_api import get_dwarf_detail
+        row = get_dwarf_detail(self.conn, dwarf_id)
+        if row:
+            usb_path = row[2] or ""
+            if usb_path and os.path.isdir(usb_path):
+                self._dwarf_usb_status.set_text(f"🟢 USB connected: {usb_path} — sizes will use the Dwarf disk")
+                self._dwarf_usb_status.classes(replace="text-xs mt-1 text-green-600")
+            else:
+                self._dwarf_usb_status.set_text(f"🔴 USB not connected — sizes will use local copy")
+                self._dwarf_usb_status.classes(replace="text-xs mt-1 text-orange-500")
+        else:
+            self._dwarf_usb_status.set_text("")
+
     def _trigger_disk_widget(self):
         """Refresh the disk widget for the currently selected drive."""
         current_label = self._drive_select.value
@@ -201,6 +222,7 @@ class ReportApp(DbPageMixin):
                 drive_id=did,
                 name=name,
             )
+            self._refresh_usb_status(did)
         ui.timer(0.05, _refresh, once=True)
 
     def _make_back_url(self) -> str:
@@ -243,10 +265,16 @@ class ReportApp(DbPageMixin):
                 label = f"{name}{dwarf_suffix}{suffix}"
                 self._drive_options[label] = (did, loc or "", name)
         else:
-            # Dwarf local copies
+            # Dwarf — prefer USB disk, fallback to local copy
+            from api.dwarf_backup_db_api import get_dwarf_detail
             dwarfs = get_dwarf_Names(self.conn)
             for did, name in dwarfs:
-                loc = get_local_dwarf_dir(self.conn, did)
+                row = get_dwarf_detail(self.conn, did)
+                usb_path = (row[2] or "") if row else ""
+                local_path = get_local_dwarf_dir(self.conn, did)
+                # Use USB path for widget if connected, else local
+                loc = usb_path if usb_path and os.path.isdir(usb_path) else local_path
+                # Cache key: always "dwarf" + did, but try USB first
                 cached = load_disk_info("dwarf", did)
                 suffix = ""
                 if cached:
@@ -294,7 +322,7 @@ class ReportApp(DbPageMixin):
         else:
             self._dwarf_id  = did
 
-        # Refresh disk widget
+        # Refresh disk widget and USB status
         async def _refresh():
             await self._disk_widget.refresh(
                 loc or None,
@@ -302,6 +330,7 @@ class ReportApp(DbPageMixin):
                 drive_id=did,
                 name=name,
             )
+            self._refresh_usb_status(did)
         ui.timer(0, _refresh, once=True)
 
         # Reload table
@@ -481,6 +510,19 @@ class ReportApp(DbPageMixin):
     def _start_dwarf_size_scan(self):
         if self._scan_running:
             return
+        # Check type mismatch before scanning
+        if self._drive_type == "dwarf" and self._dwarf_id:
+            from api.dwarf_backup_fct import check_dwarf_type_mismatch
+            current_label = self._drive_select.value
+            loc = self._drive_options.get(current_label, (None, "", None))[1]
+            if loc:
+                mismatch = check_dwarf_type_mismatch(self.conn, self._dwarf_id, loc)
+                if mismatch:
+                    ui.notify(
+                        t("dwarf_type_mismatch_calc").format(name=mismatch['name'], configured=mismatch['configured'], detected=mismatch['detected']),
+                        type="warning", timeout=0,
+                    )
+                    return
         self._scan_running = True
         self._calc_dwarf_btn.props("loading")
         self._calc_progress.set_text(t("report_calc_running"))
@@ -499,7 +541,7 @@ class ReportApp(DbPageMixin):
             except Exception:
                 pass
 
-        measured = await run.io_bound(
+        result = await run.io_bound(
             scan_dwarf_session_sizes,
             self.database,
             backup_id,
@@ -508,12 +550,19 @@ class ReportApp(DbPageMixin):
             _progress,
             entry_ids,
         )
+        measured, mismatches = result if isinstance(result, tuple) else (result, {})
 
         self._scan_running = False
         try:
             self._calc_dwarf_btn.props(remove="loading")
             self._calc_dwarf_force_btn.props(remove="loading")
             self._calc_progress.set_text(t("report_sized").format(n=measured))
+            if mismatches:
+                for d_id, info in mismatches.items():
+                    ui.notify(
+                        f"⚠️ {info['name']}: configured={info['configured']} but detected={info['detected']} — please check Dwarf settings",
+                        type="warning", timeout=10000,
+                    )
         except Exception:
             pass
 

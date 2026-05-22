@@ -46,6 +46,8 @@ from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import set_setting_text, get_setting_text
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
+from datetime import datetime
+from api.db_backup import manual_backup_db, get_auto_backup_path, get_last_backup_path
 
 @ui.page('/Settings/')
 def astro_settings(InitDwarfLocal = True):
@@ -86,6 +88,11 @@ class SettingsApp(DbPageMixin):
         if folder:
             target_input.set_value(os.path.normpath(folder[0]))
         # If cancelled, leave current value unchanged
+
+    async def choose_backup_folder(self):
+        await self.choose_folder(target_input=self._manual_backup_path)
+        if self._manual_backup_path.value:
+            set_setting_text(self.conn, "DB_BACKUP_PATH", self._manual_backup_path.value)
 
     def build_ui(self):
         self.conn = connect_db(self.database)
@@ -148,15 +155,57 @@ class SettingsApp(DbPageMixin):
                         .props("outlined")
                     open_btn.visible = False
 
-            ui.label(t("dwarf_config")).classes("text-xl font-bold")
+            with ui.card().classes("w-full p-4"):
 
+                ui.label(t("settings_db_backup")).classes("text-lg font-semibold mb-2")
+
+                bak_path = get_auto_backup_path()
+                if os.path.exists(bak_path):
+                    bak_mtime = datetime.fromtimestamp(os.path.getmtime(bak_path)).strftime("%Y-%m-%d %H:%M")
+                    ui.label(f"🔒 {t('settings_db_auto_bak')}: {bak_mtime}").classes("text-sm text-gray-500")
+                else:
+                    ui.label(f"🔒 {t('settings_db_auto_bak')}: {t('settings_db_no_bak')}").classes("text-sm text-gray-500")
+
+                last_path = get_last_backup_path()
+                if os.path.exists(last_path):
+                    last_mtime = datetime.fromtimestamp(os.path.getmtime(last_path)).strftime("%Y-%m-%d %H:%M")
+                    ui.label(f"💾 {t('settings_db_last_bak')}: {last_mtime}").classes("text-sm text-gray-500 mb-2")
+                else:
+                    ui.label(f"💾 {t('settings_db_last_bak')}: {t('settings_db_no_bak')}").classes("text-sm text-gray-500 mb-2")
+
+                backup_status = ui.label("").classes("text-sm mt-1")
+                self._manual_backup_path = ui.input(
+                    t("settings_db_backup_folder"),
+                    value=get_setting_text(self.conn, "DB_BACKUP_PATH") or ""
+                ).props("readonly").classes("w-full")
+
+                def do_manual_backup():
+                    dest = self._manual_backup_path.value.strip()
+                    if not dest:
+                        ui.notify(t("settings_db_backup_no_folder"), type="warning")
+                        return
+                    result = manual_backup_db(dest)
+                    if result:
+                        backup_status.set_text(f"✅ {os.path.basename(result)}")
+                        ui.notify(t("settings_db_backup_ok", name=os.path.basename(result)), type="positive")
+                    else:
+                        backup_status.set_text(f"❌ {t('settings_db_backup_error')}")
+                        ui.notify(t("settings_db_backup_error"), type="negative")
+
+                with ui.row().classes("gap-2 mt-2 items-center"):
+                    ui.button(t("open_folder"), on_click= lambda: self.choose_backup_folder()).props("outlined")
+                    ui.button(t("settings_db_backup_now"), icon="save", on_click=do_manual_backup).props("color=primary")
+
+            current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
             with ui.card().classes("w-full p-4") as info_dwarf_local:
-                current_path  = get_setting_text(self.conn, "DWARF_LOCAL_PATH") or "Not Defined"
+
+                ui.label(t("dwarf_config")).classes("text-xl font-bold")
+
                 self.path_input = ui.input("DWARF_LOCAL_PATH", value=current_path).props("readonly").classes("min-w-[600px] overflow-x-auto whitespace-nowrap")
                 ui.label(t("dwarf_local_disk")).classes("text-sm text-orange-600 mt-2").style('white-space: pre-wrap;')
                 if current_path == "Not Defined":
                     self.InitDwarfLocal = False
-                    ui.notify('Select a directory to store Dwarf data locally for offline use.', type='warning')
+                    ui.notify(t('settings_select_dwarf_local'), type='warning')
                     current_path = "."
 
                 ui.button(t("open_folder"), on_click= lambda: self.choose_folder(target_input=self.path_input)).classes("mt-2")
@@ -175,16 +224,15 @@ class SettingsApp(DbPageMixin):
                 ui.button(t("save"), on_click=save_path).classes("mt-4")
          
             # ── Observation Locations ─────────────────────────────────────────
-            ui.label(t("loc_title")).classes("text-xl font-bold")
             with ui.card().classes("w-full p-4"):
                 from components.location_manager import location_manager_widget
                 location_manager_widget(self.conn)
 
-            ui.label(t("nova_config")).classes("text-xl font-bold")
-
-            ui.label(f"Detected System : {platform.system()}")
-
             with ui.card().classes("w-full"):
+                ui.label(t("nova_config")).classes("text-xl font-bold")
+
+                ui.label(f"{t('settings_detected_system')} {platform.system()}")
+
                 ui.label(t("nova_online"))
                 ui.button(t("nova_create_key"),
                           on_click=lambda:ui.navigate.to('https://nova.astrometry.net/api_help', new_tab=True))
@@ -198,7 +246,7 @@ class SettingsApp(DbPageMixin):
                 ui.button(t("save_key"), on_click=save_api_key)
 
             with ui.card().classes("w-full"):
-                ui.label(t("nova_local"))
+                ui.label(t("nova_local")).classes("text-xl font-bold")
 
                 from api.astrometry_resolver import has_astap, find_astap
                 if has_astap():
@@ -237,9 +285,11 @@ class SettingsApp(DbPageMixin):
                     ui.button(t("nova_install"), on_click=self.install_local_astrometry)
 
             # ── FFmpeg status ─────────────────────────────────────────────────────────
-            ui.label(t("ffmpeg_config")).classes("text-xl font-bold")
             with ui.card().classes("w-full"):
                 from tools.video_export import find_ffmpeg
+
+                ui.label(t("ffmpeg_config")).classes("text-xl font-bold")
+
                 ffmpeg_path = find_ffmpeg()
                 if ffmpeg_path:
                     ui.label(f"✅ ffmpeg found: {ffmpeg_path}").classes("text-green-600")
@@ -262,18 +312,15 @@ class SettingsApp(DbPageMixin):
 
                 ui.label(t("first_setup")).classes("text-xl font-bold")
 
-                ui.label(
-                    "Before using Dwarfium Scope Archive, you need to select a folder to store your local session index.\n"
-                    "This folder will contain processed images (FITS, JPG, PNG) and metadata.\n"
-                    "Make sure you choose a location with enough free space (can exceed 10GB)."
+                ui.label(f"{t('first_local_config_message1')}{t('first_local_config_message2')}{t('first_local_config_message3')}"
                 ).classes("text-sm text-gray-600").style('white-space: pre-wrap;')
 
                 self.first_path_input = ui.input(
-                    "Select a folder",
-                    placeholder="Choose a directory..."
+                    t("select_a_folder"),
+                    placeholder=t("select_dwarf_dir")
                 ).props("readonly").classes("w-full")
 
-                ui.button("📂 Browse", on_click=lambda: self.choose_folder(target_input=self.first_path_input)).classes("mt-2")
+                ui.button(t("open_folder"), on_click=lambda: self.choose_folder(target_input=self.first_path_input)).classes("mt-2")
 
                 def validate_and_continue():
                     path = (self.first_path_input.value or "").strip()

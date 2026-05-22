@@ -1347,6 +1347,10 @@ class TransferApp:
         if p:
             self._show_bg_progress(True)
             self._update_bg_progress_ui(p)
+
+            if app.storage.general.pop('transfer_cancel_requested', False):
+                # Crash Transfer need to stop
+                self._set_progress('cancelled', 0 , 0)
             # Clear final states after showing to user
             if p.get('status') in ('done', 'error', 'cancelled'):
                 ui.timer(5.0, lambda: self.cleanup_transfer_keys(), once=True)
@@ -1379,11 +1383,16 @@ class TransferApp:
                 self._show_bg_progress(True)
                 self._update_bg_progress_ui(p)
                 if p['status'] in ('done', 'error', 'cancelled'):
-                    self._progress_timer.deactivate()
+                    if not self._progress_timer._is_canceled:
+                        self._progress_timer.deactivate()
                 elif p['status'] == 'copy_done':
                     pass  # keep timer running — sync phase still to come
         except Exception:
-            self._progress_timer.cancel()
+            try:
+                if not self._progress_timer._is_canceled:
+                    self._progress_timer.cancel()
+            except Exception:
+                pass
 
     def _force_reset_transfer(self):
         """Emergency reset — clears stuck transfer state."""
@@ -1751,7 +1760,17 @@ class TransferApp:
         total_files = len(all_files)
         self._set_progress('running', 0, total_files)
         self._show_bg_progress(True)
-        self._progress_timer.activate()
+        # Safely activate timer — recreate it if it was cancelled by a page navigation
+        try:
+            if self._progress_timer._is_canceled:
+                self._progress_timer = ui.timer(1.0, self._poll_transfer_progress)
+            else:
+                self._progress_timer.activate()
+        except Exception:
+            try:
+                self._progress_timer = ui.timer(1.0, self._poll_transfer_progress)
+            except Exception:
+                pass
         self._safe_ui(lambda: self._set_close_warning(True))
         try:
             total_files = len(all_files)

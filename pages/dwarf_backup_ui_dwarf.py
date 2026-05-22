@@ -7,8 +7,9 @@ import subprocess
 import re
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from components.db_page_mixin import DbPageMixin
-from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive, get_directory_size_format, empty_local_archive_dwarf_dir, get_disk_space_info
+from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive, get_directory_size_format, empty_local_archive_dwarf_dir, get_disk_space_info, check_dwarf_type_mismatch
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
+from api.dwarf_backup_fct_ftp import check_dwarf_type_mismatch_ftp
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
 
 from api.dwarf_backup_mtp_handler import MTPManager 
@@ -260,7 +261,7 @@ class ConfigApp(DbPageMixin):
             if current_ip == self.dwarf_ip_sta_mode.value:
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
-                if not self.dwarf_status and status_text and status_text.startswith("✅ Connected"):
+                if not self.dwarf_status and status_text and "✅" in status_text:
                     self.dwarf_status = "FTP"
 
     async def load_selected_dwarf(self, event):
@@ -417,13 +418,12 @@ class ConfigApp(DbPageMixin):
     def refesh_mtp_status(self, device_path = None):
         if self.mtp_visible and device_path and any(path == device_path for _, path in self.mtp_devices):
             self.mtp_status_label.visible = True
-            self.mtp_status_label.text = "✅ MTP Connected"
+            self.mtp_status_label.text = t("mtp_connected")
             if not self.dwarf_status:
                 self.dwarf_status = "MTP"
         elif self.mtp_visible:
             self.mtp_status_label.visible = True
-            self.mtp_status_label.text = "❌ MTP not Connected"
-
+            self.mtp_status_label.text = t("mtp_not_connected")
         else:
             self.mtp_status_label.visible = False
             self.mtp_status_label.text = ""
@@ -567,6 +567,24 @@ class ConfigApp(DbPageMixin):
             ui.notify(t("unsupported_conn"), type="negative")
             return
 
+        # Check Dwarf type before opening dialog — use USB or FTP path
+        selected_type = self.dwarf_type_var.value
+        if self.dwarf_status == "USB":
+            mismatch = await run.io_bound(check_dwarf_type_mismatch, self.conn, self.dwarf_id, self.dwarf_name.value, selected_type, dwarf_location)
+        else:
+            mismatch = await run.io_bound(check_dwarf_type_mismatch_ftp, self.conn, self.dwarf_id, self.dwarf_name.value, selected_type, ftp, dwarf_location)
+        if mismatch:
+            ui.notify(
+                t("dwarf_type_mismatch").format(name=mismatch['name'], configured=selected_type, detected=mismatch['detected']),
+                type="warning", timeout=0,
+            )
+            if ftp:
+                try:
+                    ftp.quit()
+                except Exception:
+                    pass
+            return
+
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
@@ -653,10 +671,29 @@ class ConfigApp(DbPageMixin):
                 local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
                 print(local_Dwarf_dir)
                 ui.notify(t("starting_analysis"))
+
                 total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log, _make_progress_cb("🔍 "))
                 scan_progress_bar.set_value(1)
                 scan_progress_label.set_text(t("analysis_complete", total=total, deleted=deleted))
                 ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
+
+                # Detect Dwarf type from scanned sessions and warn if mismatch
+                if self.dwarf_id:
+                    try:
+                        from tools.quality_scan import scan_dwarf_session_sizes
+                        result = await run.io_bound(
+                            scan_dwarf_session_sizes, DB_NAME,
+                            None, self.dwarf_id, False, None, None
+                        )
+                        _, mismatches = result if isinstance(result, tuple) else (result, {})
+                        if mismatches:
+                            for _, info in mismatches.items():
+                                ui.notify(
+                                    t("dwarf_type_mismatch_scan").format(name=info['name'], configured=info['configured'], detected=info['detected']),
+                                    type="warning", timeout=0,
+                                )
+                    except Exception as _e:
+                        print(f"[type detect] {_e}")
             else:
                ui.notify(t("dwarf_local_dir_create_error"), type="negative")
             spinner.set_visibility(False)
@@ -688,8 +725,8 @@ class ConfigApp(DbPageMixin):
             return
 
         await self.WinLog.show(
-            "Confirm Deletion",
-            "Are you sure you want to delete this Dwarf?",
+            t("confirm_deletion"),
+            t("confirm_delete_dwarf"),
             self.ok_confirm_and_delete_dwarf
         )
 
@@ -708,8 +745,8 @@ class ConfigApp(DbPageMixin):
             return
 
         await self.WinLog.show(
-            "Confirm Deletion",
-            "Are you sure you want to reset to defaults?",
+            t("confirm_deletion"),
+            t("confirm_reset_defaults"),
             self.ok_confirm_and_delete_dwarf_entries
         )
 
@@ -769,8 +806,8 @@ class ConfigApp(DbPageMixin):
             return
 
         await self.WinLog.show(
-            "Confirm Deletion",
-            "Are you sure you want to delete the old Dwarf archive data from your local drive?\n(These files are no longer present on your Dwarf device.)",
+            t("confirm_deletion"),
+            t("confirm_delete_dwarf_archive"),
             self.ok_confirm_and_delete_dwarf_archive
         )
 

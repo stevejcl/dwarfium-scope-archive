@@ -105,6 +105,7 @@ import pages.page_sky_map
 import pages.report
 
 from api.image_preview import serve_preview
+from api.db_backup import shutdown_backup_db
 
 app.native.settings['ALLOW_DOWNLOADS'] = True
 
@@ -162,6 +163,9 @@ async def _on_app_shutdown():
 
         # Write directly to disk — do NOT call clear()/update() on storage
         _safe_storage_write(snapshot)
+
+        # Shutdown backup — .last file, does NOT overwrite .bak (startup clean state)
+        shutdown_backup_db()                                                                               
 
     except Exception as e:
         print(f"[App] Shutdown storage cleanup error: {e}")

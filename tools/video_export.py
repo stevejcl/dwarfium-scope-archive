@@ -147,9 +147,14 @@ def _draw_banner(frame: np.ndarray, meta: dict, config: VideoExportConfig,
 
     # Left side: object name + date + device
     pad = 16
-    obj_name = meta.get("object_name", "").replace("🛰️ ", "").replace("🔭 ", "")
-    dwarf    = meta.get("dwarf_name", "").replace("🔭 ", "")
-    date_str = meta.get("session_date", "").replace("📅 ", "")
+   # Strip any emoji prefixes that might come from favorites (🛰️, 🔭, 🖼️, 📷, ⭐, ☆)
+    import re
+    def _strip_emoji_prefix(s: str) -> str:
+        return re.sub(r'^[\U00010000-\U0010ffff\u2600-\u27BF\u2B00-\u2BFF\u1F300-\u1FAFF\u26A0-\u26FF☆⭐\s]+', '', s).strip()
+
+    obj_name = _strip_emoji_prefix(meta.get("object_name", ""))
+    dwarf    = _strip_emoji_prefix(meta.get("dwarf_name", ""))
+    date_str = _strip_emoji_prefix(meta.get("session_date", ""))
     meta_text = f"{obj_name}  ·  {dwarf}  ·  {date_str}"
     draw.text((pad, banner_y + 8), meta_text, font=font_main, fill=(255, 255, 255, 230))
 

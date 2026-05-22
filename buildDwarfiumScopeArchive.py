@@ -28,6 +28,7 @@ IMAGE_DIR = Path("image")
 DIST_IMAGE_DIR      = DIST_DIR / "image"
 DIST_DB_DIR         = DIST_DIR / "db"
 DIST_LOCALES_DIR    = DIST_DIR / "components" / "locales"
+DIST_MUSIC_DIR      = DIST_DIR / "assets" / "music"
 DIST_HELP_LOCALES_DIR = DIST_DIR / "components" / "help_locales"
 #DIST_TOOLS_DIR       = DIST_DIR / "tools"
 
@@ -111,6 +112,14 @@ for locale_file in Path("components/help_locales").glob("*.py"):
     dest = DIST_HELP_LOCALES_DIR / locale_file.name
     print(f"Copying {locale_file} to {dest}")
     shutil.copy2(locale_file, dest)
+
+# Copy assets/music/ into dist/assets/music/
+DIST_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
+for music_file in Path("assets/music").glob("*"):
+    if music_file.is_file():
+        dest = DIST_MUSIC_DIR / music_file.name
+        print(f"Copying {music_file} to {dest}")
+        shutil.copy2(music_file, dest)
 
 # Copy tools/ into dist/tools/ (quality_scan, skybot_scan, etc.)
 #DIST_TOOLS_DIR = DIST_DIR / "tools"

@@ -358,10 +358,7 @@ class ConfigApp(DbPageMixin):
         """After saving a new backup drive, offer to go straight to Explore."""
         with ui.dialog() as dlg, ui.card().classes("p-4 gap-4"):
             ui.label(t("backup_drive_saved2")).classes("text-lg font-bold")
-            ui.label(
-                "Would you like to go to Explore now to back up your Dwarf sessions? "
-                "Sessions not yet backed up will be shown automatically."
-            ).classes("text-gray-600")
+            ui.label(t("offer_backup_msg")).classes("text-gray-600")
             with ui.row().classes("gap-4 mt-2"):
                 def go_explore():
                     dlg.close()
@@ -387,8 +384,8 @@ class ConfigApp(DbPageMixin):
         if existing:
             # Ask user for confirmation before updating
             await self.WinLog.show(
-                 "Confirm Update",
-                 "This location already exists. Do you want to update its data?",
+                 t("confirm_update"),
+                 t("confirm_update_location"),
                  self.ok_confirm_and_update_backup_data
             )
         else:
@@ -628,8 +625,8 @@ class ConfigApp(DbPageMixin):
             return
 
         await self.WinLog.show(
-            "Confirm Deletion",
-            "Are you sure you want to delete this Backup Drive?",
+            t("confirm_deletion"),
+            t("confirm_delete_backup_drive"),
             self.ok_confirm_and_delete_backup_drive
         )
 
@@ -649,8 +646,8 @@ class ConfigApp(DbPageMixin):
             return
 
         await self.WinLog.show(
-            "Confirm Deletion",
-            "This will delete all backup entries and associated DwarfData for the selected BackupDrive.\nAre you sure?",
+            t("confirm_deletion"),
+            t("confirm_delete_backup_entries"),
             self.ok_confirm_and_delete_backup_entries
         )
 
@@ -669,16 +666,9 @@ class ConfigApp(DbPageMixin):
             return
 
         # First confirmation — warn about ManualSession records
-        msg = (
-            "This will delete all ManualSessionEntry rows for this backup drive.\n\n"
-            "The ManualSession records (metadata + file paths) will be kept.\n"
-            "After deleting the backup drive and recreating it, run Analyze Drive\n"
-            "to automatically re-link them from the shotsInfo.json files on disk.\n\n"
-            "Are you sure you want to continue?"
-        )
         await self.WinLog.show(
-            "Confirm Delete Manual Entries",
-            msg,
+            t("confirm_delete_manual_entries"),
+            t("confirm_delete_manual_entries_msg"),
             self._ask_delete_manual_sessions_too,
         )
 
@@ -687,11 +677,7 @@ class ConfigApp(DbPageMixin):
         with ui.dialog().props('persistent') as dialog, ui.card().classes("p-4 gap-3"):
             ui.label(t("also_delete_manual")).classes("font-semibold")
             ui.separator()
-            ui.label(
-                "ManualSession records hold the metadata (RA/Dec, description, file paths). "
-                "Keep them if you want the rebuild from shotsInfo.json to restore everything. "
-                "Delete them only if you want a completely clean slate."
-            )
+            ui.label(t("confirm_delete_manual_sessions_msg"))
             ui.separator()
             with ui.row().classes("gap-4"):
                 ui.button(

@@ -18,11 +18,13 @@ from api.image_preview import set_base_folder, build_preview_url
 
 from components.menu import menu
 from tools.video_export import VideoExportConfig, export_video, list_fonts, VIDEO_RESOLUTIONS, FONT_SIZES, get_music_files
+from api.db_backup import auto_backup_db
 
 init_task = None
 is_app_started = False
 
 def init_db():
+    auto_backup_db()   # backup before any migration
     conn = start_db(DB_NAME)
     if not conn:
         raise RuntimeError('Database init failed')
@@ -65,7 +67,7 @@ async def home_page(client: Client):
     if not ensure_dwarf_local_path(conn):
         spinner.delete()
         if status:
-            status.set_text('Redirecting to settings...')
+            status.set_text(t('redirect_to_settings'))
         ui.timer(0.1, lambda: ui.navigate.to("/Settings?InitDwarfLocal=False"), once=True)
         return
 

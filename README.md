@@ -20,6 +20,8 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
   - [Manual Sessions](#manual-sessions)
   - [Dark Library](#dark-library)
   - [Transfer](#transfer)
+  - [Storage Report](#storage-report)
+  - [Sky Map](#sky-map)
   - [Mosaic](#mosaic)
   - [Catalog](#catalog)
   - [MTP Device](#mtp-device)
@@ -41,9 +43,17 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 | **Dark Library** | Manage `CALI_FRAME` folders, inventory darks by exposure / gain / binning / temperature, export a `siril_session.json` for the [Dwarfium Archive Selector](https://github.com/stevejcl/dwarfium-siril) Siril script |
 | **Transfer** | Copy sessions between the Dwarf and a backup drive via USB or FTP, with background transfer (navigate freely while copying) |
 | **Mosaic** | Stitch multi-panel mosaics, repair partially transferred mosaics, merge panels from different sessions |
+| **Storage Report** | View session sizes by backup drive or Dwarf, identify large sessions, trigger size calculation and Clean/Restore FITS directly |
+| **Image Quality Score** | Automatically score sessions 0–100 based on metadata (stack rate, exposure, darks) and image analysis (dynamic range, contrast, entropy) |
+| **Sky Map** | Visualise all sessions on an interactive Aladin Lite sky map, with WCS footprints, overlap detection and per-panel mosaic display |
+| **Astrometry** | Resolve session RA/Dec via ASTAP (local) or Nova astrometry.net API (online fallback), storing WCS data for sky map display |
 | **Session Notes** | Record observation conditions per session: moon phase, seeing, location, free-text summary and detailed notes |
 | **DSO Catalog** | Match session targets to a built-in DSO catalog (NGC / IC / Messier), identify targets from RA/Dec coordinates, open in Aladin |
 | **SkyBot** | Query the IMCCE SkyBot service to detect comets and asteroids visible in the field at the time of the session |
+| **Video Export** | Generate a timelapse-style video slideshow from your favourite or filtered sessions with customisable captions and transitions |
+| **Disk Space** | Live disk space widgets on Dwarf, Backup and Report pages with colour-coded fill bar; cached values shown when the drive is offline |
+| **Dwarf Type Detection** | Auto-detect Dwarf model (Dwarf 2 / 3 / Mini) from stacked JPEG dimensions before any scan — warns if the configured type does not match |
+| **DB Backup** | Automatic `.bak` on startup and `.last` on shutdown; manual backup to any folder from Settings |
 | **Multi-language** | English and French UI, extensible to other languages via locale files |
 | **PDF Report** | Export a summary report of your archive |
 | **MTP** | Connect to Dwarf 2 via MTP (Windows) to browse and transfer without USB drive access |
@@ -166,12 +176,15 @@ Register the Dwarf telescopes you own. Each entry stores:
 
 **Actions available:**
 
-- **Analyze Dwarf Drive** — scan the USB directory and index all sessions
+- **Analyze Dwarf Drive** — scan the USB/FTP directory and index all sessions; before scanning, the app automatically checks that the configured device type matches the actual sessions by sampling stacked JPEG dimensions — warns and blocks if a mismatch is detected
 - **Show Dwarf Data** — open Explore filtered to this Dwarf's sessions
 - **Sessions with Errors** — list mosaic sessions without a final stacked file
 
-> **Dwarf 2 note:** direct USB drive access is not available on Dwarf 2. Use
-> FTP (STA Mode) or MTP (Windows only — see [MTP Device](#mtp-device)).
+A **disk space card** shows Local Data Size / Local Archive Size / Local Free Space colour-coded. A USB disk widget shows the real Dwarf disk space when connected.
+
+> **Dwarf 2 note:** direct USB drive access is not available on Dwarf 2. Use FTP (STA Mode) or MTP (Windows only — see [MTP Device](#mtp-device)).
+>
+> **Dwarf 3 / Mini note:** both models share the same FTP path and cannot be distinguished via FTP alone — the configured type is trusted in that case.
 
 ---
 
@@ -193,35 +206,46 @@ to one Dwarf.
 
 ### Explore
 
-The main session browser. Sessions are grouped by target object in the left
-panel.
+The main session browser. Sessions are grouped by target object in the left panel.
 
 **Filters:**
 
-- Backup drive / Dwarf / target name
-- *Only on Dwarf* / *Only on backup* / *Not yet backed up* / *Already backed up*
-  / *Duplicates* checkboxes to quickly find what needs attention
+- Backup drive / Dwarf / target name / image quality score
+- *Only on Dwarf* / *Only on backup* / *Not yet backed up* / *Already backed up* / *Duplicates* checkboxes
+
+**Session gallery:**
+
+When multiple sessions exist for the same object, a **Show Gallery** button appears. The gallery opens immediately with the first image and loads the rest in the background — navigate with Previous / Next or jump directly to a session.
 
 **Session detail panel shows:**
 
 - Target, RA/Dec, classification, constellation
 - Date, exposure, gain, filter, temperature, lens
-- Stacked shots count and total exposure time
-- **🎯 Dark match badge** — green (temperature in range) / orange (closest
-  temperature) / red (no match)
-- Mosaic panels preview
+- Stacked shots count, total exposure time and **image quality score** (0–100, ⭐ to ⭐⭐⭐⭐⭐)
+- **🎯 Dark match badge** — green (temperature in range) / orange (closest temperature) / red (no match)
+- Mosaic panels preview and panorama generation
+- Folder size (updated automatically when viewing a session)
+
+**Image Quality Score** is computed in two passes:
+- **Pass A (metadata)** — stack rate, total exposure, dark calibration, sensor type
+- **Pass B (image analysis)** — dynamic range, contrast and entropy of the stacked JPEG
 
 **Actions:**
 
 - Open session folder in Explorer / Finder
 - View stacked image full-screen
-- Backup or Restore the session
+- **Clean FITS** — remove raw FITS files to reclaim disk space (stacked files are kept)
+- **Restore FITS** — copy raw FITS files back from the backup drive
+- Backup or Restore the session between Dwarf and backup drive
 - Identify target — match RA/Dec against the DSO catalog, open in Aladin
-- Detect nearby **comets and asteroids** via SkyBot (IMCCE) at the time of the session
+- Detect nearby **comets and asteroids** via SkyBot (IMCCE)
+- Score session image quality
 - Add / remove from favourites
-- Add / edit **Session Notes** (observation conditions, location, seeing, moon phase)
+- Add / edit **Session Notes**
 - View linked Manual Session
-- Delete session (from backup drive or from Dwarf)
+- Delete session
+
+> **RESTACKED** and **STARTRAILS** sessions (created by the Dwarf from multi-panel or long-exposure captures) are shown alongside regular sessions. The Restore FITS button is hidden for RESTACKED sessions as they contain no raw frames.
 
 ---
 
@@ -296,6 +320,32 @@ A **Transfer History** log is maintained in `transfer_journal.json`.
 
 ---
 
+### Storage Report
+
+Identify which sessions take the most disk space on a backup drive or Dwarf.
+
+- **Drive selector** — switch between Backup and Dwarf mode; disk space widget shows free / total with colour-coded bar (cached when offline)
+- **Session table** — Date / Object / Backup size / Dwarf total / Dwarf −FITS / Quality / Explore link
+- **Sorting** — Biggest (by size) or Latest (by date); limit to 20 / 50 / 100 / All
+- **Calculate sizes** — measures folder sizes for sessions not yet calculated; a ⟳ icon forces recalculation of all sessions on the drive
+- **Calculate Dwarf sizes** — measures both the total size and the size after a Clean FITS operation (the *−FITS* column shows what would be reclaimed)
+- **Explore link** — opens the session directly in Explore with the back button returning to the same Report view
+- **Dwarf type check** — warns before any calculation if the configured Dwarf type does not match the detected type
+
+---
+
+### Sky Map
+
+Visualise your sessions on an interactive sky map powered by **Aladin Lite v3** (opens in an external browser window).
+
+- Sessions are resolved via **ASTAP** (local solver) or the **Nova astrometry.net API** (online fallback)
+- WCS footprints are drawn for each resolved session; mosaic panels are shown individually
+- **Overlap detection** highlights sessions covering the same sky area
+- Per-Dwarf catalogs; multi-session highlight overlay; zoom / rotate preview
+- Configure ASTAP path and database (D50 for narrow FOV, G05 for wide FOV ≥ 5°) in Settings
+
+---
+
 ### Mosaic
 
 Process multi-panel mosaics captured with the Dwarf.
@@ -332,12 +382,11 @@ transfer.
 
 ### Settings
 
-- **Language** — switch between English and French (more languages can be added
-  via `components/locales/`)
+- **Language** — switch between English and French (more languages can be added via `components/locales/`)
 - **Theme** — light / dark mode
+- **Database Backup** — shows date of last startup backup (`.bak`) and last shutdown backup (`.last`); choose a folder and click **Backup now** to save a timestamped copy anywhere
 - **Dwarf Local Directory** — path to a local copy of Dwarf data for offline use
-- **NOVA Astrometry** — configure an online (astrometry.net) or local
-  (`solve-field`) key for automatic target resolution
+- **NOVA Astrometry** — API key for online (astrometry.net) resolution; ASTAP path and databases (D50 / G05) for local solving
 - **Mosaic & Stitch parameters** — default stitch settings
 - **PDF Report** — generate and open an archive summary report
 - **LAN access** — enable / disable network exposure
@@ -352,6 +401,11 @@ Command-line tools in the `tools/` directory, run from the project root:
 python tools/db_diagnostic.py          # diagnose the database
 python tools/db_cleanup_dupes.py       # remove duplicate entries
 python tools/db_report_pdf.py          # generate a PDF report
+
+python tools/quality_scan.py           # batch-score session image quality
+python tools/skybot_scan.py            # batch-query SkyBot for solar system objects
+python tools/astrometry_scan.py        # batch-resolve session WCS via ASTAP / Nova
+python tools/video_export.py           # export a video slideshow from your sessions
 
 python tools/check_i18n.py             # audit UI translation files
 python tools/check_help.py             # audit help content translation files

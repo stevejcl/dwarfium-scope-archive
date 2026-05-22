@@ -1,12 +1,13 @@
 import os
 import ftplib
 import shutil
+import tempfile
 from ftplib import FTP, error_perm
 
 # Encoding changed to UTF-8
 from contextlib import contextmanager
 
-from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5
+from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5, detect_dwarf_device, normalize_dwarf_name
 
 DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
 DWARF3_FTP_PATH = "/Astronomy"
@@ -28,16 +29,16 @@ def ftp_conn(ip_address):
 
 def check_ftp_connection(ip_address):
     if not ip_address:
-        return "❌ Please enter an IP address."
+        return t("ftp_no_ip")
 
     try:
         with ftp_conn(ip_address) as ftp:
             if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
-                return "✅ Connected to Dwarf2 FTP"
+                return t("ftp_connected_dwarf2")
             elif DWARF3_FTP_PATH in ftp.nlst("/"):
-                return "✅ Connected to Dwarf3 FTP"
+                return t("ftp_connected")   # Dwarf3 or Mini — cannot distinguish
             else:
-                return "❌ Connected to FTP (not Dwarf)."
+                return t("ftp_not_dwarf")
     except ftplib.all_errors:
         return t("ftp_not_connected")
 
@@ -220,6 +221,60 @@ def files_are_different(dst, size):
         return True
     return False
 
+# --- Check Dwarf Type ---
+
+def check_dwarf_type_mismatch_ftp(conn, dwarf_id: int, dwarf_name: str, dwarf_type: int, ftp, scan_root: str, max_samples: int = 5) -> dict | None:
+    """
+    FTP version of check_dwarf_type_mismatch.
+    Downloads up to max_samples stacked JPEGs via FTP to detect the Dwarf type.
+    Returns a dict {configured, detected, name, votes} if mismatch, None if OK or unknown.
+    """
+
+    configured = dwarf_type
+    votes: dict = {}
+    count = 0
+
+    def _ftp_walk(path, depth=0):
+        nonlocal count
+        if count >= max_samples or depth > 3:
+            return
+        try:
+            entries = ftp.nlst(path)
+        except Exception:
+            return
+        for entry in entries:
+            if count >= max_samples:
+                return
+            name_part = entry.split("/")[-1].split("\\")[-1]
+            if name_part.lower() in ("stacked.jpg", "stacked.jpeg"):
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                        ftp.retrbinary(f"RETR {entry}", tmp.write)
+                        tmp_path = tmp.name
+                    detected = normalize_dwarf_name(detect_dwarf_device(tmp_path))
+                    os.remove(tmp_path)
+                    print(detected)
+                    if detected:
+                        votes[detected] = votes.get(detected, 0) + 1
+                        count += 1
+                except Exception as e:
+                    print(f"[check_dwarf_type_ftp] {e}")
+            elif "." not in name_part:
+                _ftp_walk(entry, depth + 1)
+
+    try:
+        _ftp_walk(scan_root)
+    except Exception as e:
+        print(f"[check_dwarf_type_ftp] walk error: {e}")
+        return None
+
+    if not votes:
+        return None
+
+    best = max(votes, key=votes.get)
+    if best != configured:
+        return {"configured": configured, "detected": best, "name": dwarf_name, "votes": votes}
+    return None
 
 #################################
 # parse shotsInfo.json functions
@@ -253,19 +308,19 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
 
     sessions = []
 
-    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED"}
+    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS"}
     # List sessions directly under source_root
     sessions += list_ftp_dirs_only(ftp, source_root, excluded_dirs)
 
-    # Also check RESTACKED if it exists
-    restacked_path = f"{source_root}/RESTACKED"
-    try:
-        ftp.cwd(restacked_path)
-        restacked_sessions = ftp.nlst()
-        sessions += [f"RESTACKED/{s}" for s in restacked_sessions]
-    except Exception as e:
-        print_log("No RESTACKED folder or access error", log)
-    print(sessions)
+    # Also check RESTACKED and STARTRAILS subfolders
+    for subdir in ("RESTACKED", "STARTRAILS"):
+        subdir_path = f"{source_root}/{subdir}"
+        try:
+            ftp.cwd(subdir_path)
+            sub_sessions = ftp.nlst()
+            sessions += [f"{subdir}/{s}" for s in sub_sessions]
+        except Exception:
+            print_log(f"No {subdir} folder or access error", log)
 
     # If a specific session is provided, filter it
     if session_name:
@@ -275,15 +330,15 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
         d for d in os.listdir(dwarf_dir)
         if os.path.isdir(os.path.join(dwarf_dir, d)) and d not in excluded_dirs
     ]
-    # add those in RESTACKED subdirectory
-    restacked_path = os.path.join(dwarf_dir, "RESTACKED")
-    if os.path.isdir(restacked_path):
-        restacked_sessions = [
-            os.path.join("RESTACKED", d)
-            for d in os.listdir(restacked_path)
-            if os.path.isdir(os.path.join(restacked_path, d))
-        ]
-        local_sessions += restacked_sessions
+    # add sessions in RESTACKED and STARTRAILS subdirectories
+    for subdir in ("RESTACKED", "STARTRAILS"):
+        subdir_local = os.path.join(dwarf_dir, subdir)
+        if os.path.isdir(subdir_local):
+            local_sessions += [
+                f"{subdir}/{d}"
+                for d in os.listdir(subdir_local)
+                if os.path.isdir(os.path.join(subdir_local, d))
+            ]
     print(f"local_sessions: {local_sessions}")
 
     sessions_total = len(sessions)
@@ -296,8 +351,9 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
             except Exception:
                 pass
 
+        # session uses "/" separator (FTP) — convert to OS separator for local path
         remote_session_path = f"{source_root}/{session}"
-        dst_session = os.path.join(dwarf_dir, session)
+        dst_session = os.path.join(dwarf_dir, session.replace("/", os.sep))
         os.makedirs(dst_session, exist_ok=True)
 
         ftp.cwd(remote_session_path)

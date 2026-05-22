@@ -1738,9 +1738,8 @@ class ManualExploreApp(DbPageMixin):
             # 3. Reload the object list
             await self.load_objects()
 
-        msg = (
-            f"⚠️ Are you sure you want to delete this session?\n\n"
-            + (f"The following folder will be permanently removed:\n{folder}\n\n" if folder else "")
-            + "The database record will also be deleted."
-        )
-        await self.WinLog.show("Confirm deletion", msg, confirm_delete)
+        if folder:
+            msg = t("confirm_delete_manual_session").format(folder=folder)
+        else:
+            msg = t("confirm_delete_manual_session_no_dir")
+        await self.WinLog.show(t("confirm_deletion"), msg, confirm_delete)

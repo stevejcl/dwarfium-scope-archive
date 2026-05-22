@@ -906,8 +906,6 @@ def scan_dwarf_session_sizes(db_path: str,
         params.extend(entry_ids)
 
     rows = conn.execute(query, params).fetchall()
-    print(query)
-    print(params)
     total    = len(rows)
     measured = 0
 

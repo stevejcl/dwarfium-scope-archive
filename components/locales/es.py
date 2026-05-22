@@ -221,6 +221,10 @@ TRANSLATIONS: dict[str, str] = {
     "solve_available":              "✅ solve-field is not available on this system.",  # TODO
     "install_not_supported":        "Automatic installation not supported for this system.",  # TODO
     "dwarf_config":                 "🔭 Configuration of Dwarf Local Parent directory",  # TODO
+    "first_local_config_message1":  "Before using Dwarfium Scope Archive, you need to select a folder to store your local session index.\n",  # TODO
+    "first_local_config_message2":  "This folder will contain processed images (FITS, JPG, PNG) and metadata.\n",  # TODO
+    "first_local_config_message3":  "Make sure you choose a location with enough free space (can exceed 10GB).",  # TODO
+    "redirect_to_settings":         "Redirecting to settings...",  # TODO
     "select_dwarf_dir":             "Select a directory to store Dwarf data locally for offline use.",  # TODO
     "save_key":                     "💾 Save key",  # TODO
     "dwarf_local_disk":             "⚠️ This folder stores a local index of your sessions\n— stacked results only (FITS, PNG, JPG) not the individual raw frames.\nDepending on the number of sessions this can still reach 10 GB or more.\nChoose a drive with enough free space.",  # TODO
@@ -229,6 +233,18 @@ TRANSLATIONS: dict[str, str] = {
     "astap_download_link":          "Download ASTAP (fast local solver, recommended for Windows)",  # TODO
     "astap_db_label":               "narrow FOV (<5°)",  # TODO
     "astap_wide_db_label":          "wide FOV (>5°)",  # TODO
+    "settings_db_backup":           'Database Backup',  # TODO
+    "settings_db_auto_bak":         'Startup backup (.bak)',  # TODO
+    "settings_db_last_bak":         'Last shutdown backup (.last)',  # TODO
+    "settings_db_no_bak":           'No backup yet',  # TODO
+    "settings_db_backup_folder":    'Backup destination folder',  # TODO
+    "settings_db_backup_now":       '💾 Backup now',  # TODO
+    "settings_db_backup_ok":        'Database saved: {name}',  # TODO
+    "settings_db_backup_no_folder": 'Please select a destination folder first',  # TODO
+    "settings_db_backup_error":     'Backup failed',  # TODO
+    "settings_select_dwarf_local":  'Select a directory to store Dwarf data locally for offline use.',  # TODO
+    "settings_detected_system":     "Detected System:",  # TODO
+    
     # ── Dwarf device ──────────────────────────────────────────────────────────────
     "dwarf_device":                 "Dwarf Device",  # TODO
     "dwarf_connect":                "Dwarf Connect",  # TODO
@@ -260,6 +276,8 @@ TRANSLATIONS: dict[str, str] = {
     "unsupported_device":           "Unsupported Device",  # TODO
     "unsupported_conn":             "Unsupported connection mode",  # TODO
     "mtp_unavailable":              "MTP functions are not available!",  # TODO
+    "mtp_connected":                "✅ MTP Connected",  # TODO
+    "mtp_not_connected":            "❌ MTP not Connected",  # TODO
     "saved_mtp":                    "Saved MTP Devices:",  # TODO
 
     # ── Backup Drive configuration ────────────────────────────────────────────────
@@ -314,6 +332,7 @@ TRANSLATIONS: dict[str, str] = {
     "showing_backup":               "Showing Backup Data...",  # TODO
     "restore_selected":             "📦 Restore Selected Sessions",  # TODO
     "go_explore_backup":            "Would you like to go to Explore now to back up your Dwarf sessions?",  # TODO
+    "offer_backup_msg":             "Would you like to go to Explore now to back up your Dwarf sessions? Sessions not yet backed up will be shown automatically.",  #TODO                                                                                                                                                                      "delete_entries_sessions":      "Delete entries AND sessions",  # TODO
     "delete_entries_sessions":      "Delete entries AND sessions",  # TODO
     "delete_entries_only":          "Delete entries only",  # TODO
     "manual_session_info":          "ManualSession records hold the metadata (RA/Dec, description, file paths).",  # TODO
@@ -405,6 +424,10 @@ TRANSLATIONS: dict[str, str] = {
     "archive_mode":                 "Archive",  # TODO
     "restore_mode":                 "Restore",  # TODO
     "ftp_not_connected":            "❌ FTP Error: not connected",  # TODO
+    "ftp_connected_dwarf2":         "✅ Connected to Dwarf2 FTP",  # TODO
+    "ftp_connected":                "✅ Connected to FTP",  # TODO
+    "ftp_not_dwarf":                "❌ Connected to FTP (not Dwarf)",  # TODO
+    "ftp_no_ip":                    "❌ Please enter an IP address",  # TODO
     "ftp_disconnected":             "FTP disconnected",  # TODO
     "no_restacked":                 "No RESTACKED or STARTRAILS folder found on FTP or access failed",  # TODO
 
@@ -793,7 +816,21 @@ TRANSLATIONS: dict[str, str] = {
 
     "no_unused_astro":              'No unused objects to delete.', # TODO
     "confirm_delete_unused_astro":  '{count} unused object(s) will be permanently deleted. Continue?', # TODO
-
+    "confirm_update":                       'Confirm Update', # TODO
+    "confirm_update_location":              'This location already exists. Do you want to update its data?', # TODO
+    "confirm_deletion":                     'Confirm Deletion', # TODO
+    "confirm_delete_session":               '⚠️ Are you sure you want to delete this session?\n\nThe following folder will be completely removed!\n\n{folder_path}', # TODO
+    "confirm_delete_dwarf":                 'Are you sure you want to delete this Dwarf?', # TODO
+    "confirm_reset_defaults":               'Are you sure you want to reset to defaults?', # TODO
+    "confirm_delete_dwarf_archive":         'Are you sure you want to delete the old Dwarf archive data from your local drive?\n(These files are no longer present on your Dwarf device.)', # TODO
+    "confirm_delete_backup_drive":          'Are you sure you want to delete this Backup Drive?', # TODO
+    "confirm_delete_backup_entries":        'This will delete all backup entries and associated DwarfData for the selected BackupDrive.\nAre you sure?', # TODO
+    "confirm_delete_manual_entries":        'Confirm Delete Manual Entries', # TODO
+    "confirm_delete_manual_entries_msg":    'This will delete all ManualSessionEntry rows for this backup drive.\n\nThe ManualSession records (metadata + file paths) will be kept.\nAfter deleting the backup drive and recreating it, run Analyze Drive\nto automatically re-link them from the shotsInfo.json files on disk.\n\nAre you sure you want to continue?', # TODO
+    "confirm_delete_dark_library":          'Confirm Delete',
+    "confirm_delete_dark_library_msg":      'Delete this Dark Library record?\n(Dark files on disk are NOT deleted.)', # TODO
+    "confirm_delete_manual_session":        '⚠️ Are you sure you want to delete this session?\n\nThe following folder will be permanently removed:\n{folder}\n\nThe database record will also be deleted.', # TODO
+    "confirm_delete_manual_session_no_dir": '⚠️ Are you sure you want to delete this session?\n\nThe database record will also be deleted.', # TODO
     # ── Transfer / Mosaic / MTP status messages ────────────────────────────────
     "ftp_readonly":                 'FTP is read-only.',  # TODO
     "transfer_canceled":            'Backup canceled.',  # TODO
@@ -845,9 +882,8 @@ TRANSLATIONS: dict[str, str] = {
     "font_choice":                  'Font', # TODO
     "font_size":                    'Font size', # TODO
     "duration_per_photo":           'Duration per photo (sec)', # TODO
-    "video_resolution":             'Resolution', # TODO
     "video_extra_info":             'Add Imaging Session Details', # TODO
-    "video_resolution":             'Résolution', # TODO
+    "video_resolution":             'Resolution', # TODO
     "video_generating":             'Generating video...', # TODO
     "video_saved":                  'Video saved', # TODO
     "generate":                     'Generate', # TODO
@@ -894,11 +930,14 @@ TRANSLATIONS: dict[str, str] = {
     "report_calc_sizes":           'Calculate sizes', # TODO
     "report_calc_sizes_force":     'Force recalculate all sessions', # TODO
     "report_force_warning":        '⚠️ This will recalculate sizes for ALL sessions on this drive. This may take a while. Continue?', # TODO
-     "report_calc_dwarf_sizes":     'Calculate Dwarf sizes', # TODO
+    "report_calc_dwarf_sizes":     'Calculate Dwarf sizes', # TODO
     "report_calc_running":         'Calculating…', # TODO
     "report_no_sizes":             'No sizes calculated yet — click Calculate sizes', # TODO
     "report_sized":                '{n} session(s) measured', # TODO
     "report_drive_info":           'Drive information', # TODO
     "report_show":                 'Show top', # TODO
     "report_all":                  'All', # TODO
+    "dwarf_type_mismatch":         '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please select the correct Dwarf before scanning.', # TODO
+    "dwarf_type_mismatch_scan":    '⚠️ {name}: configured as {configured} but sessions detected as {detected} — please check Dwarf type in settings.', # TODO
+    "dwarf_type_mismatch_calc":    '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please correct the Dwarf type before calculating.', # TODO
 }

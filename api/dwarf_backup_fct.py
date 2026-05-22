@@ -6,7 +6,7 @@ import hashlib
 import shutil
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import re
 import platform
@@ -24,6 +24,7 @@ from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_ast
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
 from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId, rebuild_manual_session_entries, write_missing_shotsInfo
 from api.dwarf_backup_db_api import insert_dwarf_session_error, update_dwarf_session_error_repaired, get_dwarf_sessions_error
+from api.dwarf_backup_db_api import insert_session_quality_dwarf_folder_data
 
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import VerifyError
@@ -471,10 +472,109 @@ def count_fits_files(directory):
     except Exception as e:
         safe_print(f"Could not access {directory}: {e}")
 
+def detect_dwarf_device(image_path: str, json_data: dict | None = None) -> str:
+    """
+    DWARF 3    : 3856x2180 (bin1), ~1928x1090 (bin2)
+    DWARF 2    : 3840x2160 (bin1),  1920x1080 (bin2)
+    DWARF Mini : 1920x1080 (bin1 only)
+    
+    Ambiguity: D2 bin2 and DMini both → 1920x1080
+               → resolved by binning field in JSON
+    """
+    try:
+        img = cv2.imread(win_long_path(image_path))
+        if img is None:
+            return "DWARF3"
+        h, w = img.shape[:2]
+
+        binning = "1*1"
+        if json_data:
+            binning = json_data.get("binning", "1*1")
+
+        print(f"  Device detect: {w}x{h} bin={binning}")
+
+        # ── DWARF 3 bin1 ───────────────────────────────────────────────
+        if w == 3856 and h == 2180:
+            return "DWARF3"
+
+        # ── DWARF 3 bin2 ───────────────────────────────────────────────
+        if w == 1928 and h == 1090:
+            return "DWARF3"
+
+        # ── DWARF 2 bin1 ───────────────────────────────────────────────
+        if w == 3840 and h == 2160:
+            return "DWARF2"
+
+        # ── Ambiguous 1920x1080 — D2 bin2 or DWARF Mini ───────────────
+        if w == 1920 and h == 1080:
+            if binning == "2*2":
+                return "DWARF2"   # bin2 → must be D2
+            if binning == "1*1":
+                return "DWARF_mini"  # bin1 at 1080p → Mini
+            # No binning info → check directory hint
+            path_str = str(Path(image_path).parent).upper()
+            if "MINI" in path_str:
+                return "DWARF_mini"
+            return "DWARF2"  # conservative default
+
+        print(f"  ⚠️ Unknown resolution {w}x{h} — defaulting to DWARF3")
+        return "DWARF3"
+
+    except Exception as e:
+        print(f"  ⚠️ detect_dwarf_device failed: {e}")
+        return "DWARF3"
+
+def normalize_dwarf_name(name):
+    mapping = {
+        "DWARF3": "Dwarf3",
+        "DWARF2": "Dwarf2",
+        "DWARF_mini": "Dwarf Mini",
+    }
+
+    return mapping.get(name, name)
+
+def check_dwarf_type_mismatch(conn, dwarf_id: int, dwarf_name: str, dwarf_type: int, scan_root: str, max_samples: int = 5) -> dict | None:
+    """
+    Scan up to max_samples stacked JPEGs in scan_root to detect the Dwarf type.
+    Returns a dict {configured, detected, name, votes} if mismatch, None if OK or unknown.
+    For FTP version see dwarf_backup_fct_ftp.check_dwarf_type_mismatch_ftp.
+    """
+
+    configured = dwarf_type
+    votes: dict = {}
+    count = 0
+
+    try:
+        for dirpath, _, filenames in os.walk(scan_root):
+            if count >= max_samples:
+                break
+            for fname in filenames:
+                if fname.lower() in ("stacked.jpg", "stacked.jpeg"):
+                    fpath = os.path.join(dirpath, fname)
+                    detected = normalize_dwarf_name(detect_dwarf_device(fpath))
+                    print (detected)
+                    if detected:
+                        votes[detected] = votes.get(detected, 0) + 1
+                        count += 1
+                if count >= max_samples:
+                    break
+    except Exception as e:
+        safe_print(f"[check_dwarf_type] {e}")
+        return None
+
+    if not votes:
+        return None
+
+    best = max(votes, key=votes.get)
+    if best != configured:
+        return {"configured": configured, "detected": best, "name": dwarf_name, "votes": votes}
+    return None
+
+
 def get_fits_raw_size(directory: str) -> int:
     """
     Return the total size in bytes of all raw FITS files in a session directory
-    (same files that cleanup_fits_files would delete — excludes stacked-16_* and failed_*).
+    (same files that cleanup_fits_files would delete - excludes stacked-16_*).
     """
     total = 0
     if not os.path.exists(directory):
@@ -2106,6 +2206,16 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
             new_id = insert_BackupEntry(conn, backup_drive_id, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)
             added += 1 if new_id != 0 else 0
             safe_print(f"insert_BackupEntry : id : {new_id}")
+
+            # Calculate folder size for new sessions immediately
+            if new_id and new_id != 0:
+                try:
+                    size_bytes = get_directory_size(dwarf_path)
+                    fits_size  = get_fits_raw_size(dwarf_path)
+                    insert_session_quality_dwarf_folder_data(conn, new_id, size_bytes, fits_size)
+
+                except Exception as e:
+                    safe_print(f"[WARN] folder size calc failed for {dwarf_path}: {e}")
         else:
             # Insert entry in DwarfEntry
             new_id = insert_DwarfEntry(conn, dwarf_id, astro_object_id, dwarf_data_id, session_dt_str, session_dir, astro_group_id)

@@ -1916,7 +1916,7 @@ class AddManualSession(DbPageMixin):
                             session_dt_str    = session_dt_str,
                             session_dir       = dest_path,
                             astro_group_id    = astro_group_id,
-                            manual_session_drive_id = manual_session_drive_id,
+                            manual_session_drive = manual_session_drive_id,
                         )
                         ui.notify(t("session_registered"), type="positive")
 

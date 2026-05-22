@@ -17,7 +17,7 @@ from scipy.ndimage import distance_transform_edt, binary_dilation
 
 from nicegui import ui, run, Client
 
-from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path, safe_copy2
+from api.dwarf_backup_fct import safe_print, print_log, win_long_path, files_are_different, _err_path, safe_copy2, detect_dwarf_device
 
 from api.dwarf_backup_fct_mosaic_algo import ( infer_mosaic_info_from_images, subsample_for_alignment, crop_to_active_region, equalize_background, detect_panel_position)
 
@@ -457,58 +457,6 @@ def rebuild_mosaic_info(mosaic_dir: str) -> dict | None:
         print(f"  ⚠️ rebuild_mosaic_info failed: {e}")
         return None
 
-
-def detect_dwarf_device(image_path: str, json_data: dict | None = None) -> str:
-    """
-    DWARF 3    : 3856x2180 (bin1), ~1928x1090 (bin2)
-    DWARF 2    : 3840x2160 (bin1),  1920x1080 (bin2)
-    DWARF Mini : 1920x1080 (bin1 only)
-    
-    Ambiguity: D2 bin2 and DMini both → 1920x1080
-               → resolved by binning field in JSON
-    """
-    try:
-        img = cv2.imread(win_long_path(image_path))
-        if img is None:
-            return "DWARF3"
-        h, w = img.shape[:2]
-
-        binning = "1*1"
-        if json_data:
-            binning = json_data.get("binning", "1*1")
-
-        print(f"  Device detect: {w}x{h} bin={binning}")
-
-        # ── DWARF 3 bin1 ───────────────────────────────────────────────
-        if w == 3856 and h == 2180:
-            return "DWARF3"
-
-        # ── DWARF 3 bin2 ───────────────────────────────────────────────
-        if w == 1928 and h == 1090:
-            return "DWARF3"
-
-        # ── DWARF 2 bin1 ───────────────────────────────────────────────
-        if w == 3840 and h == 2160:
-            return "DWARF2"
-
-        # ── Ambiguous 1920x1080 — D2 bin2 or DWARF Mini ───────────────
-        if w == 1920 and h == 1080:
-            if binning == "2*2":
-                return "DWARF2"   # bin2 → must be D2
-            if binning == "1*1":
-                return "DWARF_MINI"  # bin1 at 1080p → Mini
-            # No binning info → check directory hint
-            path_str = str(Path(image_path).parent).upper()
-            if "MINI" in path_str:
-                return "DWARF_MINI"
-            return "DWARF2"  # conservative default
-
-        print(f"  ⚠️ Unknown resolution {w}x{h} — defaulting to DWARF3")
-        return "DWARF3"
-
-    except Exception as e:
-        print(f"  ⚠️ detect_dwarf_device failed: {e}")
-        return "DWARF3"
 
 def detect_stitch_mode(image_paths: list[str]) -> StitchMode:
     """

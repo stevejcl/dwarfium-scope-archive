@@ -1,7 +1,7 @@
 import os
 import sys
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 import csv
 
@@ -4207,4 +4207,59 @@ def get_sky_filter_entry_ids(
 
     except Exception as e:
         print(f"[DB ERROR] get_sky_filter_entry_ids: {e}")
-        return []
+        return None
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Session Quality function
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def get_folder_size_bytes(conn: sqlite3.Connection, backup_entry_id: int):
+    """Return folder_size_bytes value from a backup_entry_id."""
+    try:
+        with conn:
+            return conn.execute(
+                "SELECT folder_size_bytes FROM SessionQuality WHERE backup_entry_id=?",
+                (backup_entry_id,)
+            ).fetchone()
+
+    except Exception as e:
+        print(f"[DB ERROR] get_folder_size_bytes: {e}")
+        return None
+
+
+def insert_session_quality_folder_data(conn: sqlite3.Connection, backup_entry_id: int, size_bytes: int):
+    try:
+        sized_at   = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO SessionQuality
+                (backup_entry_id, scored_at, folder_size_bytes, folder_sized_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(backup_entry_id) DO UPDATE SET
+                folder_size_bytes = excluded.folder_size_bytes,
+                folder_sized_at   = excluded.folder_sized_at
+        """, (backup_entry_id, sized_at, size_bytes, sized_at))
+        conn.commit()
+    except Exception as e:
+        print(f"[ERROR] insert_session_quality_folder_data error {backup_entry_id}: {e}")
+
+def insert_session_quality_dwarf_folder_data(conn: sqlite3.Connection, backup_entry_id: int, total_size: int, fits_size:int):
+    try:
+        sized_at   = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        no_fits_size = total_size - fits_size
+
+        cursor = conn.cursor()
+        conn.execute("""
+            INSERT INTO SessionQuality
+                (backup_entry_id, scored_at, dwarf_size_bytes, dwarf_size_no_fits_bytes, dwarf_sized_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(backup_entry_id) DO UPDATE SET
+                dwarf_size_bytes         = excluded.dwarf_size_bytes,
+                dwarf_size_no_fits_bytes = excluded.dwarf_size_no_fits_bytes,
+                dwarf_sized_at           = excluded.dwarf_sized_at
+        """, (backup_entry_id, sized_at, total_size, no_fits_size, sized_at))
+        conn.commit()
+    except Exception as e:
+        print(f"[ERROR] insert_session_quality_dwarf_folder_data error {backup_entry_id}: {e}")

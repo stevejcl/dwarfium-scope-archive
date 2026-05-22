@@ -1,5 +1,20 @@
 # Changelog
 
+## [V3.1.9_RC2] - 2026-05-21
+
+### Add
+    Add DB backup
+    Added api/db_backup.py for automatic startup (.bak)/shutdown (.last) and manual timestamped DB backups.
+    Add Dwarf type detection & session size tracking
+    Introduce automatic Dwarf device detection (by stacked image resolution + binning) and checks for type mismatches (USB and FTP).
+    Added test_plan_dwarfium_scop_archive.md
+    Miscellaneous fixes and translation additions to support these features.
+
+### BugFix#
+   Add missings Translations
+   FTP sync improvements: include STARTRAILS/RESTACKED handling and correction for path conversion
+   buildDwarfiumScopeArchive now copies assets/music into dist.
+
 ## [V3.1.9_RC1] - 2026-05-20
 
 ### Add

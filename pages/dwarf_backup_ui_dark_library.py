@@ -313,9 +313,8 @@ class DarkLibraryApp(DbPageMixin):
             ui.notify(t("no_library_selected"), type="warning")
             return
         await self.WinLog.show(
-            "Confirm Delete",
-            "Delete this Dark Library record?\n"
-            "(Dark files on disk are NOT deleted.)",
+            t("confirm_delete_dark_library"),
+            t("confirm_delete_dark_library_msg"),
             self._do_delete_library,
         )
 
