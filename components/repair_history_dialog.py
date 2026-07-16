@@ -159,6 +159,20 @@ class RepairHistoryDialog:
 
                     self._entry_cards = {}
 
+                    # If the secondary the user just picked was already used
+                    # in ANY past action for this primary, disable "Continue"
+                    # entirely — re-merging the same secondary would duplicate
+                    # it in the panorama.
+                    already_used_secondaries = {
+                        e.get("secondary_session") for e in history if e.get("secondary_session")
+                    }
+                    for e in history:
+                        for s in (e.get("sessions") or []):
+                            already_used_secondaries.add(s)
+
+                    if self.secondary_session in already_used_secondaries:
+                        self.secondary_session = ""  # disable Continue action
+
                     with ui.scroll_area().style("max-height: 400px; width: 100%;"):
                         for entry in history:
                             self._build_entry_card(entry)
@@ -242,9 +256,6 @@ class RepairHistoryDialog:
 
         secondary = entry.get("secondary_session")
         secondary_str = f"\nSecondary: {secondary}" if secondary else ""
-
-        if self.secondary_session == secondary_str:
-            self.secondary_session = "" # ignore continue action
 
         sessions = entry.get("sessions")
         sessions_str = ""

@@ -205,6 +205,8 @@ class ManualExploreApp(DbPageMixin):
         self.edit_session_icon     = None
         self.delete_session_icon   = None
         self.classified_label      = None
+        self.siril_json_icon = {}
+        self._session_labels = []  # label presentation list for current object's sessions (Siril picker)
 
         # Gallery / slideshow state (single-session: images within one session)
         self.gallery_image_data    = []
@@ -426,6 +428,12 @@ class ManualExploreApp(DbPageMixin):
                                 t("delete_session_btn"), on_click=self.delete_directory
                             ).classes('h-16')
                             self.delete_session_icon.visible = False
+
+                            self.siril_json_icon = ui.button(
+                                t("prepare_siril"),
+                                on_click=self.prepare_siril_json
+                            ).classes('h-16')
+                            self.siril_json_icon.visible = False
 
                     with ui.row().classes('w-full'):
                         with ui.card().tight().classes('w-full flex flex-col overflow-hidden flex-1'):
@@ -878,6 +886,9 @@ class ManualExploreApp(DbPageMixin):
             self.edit_session_icon.visible   = False
         if self.delete_session_icon:
             self.delete_session_icon.visible = False
+        if self.siril_json_icon:
+            self.siril_json_icon.visible = False
+        self._session_labels = []
 
     def _mobile_go_right(self):
         if self.mobile_left_col and self.mobile_right_col:
@@ -936,6 +947,8 @@ class ManualExploreApp(DbPageMixin):
             self.file_list.set_options([label], value=label)
             if self.show_gallery_icon:
                 self.show_gallery_icon.visible = False
+            if self.siril_json_icon:
+                self.siril_json_icon.visible = False
         else:
             labels = [f"{t('select_session_for')} {t(self.selected_object)}"]
             value_select = f"{t('select_session_for')} {self.selected_object}"
@@ -989,6 +1002,8 @@ class ManualExploreApp(DbPageMixin):
                 self.show_gallery_icon.enable()
             if self._test_first_multi_gallery_image():
                 self.add_timer(0.1, self._load_multi_gallery_bg, once=True)
+            if self.siril_json_icon:
+                self.siril_json_icon.visible = True
 
             with self.details_files:
                 ui.item_label(f"{len(files)} {t('manual_sessions_found')}").props('header').classes('text-bold')
@@ -1743,3 +1758,163 @@ class ManualExploreApp(DbPageMixin):
         else:
             msg = t("confirm_delete_manual_session_no_dir")
         await self.WinLog.show(t("confirm_deletion"), msg, confirm_delete)
+        
+    def open_siril_session_picker_dialog(self):
+        """Open a dialog listing all sessions for the current object, each with
+        a checkbox (same label presentation as the main session list), plus
+        Select all / Deselect all buttons. On confirm, generates the Siril
+        megastack JSON from the checked sessions.
+        """
+        labels = self._session_labels or list(self.label_to_index.keys())
+        if len(labels) < 2:
+            ui.notify(t("siril_megastack_min2"), type="warning")
+            return
+
+        checked = set()
+        checkboxes = {}
+
+        with ui.dialog() as dialog, ui.card().classes("p-4 gap-3 w-full max-w-screen-lg").style("max-height: 90vh;"):
+            ui.label(f"🧩 {t('prepare_siril')} — {len(labels)} {t('manual_session_found') if len(labels) > 1 else t('manual_session_found')}").classes("font-semibold")
+            ui.separator()
+
+            with ui.row().classes("items-center gap-4"):
+                select_all_cb = ui.checkbox(t("select_all"))
+                ui.button(t("deselect_all"), on_click=lambda: toggle_all(False)).props("flat dense")
+
+            def toggle_all(state: bool):
+                select_all_cb.value = state
+                for lbl, cb in checkboxes.items():
+                    cb.value = state
+                if state:
+                    checked.update(checkboxes.keys())
+                else:
+                    checked.clear()
+
+            def on_select_all_change(e):
+                toggle_all(e.value)
+
+            select_all_cb.on_value_change(on_select_all_change)
+
+            def on_cb_change(e, lbl):
+                if e.value:
+                    checked.add(lbl)
+                else:
+                    checked.discard(lbl)
+
+            with ui.scroll_area().classes("w-full").style("max-height: 65vh; min-height: 300px;"):
+                for lbl in labels:
+                    with ui.row().classes("items-center gap-2 flex-nowrap"):
+                        cb = ui.checkbox(on_change=lambda e, l=lbl: on_cb_change(e, l)).classes("shrink-0")
+                        checkboxes[lbl] = cb
+                        ui.label(lbl).classes("break-all")
+
+            ui.separator()
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button(t("cancel"), on_click=dialog.close).props("flat color=grey")
+
+                async def on_confirm():
+                    selected = list(checked)
+                    if len(selected) < 2:
+                        ui.notify(t("siril_megastack_min2"), type="warning")
+                        return
+                    dialog.close()
+                    await self.prepare_siril_megastack_json(selected)
+
+                ui.button(t("prepare_siril"), on_click=on_confirm).props("color=primary")
+
+        dialog.open()
+
+    async def prepare_siril_json(self):
+        """Generate siril JSON for the current object's session(s).
+
+        - If only one session is available for the selected object, generate
+          the single-session JSON directly (current behavior).
+        - If several sessions are available, open a picker dialog listing all
+          of them (same label presentation as the session list), with
+          checkboxes and Select all / Deselect all buttons, and generate the
+          megastack JSON from the sessions the user checks.
+        """
+        if not self.selected_path and len(self.all_files_rows) > 1:
+            self.open_siril_session_picker_dialog()
+            return
+
+    async def prepare_siril_megastack_json(self, selected_labels=None):
+        """Generate siril_megastack.json from the given session labels.
+
+        Args:
+            selected_labels: iterable of session labels (as shown in the
+                session list) to include. Falls back to
+                self.selected_sessions_multi for backward compatibility.
+        """
+        labels = selected_labels if selected_labels is not None else self.selected_sessions_multi
+        if len(labels) < 2:
+            ui.notify(t("siril_megastack_min2"), type="warning")
+            return
+
+        import json, webview, os
+        from api.dwarf_backup_db_api import generate_siril_megastack_json_manual
+
+        # Resolve labels to rows using the authoritative label -> index map
+        selected_rows = []
+        for lbl in labels:
+            idx = self.label_to_index.get(lbl)
+            if idx is not None and idx < len(self.all_files_rows):
+                selected_rows.append(self.all_files_rows[idx])
+
+        if not selected_rows:
+            ui.notify(t("no_session_selected"), type="warning")
+            return
+
+        self.loading_spinner.set_visibility(True)
+        try:
+            data = await generate_siril_megastack_json_manual(
+                self.conn,
+                selected_rows,
+            )
+        except Exception as e:
+            ui.notify(t("fits_json_error", error=e), type="negative")
+            self.loading_spinner.set_visibility(False)
+            return
+        self.loading_spinner.set_visibility(False)
+
+        unreachable = data.get("unreachable_sessions", [])
+        if unreachable:
+            if len(unreachable) == 1:
+                ui.notify(t("folder_not_exist", path=unreachable[0].get("session_dir", "")), color="negative")
+            else:
+                paths = ", ".join(s.get("session_name", "") for s in unreachable)
+                ui.notify(t("folder_not_exist", path=paths), color="negative")
+
+        json_str = json.dumps(data, indent=2, ensure_ascii=False)
+        target   = data.get("object", "session").replace(" ", "_")
+        filters  = "_".join(data.get("filters", []))
+        default_name = f"siril_megastack_{target}_{filters}.json"
+
+        if hasattr(webview, 'FileDialog'):
+            save_mode = webview.FileDialog.SAVE
+        else:
+            save_mode = webview.SAVE_DIALOG
+
+        try:
+            dest = await app.native.main_window.create_file_dialog(
+                save_mode,
+                save_filename=default_name,
+                file_types=("JSON files (*.json)",),
+            )
+            if dest:
+                out_path = dest[0] if isinstance(dest, (list, tuple)) else dest
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                ui.notify(t("save_ok", name=os.path.basename(out_path)), type="positive")
+
+                n_sessions = sum(len(v) for v in data.get("sessions_by_filter", {}).values())
+                n_filters  = len(data.get("filters", []))
+                hint       = data.get("combination_hint") or "—"
+                single     = data.get("single_filter", True)
+                msg = (
+                    f"{n_sessions} sessions · {n_filters} filtre(s) · "
+                    + (t("siril_megastack_single") if single else f"{t('siril_megastack_multi')} → {hint}")
+                )
+                ui.notify(f"📋 {msg}", type="info", timeout=8000)
+        except Exception as e:
+            ui.notify(t("save_failed", error=e), type="negative")

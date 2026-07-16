@@ -36,7 +36,7 @@ from api.dwarf_backup_fct import (
     hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure, get_total_mosaic_exposure, format_seconds_hms, 
     preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure, cleanup_fits_files, restore_fits_files, win_long_path
 )
-from api.dwarf_backup_fct_mosaic import (load_image, generate_panorama, create_thumbnail_mosaic, get_mosaic_panels)
+from api.dwarf_backup_fct_mosaic import (load_image, generate_panorama, create_thumbnail_mosaic, get_mosaic_panels, get_mosaic_zip, rebuild_mosaic_zip)
 from api.dwarf_backup_fct_mosaic_fits import (stitch_fits_from_transforms)
 
 from api.image_preview import set_base_folder, build_preview_url
@@ -181,6 +181,7 @@ class ExploreApp(DbPageMixin):
         self.result_on_dwarf = None
         self.result_on_backupDrive = None
         self.selected_sessions_multi = set()  # labels selected for multi-transfer
+        self._session_labels = []  # label presentation list for current object's sessions (Siril picker)
         self.transfer_multi_btn = None  # button shown when multi-selection active
         self.image_dialog = {}
         self.selected_path = ""
@@ -539,11 +540,18 @@ class ExploreApp(DbPageMixin):
         async def _run():
             n = await run.io_bound(score_entry_ids, self.database, entry_ids)
             with client:
+                self.ensure_conn()
                 ui.notify(t("score_done", count=n), type="positive")
                 print(f"selected_object: {self.selected_object}")
                 if self.selected_object is not None:
                     current_sid = (self.current_session_row[22]
                                    if self.current_session_row is not None else None)
+                    
+                    if self.selected_object_id is None and self.selected_object == ALL_SESSIONS:
+                        self.loading_spinner.set_visibility(True)
+                        self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, current_sid)
+                        return
+                        
                     # Match by oid first (reliable), fallback to normalised name
                     match = next(
                         ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
@@ -1050,6 +1058,7 @@ class ExploreApp(DbPageMixin):
         self.file_list.set_options([])
         self.all_files_rows = []
         self.selected_sessions_multi.clear()
+        self._session_labels = []
         if self.transfer_multi_btn:
             self.transfer_multi_btn.visible = False
 
@@ -1255,6 +1264,8 @@ class ExploreApp(DbPageMixin):
                 )
 
             self.file_list.set_options(select_file, value=value_select)
+            # Keep the same label presentation available for the Siril multi-session picker dialog
+            self._session_labels = details
 
             with self.details_files:
                 ui.item_label(f"{len(files)} {t('sessions_found') if len(files)>1 else t('session_found')} {stackeds} {t('stacks_exp') if stackeds > 1 else t('stack_exp')} {format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
@@ -1392,6 +1403,7 @@ class ExploreApp(DbPageMixin):
 
         async def ok_confirm_delete_session():
             try:
+                self.ensure_conn()
                 shutil.rmtree(folder_path)
                 ui.notify(t("folder_deleted", path=folder_path), color="positive")
                 # delete data
@@ -1434,6 +1446,7 @@ class ExploreApp(DbPageMixin):
         async def ok_confirm_cleanup_fits():
             ui.notify(t("clean_fits"))
             try:
+                self.ensure_conn()
                 ui.notify(t("fits_cleanup_running", path=folder_path), color="positive")
                 deleted_count = await run.io_bound(cleanup_fits_files, folder_path)
                 if deleted_count > 1:
@@ -1492,6 +1505,7 @@ class ExploreApp(DbPageMixin):
             progress_dialog.open()
             ui.notify(t("restoring_fits"))
             try:
+                self.ensure_conn()
                 restored_count, skipped_count, total_fits_files = await run.io_bound(restore_fits_files, self.path_result_on_backupDrive, dwarf_folder_path, self, None)
                 if self.cancel_restore:
                     ui.notify(t("restore_cancelled", restored=restored_count, total=total_fits_files, skipped=skipped_count), color="warning")
@@ -1735,7 +1749,7 @@ class ExploreApp(DbPageMixin):
                         _dark = find_matching_darks(
                             self.conn,
                             dwarf_id = dwarf_id,
-                            exp_s    = float(exp_time),
+                            exp_s    = parse_exposure(f"{exp_time}s") if exp_time is not None else 0.0,
                             gain     = int(gainDB),
                             binning  = binning,
                             min_temp = int(minTemp) if minTemp is not None else None,
@@ -2110,6 +2124,20 @@ class ExploreApp(DbPageMixin):
             else:
                 self.score_session_icon.visible = False
 
+            # Siril JSON button — shown in backup mode when a session is selected OR multi-selected
+            if hasattr(self, 'siril_json_icon') and self.siril_json_icon:
+                if self.mode == "backup":
+                    print(f" selected_path: {self.selected_path}")
+                    if len(self.all_files_rows) > 1:
+                        # Multi-selection → megastack mode
+                        self.siril_json_icon.visible = True
+                        self.siril_json_icon.enable()
+                    else:
+                        self.siril_json_icon.visible = False
+                        self.siril_json_icon.disable()
+                else:
+                    self.siril_json_icon.visible = False
+                    self.siril_json_icon.disable()
 
     def update_preview_icons(self):
         with self.icon_row:
@@ -2201,6 +2229,19 @@ class ExploreApp(DbPageMixin):
                     self.backup_session_icon.visible = False
                     self.backup_session_icon.disable()
 
+            # Siril JSON button — shown in backup mode when a session is selected OR multi-selected
+            if hasattr(self, 'siril_json_icon') and self.siril_json_icon:
+                print(f" all_files_rows: {self.all_files_rows}")
+                print(f" selected_path: {self.selected_path}")
+
+                if self.mode == "backup" and self.selected_path:
+                    # siril mode
+                    self.siril_json_icon.visible = True
+                    self.siril_json_icon.enable()
+                else:
+                    self.siril_json_icon.visible = False
+                    self.siril_json_icon.disable()
+
             if not self.delete_session_icon:
                 self.delete_session_icon = ui.button(t("delete_session"), on_click=lambda: self.delete_directory()).classes('h-16')
             elif self.mode == "backup" and self.selected_path and os.path.isdir(self.selected_path):
@@ -2241,18 +2282,6 @@ class ExploreApp(DbPageMixin):
             else:
                 self.linked_manual_session_icon.visible = False
                 self.linked_manual_session_icon.disable()
-
-            # Siril JSON button — shown in backup mode when a session is selected
-            if hasattr(self, 'siril_json_icon') and self.siril_json_icon:
-                if (self.mode == "backup"
-                        and self.current_session_row is not None
-                        and self.selected_path and os.path.isdir(self.selected_path)
-                        and not self.selected_sessions_multi):  # hidden on multi-selection
-                    self.siril_json_icon.visible = True
-                    self.siril_json_icon.enable()
-                else:
-                    self.siril_json_icon.visible = False
-                    self.siril_json_icon.disable()
 
             if not self.action_fits_files_icon:
                 self.action_fits_files_icon = ui.button("", on_click=lambda: self.cleanup_fits()).classes('h-16')
@@ -2514,7 +2543,27 @@ class ExploreApp(DbPageMixin):
         pano_tmp_path_png = os.path.join(directory, "_mosaic_tmp.png")
         pano_final_path_jpg = os.path.join(directory, "stacked.jpg")
         pano_final_path_thumbnail = os.path.join(directory, "stacked_thumbnail.jpg")
-        pano_final_path_png = os.path.join(directory, get_png_name_from_zip(directory))
+        try:
+            pano_final_path_png = os.path.join(directory, get_png_name_from_zip(directory))
+        except FileNotFoundError:
+            # ZIP missing — the Dwarf didn't finish compressing the mosaic panels.
+            # panels_fits are still available so we can stitch directly.
+            # Rebuild Zip or Use a default output name and warn the user.
+            output_zip = get_mosaic_zip(directory, panels_fits)
+            if output_zip:
+                ui.notify(t("zip_missing_panels_ok"), type="warning")
+                output_zip = await run.io_bound(
+                        rebuild_mosaic_zip,
+                        output_zip,
+                        panels_fits)
+                if output_zip:
+                    pano_final_path_png = output_zip.replace(".zip", ".png")
+                else:
+                    pano_final_path_png = os.path.join(directory, "stacked.png")
+                    ui.notify(t("zip_missing_no_panels"), type="negative")
+            else:
+                pano_final_path_png = os.path.join(directory, "stacked.png")
+                ui.notify(t("zip_missing_no_panels"), type="negative")
         pano_existing_jpg = pano_final_path_jpg  # original before save
         has_existing = os.path.isfile(pano_existing_jpg)
         mosaic_image = None
@@ -2637,6 +2686,7 @@ class ExploreApp(DbPageMixin):
 
         def on_save():
             try:
+                self.ensure_conn()
                 shutil.move(pano_tmp_path_jpg, pano_final_path_jpg)
                 shutil.move(pano_tmp_path_png, pano_final_path_png)
                 create_thumbnail_mosaic(pano_final_path_thumbnail, mosaic_image)
@@ -2662,7 +2712,29 @@ class ExploreApp(DbPageMixin):
         async def on_create_fits():
             fits_progress_dialog.open()
             try:
-                pano_final_path_fits = os.path.join(directory, get_fits_name_from_zip(directory))
+                self.ensure_conn()
+                try:
+                    pano_final_path_fits = os.path.join(directory, get_fits_name_from_zip(directory))
+                except FileNotFoundError:
+                    # ZIP missing — the Dwarf didn't finish compressing the mosaic panels.
+                    # fits_images_path (individual panel FITS) is still available so
+                    # stitch_fits_from_transforms can proceed with a default output name.
+                    # Rebuild Zip or Use a default output name and warn the user.
+                    output_zip = get_mosaic_zip(directory, panels_fits)
+                    if output_zip:
+                        ui.notify(t("zip_missing_panels_ok"), type="warning")
+                        output_zip = await run.io_bound(
+                                rebuild_mosaic_zip,
+                                output_zip,
+                                panels_fits)
+                        if not output_zip:
+                            pano_final_path_fits = os.path.join(directory, "stacked.fits")
+                    else:
+                        pano_final_path_fits = os.path.join(directory, "stacked.fits")
+                    if not fits_images_path:
+                        ui.notify(t("zip_missing_no_panels"), type="negative")
+                        fits_progress_dialog.close()
+                        return
                 await run.io_bound(
                     stitch_fits_from_transforms,
                     fits_images_path,
@@ -2709,8 +2781,91 @@ class ExploreApp(DbPageMixin):
         # Now display the selected session detail
         self.file_list.set_value(label)
 
+    def open_siril_session_picker_dialog(self):
+        """Open a dialog listing all sessions for the current object, each with
+        a checkbox (same label presentation as the main session list), plus
+        Select all / Deselect all buttons. On confirm, generates the Siril
+        megastack JSON from the checked sessions.
+        """
+        labels = self._session_labels or list(self.label_to_index.keys())
+        if len(labels) < 2:
+            ui.notify(t("siril_megastack_min2"), type="warning")
+            return
+
+        checked = set()
+        checkboxes = {}
+
+        with ui.dialog() as dialog, ui.card().classes("p-4 gap-3 w-full max-w-screen-lg").style("max-height: 90vh;"):
+            session_text = (
+                t('sessions_found') if len(labels) > 1 else t('session_found')
+            ).split(',')[0]
+
+            ui.label(
+                f"🧩 {t('prepare_siril')} — {len(labels)} {session_text}"
+            ).classes("font-semibold")
+            ui.separator()
+
+            with ui.row().classes("items-center gap-4"):
+                select_all_cb = ui.checkbox(t("select_all"))
+                ui.button(t("deselect_all"), on_click=lambda: toggle_all(False)).props("flat dense")
+
+            def toggle_all(state: bool):
+                select_all_cb.value = state
+                for lbl, cb in checkboxes.items():
+                    cb.value = state
+                if state:
+                    checked.update(checkboxes.keys())
+                else:
+                    checked.clear()
+
+            def on_select_all_change(e):
+                toggle_all(e.value)
+
+            select_all_cb.on_value_change(on_select_all_change)
+
+            def on_cb_change(e, lbl):
+                if e.value:
+                    checked.add(lbl)
+                else:
+                    checked.discard(lbl)
+
+            with ui.scroll_area().classes("w-full").style("max-height: 65vh; min-height: 300px;"):
+                for lbl in labels:
+                    with ui.row().classes("items-center gap-2 flex-nowrap"):
+                        cb = ui.checkbox(on_change=lambda e, l=lbl: on_cb_change(e, l)).classes("shrink-0")
+                        checkboxes[lbl] = cb
+                        ui.label(lbl).classes("break-all")
+
+            ui.separator()
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button(t("cancel"), on_click=dialog.close).props("flat color=grey")
+
+                async def on_confirm():
+                    selected = list(checked)
+                    if len(selected) < 2:
+                        ui.notify(t("siril_megastack_min2"), type="warning")
+                        return
+                    dialog.close()
+                    await self.prepare_siril_megastack_json(selected)
+
+                ui.button(t("prepare_siril"), on_click=on_confirm).props("color=primary")
+
+        dialog.open()
+
     async def prepare_siril_json(self):
-        """Generate siril_session.json and offer it as a download."""
+        """Generate siril JSON for the current object's session(s).
+
+        - If only one session is available for the selected object, generate
+          the single-session JSON directly (current behavior).
+        - If several sessions are available, open a picker dialog listing all
+          of them (same label presentation as the session list), with
+          checkboxes and Select all / Deselect all buttons, and generate the
+          megastack JSON from the sessions the user checks.
+        """
+        if not self.selected_path and len(self.all_files_rows) > 1:
+            self.open_siril_session_picker_dialog()
+            return
+
         if self.current_session_row is None:
             ui.notify(t("no_session_selected"), type="warning")
             return
@@ -2731,6 +2886,9 @@ class ExploreApp(DbPageMixin):
             self.loading_spinner.set_visibility(False)
             return
         self.loading_spinner.set_visibility(False)
+
+        if not data.get("session", {}).get("path_accessible", True):
+            ui.notify(t("folder_not_exist", path=data["session"].get("session_dir", "")), color="negative")
 
         json_str = json.dumps(data, indent=2, ensure_ascii=False)
 
@@ -2768,6 +2926,88 @@ class ExploreApp(DbPageMixin):
                     f"bias {bias} · flat {flat}",
                     type="info", timeout=8000
                 )
+        except Exception as e:
+            ui.notify(t("save_failed", error=e), type="negative")
+
+    async def prepare_siril_megastack_json(self, selected_labels=None):
+        """Generate siril_megastack.json from the given session labels.
+
+        Args:
+            selected_labels: iterable of session labels (as shown in the
+                session list) to include. Falls back to
+                self.selected_sessions_multi for backward compatibility.
+        """
+        labels = selected_labels if selected_labels is not None else self.selected_sessions_multi
+        if len(labels) < 2:
+            ui.notify(t("siril_megastack_min2"), type="warning")
+            return
+
+        import json, webview, os
+        from api.dwarf_backup_db_api import generate_siril_megastack_json
+
+        # Resolve labels to rows using the authoritative label -> index map
+        selected_rows = []
+        for lbl in labels:
+            idx = self.label_to_index.get(lbl)
+            if idx is not None and idx < len(self.all_files_rows):
+                selected_rows.append(self.all_files_rows[idx])
+
+        if not selected_rows:
+            ui.notify(t("no_session_selected"), type="warning")
+            return
+
+        self.loading_spinner.set_visibility(True)
+        try:
+            data = await generate_siril_megastack_json(
+                self.conn,
+                selected_rows,
+                self.current_backup_location or "",
+            )
+        except Exception as e:
+            ui.notify(t("fits_json_error", error=e), type="negative")
+            self.loading_spinner.set_visibility(False)
+            return
+        self.loading_spinner.set_visibility(False)
+
+        unreachable = data.get("unreachable_sessions", [])
+        if unreachable:
+            if len(unreachable) == 1:
+                ui.notify(t("folder_not_exist", path=unreachable[0].get("session_dir", "")), color="negative")
+            else:
+                paths = ", ".join(s.get("session_name", "") for s in unreachable)
+                ui.notify(t("folder_not_exist", path=paths), color="negative")
+
+        json_str = json.dumps(data, indent=2, ensure_ascii=False)
+        target   = data.get("object", "session").replace(" ", "_")
+        filters  = "_".join(data.get("filters", []))
+        default_name = f"siril_megastack_{target}_{filters}.json"
+
+        if hasattr(webview, 'FileDialog'):
+            save_mode = webview.FileDialog.SAVE
+        else:
+            save_mode = webview.SAVE_DIALOG
+
+        try:
+            dest = await app.native.main_window.create_file_dialog(
+                save_mode,
+                save_filename=default_name,
+                file_types=("JSON files (*.json)",),
+            )
+            if dest:
+                out_path = dest[0] if isinstance(dest, (list, tuple)) else dest
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                ui.notify(t("save_ok", name=os.path.basename(out_path)), type="positive")
+
+                n_sessions = sum(len(v) for v in data.get("sessions_by_filter", {}).values())
+                n_filters  = len(data.get("filters", []))
+                hint       = data.get("combination_hint") or "—"
+                single     = data.get("single_filter", True)
+                msg = (
+                    f"{n_sessions} sessions · {n_filters} filtre(s) · "
+                    + (t("siril_megastack_single") if single else f"{t('siril_megastack_multi')} → {hint}")
+                )
+                ui.notify(f"📋 {msg}", type="info", timeout=8000)
         except Exception as e:
             ui.notify(t("save_failed", error=e), type="negative")
 

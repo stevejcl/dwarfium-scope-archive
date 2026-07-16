@@ -571,15 +571,21 @@ class TransferApp:
             if self.dwarf_ip_sta_mode:
                 self.ftp_spinner.set_visibility(True)
                 status_text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode)
-                self.ftp_available = "Connected to" in status_text if status_text else False
+                print(f"status: {status_text}")
+                if (status_text == t("ftp_connected_dwarf2") or status_text == t("ftp_connected")) :
+                    self.ftp_available = status_text
+                    print(f"ftp_available: {self.ftp_available}")
+                else:
+                    self.ftp_available = False
         finally:
             # Update only if the IP has not changed
             if current_ip == self.dwarf_ip_sta_mode:
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
                 # update only if the user doesn't already change it
-                if not self.session and not self.manual_update_dir:
+                if not self.usb_available or (not self.session and not self.manual_update_dir):
                     self.update_transfert_mode()
+                    print("update_transfert_mode")
 
     def update_transfert_mode(self):
         available_modes = []

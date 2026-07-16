@@ -492,6 +492,7 @@ TRANSLATIONS: dict[str, str] = {
     "show_panel":                   "Show Panel",  # TODO
     "generate_panorama":            "Generate Panorama",  # TODO
     "manual_sessions_found":        "manual sessions found.",  # TODO
+    "manual_session_found":         "manual session found.",  # TODO
     "last_scan_label":              "Last Scan on:",  # TODO
     "taken":                        "Taken",  # TODO
     "restack":                      "Restack",  # TODO
@@ -512,6 +513,8 @@ TRANSLATIONS: dict[str, str] = {
     "fits_restore_confirm_title":   "Confirm FITS Cleanup on Dwarf",  # TODO
     "fits_restore_confirm_msg":     "⚠️ Are you sure you want to restore FITS files on the Dwarf for this session?\n\n",  # TODO
     "image_quality":                "Images quality: ",  # TODO
+    "zip_missing_panels_ok":        "ZIP file missing (Dwarf did not finish compressing) — using panel FITS directly to reconstruct",  # TODO
+    "zip_missing_no_panels":        "ZIP file missing and no panel FITS found — cannot reconstruct the mosaic",  # TODO
 
     # ── Manual Session ────────────────────────────────────────────────────────────
     "add_manual_session":           "Add Manual Session",  # TODO

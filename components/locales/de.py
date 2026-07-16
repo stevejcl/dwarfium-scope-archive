@@ -430,6 +430,8 @@ TRANSLATIONS: dict[str, str] = {
     "ftp_no_ip":                    "❌ Please enter an IP address",  # TODO
     "ftp_disconnected":             "FTP disconnected",  # TODO
     "no_restacked":                 "No RESTACKED or STARTRAILS folder found on FTP or access failed",  # TODO
+    "zip_missing_panels_ok":        "ZIP file missing (Dwarf did not finish compressing) — using panel FITS directly to reconstruct",  # TODO
+    "zip_missing_no_panels":        "ZIP file missing and no panel FITS found — cannot reconstruct the mosaic",  # TODO
 
     # ── Explore / Sessions ────────────────────────────────────────────────────────
     "session_dir":                  "Directory",  # TODO
@@ -492,6 +494,7 @@ TRANSLATIONS: dict[str, str] = {
     "show_panel":                   "Show Panel",  # TODO
     "generate_panorama":            "Generate Panorama",  # TODO
     "manual_sessions_found":        "manual sessions found.",  # TODO
+    "manual_session_found":         "manual session found.",  # TODO
     "last_scan_label":              "Last Scan on:",  # TODO
     "taken":                        "Taken",  # TODO
     "restack":                      "Restack",  # TODO

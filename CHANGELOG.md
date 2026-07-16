@@ -1,5 +1,19 @@
 # Changelog
 
+## [V3.2.1] - 2026-07-16
+
+### Add
+    Implement multi-session Siril JSON generation for combining observations across filters (HaRGB, HOO, etc).
+    Add functions to reconstruct missing mosaic ZIPs from panel FITS files when compression didn't complete on Dwarf.
+    Improve connection resilience for long-running operations
+    Support both backup and manual sessions in megastack mode.
+
+### BugFix#
+    fix ftp availability in Transfer Page
+    fix sizing sort in Report Page
+    fix row indexing in session JSON export, and add path accessibility tracking.
+    
+
 ## [V3.2.0] - 2026-05-22
 
 ### Add

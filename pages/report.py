@@ -67,6 +67,11 @@ class ReportApp(DbPageMixin):
         self._order_by   = init_order_by or "size"
         self._limit      = init_limit if init_limit is not None else 50
         self._initializing = True  # block _on_drive_changed during build
+        self.dwarf_type_map = {
+            1: "Dwarf2",
+            2: "Dwarf3",
+            4: "Dwarf Mini"
+        }
 
         # UI refs
         self._disk_widget   = None
@@ -245,6 +250,7 @@ class ReportApp(DbPageMixin):
 
     def _populate_drive_list(self):
         self._drive_options = {}  # label -> (id, location, name)
+        self._dwarf_type = {}  # label -> (id, dwarf_type)
 
         if self._drive_type == "backup":
             drives = get_backupDrive_list(self.conn)
@@ -272,6 +278,7 @@ class ReportApp(DbPageMixin):
                 row = get_dwarf_detail(self.conn, did)
                 usb_path = (row[2] or "") if row else ""
                 local_path = get_local_dwarf_dir(self.conn, did)
+                dwarf_type_var = self.dwarf_type_map[int(row[3])]
                 # Use USB path for widget if connected, else local
                 loc = usb_path if usb_path and os.path.isdir(usb_path) else local_path
                 # Cache key: always "dwarf" + did, but try USB first
@@ -286,6 +293,7 @@ class ReportApp(DbPageMixin):
                         suffix = f"  ⚠️ {cached['free_str']} free"
                 label = f"{name}{suffix}"
                 self._drive_options[label] = (did, loc or "", name)
+                self._dwarf_type[label] = (did, dwarf_type_var)
 
         options = list(self._drive_options.keys())
         self._drive_select.set_options(options, value=options[0] if options else None)
@@ -398,9 +406,9 @@ class ReportApp(DbPageMixin):
         columns = [
             {"name": "date",           "label": t("report_date"),           "field": "date",           "align": "left",  "sortable": True, "style": "width: 100px"},
             {"name": "object",         "label": t("report_object"),         "field": "object",         "align": "left",  "style": ""},
-            {"name": "size",           "label": t("report_size"),           "field": "size",           "align": "right", "sortable": True, "style": "width: 90px"},
-            {"name": "dwarf_size",     "label": t("report_dwarf_size"),     "field": "dwarf_size",     "align": "right", "sortable": True, "style": "width: 90px"},
-            {"name": "dwarf_no_fits",  "label": t("report_dwarf_no_fits"),  "field": "dwarf_no_fits",  "align": "right", "sortable": True, "style": "width: 90px"},
+            {"name": "size",           "label": t("report_size"),           "field": "size_bytes",     "align": "right", "sortable": True, "style": "width: 90px",  "format": "val => val"},
+            {"name": "dwarf_size",     "label": t("report_dwarf_size"),     "field": "dwarf_size_bytes",    "align": "right", "sortable": True, "style": "width: 90px",  "format": "val => val"},
+            {"name": "dwarf_no_fits",  "label": t("report_dwarf_no_fits"),  "field": "dwarf_no_fits_bytes", "align": "right", "sortable": True, "style": "width: 90px",  "format": "val => val"},
             {"name": "quality",        "label": t("report_quality"),        "field": "quality",        "align": "right", "sortable": True, "style": "width: 70px"},
             {"name": "action",         "label": "",                         "field": "action",         "align": "center","style": "width: 80px"},
         ]
@@ -506,23 +514,32 @@ class ReportApp(DbPageMixin):
     # ------------------------------------------------------------------
     # Folder size scan
     # ------------------------------------------------------------------
-
-    def _start_dwarf_size_scan(self):
-        if self._scan_running:
-            return
+    def _check_type_mismatch(self):
         # Check type mismatch before scanning
         if self._drive_type == "dwarf" and self._dwarf_id:
             from api.dwarf_backup_fct import check_dwarf_type_mismatch
             current_label = self._drive_select.value
+            dwarf_name = self._drive_options.get(current_label, (None, "", None))[2]
+            print(f"Mismatch Test - dwarf_name: {dwarf_name}")
+            dwarf_type = self._dwarf_type.get(current_label, (None, None))[1]
+            print(f"Mismatch Test - dwarf_type: {dwarf_type}")
             loc = self._drive_options.get(current_label, (None, "", None))[1]
+            print(f"Mismatch Test - loc: {loc}")
             if loc:
-                mismatch = check_dwarf_type_mismatch(self.conn, self._dwarf_id, loc)
+                mismatch = check_dwarf_type_mismatch(self.conn, self._dwarf_id, dwarf_name, dwarf_type, loc)
                 if mismatch:
                     ui.notify(
                         t("dwarf_type_mismatch_calc").format(name=mismatch['name'], configured=mismatch['configured'], detected=mismatch['detected']),
                         type="warning", timeout=0,
                     )
-                    return
+                    return False
+        return True
+
+    def _start_dwarf_size_scan(self):
+        if self._scan_running:
+            return
+        if not self._check_type_mismatch():
+            return
         self._scan_running = True
         self._calc_dwarf_btn.props("loading")
         self._calc_progress.set_text(t("report_calc_running"))
@@ -598,6 +615,8 @@ class ReportApp(DbPageMixin):
 
     def _start_dwarf_size_scan_force(self):
         if self._scan_running:
+            return
+        if not self._check_type_mismatch():
             return
         self._scan_running = True
         self._calc_dwarf_force_btn.props("loading")

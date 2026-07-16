@@ -79,6 +79,16 @@ def open_folder(path_var):
     else:
         safe_print(f"[FAIL] Path does not exist: {path}")
 
+def win_long_path(filepath):
+    if os.name == 'nt':
+        filepath_str = str(filepath)
+        if filepath_str.startswith('\\\\?\\'):
+            return filepath_str  # already in long path format
+        else:
+            return '\\\\?\\' + os.path.abspath(filepath_str)
+    else:
+        return str(filepath)
+
 def compute_md5(filepath, chunk_size=1024 * 64):  # 64 KB default
     hash_md5 = hashlib.md5()
     filepath_str = str(filepath)
@@ -115,16 +125,6 @@ def files_are_different(src, dst, check_md5=False):
         return True
     if check_md5 and compute_md5(src) != compute_md5(dst): return True
     return False
-
-def win_long_path(filepath):
-    if os.name == 'nt':
-        filepath_str = str(filepath)
-        if filepath_str.startswith('\\\\?\\'):
-            return filepath_str  # already in long path format
-        else:
-            return '\\\\?\\' + os.path.abspath(filepath_str)
-    else:
-        return str(filepath)
 
 def get_directory_size(directory_path: str) -> int:
     total_size = 0
@@ -280,30 +280,30 @@ def has_subdirectories(directory):
 def get_png_name_from_zip(search_dir: str | Path) -> Path:
     """
     Return the PNG path based on the single ZIP file in the directory.
-    
-    Return None if no ZIP or multiple ZIPs are found.
+
+    Raises FileNotFoundError if no ZIP file is found in the directory.
     """
     search_dir = Path(search_dir)
 
     zip_files = list(search_dir.glob("*.zip"))
 
     if len(zip_files) == 0:
-        raise None
+        raise FileNotFoundError(f"No ZIP file found in {search_dir}")
 
     return zip_files[0].with_suffix(".png")
 
 def get_fits_name_from_zip(search_dir: str | Path) -> Path:
     """
-    Return the PNG path based on the single ZIP file in the directory.
-    
-    Return None if no ZIP or multiple ZIPs are found.
+    Return the FITS path based on the single ZIP file in the directory.
+
+    Raises FileNotFoundError if no ZIP file is found in the directory.
     """
     search_dir = Path(search_dir)
 
     zip_files = list(search_dir.glob("*.zip"))
 
     if len(zip_files) == 0:
-        raise None
+        raise FileNotFoundError(f"No ZIP file found in {search_dir}")
 
     return zip_files[0].with_suffix(".fits")
 
@@ -2119,13 +2119,13 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
         error_sessions = get_dwarf_sessions_error(conn, dwarf_id, status="ERROR")
         error_session_count = len(error_sessions)
         if error_sessions:
-            print_log(f"⚠️ {error_session_count} Mosaic session(s) in error (no stacked found):", log, style="text-orange")
-            safe_print(f"[ERROR SESSIONS] {error_session_count} Mosaic session(s) in error:")
+            print_log(f"⚠️ {error_session_count} session(s) in error (no stacked found):", log, style="text-orange")
+            safe_print(f"[ERROR SESSIONS] {error_session_count} session(s) in error:")
             for row in error_sessions:
                 print_log(f"   • {row[3]}", log, style="text-orange")  # session_dir
                 safe_print(f"   • {row[3]}")
         else:
-            print_log("✅ No Mosaic sessions in error.", log)
+            print_log("✅ No sessions in error.", log)
 
     commit_db(conn)
     close_db(conn)
@@ -2158,7 +2158,16 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
         if filename.lower().endswith("stacked.png"):
             stacked_file = filename  # png candidate — keep looking for a jpg
 
-    # --- Step 2 : no stacked found → check for Mosaic error session ---
+    # --- Step 2 : Mosaic session with stacked but missing ZIP ---
+    if stacked_file and "_MOSAIC_" in parent_dir.upper():
+        has_zip = any(f.lower().endswith(".zip") for f in os.listdir(dwarf_path))
+        if not has_zip:
+            inserted = insert_dwarf_session_error(conn, dwarf_id, session_date, session_dir)
+            if inserted:
+                safe_print(f"[ERROR SESSION] Registered Mosaic error session (missing ZIP): {session_dir}")
+            return added, data_ids
+
+    # --- Step 3 : no stacked found → check for Mosaic error session ---
     if not stacked_file:
         shots_info_path = os.path.join(dwarf_path, "shotsInfo.json")
         if os.path.exists(shots_info_path):
@@ -2169,7 +2178,7 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
                 safe_print(f"[ERROR SESSION] Registered Mosaic error session: {session_dir}")
         return added, data_ids
 
-    # --- Step 3 : stacked found → check repairInfo.json ---
+    # --- Step 4 : stacked found → check repairInfo.json ---
     repair_info_path = os.path.join(dwarf_path, "repairInfo.json")
     if os.path.exists(repair_info_path):
         try:

@@ -3014,40 +3014,50 @@ def find_matching_bias_flat(location, cam_name, ir_filter, gain):
 async def generate_siril_session_json(conn, row, backup_location, session_full_dir=""):
     """Generate siril_session.json from a session row."""
     import os
+    from api.dwarf_backup_fct import parse_exposure, get_Backup_fullpath
     from pathlib import Path
     from datetime import datetime as _dt
 
+    file_path   = row[1]
     exp_time    = row[2];  gain       = row[3];  ir_filter  = row[4]
     stacks      = row[5];  session_dir= row[8];  dwarf_name = row[9]
     min_temp    = row[10]; max_temp   = row[11]; target     = row[13]
-    dec         = row[14]; ra         = row[15]; dwarf_id   = row[20]
-    binning_raw = row[21] if len(row) > 21 else None
+    dec         = row[14]; ra         = row[15]; binning_raw = row[16]
+    row_location = row[6]
+    dwarf_id    = row[21] if len(row) > 21 else None
     try:
         binning = int(str(binning_raw).split("*")[0]) if binning_raw else 1
     except Exception:
         binning = 1
 
-    # Get dwarf_id from BackupDrive when None
-    if dwarf_id is None and row[19]:
+    # Get dwarf_id from BackupDrive when None (row[20] = BackupEntry.backup_drive_id)
+    if dwarf_id is None and row[20]:
         try:
-            r = conn.cursor().execute("SELECT dwarf_id FROM BackupDrive WHERE id=?", (row[19],)).fetchone()
+            r = conn.cursor().execute("SELECT dwarf_id FROM BackupDrive WHERE id=?", (row[20],)).fetchone()
             if r: dwarf_id = r[0]
         except Exception:
             pass
 
     cam_name = "cam_1" if (session_dir and "_WIDE_" in str(session_dir).upper()) else "cam_0"
 
-    # Resolve full session path
-    if session_full_dir and os.path.isdir(session_full_dir):
+    # Resolve the expected full session path. No approximate fallback to
+    # session_dir/backup_location: if the real path can't be determined or
+    # isn't reachable (e.g. the drive isn't currently mounted), we keep the
+    # real expected path as-is and report it as unreachable, rather than
+    # silently substituting a wrong/partial path.
+    full_session_dir = ""
+    if session_full_dir:
         full_session_dir = session_full_dir
-    elif os.path.isabs(session_dir or "") and os.path.isdir(session_dir):
-        full_session_dir = session_dir
-    else:
-        full_session_dir = os.path.join(backup_location, session_dir) if backup_location else (session_dir or "")
-        if not os.path.isdir(full_session_dir) and backup_location:
-            alt = os.path.join(backup_location, os.path.basename(session_dir or ""))
-            if os.path.isdir(alt):
-                full_session_dir = alt
+    elif file_path:
+        try:
+            full_file_path = get_Backup_fullpath(conn, row_location or backup_location, "", file_path, dwarf_id)
+            full_session_dir = os.path.dirname(full_file_path)
+        except Exception:
+            full_session_dir = ""
+    if not full_session_dir:
+        full_session_dir = session_dir or ""
+
+    path_accessible = os.path.isdir(full_session_dir)
 
     print(f"[siril_json] full_session_dir={full_session_dir} exists={os.path.isdir(full_session_dir)}")
 
@@ -3068,11 +3078,20 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
             n = f.name.lower()
             if not any(n.startswith(x) for x in ("stacked","pp_","r_pp_","dsl_")):
                 lights.append(str(f))
+
+        # No raw lights found (e.g. a RESTACKED_ session that only has the
+        # final stacked*.fits result): use that stacked FITS as the single
+        # "light" instead of returning an empty list.
+        if not lights:
+            stacked_fits = sorted(Path(full_session_dir).glob("stacked*.fits"))
+            if stacked_fits:
+                lights.append(str(stacked_fits[0]))
+
         print(f"[siril_json] found {len(lights)} light files")
 
     dark_result = find_matching_darks(
         conn, dwarf_id,
-        float(exp_time) if exp_time else 0,
+        parse_exposure(f"{exp_time}s") if exp_time else 0,
         int(gain) if gain else 0,
         binning,
         int(min_temp) if min_temp is not None else None,
@@ -3109,13 +3128,14 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
         "session": {
             "target": target or "Unknown", "date": str(row[7]) if row[7] else "",
             "session_dir": full_session_dir, "cam": cam_name, "dwarf": dwarf_name or "",
-            "exp_s": float(exp_time) if exp_time else 0,
+            "exp_s": parse_exposure(f"{exp_time}s") if exp_time else 0,
             "gain": int(gain) if gain else 0, "binning": binning,
             "ir_filter": ir_filter or "",
             "min_temp": int(min_temp) if min_temp is not None else None,
             "max_temp": int(max_temp) if max_temp is not None else None,
             "shots_stacked": int(stacks) if stacks else 0,
             "ra": float(ra) if ra else None, "dec": float(dec) if dec else None,
+            "path_accessible": path_accessible,
         },
         "lights": lights,
         "darks": {"status": dark_result["status"], "files": dark_result["files"],
@@ -3126,6 +3146,383 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
         "cali_frame_dir": cali_frame_dir,
     }
 
+
+
+async def generate_siril_megastack_json(conn, rows, backup_location):
+    """
+    Generate a siril_megastack.json from a list of session rows (multi-session).
+    Sessions are grouped by filter. If all sessions share the same filter,
+    single_filter=True and the script does a simple Megastack.
+    If multiple filters are present, single_filter=False and the script
+    will stack each filter group separately then combine (e.g. HaRGB, HOO).
+    """
+    import os
+    from api.dwarf_backup_fct import parse_exposure, get_Backup_fullpath
+    from pathlib import Path
+    from datetime import datetime as _dt
+    from collections import defaultdict
+
+    if not rows:
+        return {}
+
+    # Use first row for object-level metadata (target/RA/DEC are assumed
+    # the same across sessions; dwarf is resolved per-session below since
+    # a Megastack can mix sessions captured with different Dwarf devices)
+    first = rows[0]
+    target     = first[13] or "Unknown"
+    ra         = first[15]
+    dec        = first[14]
+
+    # Group sessions by filter
+    groups = defaultdict(list)
+    dwarf_names_seen = []  # preserves first-seen order, de-duplicated below
+    unreachable_sessions = []  # sessions whose folder couldn't be found (e.g. drive not mounted)
+    for row in rows:
+        file_path   = row[1]
+        exp_time    = row[2];  gain       = row[3];  ir_filter  = row[4] or "Unknown"
+        stacks      = row[5];  session_dir= row[8]
+        row_location= row[6]
+        dwarf_name  = row[9] or ""
+        min_temp    = row[10]; max_temp   = row[11]
+        dec         = row[14]; ra         = row[15]
+        binning_raw = row[16]
+        try:
+            binning = int(str(binning_raw).split("*")[0]) if binning_raw else 1
+        except Exception:
+            binning = 1
+
+        # Resolve this session's dwarf_id (it may differ from other sessions
+        # if the Megastack mixes captures from several Dwarf devices)
+        # row[21] = BackupEntry.dwarf_id, row[20] = BackupEntry.backup_drive_id
+        dwarf_id = row[21] if len(row) > 21 else None
+        if dwarf_id is None and row[20]:
+            try:
+                r = conn.cursor().execute("SELECT dwarf_id FROM BackupDrive WHERE id=?", (row[20],)).fetchone()
+                if r: dwarf_id = r[0]
+            except Exception:
+                pass
+
+        if dwarf_name and dwarf_name not in dwarf_names_seen:
+            dwarf_names_seen.append(dwarf_name)
+
+        # Resolve the expected full session path the same way the rest of
+        # the app does (get_Backup_fullpath: location + file_path, with a
+        # local-Dwarf fallback via dwarf_id). No approximate fallback to
+        # session_dir/backup_location: if the drive isn't reachable, we keep
+        # the real expected path and report it as unreachable instead of
+        # silently substituting a wrong/partial path.
+        full_dir = ""
+        if file_path:
+            try:
+                full_file_path = get_Backup_fullpath(conn, row_location or backup_location, "", file_path, dwarf_id)
+                full_dir = os.path.dirname(full_file_path)
+            except Exception as e:
+                print(f"[siril_megastack_json] get_Backup_fullpath error: {e}")
+        if not full_dir:
+            full_dir = session_dir or ""
+
+        path_accessible = os.path.isdir(full_dir)
+        if not path_accessible:
+            unreachable_sessions.append({"session_name": os.path.basename(session_dir or ""), "session_dir": full_dir})
+        print(f"[siril_megastack_json] session={os.path.basename(session_dir or '')} full_dir={full_dir} accessible={path_accessible}")
+
+        # Collect light files
+        lights = []
+        if path_accessible:
+            is_mosaic = "_MOSAIC_" in str(full_dir).upper()
+            fits_files = []
+            if is_mosaic:
+                for panel_dir in sorted(Path(full_dir).iterdir()):
+                    if panel_dir.is_dir():
+                        for ext in (".fits",".fit",".fts",".FIT",".FITS",".FTS"):
+                            fits_files.extend(panel_dir.glob(f"*{ext}"))
+            else:
+                for ext in (".fits",".fit",".fts",".FIT",".FITS",".FTS"):
+                    fits_files.extend(Path(full_dir).glob(f"*{ext}"))
+            for f in sorted(set(fits_files)):
+                n = f.name.lower()
+                if not any(n.startswith(x) for x in ("stacked","pp_","r_pp_","dsl_")):
+                    lights.append(str(f))
+
+            # No raw lights found (e.g. a RESTACKED_ session that was
+            # already stacked at capture time and only has the final
+            # stacked*.fits result): use that stacked FITS as this
+            # session's single "light" so it still contributes to the
+            # Megastack instead of being silently dropped.
+            if not lights:
+                stacked_fits = sorted(Path(full_dir).glob("stacked*.fits"))
+                if stacked_fits:
+                    lights.append(str(stacked_fits[0]))
+
+        # Find matching darks for this session
+        dark_result = find_matching_darks(
+            conn, dwarf_id,
+            parse_exposure(f"{exp_time}s") if exp_time else 0,
+            int(gain) if gain else 0,
+            binning,
+            int(min_temp) if min_temp is not None else None,
+            int(max_temp) if max_temp is not None else None,
+        )
+
+        is_pre_stacked = (
+            str(os.path.basename(session_dir or "")).startswith("RESTACKED_")
+            or (path_accessible and not lights and bool(
+                list(Path(full_dir).glob("stacked*.fits")) if full_dir else []
+            ))
+        )
+
+        groups[ir_filter].append({
+            "session_dir":     full_dir,
+            "session_name":    os.path.basename(session_dir or ""),
+            "date":            str(row[7]) if row[7] else "",
+            "dwarf":           dwarf_name,
+            "exp_s":           parse_exposure(f"{exp_time}s") if exp_time else 0,
+            "gain":            int(gain) if gain else 0,
+            "binning":         binning,
+            "shots_stacked":   int(stacks) if stacks else 0,
+            "min_temp":        int(min_temp) if min_temp is not None else None,
+            "max_temp":        int(max_temp) if max_temp is not None else None,
+            "ra":              float(ra) if ra else None,
+            "dec":             float(dec) if dec else None,
+            "pre_stacked":     is_pre_stacked,
+            "path_accessible": path_accessible,
+            "lights":          lights,
+            "darks": {
+                "status":     dark_result["status"],
+                "files":      dark_result["files"],
+                "count":      dark_result["count"],
+                "temp_match": dark_result["temp_match"],
+                "library":    dark_result["library"],
+            },
+        })
+
+    filter_names = list(groups.keys())
+    single_filter = len(filter_names) == 1
+
+    # Warn (non-blocking) when a single filter group mixes sessions from
+    # different Dwarf devices — dark/bias/flat matching is already done
+    # per-session above and remains correct, but this is useful to surface
+    # since it affects how lights from that group should be interpreted.
+    for flt, sessions in groups.items():
+        flt_dwarfs = {s["dwarf"] for s in sessions if s["dwarf"]}
+        if len(flt_dwarfs) > 1:
+            print(f"[siril_megastack_json] WARNING: filter '{flt}' mixes sessions from multiple Dwarf devices: {sorted(flt_dwarfs)}")
+
+    # Determine combination strategy based on known Dwarf filters:
+    # Astro (LP broadband), Dual-Band (Ha+OIII narrowband), UV/IR Cut (full color)
+    combination_hint = None
+    if not single_filter:
+        fl_set = {f.lower().strip() for f in filter_names}
+        has_dualband  = any("dual" in f or "duo" in f for f in fl_set)
+        has_astro     = any(f in ("astro", "lp") for f in fl_set)
+        has_uvir      = any("uv" in f or "ir" in f or f in ("clear", "none", "") for f in fl_set)
+
+        if has_dualband and has_astro:
+            # Dual-Band Ha+OIII + Astro LP → classic HaRGB or HOO
+            combination_hint = "HaRGB"
+        elif has_dualband and has_uvir:
+            # Dual-Band + UV/IR Cut → HOO (Ha=R, OIII=G+B) — stars from UV/IR
+            combination_hint = "HOO_stars"
+        elif has_astro and has_uvir:
+            # Astro LP + UV/IR Cut → simple RGB combine / luminance boost
+            combination_hint = "RGB_combine"
+        else:
+            combination_hint = "manual"
+
+    single_dwarf = len(dwarf_names_seen) <= 1
+
+    return {
+        "generated_by":    "Dwarfium Scope Archive",
+        "generated_at":    _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "type":            "megastack",
+        "object":          target,
+        "ra":              float(ra) if ra else None,
+        "dec":             float(dec) if dec else None,
+        # Kept for backward compatibility with older Siril script versions
+        # that only read this single root-level field. Prefer "dwarfs"
+        # (and the per-session "dwarf" field) when multiple devices are mixed.
+        "dwarf":           dwarf_names_seen[0] if dwarf_names_seen else "",
+        "single_dwarf":    single_dwarf,
+        "dwarfs":          dwarf_names_seen,
+        "single_filter":   single_filter,
+        "filters":         filter_names,
+        "combination_hint": combination_hint,
+        "step":             None,  # updated automatically by Dwarfium_archive_selector as processing progresses
+        "unreachable_sessions": unreachable_sessions,
+        "sessions_by_filter": {flt: sessions for flt, sessions in groups.items()},
+    }
+
+
+async def generate_siril_megastack_json_manual(conn, rows):
+    """Generate a siril_megastack.json from ManualSession rows.
+
+    Equivalent of generate_siril_megastack_json but for sessions coming from
+    get_ObjectSelect_manual (Stellar Studio, Manual, or other external tools).
+
+    All these sessions are already fully processed (calibrated + stacked +
+    debayered), so every session gets pre_stacked=True and contributes a single
+    FITS (stacked_fits_path, row[14]) rather than a folder of raw lights.
+
+    Column index reference (get_ObjectSelect_manual):
+        [0]  ManualSession.id
+        [1]  ManualSession.session_name
+        [2]  ManualSession.session_tag
+        [3]  ManualSession.session_type        'Stellar Studio' | 'Manual' | ...
+        [7]  ManualSession.dec
+        [8]  ManualSession.ra
+        [9]  ManualSession.exp_time
+        [10] ManualSession.ircut               filter
+        [11] ManualSession.maxTemp
+        [12] ManualSession.minTemp
+        [14] ManualSession.stacked_fits_path   ← the single pre-processed FITS
+        [15] ManualSessionEntry.session_date
+        [16] ManualSessionEntry.session_dir
+        [20] display_name
+        [21] ManualSessionEntry.backup_drive_id
+        [22] ManualSessionEntry.dwarf_id
+        [25] Dwarf.name
+        [27] ManualSessionDrive.manualsession_dir
+        [28] ManualSessionDrive.location
+    """
+    import os
+    from api.dwarf_backup_fct import parse_exposure, get_Backup_fullpath
+    from datetime import datetime as _dt
+    from collections import defaultdict
+
+    if not rows:
+        return {}
+
+    first  = rows[0]
+    target = str(first[20] or first[1] or "Unknown")
+    ra     = first[8]
+    dec    = first[7]
+
+    groups           = defaultdict(list)
+    dwarf_names_seen = []
+    unreachable_sessions = []
+
+    for row in rows:
+        session_name   = row[1]  or ""
+        session_type   = row[3]  or "Manual"
+        ir_filter      = row[10] or "Unknown"
+        exp_time       = row[9]
+        max_temp       = row[11]
+        min_temp       = row[12]
+        stacked_fits   = row[14]  # direct path to the pre-processed FITS
+        session_date   = row[15]
+        session_dir    = row[16] or ""
+        dwarf_name     = row[25] or ""
+        dwarf_id       = row[22]
+        backup_drive_id = row[21]
+        location       = row[28] or ""
+        manualsession_dir = row[27] or ""
+
+        # Resolve dwarf_id fallback
+        if dwarf_id is None and backup_drive_id:
+            try:
+                r = conn.cursor().execute(
+                    "SELECT dwarf_id FROM BackupDrive WHERE id=?", (backup_drive_id,)
+                ).fetchone()
+                if r:
+                    dwarf_id = r[0]
+            except Exception:
+                pass
+
+        if dwarf_name and dwarf_name not in dwarf_names_seen:
+            dwarf_names_seen.append(dwarf_name)
+
+        # Resolve the physical folder path
+        # ManualSessionDrive.manualsession_dir is the sub-folder under location
+        if manualsession_dir and location:
+            full_dir = os.path.join(location, manualsession_dir)
+        elif session_dir and location:
+            full_dir = os.path.join(location, session_dir)
+        elif session_dir:
+            full_dir = session_dir
+        else:
+            full_dir = ""
+
+        # Resolve the stacked FITS path
+        if stacked_fits and os.path.isfile(stacked_fits):
+            fits_path = stacked_fits
+        elif stacked_fits and full_dir:
+            fits_path = os.path.join(full_dir, os.path.basename(stacked_fits))
+        else:
+            fits_path = None
+
+        path_accessible = bool(fits_path and os.path.isfile(fits_path))
+        if not path_accessible:
+            unreachable_sessions.append({
+                "session_name": session_name,
+                "session_dir":  fits_path or full_dir,
+            })
+
+        groups[ir_filter].append({
+            "session_dir":     full_dir,
+            "session_name":    session_name,
+            "session_type":    session_type,
+            "date":            str(session_date) if session_date else "",
+            "dwarf":           dwarf_name,
+            "exp_s":           parse_exposure(f"{exp_time}s") if exp_time else 0,
+            "gain":            0,   # not stored for manual sessions
+            "binning":         1,
+            "shots_stacked":   0,
+            "min_temp":        int(min_temp) if min_temp is not None else None,
+            "max_temp":        int(max_temp) if max_temp is not None else None,
+            "ra":              float(ra) if ra else None,
+            "dec":             float(dec) if dec else None,
+            "pre_stacked":     True,   # always — these are fully processed outputs
+            "path_accessible": path_accessible,
+            "lights":          [fits_path] if fits_path and path_accessible else [],
+            "darks": {
+                "status": "none", "files": [], "count": 0,
+                "temp_match": False, "library": None,
+            },
+        })
+
+    filter_names  = list(groups.keys())
+    single_filter = len(filter_names) == 1
+    single_dwarf  = len(dwarf_names_seen) <= 1
+
+    # Combination hint — same logic as backup megastack
+    fl_set = {f.lower().strip() for f in filter_names}
+    has_dualband = any("dual" in f or "duo" in f for f in fl_set)
+    has_astro    = any(f in ("astro", "lp") for f in fl_set)
+    has_uvir     = any("uv" in f or "ir" in f or f in ("clear", "none", "") for f in fl_set)
+    has_ha       = any("ha" in f or "h-alpha" in f for f in fl_set)
+    has_oiii     = any("oiii" in f or "o3" in f for f in fl_set)
+
+    if single_filter:
+        combination_hint = None
+    elif has_dualband and has_astro:
+        combination_hint = "HaRGB"
+    elif has_dualband and has_uvir:
+        combination_hint = "HOO_stars"
+    elif has_ha and has_oiii and has_astro:
+        combination_hint = "HaRGB"
+    elif len(filter_names) > 1 and has_astro:
+        combination_hint = "RGB_combine"
+    else:
+        combination_hint = "manual"
+
+    return {
+        "generated_by":    "Dwarfium Scope Archive",
+        "generated_at":    _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "type":            "megastack",
+        "source":          "manual",  # distinguishes from backup megastack
+        "object":          target,
+        "ra":              float(ra) if ra else None,
+        "dec":             float(dec) if dec else None,
+        "dwarf":           dwarf_names_seen[0] if dwarf_names_seen else "",
+        "single_dwarf":    single_dwarf,
+        "dwarfs":          dwarf_names_seen,
+        "single_filter":   single_filter,
+        "filters":         filter_names,
+        "combination_hint": combination_hint,
+        "step":            None,
+        "unreachable_sessions": unreachable_sessions,
+        "sessions_by_filter": {flt: sessions for flt, sessions in groups.items()},
+    }
 
 
 def get_or_create_ManualSessionDrive(conn: sqlite3.Connection, location: str, name: str = None, description: str = None, manualsession_dir: str = None, backup_drive_id: int = None):
@@ -4262,4 +4659,4 @@ def insert_session_quality_dwarf_folder_data(conn: sqlite3.Connection, backup_en
         """, (backup_entry_id, sized_at, total_size, no_fits_size, sized_at))
         conn.commit()
     except Exception as e:
-        print(f"[ERROR] insert_session_quality_dwarf_folder_data error {backup_entry_id}: {e}")
+        print(f"[ERROR] insert_session_quality_folder_data error {backup_entry_id}: {e}")

@@ -589,6 +589,7 @@ class ConfigApp(DbPageMixin):
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
             error_label = ui.label().style('color: red')  # Empty label for future error messages
             close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
+            close_button.visible = False  # only shown on error
             ui.label(t("scanning_dwarf"))
             spinner = ui.spinner(size="lg")
             scan_progress_bar   = ui.linear_progress(value=0, show_value=False).classes("w-full")
@@ -705,10 +706,17 @@ class ConfigApp(DbPageMixin):
             error_label.text = msg 
             close_button.visible = True
         else:
+            close_button.visible = True
             ui.timer(5, lambda: self.end_analyze_usb_drive(dialog), once=True)
 
     async def end_analyze_usb_drive(self, dialog):
-        dialog.close()
+        if self.conn is None:
+            print("client disconnected")
+            return  # client disconnected / navigated away — nothing left to update
+        try:
+            dialog.close()
+        except Exception:
+            pass
         await self.load_selected_dwarf(None)
         self.refresh_error_sessions_btn()
 

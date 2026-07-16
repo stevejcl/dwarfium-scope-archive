@@ -10,6 +10,7 @@ import astroalign as aa
 import asyncio
 import math
 import tempfile
+from datetime import datetime
 
 from enum import Enum
 
@@ -306,6 +307,66 @@ def get_mosaic_panels(mosaic_dir: str, img_type: str = "jpg") -> list[tuple[str,
 
     return panels
 
+def get_mosaic_zip(mosaic_dir: str, panels) -> str | None:
+    """
+    Returns ZIP path (existing or generated name).
+    """
+
+    existing = [
+        f for f in os.listdir(mosaic_dir)
+        if f.lower().endswith(".zip")
+    ]
+    if existing:
+        return os.path.join(mosaic_dir, existing[0])
+
+    shotsInfo_json = os.path.join(mosaic_dir, "shotsInfo.json")
+    if not os.path.isfile(shotsInfo_json):
+        return None
+
+    if not panels:
+        return None
+
+    first_panel = panels[0][1]
+    fits_name = os.path.basename(first_panel)
+
+    # remove (n)
+    base_name = re.sub(r"\(\d+\)", "", fits_name)
+
+    # replace date
+    dt = datetime.fromtimestamp(os.path.getmtime(shotsInfo_json))
+    new_date = dt.strftime("%Y%m%d-%H%M%S%f")[:-3]
+
+    base_name = re.sub(
+        r"\d{8}-\d{9}(?=\.fits$)",
+        new_date,
+        base_name,
+    )
+
+    # final zip name
+    zip_name = base_name.replace(".fits", ".zip")
+    print(zip_name)
+
+    return os.path.join(mosaic_dir, zip_name)
+    
+def rebuild_mosaic_zip(zip_file: str, panels) -> str | None:
+    """
+    Create mosaic ZIP if it does not exist.
+    """
+
+    if os.path.isfile(zip_file):
+        return zip_file
+
+    if not panels:
+        return None
+
+    print(f"zip_file: {zip_file}")
+    os.makedirs(os.path.dirname(zip_file), exist_ok=True)
+
+    with zipfile.ZipFile(zip_file, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for _, panel_zip in panels:
+            z.write(panel_zip, arcname=os.path.basename(panel_zip))
+
+    return zip_file
 
 def load_mosaic_info(image_path: str) -> dict | None:
     """

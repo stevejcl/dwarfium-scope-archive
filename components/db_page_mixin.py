@@ -31,3 +31,14 @@ class DbPageMixin:
             except Exception:
                 pass
             self.conn = None
+
+    def ensure_conn(self):
+        """
+        Make sure self.conn is usable. A transient client disconnect during a
+        long-running operation (e.g. mosaic stitching) can trigger on_disconnect
+        and close the connection even though the page/client reconnects right
+        after. Call this before any DB access that may run after a long await.
+        """
+        if getattr(self, "conn", None) is None:
+            self.conn = connect_db(self.database)
+        return self.conn
