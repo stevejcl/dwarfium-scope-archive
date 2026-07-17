@@ -1095,10 +1095,37 @@ class PreprocessingInterface(QMainWindow):
                 shutil.rmtree(lights_dir)
             os.makedirs(lights_dir, exist_ok=True)
 
+            # Decide, same as _generate_megastack_scripts, whether this
+            # group's pipeline will be the "pre-stacked" one (no
+            # calibrate/debayer) or the "raw" one (calibrate/debayer).
+            # RESTACKED_ sessions never count towards that decision.
+            normal_sessions = [
+                s for s in sessions
+                if not str(s.get("session_name", "")).startswith("RESTACKED_")
+            ]
+            all_pre_stacked = bool(normal_sessions) and all(
+                s.get("pre_stacked") for s in normal_sessions
+            )
+
             # Lights — prefix with session index to avoid name collisions
             # (Dwarf sessions all contain 0000.fits, 0001.fits, ... and mosaic
             #  panels reuse the same names too)
+            skipped_pre_stacked = []
             for s_idx, sess in enumerate(sessions, 1):
+                sess_pre_stacked = bool(sess.get("pre_stacked")) or str(
+                    sess.get("session_name", "")
+                ).startswith("RESTACKED_")
+                if sess_pre_stacked and not all_pre_stacked:
+                    # This group will run the raw calibrate/-debayer
+                    # pipeline (because at least one other session in the
+                    # group still has raw lights). Copying an already
+                    # fully-processed FITS (RESTACKED_ or
+                    # stack_mode="stacked_panels") into that same folder
+                    # would get it re-debayered/re-calibrated and corrupted.
+                    # Skip it instead, and tell the user.
+                    if sess.get("lights"):
+                        skipped_pre_stacked.append(sess.get("session_name", ""))
+                    continue
                 for f in sess.get("lights", []):
                     # For mosaic panels keep the panel name in the prefix
                     parent = os.path.basename(os.path.dirname(f))
@@ -1108,6 +1135,18 @@ class PreprocessingInterface(QMainWindow):
                     else:
                         new_name = f"s{s_idx:02d}_{os.path.basename(f)}"
                     pairs.append((f, os.path.join(lights_dir, new_name)))
+
+            if skipped_pre_stacked:
+                self.siril.log(
+                    f"[{flt}] WARNING: already-stacked session(s) "
+                    f"{skipped_pre_stacked} were NOT included — this group "
+                    "still has raw (non-stacked) sessions and would run the "
+                    "calibrate/debayer pipeline, which would corrupt an "
+                    "already-processed FITS. Run the already-stacked "
+                    "session(s) as a separate Megastack (or restack the "
+                    "others too) to combine everything together.",
+                    LogColor.SALMON,
+                )
 
             # Darks — deduplicate by source path (sessions often share the
             # same dark-library files); keep original names.
