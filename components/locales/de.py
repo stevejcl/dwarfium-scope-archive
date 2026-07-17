@@ -488,6 +488,14 @@ TRANSLATIONS: dict[str, str] = {
     "only_not_backed":              "Only show sessions not yet backed up on selected Dwarf",  # TODO
     "only_already_backed":          "Only show sessions already backed up on selected Dwarf",  # TODO
     "prepare_siril":                "📡 Prepare for Siril",  # TODO
+    "prepare_siril_megastack":      "📡 Megastack for Siril",  # TODO
+    "siril_megastack_min2":         "Select at least 2 sessions for a Megastack",  # TODO
+    "siril_megastack_single":       "Single filter — simple Megastack",  # TODO
+    "siril_megastack_multi":        "Multi-filter combination",  # TODO
+    "siril_megastack_mode_label":   "Stacking mode",  # TODO
+    "siril_megastack_mode_raw":     "Raw files",  # TODO
+    "siril_megastack_mode_stacked_panels":   "Already-stacked panels",  # TODO
+    "siril_megastack_mode_hint":    "Only affects mosaic sessions",  # TODO
     "filter_objects":               "🔍 Filter objects...",  # TODO
     "view_linked_manual":           "🔗 View linked Manual session",  # TODO
     "show_panels":                  "🧩 Show Current Panels",  # TODO

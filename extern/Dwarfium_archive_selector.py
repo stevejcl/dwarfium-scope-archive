@@ -1017,7 +1017,12 @@ class PreprocessingInterface(QMainWindow):
 
         # Build summary
         step_label = f"  [step: {step}]" if step else "  [step: not started]"
-        lines = [f"Megastack — {obj}{step_label}", ""]
+        stack_mode = data.get("stack_mode", "raw")
+        mode_label = (
+            "  [mosaic panels: already-stacked FITS, no darks]"
+            if stack_mode == "stacked_panels" else ""
+        )
+        lines = [f"Megastack — {obj}{step_label}{mode_label}", ""]
         total_lights = 0
         for flt, sessions in groups.items():
             n_lights = sum(len(s.get("lights", [])) for s in sessions)
@@ -1122,13 +1127,15 @@ class PreprocessingInterface(QMainWindow):
 
             # Warn if sessions in this group have different exposures —
             # a single master dark would not match all of them.
-            # RESTACKED_ sessions are excluded: they're already-stacked
-            # results with no real exposure value of their own (exp_s=0),
-            # and contribute no lights to calibrate against darks anyway.
+            # RESTACKED_ and other pre_stacked sessions are excluded:
+            # they're already-stacked results (darks already applied, or
+            # not needed for stack_mode="stacked_panels"), and contribute
+            # no lights to calibrate against a master dark anyway.
             exposures = {
                 s.get("exp_s")
                 for s in sessions
                 if s.get("exp_s") is not None
+                and not s.get("pre_stacked")
                 and not str(s.get("session_name", "")).startswith("RESTACKED_")
             }
             if len(exposures) > 1:
@@ -1201,6 +1208,138 @@ class PreprocessingInterface(QMainWindow):
                     dark_files_seen.add(f)
             n_darks   = len(dark_files_seen)
             has_darks = n_darks > 0
+
+            # True when every session contributing lights to this group is
+            # already fully processed (calibrated + debayered + stacked) —
+            # e.g. mosaic panels generated with stack_mode="stacked_panels",
+            # or sessions from generate_siril_megastack_json_manual. These
+            # must NOT be run through calibrate/debayer again.
+            all_pre_stacked = bool(normal_sessions) and all(
+                s.get("pre_stacked") for s in normal_sessions
+            )
+            mixed_pre_stacked = (
+                not all_pre_stacked
+                and any(s.get("pre_stacked") for s in normal_sessions)
+            )
+            if mixed_pre_stacked:
+                self.siril.log(
+                    f"[{flt}] WARNING: mixes already-stacked sessions/panels with "
+                    "raw ones — falling back to the raw pipeline for the whole "
+                    "group. Consider running pre-stacked and raw sessions as "
+                    "separate Megastacks.",
+                    LogColor.SALMON,
+                )
+
+            proc = os.path.join(cwd, f"process_{flt_safe}")
+
+            # True when the pre-stacked lights in this group actually come
+            # from mosaic panels (different pointings covering a wider
+            # field) rather than repeat sessions of the same framing —
+            # these need astrometric mosaic alignment, not a plain
+            # integration stack, or the result would be cropped down to
+            # the overlap between panels instead of the full mosaic.
+            has_mosaic_panels = any(s.get("is_mosaic") for s in normal_sessions)
+
+            if all_pre_stacked and dualband:
+                self.siril.log(
+                    f"[{flt}] WARNING: already-stacked panels/sessions in a "
+                    "dual-band filter group aren't auto-split into Ha/OIII — "
+                    "falling back to the standard pipeline. Verify the result "
+                    "manually or split the Ha/OIII stacks before combining.",
+                    LogColor.SALMON,
+                )
+
+            if all_pre_stacked and not dualband and has_mosaic_panels:
+                # Already-stacked mosaic panels: astrometric plate solving
+                # + max-framing registration, same approach as
+                # build_mosaic_from_restacked, so the final canvas covers
+                # the full mosaic footprint instead of just the overlap
+                # between panels. Requires Siril 1.4.0+.
+                stack_line = (
+                    f"stack r_light rej 3 3 -norm=addscale -maximize "
+                    f"-overlap_norm -output_norm -rgb_equal"
+                )
+                if self.feather_checkbox.isChecked():
+                    stack_line += f" -feather={self.feather_spinbox.value()}"
+                stack_line += f" -out=../stack_{flt_safe}"
+
+                lines = [
+                    f"# Dwarfium Megastack — {obj} — filter: {flt}",
+                    f"# {n_sessions} session(s) — already-stacked mosaic panels: "
+                    "astrometric mosaic alignment (plate solve + max framing), "
+                    "no calibrate/debayer",
+                    "requires 1.4.0",
+                    "setext fit",
+                    f'cd "{cwd}"',
+                    "",
+                    "# Convert already-stacked panel FITS (no debayer needed)",
+                    f"cd lights_{flt_safe}",
+                    f"convert light -out=../process_{flt_safe}",
+                    "cd ..",
+                    "",
+                    f"cd process_{flt_safe}",
+                    "# Plate-solve each panel (local Gaia DR3 catalogue) then",
+                    "# register with max framing so the canvas grows to fit",
+                    "# every panel instead of shrinking to their overlap",
+                    "seqplatesolve light -catalog=localgaia",
+                    "seqapplyreg light -framing=max",
+                    "",
+                    f"# PYTHON_CLEANUP {os.path.join(proc, 'light_*.fit')}",
+                    "",
+                    stack_line,
+                    "",
+                    f"# PYTHON_CLEANUP {os.path.join(proc, 'r_light_*.fit')}",
+                    "cd ..",
+                    "",
+                    f"# PYTHON_CLEANUP {os.path.join(cwd, f'process_{flt_safe}')}",
+                    f"# PYTHON_CLEANUP {os.path.join(cwd, f'lights_{flt_safe}')}",
+                    f"# PYTHON_CLEANUP {os.path.join(cwd, f'darks_{flt_safe}')}",
+                ]
+                ssf_path = os.path.join(cwd, f"01_stack_{flt_safe}.ssf")
+                with open(ssf_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines))
+                self.siril.log(f"Script saved: {ssf_path}", LogColor.GREEN)
+                generated_scripts.append((ssf_path, lines))
+                continue
+
+            if all_pre_stacked and not dualband and not has_mosaic_panels:
+                # Already-stacked sessions of the same framing (not a
+                # mosaic) — e.g. several nights each already stacked with
+                # stack_mode="stacked_panels". A plain integration stack is
+                # enough: just convert (no -debayer), register, and stack.
+                lines = [
+                    f"# Dwarfium Megastack — {obj} — filter: {flt}",
+                    f"# {n_sessions} session(s) — already-stacked sessions: "
+                    "convert + register + stack only (no calibrate/debayer)",
+                    "requires 1.2.0",
+                    "setext fit",
+                    f'cd "{cwd}"',
+                    "",
+                    "# Convert already-stacked light frames (no debayer needed)",
+                    f"cd lights_{flt_safe}",
+                    f"convert light -out=../process_{flt_safe}",
+                    "cd ..",
+                    "",
+                    f"cd process_{flt_safe}",
+                    "register light",
+                    "",
+                    f"# PYTHON_CLEANUP {os.path.join(proc, 'light_*.fit')}",
+                    "",
+                    f"stack r_light rej 3 3 -norm=addscale -out=../stack_{flt_safe}",
+                    "",
+                    f"# PYTHON_CLEANUP {os.path.join(proc, 'r_light_*.fit')}",
+                    "cd ..",
+                    "",
+                    f"# PYTHON_CLEANUP {os.path.join(cwd, f'process_{flt_safe}')}",
+                    f"# PYTHON_CLEANUP {os.path.join(cwd, f'lights_{flt_safe}')}",
+                    f"# PYTHON_CLEANUP {os.path.join(cwd, f'darks_{flt_safe}')}",
+                ]
+                ssf_path = os.path.join(cwd, f"01_stack_{flt_safe}.ssf")
+                with open(ssf_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines))
+                self.siril.log(f"Script saved: {ssf_path}", LogColor.GREEN)
+                generated_scripts.append((ssf_path, lines))
+                continue
 
             lines = [
                 f"# Dwarfium Megastack — {obj} — filter: {flt}",

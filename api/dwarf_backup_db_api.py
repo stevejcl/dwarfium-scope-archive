@@ -3148,13 +3148,29 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
 
 
 
-async def generate_siril_megastack_json(conn, rows, backup_location):
+async def generate_siril_megastack_json(conn, rows, backup_location, stack_mode="raw"):
     """
     Generate a siril_megastack.json from a list of session rows (multi-session).
     Sessions are grouped by filter. If all sessions share the same filter,
     single_filter=True and the script does a simple Megastack.
     If multiple filters are present, single_filter=False and the script
     will stack each filter group separately then combine (e.g. HaRGB, HOO).
+
+    stack_mode:
+        "raw"            (default) — collect raw light frames and stack
+                          them normally (darks are looked up/applied as
+                          usual). For mosaics, lights are pulled from each
+                          panel folder.
+        "stacked_panels" — skip the raw lights entirely and use the
+                          already-stacked FITS instead (e.g.
+                          stacked-16.fits): one per panel for a mosaic
+                          session, or the session's single stacked FITS for
+                          a normal (non-mosaic) session. Darks are NOT
+                          looked up in this mode since they were already
+                          applied when the file was stacked on capture.
+                          Sessions with no stacked*.fits found fall back to
+                          contributing no lights (logged as
+                          panels_missing_stack).
     """
     import os
     from api.dwarf_backup_fct import parse_exposure, get_Backup_fullpath
@@ -3228,44 +3244,84 @@ async def generate_siril_megastack_json(conn, rows, backup_location):
 
         # Collect light files
         lights = []
+        panels_missing_stack = []  # only used in stacked_panels mode
+        is_mosaic = "_MOSAIC_" in str(full_dir).upper()
         if path_accessible:
-            is_mosaic = "_MOSAIC_" in str(full_dir).upper()
-            fits_files = []
-            if is_mosaic:
-                for panel_dir in sorted(Path(full_dir).iterdir()):
-                    if panel_dir.is_dir():
-                        for ext in (".fits",".fit",".fts",".FIT",".FITS",".FTS"):
-                            fits_files.extend(panel_dir.glob(f"*{ext}"))
+            if stack_mode == "stacked_panels":
+                # Use the already-stacked FITS instead of raw lights.
+                # Darks/bias/flats were already applied when the file was
+                # stacked at capture time, so we don't need to look them
+                # up again for this session.
+                if is_mosaic:
+                    # One stacked FITS per panel sub-folder.
+                    for panel_dir in sorted(Path(full_dir).iterdir()):
+                        if panel_dir.is_dir():
+                            panel_stacked = sorted(panel_dir.glob("stacked*.fits"))
+                            if panel_stacked:
+                                lights.append(str(panel_stacked[0]))
+                            else:
+                                panels_missing_stack.append(panel_dir.name)
+                else:
+                    # Normal (single-panel) session: one stacked FITS
+                    # directly in the session folder.
+                    session_stacked = sorted(Path(full_dir).glob("stacked*.fits"))
+                    if session_stacked:
+                        lights.append(str(session_stacked[0]))
+                    else:
+                        panels_missing_stack.append(os.path.basename(full_dir))
             else:
-                for ext in (".fits",".fit",".fts",".FIT",".FITS",".FTS"):
-                    fits_files.extend(Path(full_dir).glob(f"*{ext}"))
-            for f in sorted(set(fits_files)):
-                n = f.name.lower()
-                if not any(n.startswith(x) for x in ("stacked","pp_","r_pp_","dsl_")):
-                    lights.append(str(f))
+                fits_files = []
+                if is_mosaic:
+                    for panel_dir in sorted(Path(full_dir).iterdir()):
+                        if panel_dir.is_dir():
+                            for ext in (".fits",".fit",".fts",".FIT",".FITS",".FTS"):
+                                fits_files.extend(panel_dir.glob(f"*{ext}"))
+                else:
+                    for ext in (".fits",".fit",".fts",".FIT",".FITS",".FTS"):
+                        fits_files.extend(Path(full_dir).glob(f"*{ext}"))
+                for f in sorted(set(fits_files)):
+                    n = f.name.lower()
+                    if not any(n.startswith(x) for x in ("stacked","pp_","r_pp_","dsl_")):
+                        lights.append(str(f))
 
-            # No raw lights found (e.g. a RESTACKED_ session that was
-            # already stacked at capture time and only has the final
-            # stacked*.fits result): use that stacked FITS as this
-            # session's single "light" so it still contributes to the
-            # Megastack instead of being silently dropped.
-            if not lights:
-                stacked_fits = sorted(Path(full_dir).glob("stacked*.fits"))
-                if stacked_fits:
-                    lights.append(str(stacked_fits[0]))
+                # No raw lights found (e.g. a RESTACKED_ session that was
+                # already stacked at capture time and only has the final
+                # stacked*.fits result): use that stacked FITS as this
+                # session's single "light" so it still contributes to the
+                # Megastack instead of being silently dropped.
+                if not lights:
+                    stacked_fits = sorted(Path(full_dir).glob("stacked*.fits"))
+                    if stacked_fits:
+                        lights.append(str(stacked_fits[0]))
 
-        # Find matching darks for this session
-        dark_result = find_matching_darks(
-            conn, dwarf_id,
-            parse_exposure(f"{exp_time}s") if exp_time else 0,
-            int(gain) if gain else 0,
-            binning,
-            int(min_temp) if min_temp is not None else None,
-            int(max_temp) if max_temp is not None else None,
+            if panels_missing_stack:
+                print(f"[siril_megastack_json] session={os.path.basename(session_dir or '')} "
+                      f"stack_mode=stacked_panels: no stacked*.fits found for panel(s): {panels_missing_stack}")
+
+        used_stacked_panels_mode = (
+            path_accessible and stack_mode == "stacked_panels" and bool(lights)
         )
 
+        # Find matching darks for this session — skipped when we're using
+        # the already-stacked FITS (per panel, or the session's own single
+        # stacked file), since darks/bias/flats were already applied at
+        # capture time.
+        if used_stacked_panels_mode:
+            dark_result = {"status": "not_needed", "files": [], "count": 0,
+                            "temp_match": False, "library": None}
+        else:
+            dark_result = find_matching_darks(
+                conn, dwarf_id,
+                parse_exposure(f"{exp_time}s") if exp_time else 0,
+                int(gain) if gain else 0,
+                binning,
+                int(min_temp) if min_temp is not None else None,
+                int(max_temp) if max_temp is not None else None,
+            )
+
         is_pre_stacked = (
-            str(os.path.basename(session_dir or "")).startswith("RESTACKED_")
+            used_stacked_panels_mode
+            or str(os.path.basename(session_dir or "")).startswith("RESTACKED_")
             or (path_accessible and not lights and bool(
                 list(Path(full_dir).glob("stacked*.fits")) if full_dir else []
             ))
@@ -3285,6 +3341,7 @@ async def generate_siril_megastack_json(conn, rows, backup_location):
             "ra":              float(ra) if ra else None,
             "dec":             float(dec) if dec else None,
             "pre_stacked":     is_pre_stacked,
+            "is_mosaic":       is_mosaic,
             "path_accessible": path_accessible,
             "lights":          lights,
             "darks": {
@@ -3347,6 +3404,7 @@ async def generate_siril_megastack_json(conn, rows, backup_location):
         "single_filter":   single_filter,
         "filters":         filter_names,
         "combination_hint": combination_hint,
+        "stack_mode":      stack_mode,  # "raw" or "stacked_panels" — how mosaic panel lights were collected
         "step":             None,  # updated automatically by Dwarfium_archive_selector as processing progresses
         "unreachable_sessions": unreachable_sessions,
         "sessions_by_filter": {flt: sessions for flt, sessions in groups.items()},
@@ -3472,6 +3530,7 @@ async def generate_siril_megastack_json_manual(conn, rows):
             "ra":              float(ra) if ra else None,
             "dec":             float(dec) if dec else None,
             "pre_stacked":     True,   # always — these are fully processed outputs
+            "is_mosaic":       False,  # manual sessions are single-frame stacks
             "path_accessible": path_accessible,
             "lights":          [fits_path] if fits_path and path_accessible else [],
             "darks": {

@@ -2794,6 +2794,7 @@ class ExploreApp(DbPageMixin):
 
         checked = set()
         checkboxes = {}
+        stack_mode_holder = {"value": "raw"}
 
         with ui.dialog() as dialog, ui.card().classes("p-4 gap-3 w-full max-w-screen-lg").style("max-height: 90vh;"):
             session_text = (
@@ -2837,6 +2838,23 @@ class ExploreApp(DbPageMixin):
                         ui.label(lbl).classes("break-all")
 
             ui.separator()
+
+            # Stacking mode — "stacked_panels" uses each session's (or each
+            # mosaic panel's) own already-stacked FITS instead of raw
+            # lights, skipping dark calibration.
+            with ui.column().classes("gap-1"):
+                ui.label(t("siril_megastack_mode_label")).classes("text-sm font-medium")
+                stack_mode_radio = ui.radio(
+                    {
+                        "raw": t("siril_megastack_mode_raw"),
+                        "stacked_panels": t("siril_megastack_mode_stacked_panels"),
+                    },
+                    value="raw",
+                ).props("inline")
+                stack_mode_radio.on_value_change(lambda e: stack_mode_holder.update(value=e.value))
+                ui.label(t("siril_megastack_mode_hint")).classes("text-xs text-grey")
+
+            ui.separator()
             with ui.row().classes("w-full justify-end gap-2"):
                 ui.button(t("cancel"), on_click=dialog.close).props("flat color=grey")
 
@@ -2846,7 +2864,7 @@ class ExploreApp(DbPageMixin):
                         ui.notify(t("siril_megastack_min2"), type="warning")
                         return
                     dialog.close()
-                    await self.prepare_siril_megastack_json(selected)
+                    await self.prepare_siril_megastack_json(selected, stack_mode=stack_mode_holder["value"])
 
                 ui.button(t("prepare_siril"), on_click=on_confirm).props("color=primary")
 
@@ -2929,13 +2947,18 @@ class ExploreApp(DbPageMixin):
         except Exception as e:
             ui.notify(t("save_failed", error=e), type="negative")
 
-    async def prepare_siril_megastack_json(self, selected_labels=None):
+    async def prepare_siril_megastack_json(self, selected_labels=None, stack_mode="raw"):
         """Generate siril_megastack.json from the given session labels.
 
         Args:
             selected_labels: iterable of session labels (as shown in the
                 session list) to include. Falls back to
                 self.selected_sessions_multi for backward compatibility.
+            stack_mode: "raw" (default) to stack the raw light frames of
+                mosaic panels as usual, or "stacked_panels" to use each
+                mosaic panel's own already-stacked FITS directly (no darks
+                looked up — they were already applied at capture time).
+                Non-mosaic sessions are unaffected either way.
         """
         labels = selected_labels if selected_labels is not None else self.selected_sessions_multi
         if len(labels) < 2:
@@ -2962,6 +2985,7 @@ class ExploreApp(DbPageMixin):
                 self.conn,
                 selected_rows,
                 self.current_backup_location or "",
+                stack_mode=stack_mode,
             )
         except Exception as e:
             ui.notify(t("fits_json_error", error=e), type="negative")
@@ -3003,9 +3027,11 @@ class ExploreApp(DbPageMixin):
                 n_filters  = len(data.get("filters", []))
                 hint       = data.get("combination_hint") or "—"
                 single     = data.get("single_filter", True)
+                mode_tag   = " · panels déjà stackés" if data.get("stack_mode") == "stacked_panels" else ""
                 msg = (
                     f"{n_sessions} sessions · {n_filters} filtre(s) · "
                     + (t("siril_megastack_single") if single else f"{t('siril_megastack_multi')} → {hint}")
+                    + mode_tag
                 )
                 ui.notify(f"📋 {msg}", type="info", timeout=8000)
         except Exception as e:

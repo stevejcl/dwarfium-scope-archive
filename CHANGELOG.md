@@ -1,5 +1,14 @@
 # Changelog
 
+## [V3.2.2] - 2026-07-17
+
+### Add
+    Add 'stacked_panels' mode to Siril Megastack
+    Introduce a stack_mode option (default "raw") to generate_siril_megastack_json so megastack generation can use already-stacked FITS per mosaic panel or per-session ("stacked_panels").
+    When using stacked_panels, raw lights are replaced with stacked*.fits, dark-matching is skipped, and missing panel stacks are logged.
+    Expose a radio in the Explore UI to select the mode and pass it to the API; include the chosen mode in the generated JSON and show a small tag in the notification.
+    Add translation keys (en/fr/es/de) for labels and hints.
+
 ## [V3.2.1] - 2026-07-16
 
 ### Add
