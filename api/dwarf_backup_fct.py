@@ -2159,7 +2159,7 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
             stacked_file = filename  # png candidate — keep looking for a jpg
 
     # --- Step 2 : Mosaic session with stacked but missing ZIP ---
-    if stacked_file and "_MOSAIC_" in parent_dir.upper():
+    if stacked_file and "_MOSAIC_" in dwarf_path.upper():
         has_zip = any(f.lower().endswith(".zip") for f in os.listdir(dwarf_path))
         if not has_zip:
             inserted = insert_dwarf_session_error(conn, dwarf_id, session_date, session_dir)

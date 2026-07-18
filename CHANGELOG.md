@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.2.3] - 2026-07-19
+
+### BugFix#
+    Correction for Bad variable name
+
 ## [V3.2.2] - 2026-07-17
 
 ### Add
