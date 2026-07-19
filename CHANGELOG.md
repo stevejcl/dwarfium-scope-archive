@@ -3,6 +3,7 @@
 ## [V3.2.3] - 2026-07-19
 
 ### BugFix#
+    Fix astropy, astroquery and pyvo version to resolve build exe errors
     Correction for Bad variable name
     Add await for load_selected_backupDrive
 

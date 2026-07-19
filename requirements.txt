@@ -1,6 +1,7 @@
 Pillow
-astropy
-astroquery
+astropy<8
+astroquery==0.4.11
+pyvo<1.9
 matplotlib
 pywebview
 PyInstaller
