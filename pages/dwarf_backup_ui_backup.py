@@ -525,7 +525,7 @@ class ConfigApp(DbPageMixin):
 
     async def end_analyze_drive(self, dialog):
         dialog.close()
-        self.load_selected_backupDrive(None)
+        await self.load_selected_backupDrive(None)
 
 
     async def check_integrity_drive(self):

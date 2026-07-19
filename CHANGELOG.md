@@ -4,6 +4,7 @@
 
 ### BugFix#
     Correction for Bad variable name
+    Add await for load_selected_backupDrive
 
 ## [V3.2.2] - 2026-07-17
 
