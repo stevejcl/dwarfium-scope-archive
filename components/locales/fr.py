@@ -680,7 +680,13 @@ TRANSLATIONS: dict[str, str] = {
     "copy_to_dwarf":                "📁 Copier vers le Dwarf maintenant",
     "use_as_secondary":             "🔧 Utiliser comme session secondaire",
     "mosaic_stitch_failed":         "L'assemblage de la mosaïque a échoué !",
-    "no_sessions_error2":           "Aucune session en erreur.",
+    "no_sessions_error":            "Aucune session en erreur.",
+    "mosaic_scale":                 "Échelle",
+    "mosaic_repair_back_to_dwarf":  "La mosaïque a été réparée sur le DWARF. Redémarrez l'appareil pour la faire apparaître dans l'album.",
+    "mosaic_copy_failed_notify":    '❌ Échec de la copie : {e}',
+    "mosaic_error_notify":          '❌ Erreur : {e}',
+    "mosaic_done_result_shown":     '✅ Terminé ! Image résultat affichée ci-dessous.',
+    "mosaic_no_result_produced":    "⚠️ Le processus est terminé mais aucune image résultat n'a été produite.",
 
     # ── SkyBot / Comet search ─────────────────────────────────────────────────────
     "comet_expansion_title":        "☄️ Comètes & astéroïdes proches (SkyBot / IMCCE)",

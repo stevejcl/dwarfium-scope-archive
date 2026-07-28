@@ -36,7 +36,7 @@ from api.dwarf_backup_fct import (
     hours_to_hms, deg_to_dms, is_path_local_dwarf_dir, get_total_exposure, get_total_mosaic_exposure, format_seconds_hms, 
     preprocess_dso_catalog_json, is_Restacked, get_name_object, parse_exposure, cleanup_fits_files, restore_fits_files, win_long_path
 )
-from api.dwarf_backup_fct_mosaic import (load_image, generate_panorama, create_thumbnail_mosaic, get_mosaic_panels, get_mosaic_zip, rebuild_mosaic_zip)
+from api.dwarf_backup_fct_mosaic import (load_image, generate_panorama, create_thumbnail_mosaic, get_mosaic_panels, get_mosaic_zip, rebuild_mosaic_zip, load_mosaic_info)
 from api.dwarf_backup_fct_mosaic_fits import (stitch_fits_from_transforms)
 
 from api.image_preview import set_base_folder, build_preview_url
@@ -2016,11 +2016,31 @@ class ExploreApp(DbPageMixin):
 
             with ui.column().classes('gap-1').bind_visibility_from(toggle, 'value'):
 
-                with ui.row().classes("justify-center mx-auto"):
+                with ui.row().classes("justify-center items-baseline flex-nowrap mx-auto"):
                     if "_MOSAIC_" in file_path:
                         panels = get_mosaic_panels(os.path.dirname(self.preview_image_path))
                         if len(panels) > 1:
-                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-lg m-4')
+                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-lg mt-4 mb-4 ml-4 mr-2')
+
+                            # --- Mosaic layout / scale info (from shotsInfo.json) ---
+                            mosaic_dir = os.path.dirname(self.preview_image_path)
+                            # load_mosaic_info() expects an image path shaped like
+                            # MOSAIC_DIR/Panel_x/xxx.png (it walks up 2 levels to find
+                            # shotsInfo.json), so we build a fake sub-path pointing at
+                            # our known mosaic_dir.
+                            fake_panel_image_path = os.path.join(mosaic_dir, "Panel_1", "dummy.png")
+                            mosaic_info = load_mosaic_info(fake_panel_image_path)
+                            if mosaic_info:
+                                view_cols = mosaic_info.get("viewCols")
+                                view_rows = mosaic_info.get("viewRows")
+                                view_scale_x = mosaic_info.get("viewScaleX")
+                                view_scale_y = mosaic_info.get("viewScaleY")
+                                if view_cols is not None and view_rows is not None:
+                                    layout_txt = f'🧩 {view_cols} × {view_rows}'
+                                    if view_scale_x is not None and view_scale_y is not None:
+                                        layout_txt += f'  —  {t("mosaic_scale")}: {view_scale_x} × {view_scale_y}'
+                                    ui.label(layout_txt).classes('text-sm mt-4 mb-4 ml-0')
+
                             ui.button(t("show_mosaic_gallery"), on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
 
                         panels_png = get_mosaic_panels(os.path.dirname(self.preview_image_path), img_type="png")
@@ -2796,7 +2816,7 @@ class ExploreApp(DbPageMixin):
         checkboxes = {}
         stack_mode_holder = {"value": "raw"}
 
-        with ui.dialog() as dialog, ui.card().classes("p-4 gap-3 w-full max-w-screen-lg").style("max-height: 90vh;"):
+        with ui.dialog() as dialog, ui.card().classes("p-4 gap-3 w-full max-w-screen-lg").style("min-height: 80vh;"):
             session_text = (
                 t('sessions_found') if len(labels) > 1 else t('session_found')
             ).split(',')[0]
@@ -2830,7 +2850,7 @@ class ExploreApp(DbPageMixin):
                 else:
                     checked.discard(lbl)
 
-            with ui.scroll_area().classes("w-full").style("max-height: 65vh; min-height: 300px;"):
+            with ui.scroll_area().classes("w-full").style("max-height: 65vh; min-height: 500px;"):
                 for lbl in labels:
                     with ui.row().classes("items-center gap-2 flex-nowrap"):
                         cb = ui.checkbox(on_change=lambda e, l=lbl: on_cb_change(e, l)).classes("shrink-0")

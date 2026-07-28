@@ -677,9 +677,9 @@ class MosaicApp(DbPageMixin):
     #  PROCESS LAUNCH                                                      #
     # ------------------------------------------------------------------ #
     @ui.refreshable
-    def notify_me(self, msg: str | None) -> None:
+    def notify_me(self, msg: str | None, type: str = "info") -> None:
         if msg:
-            ui.notify(msg)
+            ui.notify(msg, type=type)
 
     def cancel(self):
         self.cancel_btn.text = "Cancelling"
@@ -694,6 +694,10 @@ class MosaicApp(DbPageMixin):
         secondary = self.input_secondary_dir.value
         output    = self.input_output_dir.value
         self.cancel_btn.text = "❌ Cancel"
+
+        # Mount the refreshable notify_me container once, so later
+        # self.notify_me.refresh(...) calls have a container to update.
+        self.notify_me(None)
 
         if not primary:
             ui.notify(t("no_primary"), type="negative")
@@ -952,7 +956,7 @@ class MosaicApp(DbPageMixin):
                     print_log("✅ Copy Primary skipped.", self.log_ui)
             except Exception as e:
                 error = str(e)
-                self.notify_me.refresh(f"❌ Copy failed: {e}", type="negative")
+                self.notify_me.refresh(t("mosaic_copy_failed_notify").format(e=e), type="negative")
                 traceback.print_exc()
                 self.progress_label.set_text(t("mosaic_copy_failed"))
                 self.cancel_btn.visible = False
@@ -977,7 +981,7 @@ class MosaicApp(DbPageMixin):
                     result = await self.create_and_show_panorama(secondary, work_primary )
             except Exception as e:
                 error = str(e)
-                self.notify_me.refresh(f"❌ Error: {e}", type="negative")
+                self.notify_me.refresh(t("mosaic_error_notify").format(e=e), type="negative")
                 traceback.print_exc()
         else:
             result = None
@@ -992,7 +996,7 @@ class MosaicApp(DbPageMixin):
             self.progress_label.set_text(t("mosaic_complete"))
             self.image_ui.set_source(str(result))
             self.image_ui.force_reload()
-            self.notify_me.refresh("✅ Done! Result image displayed below.", type="positive")
+            self.notify_me.refresh(t("mosaic_done_result_shown"), type="positive")
 
             # ── Step 3: mark success and offer copy to Dwarf ───────────────
             self.repair_mgr.update_action_status(self._current_entry_id, "success")
@@ -1000,6 +1004,7 @@ class MosaicApp(DbPageMixin):
 
             # ── Step 3b: write repairInfo.json + copy missing files ────────
             import json as _json
+            done_transfer_dwarf = False
 
             if self.mode == "Repair":
                 secondary_name_repair = os.path.basename(os.path.normpath(secondary))
@@ -1043,15 +1048,19 @@ class MosaicApp(DbPageMixin):
                             copied += 1
                         except Exception as e:
                             print_log(f"⚠️ Could not copy {os.path.basename(src)} to Session_Error: {e}", self.log_ui)
-                    print_log(f"✅ {copied}/{len(files_to_copy)} file(s) copied to repaired session: {secondary_name}", self.log_ui)
-
+                    print_log(f"✅ {copied}/{len(files_to_copy)} file(s) copied to repaired session: {secondary_name_repair}", self.log_ui)
+                    if (copied > 0 and copied == len(files_to_copy)) :
+                        done_transfer_dwarf = True
                     # Update DwarfSessionsError status to REPAIRED
                     from api.dwarf_backup_db_api import update_dwarf_session_error_repaired
-                    update_dwarf_session_error_repaired(self.conn, self.DwarfId, secondary_name, primary_name)
-                    print_log(f"✅ DwarfSessionsError status updated to REPAIRED for {secondary_name}", self.log_ui)
+                    update_dwarf_session_error_repaired(self.conn, self.DwarfId, secondary_name_repair, primary_name)
+                    print_log(f"✅ DwarfSessionsError status updated to REPAIRED for {secondary_name_repair}", self.log_ui)
                     self.refresh_error_sessions()
+                    
                 else:
                     print_log(f"⚠️ Secondary session path not found on Dwarf — missing files not copied: {secondary}", self.log_ui)
+
+                    await self._offer_copy_after_process(entry)
 
             elif self.mode == "Merge":
                 # repairInfo.json in work_primary → type=MERGE so the Dwarf scan
@@ -1087,12 +1096,16 @@ class MosaicApp(DbPageMixin):
                 except Exception as e:
                     print_log(f"⚠️ Could not write repairInfo.json for Merge: {e}", self.log_ui)
 
-            await self._offer_copy_after_process(entry)
+            if not done_transfer_dwarf:
+                await self._offer_copy_after_process(entry)
+            else:
+                self.notify_me.refresh(t("mosaic_repair_back_to_dwarf"), type="positive")                
+        
         else:
             status = "failed" if error else "partial"
             self.repair_mgr.update_action_status(self._current_entry_id, status, error=error)
             self.progress_label.set_text(t("mosaic_failed_cancelled"))
-            self.notify_me.refresh("⚠️ Process finished but no result image was produced.", type="warning")
+            self.notify_me.refresh(t("mosaic_no_result_produced"), type="warning")
 
     # ------------------------------------------------------------------ #
     #  POST-PROCESS DIALOGS                                                #

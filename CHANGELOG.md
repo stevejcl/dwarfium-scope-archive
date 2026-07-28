@@ -1,5 +1,16 @@
 # Changelog
 
+## [V3.2.4] - 2026-07-28
+
+### Add
+    In Explore UI import load_mosaic_info and show mosaic layout/scale from shotsInfo.json;
+    In Mosaic page, notify that the mosaic was repaired on the Dwarf
+
+### BugFix#
+    Add mosaic-related translation keys across de/en/es/fr.
+    Adjust dialog and scroll area sizing.
+    In Mosaic page make notify_me accept a type and mount its refreshable container
+
 ## [V3.2.3] - 2026-07-19
 
 ### BugFix#

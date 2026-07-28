@@ -267,7 +267,7 @@ class TransferApp:
             # Poll progress storage every second
             self._progress_timer = ui.timer(1.0, self._poll_transfer_progress)
 
-        self.populate_dwarf_filter()
+        ui.timer(0.1,  self.populate_dwarf_filter, once=True)
         ui.timer(0.5, lambda: (self._restore_transfer_state_2(), self.notify_me(None)), once=True)
 
     def populate_dwarf_filter(self):
@@ -571,10 +571,8 @@ class TransferApp:
             if self.dwarf_ip_sta_mode:
                 self.ftp_spinner.set_visibility(True)
                 status_text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode)
-                print(f"status: {status_text}")
                 if (status_text == t("ftp_connected_dwarf2") or status_text == t("ftp_connected")) :
                     self.ftp_available = status_text
-                    print(f"ftp_available: {self.ftp_available}")
                 else:
                     self.ftp_available = False
         finally:
@@ -844,7 +842,7 @@ class TransferApp:
 
         if self.mode != "Archive" and self.transfert_mode_select.value == "FTP":
             if int(self.dwarf_type) != 1: #only D2 is not read-only
-                self.notify_me.refresh("FTP is read-only: Restore not allowed.")
+                self.notify_me.refresh(t("ftp_read_only"))
                 self.progress_label.set_text(t("ftp_readonly"))
                 return
             else:

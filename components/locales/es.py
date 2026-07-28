@@ -486,6 +486,7 @@ TRANSLATIONS: dict[str, str] = {
     "only_not_backed":              "Only show sessions not yet backed up on selected Dwarf",  # TODO
     "only_already_backed":          "Only show sessions already backed up on selected Dwarf",  # TODO
     "prepare_siril":                "📡 Prepare for Siril",  # TODO
+    "prepare_siril_megastack":      "📡 Megastack for Siril",  # TODO
     "siril_megastack_min2":         "Select at least 2 sessions for a Megastack",  # TODO
     "siril_megastack_single":       "Single filter — simple Megastack",  # TODO
     "siril_megastack_multi":        "Multi-filter combination",  # TODO
@@ -680,7 +681,13 @@ TRANSLATIONS: dict[str, str] = {
     "copy_to_dwarf":                "📁 Copy to Dwarf now",  # TODO
     "use_as_secondary":             "🔧 Use as Secondary Session",  # TODO
     "mosaic_stitch_failed":         "Mosaic stitching has failed!",  # TODO
-    "no_sessions_error2":           "No Sessions in error.",  # TODO
+    "no_sessions_error":            "No Sessions in error.",  # TODO
+    "mosaic_scale":                 "Scale",  # TODO
+    "mosaic_repair_back_to_dwarf":  "The mosaic has been repaired on the DWARF. Restart the device to make it appear in the album.",  # TODO
+    "mosaic_copy_failed_notify":    '❌ Copy failed: {e}',  # TODO
+    "mosaic_error_notify":          '❌ Error: {e}',  # TODO
+    "mosaic_done_result_shown":     '✅ Done! Result image displayed below.',  # TODO
+    "mosaic_no_result_produced":    '⚠️ Process finished but no result image was produced.',  # TODO
 
     # ── SkyBot / Comet search ─────────────────────────────────────────────────────
     "comet_expansion_title":        "☄️ Nearby comets & asteroids (SkyBot / IMCCE)",  # TODO
@@ -748,6 +755,7 @@ TRANSLATIONS: dict[str, str] = {
     "sky_search_found":             'Found {n} object(s) within {r:.1f}° of {label}',  # TODO
     "sky_search_none":              'No sessions within {r:.1f}° of {label}',  # TODO
     "sky_search_show":              'Show sessions',  # TODO
+
     # ── FITS / Restore / Mosaic notifications ─────────────────────────────────
     "fits_cleanup_running":         "Running cleanup on Dwarf Dir: '{path}'",  # TODO
     "fits_deleted_count":           '{count} FITS files on Dwarf have been deleted.',  # TODO
@@ -837,10 +845,12 @@ TRANSLATIONS: dict[str, str] = {
     "confirm_delete_backup_entries":        'This will delete all backup entries and associated DwarfData for the selected BackupDrive.\nAre you sure?', # TODO
     "confirm_delete_manual_entries":        'Confirm Delete Manual Entries', # TODO
     "confirm_delete_manual_entries_msg":    'This will delete all ManualSessionEntry rows for this backup drive.\n\nThe ManualSession records (metadata + file paths) will be kept.\nAfter deleting the backup drive and recreating it, run Analyze Drive\nto automatically re-link them from the shotsInfo.json files on disk.\n\nAre you sure you want to continue?', # TODO
+    "confirm_delete_manual_sessions_msg":   'ManualSession records contain metadata (RA/Dec, description, paths). Keep them if you want the rebuild from shotsInfo.json to restore everything. Delete them only if you want to start from scratch.', # TODO
     "confirm_delete_dark_library":          'Confirm Delete',
     "confirm_delete_dark_library_msg":      'Delete this Dark Library record?\n(Dark files on disk are NOT deleted.)', # TODO
     "confirm_delete_manual_session":        '⚠️ Are you sure you want to delete this session?\n\nThe following folder will be permanently removed:\n{folder}\n\nThe database record will also be deleted.', # TODO
     "confirm_delete_manual_session_no_dir": '⚠️ Are you sure you want to delete this session?\n\nThe database record will also be deleted.', # TODO
+
     # ── Transfer / Mosaic / MTP status messages ────────────────────────────────
     "ftp_readonly":                 'FTP is read-only.',  # TODO
     "transfer_canceled":            'Backup canceled.',  # TODO
