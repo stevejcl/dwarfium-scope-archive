@@ -7,6 +7,8 @@
     In Mosaic page, notify that the mosaic was repaired on the Dwarf
 
 ### BugFix#
+    Correction for Long Source FileName in Tranfer Page
+    Correction to Add Trace and Notification for File Transfer Error.
     Add mosaic-related translation keys across de/en/es/fr.
     Adjust dialog and scroll area sizing.
     In Mosaic page make notify_me accept a type and mount its refreshable container

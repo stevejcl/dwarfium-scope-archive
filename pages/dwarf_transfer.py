@@ -804,6 +804,7 @@ class TransferApp:
             return
 
         self.progress.value = 0
+        self.notify_me(None)
         src_dir = self.input_src_dir.value
         print(f" Backup src_dir:  {src_dir}")
         dest_dir = self.input_dest_dir.value
@@ -1793,6 +1794,7 @@ class TransferApp:
             created_dirs_cache = set()
 
             for i, (src_file, dest_file) in enumerate(all_files):
+                src_file = win_long_path(src_file)
                 dest_file = win_long_path(dest_file)
                 # Check both local flag and storage flag (set by menu "Stop & Close" button)
                 if app.storage.general.pop('transfer_cancel_requested', False):
@@ -1832,9 +1834,13 @@ class TransferApp:
                             self._set_progress('error', verified_files, total_files, error="Disk full")
                             result = False
                             break
-                        raise  # other OSError — let outer except handle it
-                    except xception as e:
-                        raise Exception(f"Error during copy: {src_file}") from e
+                        # on rattache le nom du fichier avant de relancer, sinon il disparaît du traceback
+                        raise OSError(
+                            winerror or errno,
+                            f"{ose.strerror or ose}  (src={src_file}  dst={dest_file})",
+                        ) from ose
+                    except Exception as e:
+                        raise Exception(f"Error during copy: {src_file} -> {dest_file}") from e
 
                 verified_files += 1
                 self._safe_ui(lambda p=progress: setattr(progress_bar, "value", round(p) / 100))
