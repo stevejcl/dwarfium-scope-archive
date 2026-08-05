@@ -19,6 +19,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
   - [Explore](#explore)
   - [Manual Sessions](#manual-sessions)
   - [Dark Library](#dark-library)
+  - [Siril Integration](#siril-integration)
   - [Transfer](#transfer)
   - [Storage Report](#storage-report)
   - [Sky Map](#sky-map)
@@ -40,7 +41,8 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 | **Backup & Archive** | Scan Dwarf USB / FTP drives, index sessions into a local SQLite database, copy to a backup drive |
 | **Explore** | Browse all sessions by object, filter by Dwarf or backup drive, view stacked images (JPG / PNG / FITS) |
 | **Manual Sessions** | Import stacked images from Siril, GraXpert, Stellar Studio or any other tool |
-| **Dark Library** | Manage `CALI_FRAME` folders, inventory darks by exposure / gain / binning / temperature, export a `siril_session.json` for the [Dwarfium Archive Selector](https://github.com/stevejcl/dwarfium-siril) Siril script |
+| **Dark Library** | Manage `CALI_FRAME` folders, inventory darks by exposure / gain / binning / temperature
+| **Siril Integration** | export a `siril_session.json` for the [Dwarfium Archive Selector] Siril script |
 | **Transfer** | Copy sessions between the Dwarf and a backup drive via USB or FTP, with background transfer (navigate freely while copying) |
 | **Mosaic** | Stitch multi-panel mosaics, repair partially transferred mosaics, merge panels from different sessions |
 | **Storage Report** | View session sizes by backup drive or Dwarf, identify large sessions, trigger size calculation and Clean/Restore FITS directly |
@@ -290,11 +292,99 @@ dark_exp_15.0_gain_80_bin_1_14C.fits
   binning and temperature
 - **Download Darks** — open the Transfer page pre-configured to copy
   `CALI_FRAME` from the Dwarf to the backup drive
-- **Siril integration** — a `siril_session.json` file is generated for each
-  session containing matched calibration files, ready for the
-  [Dwarfium Archive Selector](https://github.com/stevejcl/dwarfium-siril) Siril script
 
 The 🎯 badge in Explore shows the dark match status for every session.
+
+---
+ 
+## Siril Integration
+ 
+[#siril-integration](#siril-integration)
+ 
+Dwarfium Scope Archive prepares your sessions for stacking in
+[**Siril**](https://siril.org/), and can drive the process end-to-end via the
+companion **Dwarfium Archive Selector** Siril Python script made by Stephan Schmidt-Bilkenroth
+
+> An up-to-date version of the script is available in the `extern` directory
+> of this project. 
+
+Two workflows are available from **Explore**:
+ 
+| Workflow | Use case |
+| --- | --- |
+| **Prepare for Siril** (single session) | Stack one session — matches darks from the Dark Library, generates `siril_session.json` |
+| **Prepare for Siril** (multi-session) | Combine several sessions of the same target (same or different filters) into one deeper image |
+ 
+### Single session
+ 
+Selecting **Prepare for Siril** on a session copies its lights (and matching
+darks, if a 🎯 match was found in the [Dark Library](#dark-library)) to a
+processing folder and writes a `siril_session.json`. Run it through the
+Dwarfium Archive Selector script inside Siril to calibrate, register and stack.
+ 
+### Prepare for Siril (multi-session)
+ 
+Selecting several sessions of the same object and clicking **🧩 Prepare for
+Siril (Megastack)** opens a picker where you choose which sessions to include,
+then generates a `siril_megastack.json`:
+ 
+- **Single filter** → a straightforward deeper stack of all selected sessions.
+- **Multiple filters** (e.g. Duo-Band + L, or separate Ha / OIII sessions) →
+  each filter is stacked independently, then combined automatically
+  (HaRGB / HOO / LRGB, based on the filters present).
+- **Mosaic sessions** are supported: panels are pulled from each session's
+  panel sub-folders and combined into the group for that filter.
+
+#### Stacking mode
+ 
+When at least one selected session is a mosaic, you can choose how its panels
+are stacked:
+ 
+| Mode | What it does | Darks |
+| --- | --- | --- |
+| **Raw files** (default) | Collects the raw light frames from every panel and stacks them normally | Looked up from the Dark Library as usual |
+| **Already-stacked panels** | Uses each panel's own `stacked-16` FITS directly (the Dwarf already stacked it in-camera) instead of the raw sub-exposures | Skipped — already applied when the panel was stacked in-camera |
+ 
+"Already-stacked panels" also applies to regular (non-mosaic) sessions that
+only have a single `stacked-16` file of their own (e.g. a session you've
+already restacked) — in that case its one stacked FITS is used as-is.
+ 
+When the already-stacked panels come from **mosaic** sessions (different
+pointings covering a wider field), the Dwarfium Archive Selector script
+automatically switches to an **astrometric mosaic assembly**:
+ 
+1. Each panel is plate-solved (local Gaia DR3 catalogue via ASTAP/Siril).
+2. Panels are registered with **max framing**, so the final canvas grows to
+   cover every panel instead of being cropped down to their overlap.
+3. The panels are integrated with overlap normalisation, output normalisation,
+   RGB equalisation, and optional edge feathering (same feather setting used
+   by the [Mosaic](#mosaic) page).
+This mirrors the dedicated **🧩 Build Mosaic (RESTACKED)** button, which does
+the same astrometric assembly directly for `RESTACKED_` sessions (see below) —
+Megastack now applies it automatically whenever the selected sessions call
+for it.
+ 
+> Requires Siril **1.4.0+** for the astrometric mosaic path (`seqplatesolve` /
+> `seqapplyreg -framing=max`); the plain raw or already-stacked-panels paths
+> (non-mosaic) only require Siril **1.2.0+**.
+ 
+#### Mixing `RESTACKED_` sessions
+ 
+`RESTACKED_` sessions (see [Explore](#explore)) are already fully processed
+(calibrated, debayered, stacked) and are always treated as "already-stacked" —
+you don't need to change the stacking mode for them specifically.
+ 
+- If **every** other selected session for a given filter is *also*
+  already-stacked (either `RESTACKED_` or using "Already-stacked panels"
+  mode), they're all combined together in the astrometric mosaic / plain
+  integration pipeline described above.
+- If you mix a `RESTACKED_` session with sessions that still have **raw**
+  lights, the raw pipeline (calibrate + debayer) runs for that filter group —
+  and the already-processed `RESTACKED_` file is automatically **excluded**
+  from it (a warning is logged) rather than being run through calibration a
+  second time and corrupted. Process the `RESTACKED_` session separately, or
+  switch the raw sessions to "Already-stacked panels" mode too if they also
+  have per-panel stacks available.
 
 ---
 

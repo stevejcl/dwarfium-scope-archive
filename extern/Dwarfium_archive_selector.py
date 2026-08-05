@@ -3,12 +3,13 @@
 SPDX-License-Identifier: GPL-3.0-or-later
 
 Dwarfum Session Selector
-Version 0.9.0
+Version 1.0.0
 """
 
 """
 ChangeLog:
     0.9.0   initial release, beta state for gathering feedback
+    1.0.0   add Dwarfium Scope Archive scripts compatibility
 """
 
 from genericpath import exists
@@ -1098,13 +1099,16 @@ class PreprocessingInterface(QMainWindow):
             # Decide, same as _generate_megastack_scripts, whether this
             # group's pipeline will be the "pre-stacked" one (no
             # calibrate/debayer) or the "raw" one (calibrate/debayer).
-            # RESTACKED_ sessions never count towards that decision.
-            normal_sessions = [
-                s for s in sessions
-                if not str(s.get("session_name", "")).startswith("RESTACKED_")
-            ]
-            all_pre_stacked = bool(normal_sessions) and all(
-                s.get("pre_stacked") for s in normal_sessions
+            # Every session already carries an accurate pre_stacked flag
+            # (RESTACKED_ sessions always have it set to True), so this is
+            # simply "does every session in the group already have no raw
+            # lights left to calibrate". Do NOT filter RESTACKED_ out of
+            # this check first — a group made up only of RESTACKED_
+            # session(s) must count as fully pre-stacked too, otherwise it
+            # gets wrongly treated as "mixed" and every session in it is
+            # skipped.
+            all_pre_stacked = bool(sessions) and all(
+                s.get("pre_stacked") for s in sessions
             )
 
             # Lights — prefix with session index to avoid name collisions
@@ -1248,17 +1252,23 @@ class PreprocessingInterface(QMainWindow):
             n_darks   = len(dark_files_seen)
             has_darks = n_darks > 0
 
-            # True when every session contributing lights to this group is
-            # already fully processed (calibrated + debayered + stacked) —
-            # e.g. mosaic panels generated with stack_mode="stacked_panels",
-            # or sessions from generate_siril_megastack_json_manual. These
-            # must NOT be run through calibrate/debayer again.
-            all_pre_stacked = bool(normal_sessions) and all(
-                s.get("pre_stacked") for s in normal_sessions
+            # True when every session in this group is already fully
+            # processed (calibrated + debayered + stacked) — e.g. mosaic
+            # panels generated with stack_mode="stacked_panels",
+            # RESTACKED_ sessions, or sessions from
+            # generate_siril_megastack_json_manual. These must NOT be run
+            # through calibrate/debayer again.
+            # Checked across ALL sessions (not just normal_sessions): a
+            # group made up entirely of RESTACKED_ session(s) must count as
+            # fully pre-stacked too — excluding them here would make
+            # `sessions` look empty/mixed and wrongly trigger the raw
+            # pipeline (which then excludes them all with a warning).
+            all_pre_stacked = bool(sessions) and all(
+                s.get("pre_stacked") for s in sessions
             )
             mixed_pre_stacked = (
                 not all_pre_stacked
-                and any(s.get("pre_stacked") for s in normal_sessions)
+                and any(s.get("pre_stacked") for s in sessions)
             )
             if mixed_pre_stacked:
                 self.siril.log(
@@ -1277,7 +1287,7 @@ class PreprocessingInterface(QMainWindow):
             # these need astrometric mosaic alignment, not a plain
             # integration stack, or the result would be cropped down to
             # the overlap between panels instead of the full mosaic.
-            has_mosaic_panels = any(s.get("is_mosaic") for s in normal_sessions)
+            has_mosaic_panels = any(s.get("is_mosaic") for s in sessions)
 
             if all_pre_stacked and dualband:
                 self.siril.log(

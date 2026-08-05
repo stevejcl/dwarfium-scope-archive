@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.2.5] - 2026-08-05
+
+### Add
+    Add Siril integration docs and UI preview support; update selector logic
+
+    - README: add a detailed "Siril Integration" section and link to the bundled extern script.
+    - pages/dwarf_backup_ui_explore.py: make the Siril session picker async, add thumbnail preview modal, helper to resolve backup thumbnails, and improved checkbox handling (clickable labels + select/deselect).
+    - extern/Dwarfium_archive_selector.py: bump version to 1.0.0 and fix pre_stacked/mosaic detection logic so groups made entirely of RESTACKED_ sessions are treated correctly.
+
+    In Explore UI import load_mosaic_info and show mosaic layout/scale from shotsInfo.json;
+    In Mosaic page, notify that the mosaic was repaired on the Dwarf
+
 ## [V3.2.4] - 2026-07-28
 
 ### Add

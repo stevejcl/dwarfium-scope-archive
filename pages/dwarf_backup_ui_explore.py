@@ -2801,7 +2801,61 @@ class ExploreApp(DbPageMixin):
         # Now display the selected session detail
         self.file_list.set_value(label)
 
-    def open_siril_session_picker_dialog(self):
+    def _show_siril_thumbnail_preview(self, url: str, lbl: str, set_checked, initially_checked):
+        """Small popup showing a larger thumbnail image, to check the quality
+        before (un)checking the session."""
+
+        with ui.dialog() as preview_dialog:
+            with ui.card().classes("w-full p-2").style("max-width:95vw; margin:auto"):
+                ui.image(url).classes(
+                    "w-full h-auto rounded"
+                ).style("max-height:95vh; object-fit:contain")
+
+                ui.label(lbl).classes("text-center text-xs text-grey break-all mt-1")
+
+                with ui.row().classes("w-full items-center gap-4 mt-2"):
+                    with ui.row().classes("gap-4"):
+                        ignore_btn = ui.button(
+                            t("ignore"), icon="delete", on_click=lambda: apply_state(False)
+                        )
+                        select_btn = ui.button(
+                            t("select"), icon="check", on_click=lambda: apply_state(True)
+                        )
+                    ui.button(t("close"), on_click=preview_dialog.close).classes("ml-auto")
+
+                def refresh_buttons(state: bool):
+                    if state:
+                        select_btn.props("color=positive")
+                        ignore_btn.props("color=grey flat")
+                    else:
+                        ignore_btn.props("color=negative")
+                        select_btn.props("color=grey flat")
+
+                def apply_state(state: bool):
+                    set_checked(lbl, state)
+                    refresh_buttons(state)
+
+                refresh_buttons(initially_checked)
+
+        preview_dialog.open()
+    
+    def _get_thumb_url(self, lbl, idx):
+        thumb_url = None
+        row = self.all_files_rows[idx]
+        file_path = row[1]
+        backup_path = row[6]
+        try:
+            full_path = get_Backup_fullpath(
+                self.conn, backup_path, "", file_path, self.get_selected_dwarf_id()
+            )
+            if full_path and os.path.exists(full_path):
+                thumb_url = full_path
+        except Exception as ex:
+            print(f"[siril_picker] thumbnail resolution failed for {lbl}: {ex}")
+        finally:
+            return thumb_url
+
+    async def open_siril_session_picker_dialog(self):
         """Open a dialog listing all sessions for the current object, each with
         a checkbox (same label presentation as the main session list), plus
         Select all / Deselect all buttons. On confirm, generates the Siril
@@ -2844,6 +2898,14 @@ class ExploreApp(DbPageMixin):
 
             select_all_cb.on_value_change(on_select_all_change)
 
+            def set_checked(lbl, state):
+                cb = checkboxes[lbl]
+                cb.value = state          # updates the display of the box
+                if state:
+                    checked.add(lbl)
+                else:
+                    checked.discard(lbl)  # updates the status
+
             def on_cb_change(e, lbl):
                 if e.value:
                     checked.add(lbl)
@@ -2853,10 +2915,34 @@ class ExploreApp(DbPageMixin):
             with ui.scroll_area().classes("w-full").style("max-height: 65vh; min-height: 500px;"):
                 for lbl in labels:
                     with ui.row().classes("items-center gap-2 flex-nowrap"):
-                        cb = ui.checkbox(on_change=lambda e, l=lbl: on_cb_change(e, l)).classes("shrink-0")
+                        cb = ui.checkbox(on_change=lambda e, l=lbl: set_checked(l, e.value)).classes("shrink-0")
                         checkboxes[lbl] = cb
-                        ui.label(lbl).classes("break-all")
 
+                        # --- popup  ---
+                        idx = self.label_to_index.get(lbl)
+                        if idx is not None:
+                            thumb_url = await run.io_bound(self._get_thumb_url, lbl, idx)
+
+                            if thumb_url:
+                                img = ui.image(thumb_url).classes(
+                                    "w-16 h-16 shrink-0 rounded object-cover cursor-pointer"
+                                ).props("fit=cover")
+
+                                img.on(
+                                    "click",
+                                    lambda e, url=thumb_url, l=lbl: self._show_siril_thumbnail_preview(url, l, set_checked, l in checked),
+                                )
+                            else:
+                                # maintains line alignment even without preview
+                                ui.element("div").classes("w-16 h-16 shrink-0")
+
+                        # The label remains clickable for checking/unchecking.
+                        ui.label(lbl).classes("break-all cursor-pointer").on(
+                            "click", lambda e, l=lbl: set_checked(l, not checkboxes[l].value)
+                        )
+                        #ui.label(lbl).classes("break-all cursor-pointer").on(
+                        #    "click", lambda e, l=lbl, c=cb: (setattr(c, "value", not c.value))
+                        #)
             ui.separator()
 
             # Stacking mode — "stacked_panels" uses each session's (or each
@@ -2901,7 +2987,7 @@ class ExploreApp(DbPageMixin):
           megastack JSON from the sessions the user checks.
         """
         if not self.selected_path and len(self.all_files_rows) > 1:
-            self.open_siril_session_picker_dialog()
+            await self.open_siril_session_picker_dialog()
             return
 
         if self.current_session_row is None:
