@@ -1600,7 +1600,15 @@ class PreprocessingInterface(QMainWindow):
                 ]
                 # Create the alignment sub-folder now (at script generation time,
                 # in Python) so it exists before any Siril command runs.
+                # Wipe it first: if a previous attempt for this object failed
+                # or was interrupted before its "# PYTHON_CLEANUP align_tmp"
+                # ran, stale FITS files left over from that run would get
+                # swept into "link align_" alongside img_1/img_2, producing
+                # a sequence with more frames than expected and breaking
+                # "register align_" (file-not-found on align_0000N.fit).
                 align_tmp = os.path.join(cwd, "align_tmp")
+                if os.path.isdir(align_tmp):
+                    shutil.rmtree(align_tmp)
                 os.makedirs(align_tmp, exist_ok=True)
 
                 if not needs_platesolve:
