@@ -1,5 +1,10 @@
 # Changelog
 
+## [V3.2.6] - 2026-08-09
+
+### BugFix#
+    Correction Dwarf Type Detection for Wide Mode
+
 ## [V3.2.5] - 2026-08-05
 
 ### Add
