@@ -988,5 +988,6 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_date":                 "Date",
     "tonight_view_aladin":          "View in Aladin",
     "tonight_combinable_with":      "combinable in one frame with",
+    "tonight_ephemeris_unavailable": "Ephemeris data (de421.bsp) unavailable — connect to the internet once to download it, then it will be cached for offline use.",
 
 }

@@ -9,6 +9,7 @@ NEW / INCOMPLETE / WELL_COVERED.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
@@ -370,13 +371,28 @@ def get_mosaic_projects_with_panels(conn, catalog, catalog_sorted, catalog_decs)
 _ts = None
 _eph = None
 
+# Same "db" folder as DB_NAME / CATALOG_FILE / SKY_CATALOG_FILE — keeps the
+# ephemeris cached next to the rest of the app data instead of wherever the
+# process happens to be launched from (cwd), which may not be writable once
+# packaged.
+EPHEMERIS_DIR = os.path.dirname(DB_NAME) or "db"
+EPHEMERIS_FILE = "de421.bsp"
+
 
 def _get_skyfield_context():
     global _ts, _eph
     if _ts is None:
-        from skyfield.api import load
-        _ts = load.timescale()
-        _eph = load("de421.bsp")
+        from skyfield.api import Loader
+
+        os.makedirs(EPHEMERIS_DIR, exist_ok=True)
+        loader = Loader(EPHEMERIS_DIR)
+        _ts = loader.timescale()
+        try:
+            _eph = loader(EPHEMERIS_FILE)
+        except Exception as e:
+            # No cached copy and no network (e.g. at a dark-sky site with no
+            # signal): surface a clear error instead of a raw urllib traceback.
+            raise RuntimeError(t("tonight_ephemeris_unavailable")) from e
     return _ts, _eph
 
 
