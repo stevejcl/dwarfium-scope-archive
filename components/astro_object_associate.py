@@ -8,6 +8,7 @@ from astropy import units as u
 from api.dwarf_backup_db_api import get_dso_filtered, get_dso_registered, get_dso_description, get_dso_registered_by_designation
 from api.dwarf_backup_db_api import get_astro_object_description, update_astro_object_dso, update_astro_object_description
 from api.dwarf_backup_fct import preprocess_dso_catalog_json, hms_to_hours, dms_to_degrees, hours_to_hms, deg_to_dms
+from api.dso_matching import angular_sep_deg
 
 import webbrowser
 from typing import Dict
@@ -87,6 +88,30 @@ def find_nearby_objects(dwarf_data_row, only_unknown=True, radius_deg=1.5, max_r
     return objects, None
 
 def find_nearby_dso_from_json(target_ra_deg, target_dec_deg, processed_catalog, radius_deg=3.0, max_results=10):
+    results = []
+    for obj in processed_catalog:
+        try:
+            sep = angular_sep_deg(target_ra_deg, target_dec_deg, obj["ra_deg"], obj["dec_deg"])
+            if sep <= radius_deg:
+                results.append({
+                    "name": obj.get("displayName", obj.get("designation", "Unknown")),
+                    "designation": obj.get("designation", "Unknown"),
+                    "type": obj.get("type", ""),
+                    "ra": obj.get("ra"),
+                    "dec": obj.get("dec"),
+                    "ra_deg": obj.get("ra_deg"),
+                    "dec_deg": obj.get("dec_deg"),
+                    "separation_deg": round(sep, 4)
+                })
+        except Exception as e:
+            print(f"[WARN] Error comparing to {obj.get('name')}: {e}")
+            return [], "❌ No objects found nearby."
+
+    results.sort(key=lambda x: x["separation_deg"])
+    return results[:max_results], None
+
+
+def find_nearby_dso_from_json_old(target_ra_deg, target_dec_deg, processed_catalog, radius_deg=3.0, max_results=10):
 
     target_coord = SkyCoord(ra=target_ra_deg * u.deg, dec=target_dec_deg * u.deg, frame='icrs')
 

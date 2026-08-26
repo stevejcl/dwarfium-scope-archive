@@ -103,6 +103,7 @@ import pages.astro_settings
 import pages.dwarf_backup_ui_dark_library
 import pages.page_sky_map
 import pages.report
+import pages.recommend_tonight
 
 from api.image_preview import serve_preview
 from api.db_backup import shutdown_backup_db

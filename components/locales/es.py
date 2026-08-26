@@ -960,4 +960,34 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_type_mismatch":         '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please select the correct Dwarf before scanning.', # TODO
     "dwarf_type_mismatch_scan":    '⚠️ {name}: configured as {configured} but sessions detected as {detected} — please check Dwarf type in settings.', # TODO
     "dwarf_type_mismatch_calc":    '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please correct the Dwarf type before calculating.', # TODO
+
+    # Recommend Tonight Page
+    "page_recommend_tonight":       "What to shoot tonight", # TODO
+    "tonight_menu":                 "🔭 Tonight's Targets", # TODO
+    "tonight_title":                "What to shoot tonight!", # TODO
+    "tonight_location":             "Location", # TODO
+    "tonight_refresh":              "Refresh", # TODO
+    "tonight_max_magnitude":        "Max magnitude", # TODO
+    "tonight_type":                 "Type", # TODO
+    "tonight_hide_covered":         "Hide 'Well covered'", # TODO
+    "tonight_no_locations":         "No observation location configured — add one in Settings.", # TODO
+    "tonight_select_location":      "Select a location first.", # TODO
+    "tonight_no_results":           "Select a location to see recommendations.", # TODO
+    "tonight_no_results_filtered":  "No targets match the current filters.", # TODO
+    "tonight_new_targets":          "New targets", # TODO
+    "tonight_incomplete_targets":   "To complete", # TODO
+    "tonight_well_covered_targets": "Well covered", # TODO
+    "tonight_never_shot":           "Never shot", # TODO
+    "tonight_mosaic_never_shot":    "Mosaic never shot", # TODO
+    "tonight_integration_cumulated":       "{minutes:.0f} min cumulated integration ({count} session(s))", # TODO
+    "tonight_integration_cumulated_short": "{minutes:.0f} min cumulated", # TODO
+    "tonight_weakest_panel":        "Weakest panel: {minutes:.0f} min ({count} complete session(s)) — plan a new full session", # TODO
+    "tonight_weakest_panel_short":  "Weakest panel: {minutes:.0f} min", # TODO
+    "tonight_max_alt":              "Max alt", # TODO
+    "tonight_visible_for":          "Visible", # TODO
+    "tonight_best_time":            "Best time", # TODO
+    "tonight_date":                 "Date", # TODO
+    "tonight_view_aladin":          "View in Aladin", # TODO
+    "tonight_combinable_with":      "combinable in one frame with", # TODO
+
 }

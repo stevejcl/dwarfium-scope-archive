@@ -45,7 +45,64 @@ Use ⭐ to remove a session from your favourites.
 7. Use **{t:menu_report}** to identify large sessions and free up space
 ''',
     },
+    '/RecommendTonight': {
+        'title': "Tonight's Targets",
+        'content': '''
+## Purpose
 
+This page suggests deep-sky targets worth shooting tonight, based on your observation
+location, the selected date, and your session history.
+
+## Location and date
+
+- **{t:tonight_location}** — pick from your saved observation locations
+- **{t:tonight_date}** — the night to analyze (calendar icon)
+- **{t:tonight_refresh}** — recompute recommendations for the selected location/date
+
+## Categories
+
+- ✨ **{t:tonight_new_targets}** — objects you've never captured before
+- 🔧 **{t:tonight_incomplete_targets}** — objects with some sessions, but not enough
+  total integration time (or, for mosaics, at least one panel still under-exposed)
+- ✅ **{t:tonight_well_covered_targets}** — objects already well covered, hidden by default
+
+## Filters
+
+- **{t:tonight_max_magnitude}** — hides objects too faint for your equipment
+- **{t:tonight_type}** — narrows the list to nebulae, galaxies, or clusters
+- **{t:tonight_hide_covered}** — keeps the list focused on targets that still need work
+
+## How targets are ranked
+
+Targets are scored by how long and how high they stay above the horizon tonight, with
+a bonus for new or incomplete targets. A penalty applies when a target sits close to a
+bright Moon — stronger for faint nebulae, which are more affected by sky glow than
+galaxies or clusters.
+
+## Combinable targets
+
+When two catalog objects are close enough on sky to fit in a single wide-field frame,
+a note appears on the higher-scoring one.
+
+## Aladin link
+
+The 🔭 button on each card opens the target in Aladin Lite (external browser) to
+preview the field before observing.
+
+## Session matching
+
+Your integration history is matched to catalog objects using, in order: an existing
+manual link, a name match, or the nearest catalog object by coordinates. Sessions that
+don't match anything (too far from any catalog object, or missing coordinates) aren't
+counted here.
+
+## Tips
+
+- The first computation after changing location/date can take a few seconds
+  (astronomical calculation per catalog object)
+- The reference catalog can be expanded if recurring targets aren't in it yet
+''',
+    },
     '/Dwarf': {
         'title': 'Dwarf Configuration',
         'content': '''

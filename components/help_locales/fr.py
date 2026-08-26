@@ -45,7 +45,65 @@ Utilisez ⭐ pour retirer une session de vos favoris.
 7. Utiliser **{t:menu_report}** pour identifier les sessions volumineuses et libérer de l'espace
 ''',
     },
+    '/RecommendTonight': {
+        'title': 'Que shooter ce soir',
+        'content': '''
+## Objectif
 
+Cette page propose des cibles de ciel profond à shooter ce soir, en fonction de votre
+lieu d'observation, de la date choisie et de votre historique de sessions.
+
+## Sélection du lieu et de la date
+
+- **{t:tonight_location}** — choisissez parmi vos lieux d'observation enregistrés
+- **{t:tonight_date}** — date de la nuit à analyser (icône calendrier)
+- **{t:tonight_refresh}** — relance le calcul pour le lieu/date sélectionnés
+
+## Catégories
+
+- ✨ **{t:tonight_new_targets}** — objets jamais capturés jusqu'ici
+- 🔧 **{t:tonight_incomplete_targets}** — objets avec quelques sessions mais un temps
+  d'intégration cumulé insuffisant (ou, pour les mosaïques, au moins un panel encore
+  sous-exposé)
+- ✅ **{t:tonight_well_covered_targets}** — objets déjà bien couverts, masqués par défaut
+
+## Filtres
+
+- **{t:tonight_max_magnitude}** — masque les objets trop faibles pour votre équipement
+- **{t:tonight_type}** — restreint la liste aux nébuleuses, galaxies ou amas
+- **{t:tonight_hide_covered}** — garde la liste centrée sur les cibles qui ont encore besoin de temps
+
+## Classement des cibles
+
+Les cibles sont notées selon la durée et la hauteur au-dessus de l'horizon ce soir,
+avec un bonus pour les cibles nouvelles ou incomplètes. Une pénalité s'applique si la
+cible est proche d'une lune bien éclairée — plus forte pour les nébuleuses faibles,
+plus sensibles à la pollution lumineuse que les galaxies ou amas.
+
+## Cibles combinables
+
+Quand deux objets du catalogue sont assez proches dans le ciel pour tenir dans une
+seule prise wide-field, une note apparaît sur celui avec le meilleur score.
+
+## Lien Aladin
+
+Le bouton 🔭 sur chaque carte ouvre la cible dans Aladin Lite (navigateur externe)
+pour visualiser le champ avant d'observer.
+
+## Rattachement des sessions
+
+Votre historique d'intégration est rattaché aux objets du catalogue via, dans l'ordre :
+un lien manuel existant, une correspondance de nom, ou l'objet du catalogue le plus
+proche par coordonnées. Les sessions qui ne correspondent à rien (trop loin de tout
+objet du catalogue, ou sans coordonnées) ne sont pas comptées ici.
+
+## Conseils
+
+- Le premier calcul après un changement de lieu/date peut prendre quelques secondes
+  (calcul astronomique pour chaque objet du catalogue)
+- Le catalogue de référence peut être enrichi si des cibles récurrentes n'y figurent pas encore
+''',
+    },
     '/Dwarf': {
         'title': 'Configuration Dwarf',
         'content': '''

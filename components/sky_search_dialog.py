@@ -13,9 +13,6 @@ coordinates so the caller can filter sessions spatially.
 
 from __future__ import annotations
 
-import json
-import math
-from pathlib import Path
 from typing import Callable, Optional
 
 from nicegui import ui, run
@@ -23,65 +20,7 @@ from nicegui import ui, run
 from components.i18n import t
 from api.dwarf_backup_db_api import count_sessions_by_sky_position
 from api.dwarf_backup_db import DB_NAME, connect_db
-
-# ── DSO catalog ───────────────────────────────────────────────────────────────
-_dso_cache: Optional[list[dict]] = None
-
-def _load_dso_catalog() -> list[dict]:
-    """
-    Load the DSO catalog, preferring the preprocessed version (with ra_deg/dec_deg).
-    If only the raw catalog is available, convert ra/dec on the fly.
-    """
-    global _dso_cache
-    if _dso_cache is not None:
-        return _dso_cache
-
-    for path in [
-        Path("db") / "dso_sky_search_catalog.json",
-        Path("db") / "dso_catalog.json",
-    ]:
-        if not path.exists():
-            continue
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-
-        # If entries already have ra_deg/dec_deg, use as-is
-        if data and data[0].get("ra_deg") is not None:
-            _dso_cache = data
-            return _dso_cache
-
-        # Raw catalog — convert ra/dec strings to degrees on the fly
-        converted = []
-        for entry in data:
-            ra_str  = entry.get("ra",  "")
-            dec_str = entry.get("dec", "")
-            if not ra_str or not dec_str:
-                continue
-            try:
-                # Parse HMS ra (e.g. "2h 51m 10.59s") → degrees
-                parts = ra_str.replace("h", " ").replace("m", " ").replace("s", "").split()
-                h, m, s = float(parts[0]), float(parts[1]), float(parts[2])
-                ra_deg = (h + m / 60 + s / 3600) * 15.0
-
-                # Parse DMS dec (e.g. "+60° 24' 08.9"") → degrees
-                dec_clean = dec_str.replace("°", " ").replace("'", " ").replace('"', "").replace("′", " ").replace("″", " ")
-                sign = -1 if dec_clean.strip().startswith("-") else 1
-                dparts = dec_clean.strip().lstrip("+-").split()
-                d, dm, ds = float(dparts[0]), float(dparts[1]), float(dparts[2])
-                dec_deg = sign * (d + dm / 60 + ds / 3600)
-
-                e2 = dict(entry)
-                e2["ra_deg"]  = ra_deg
-                e2["dec_deg"] = dec_deg
-                converted.append(e2)
-            except Exception:
-                pass  # skip malformed entries
-
-        _dso_cache = converted
-        return _dso_cache
-
-    _dso_cache = []
-    return _dso_cache
+from api.dso_matching import load_dso_catalog
 
 
 # ── Coordinate formatting ─────────────────────────────────────────────────────
@@ -102,17 +41,6 @@ def _dec_to_dms(dec_deg: float) -> str:
     m = int(m_total)
     s = int((m_total - m) * 60)
     return f"{sign}{d}° {m:02d}′ {s:02d}″"
-
-
-# ── Angular distance (fast, no astropy needed for catalog browsing) ────────────
-def _angular_sep_deg(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
-    """Haversine angular separation in degrees."""
-    r = math.pi / 180
-    d_dec = (dec2 - dec1) * r
-    d_ra  = (ra2  - ra1)  * r
-    a = math.sin(d_dec / 2) ** 2 + \
-        math.cos(dec1 * r) * math.cos(dec2 * r) * math.sin(d_ra / 2) ** 2
-    return 2 * math.asin(math.sqrt(min(a, 1.0))) / r
 
 
 # ── Simbad query (run in thread pool to avoid blocking UI) ────────────────────
@@ -161,7 +89,7 @@ def open_sky_search_dialog(
     conn: optional DB connection — if provided, used directly instead of
           opening a new one (avoids slot-stack issues in NiceGUI).
     """
-    catalog = _load_dso_catalog()
+    catalog = load_dso_catalog()
 
     # Collect unique constellations and types for filter dropdowns
     constellations = sorted({e.get("constellation", "") for e in catalog if e.get("constellation")})

@@ -86,6 +86,8 @@ def menu(title):
             with ui.menu().classes('max-h-none'):
                 ui.menu_item(t("menu_home"), on_click=lambda: ui.navigate.to('/'))
                 ui.separator()
+                ui.menu_item(t('tonight_menu'), on_click=lambda: ui.navigate.to('/RecommendTonight')).classes('whitespace-nowrap')
+                ui.separator()
                 ui.menu_item(t("menu_dwarf_settings"), on_click=lambda: ui.navigate.to('/Dwarf')).classes('whitespace-nowrap')
                 ui.menu_item(t("menu_backup_settings"), on_click=lambda: ui.navigate.to('/Backup')).classes('whitespace-nowrap')
                 ui.menu_item(t("menu_darks"), on_click=lambda: ui.navigate.to('/DarkLibrary')).classes('whitespace-nowrap')

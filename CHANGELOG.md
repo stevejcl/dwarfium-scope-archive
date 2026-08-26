@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.2.7] - 2026-08-26
+
+### Add
+    Add a centralized DSO matching catalog helper and reuse it across the app, including the new sky-search catalog loading path.
+    This commit also introduces the new /RecommendTonight page, which scores observable deep-sky targets for a selected date/location using session history, mosaic coverage, and sky visibility.
+    
+    It includes localized help strings and menu entries, plus the skyfield dependency needed for night-altitude calculations and target ranking.
+
+### BugFix#
+    Correction for __init__.py, remove non ASCII character.
+
+
 ## [V3.2.6] - 2026-08-09
 
 ### BugFix#
