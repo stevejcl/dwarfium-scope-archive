@@ -1,4 +1,5 @@
 # Dwarfium Scope Archive
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A desktop application to **back up, organise, explore and process** your [DWARF telescope](https://www.dwarflab.com/) astrophotography sessions.
 

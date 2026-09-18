@@ -15,12 +15,13 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from nicegui import ui, run
+from nicegui import ui, run, background_tasks
 
 from components.i18n import t
 from components.menu import menu
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from api.wiki_images import get_cached_image, fetch_and_cache_image
 
 from api.dso_matching import (
     load_dso_catalog,
@@ -94,6 +95,7 @@ class TargetRecommendation:
     session_info: Optional[SessionInfo] = None
     mosaic_info: Optional[MosaicInfo] = None
     detail: str = ""
+    size: Optional[str] = None
 
 # ── Catalog matching helpers ─────────────────────────────────────────────────
 # Not every session in the DB is linked to a DsoCatalog entry via
@@ -195,6 +197,7 @@ def load_catalog(exclude_stars: bool = True) -> list[dict]:
             "dec_deg": entry["dec_deg"],
             "type": entry.get("type", "?"),
             "magnitude": entry.get("magnitude"),
+            "size": entry.get("size"),
         })
     return catalog
     
@@ -604,6 +607,7 @@ def _compute_recommendations(database: str, location: dict, target_date: date) -
             session_info=session_info,
             mosaic_info=mosaic_info,
             detail=detail,
+            size=obj.get("size"),
         ))
 
     t_visibility = time.perf_counter()
@@ -682,6 +686,10 @@ class RecommendTonightApp(DbPageMixin):
                     t("tonight_hide_covered"), value=True,
                     on_change=lambda: self.render_results.refresh(),
                 )
+                self.show_images = ui.checkbox(
+                    t("tonight_show_images"), value=False,
+                    on_change=lambda: self.render_results.refresh(),
+                ).tooltip(t("tonight_show_images_hint"))
                 self.magnitude_filter.on("blur", lambda: self.render_results.refresh())
                 self.type_filter.on_value_change(lambda: self.render_results.refresh())
 
@@ -777,16 +785,102 @@ class RecommendTonightApp(DbPageMixin):
 
     def _render_target_card(self, r: TargetRecommendation):
         with ui.card().classes("w-full mb-2"):
+            # En-tête
             with ui.row().classes("items-center justify-between w-full"):
                 ui.label(r.display_name).classes("text-lg font-semibold")
                 with ui.row().classes("items-center gap-2"):
                     ui.label(r.object_type).classes("text-gray-400 text-sm")
-                    ui.button(icon="travel_explore", on_click=lambda r=r: self._open_aladin(r)) \
-                        .props("flat dense round size=sm") \
-                        .tooltip(t("tonight_view_aladin"))
-            ui.label(r.detail).classes("text-sm text-gray-600")
-            with ui.row().classes("gap-4 text-sm flex-wrap"):
-                ui.label(f"{t('tonight_max_alt')}: {r.visibility.max_altitude_deg:.0f}°")
-                ui.label(f"{t('tonight_visible_for')}: {r.visibility.minutes_above_threshold:.0f} min")
-                ui.label(f"{t('tonight_best_time')}: {r.visibility.best_time_utc.strftime('%H:%M UTC')}")
-                ui.label(f"🌙 {r.visibility.moon_separation_deg:.0f}° / {r.visibility.moon_phase_pct:.0f}%")
+                    ui.button(
+                        icon="travel_explore",
+                        on_click=lambda r=r: self._open_aladin(r)
+                    ).props("flat dense round size=sm").tooltip(
+                        t("tonight_view_aladin")
+                    )
+            # Infos Left / image right
+            with ui.row().classes("w-full items-start gap-6"):
+                # INFORMATIONS
+                with ui.column().classes("flex-1 min-w-0 gap-2"):
+                    ui.label(r.detail).classes("text-sm text-gray-600")
+                    with ui.row().classes("gap-4 text-sm flex-wrap"):
+                        ui.label(
+                            f"{t('tonight_max_alt')}: "
+                            f"{r.visibility.max_altitude_deg:.0f}°"
+                        )
+                        ui.label(
+                            f"{t('tonight_visible_for')}: "
+                            f"{r.visibility.minutes_above_threshold:.0f} min"
+                        )
+                        ui.label(
+                            f"{t('tonight_best_time')}: "
+                            f"{r.visibility.best_time_utc.strftime('%H:%M UTC')}"
+                        )
+                        ui.label(
+                            f"🌙 {r.visibility.moon_separation_deg:.0f}° / "
+                            f"{r.visibility.moon_phase_pct:.0f}%"
+                        )
+                        if r.size:
+                            ui.label(f"{t('tonight_size')}: {r.size}")
+                    # Copyright/credit goes here, under the other info —
+                    # filled in once the image (loaded on the right) resolves.
+                    credit_holder = ui.row().classes("w-full")
+                # IMAGE
+                if self.show_images.value:
+                    with ui.column().classes("w-1/3 shrink-0"):
+                        self._render_target_image(r, credit_holder)
+
+    def _render_target_image(self, r: TargetRecommendation, credit_holder):
+        """Lazily loads and shows a Wikimedia Commons image for this target
+        on the right, with the license attribution rendered into
+        credit_holder (left info column, under the other details). Cached in
+        DsoImageCache after first fetch (opt-in via the 'show images' toggle
+        — needs network the first time per target)."""
+        catalog_id = r.catalog_id or r.display_name
+        cached = get_cached_image(self.conn, catalog_id)
+
+        image_holder = ui.column().classes("w-full gap-0 my-1")
+
+        def render_found(info: dict):
+            image_holder.clear()
+            with image_holder:
+                ui.image(info["thumb_url"]).props(
+                    "fit=contain"
+                ).classes(
+                    "w-full h-48 rounded"
+                )
+            credit_holder.clear()
+            with credit_holder:
+                credit_bits = [b for b in (info.get("artist"), info.get("license_short_name")) if b]
+                credit = " — ".join(credit_bits) or t("tonight_image_credit_unknown")
+                with ui.link(target=info["file_page_url"], new_tab=True):
+                    ui.label(f"© {credit}").classes("text-xs text-gray-400")
+
+        if cached and cached["status"] == "found":
+            render_found(cached)
+            return
+        if cached and cached["status"] == "not_found":
+            return  # known no-image target, don't re-fetch every render
+
+        with image_holder:
+            ui.spinner(size="sm")
+
+        async def _load():
+            # Each card fetches on its own thread (run.io_bound), so use a
+            # dedicated short-lived connection here rather than sharing
+            # self.conn across threads — sqlite3 connections aren't safe
+            # for concurrent use even with check_same_thread=False.
+            info = await run.io_bound(
+                self._fetch_image_isolated, catalog_id, r.display_name
+            )
+            if info:
+                render_found(info)
+            else:
+                image_holder.clear()
+
+        background_tasks.create(_load())
+
+    def _fetch_image_isolated(self, catalog_id: str, display_name: str):
+        conn = connect_db(self.database)
+        try:
+            return fetch_and_cache_image(conn, catalog_id, display_name)
+        finally:
+            close_db(conn)

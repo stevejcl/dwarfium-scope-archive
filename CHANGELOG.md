@@ -1,5 +1,16 @@
 # Changelog
 
+## [V3.2.8] - 2026-09-19
+
+### Add
+    Add a new api/wiki_images.py to lookup representative free-licensed images from Wikimedia Commons (with license/artist metadata), and cache outcomes in DsoImageCache.
+    Integrates into pages/recommend_tonight.py: adds a 'Show images' toggle, lazy/background fetching per card, credit rendering, and size display.
+    Adds translation keys (en/de/es/fr)
+    Add a README license badge, plus an MIT LICENSE file.
+
+### BugFix#
+    Misc: small UI improvements (notification timeouts/close buttons), debug flags for mismatch dialogs to ignore the notification, and async adjustments in config/report pages.
+
 ## [V3.2.7] - 2026-08-26
 
 ### Add

@@ -959,6 +959,8 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_type_mismatch":         '⚠️ {name} : configuré comme {configured} mais sessions détectées comme {detected}. Veuillez sélectionner le bon Dwarf avant de scanner.',
     "dwarf_type_mismatch_scan":    '⚠️ {name} : configuré comme {configured} mais sessions détectées comme {detected} — vérifiez le type de Dwarf dans les paramètres.',
     "dwarf_type_mismatch_calc":    '⚠️ {name} : configuré comme {configured} mais sessions détectées comme {detected}. Corrigez le type de Dwarf avant de calculer.',
+    "mismatch_ignore_warning":      'The warning above may be incorrect. Do you want to continue anyway?',
+    "yes_continue":                 'Yes, continue anyway',
 
     # Recommend Tonight Page
     "page_recommend_tonight":       "Que shooter ce soir",
@@ -989,5 +991,9 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_view_aladin":          "Voir dans Aladin",
     "tonight_combinable_with":      "combinable en une seule prise avec",
     "tonight_ephemeris_unavailable": "Données d'éphémérides (de421.bsp) indisponibles — connectez-vous une fois à internet pour les télécharger, elles seront ensuite mises en cache pour un usage hors ligne.",
+    "tonight_show_images":          "Afficher les images",
+    "tonight_show_images_hint":     "Récupère une photo de chaque cible depuis Wikimedia Commons (nécessite internet la première fois pour chaque cible, puis mise en cache). Seules les images sous licence libre sont utilisées, avec le crédit affiché sous chaque photo.",
+    "tonight_image_credit_unknown": "Wikimedia Commons",
+    "tonight_size":                 "Taille",
 
 }

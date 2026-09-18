@@ -960,6 +960,8 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_type_mismatch":         '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please select the correct Dwarf before scanning.', # TODO
     "dwarf_type_mismatch_scan":    '⚠️ {name}: configured as {configured} but sessions detected as {detected} — please check Dwarf type in settings.', # TODO
     "dwarf_type_mismatch_calc":    '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please correct the Dwarf type before calculating.', # TODO
+    "mismatch_ignore_warning":      'The warning above may be incorrect. Do you want to continue anyway?', # TODO
+    "yes_continue":                 'Yes, continue anyway', # TODO
 
     # Recommend Tonight Page
     "page_recommend_tonight":       "What to shoot tonight", # TODO
@@ -989,5 +991,10 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_date":                 "Date", # TODO
     "tonight_view_aladin":          "View in Aladin", # TODO
     "tonight_combinable_with":      "combinable in one frame with", # TODO
+    "tonight_ephemeris_unavailable": "Ephemeris data (de421.bsp) unavailable — connect to the internet once to download it, then it will be cached for offline use.", # TODO
+    "tonight_show_images":          "Show images", # TODO
+    "tonight_show_images_hint":     "Fetches a photo of each target from Wikimedia Commons (needs internet the first time per target; cached afterwards). Only free-licensed images are used, with credit shown below each photo.", # TODO
+    "tonight_image_credit_unknown": "Wikimedia Commons", # TODO
+    "tonight_size":                 "Size", # TODO
 
 }

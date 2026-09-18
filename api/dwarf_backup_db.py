@@ -310,6 +310,21 @@ def create_quality_table_sql():
         )
         """
 
+def create_dso_image_cache_table_sql():
+    return """
+        CREATE TABLE IF NOT EXISTS DsoImageCache (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            catalog_id         TEXT NOT NULL UNIQUE,
+            status             TEXT NOT NULL,
+            thumb_url          TEXT,
+            file_page_url      TEXT,
+            artist             TEXT,
+            license_short_name TEXT,
+            credit             TEXT,
+            fetched_at         TEXT NOT NULL
+        )
+        """
+
 def create_session_wcs_table_sql():
     return """
         CREATE TABLE IF NOT EXISTS SessionWCS (
@@ -355,6 +370,7 @@ SCHEMAS = {
     "SkyBotResult": create_skybot_table_sql,
     "SessionQuality": create_quality_table_sql,
     "SessionWCS": create_session_wcs_table_sql,
+    "DsoImageCache": create_dso_image_cache_table_sql,
 }
 
 # Sanity check — catch wrong mappings at import time, not at runtime
@@ -402,7 +418,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 14
+CURRENT_DB_VERSION = 15
 
 def init_db(conn):
     try:
@@ -530,6 +546,8 @@ def init_db(conn):
             CREATE UNIQUE INDEX IF NOT EXISTS idx_sessionwcs_entry
             ON SessionWCS(entry_type, entry_id, panel_num)
         """)
+
+        cursor.execute(create_dso_image_cache_table_sql())
 
         # Stamp current version so future startups skip migrations
         if _is_fresh:
@@ -971,6 +989,18 @@ def migrate_v14(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v14: {e}")
 
+def migrate_v15(conn):
+    try:
+        print("Migrating Database to V15...")
+        # Cache table for Wikimedia Commons DSO images (Recommend Tonight
+        # target thumbnails). CREATE TABLE IF NOT EXISTS so this is safe
+        # even for DBs that already got it via init_db's SCHEMAS pass.
+        conn.execute(create_dso_image_cache_table_sql())
+        conn.commit()
+        print("Migration v15 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v15: {e}")
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -986,6 +1016,7 @@ MIGRATIONS = {
     12: migrate_v12,
     13: migrate_v13,
     14: migrate_v14,
+    15: migrate_v15,
     # Add more later...
 }
 

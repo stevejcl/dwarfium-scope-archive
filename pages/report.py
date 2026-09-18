@@ -7,6 +7,12 @@ sorted by size or by date, with links back to Explore.
 Route: /Report
 """
 
+# Set to True to test the mismatch confirmation dialog without needing a
+# real Dwarf of the wrong type connected — injects a fake (but complete)
+# mismatch dict only when the real check found nothing. Flip back to False
+# before committing.
+DEBUG_FORCE_MISMATCH = False
+
 import os
 import urllib.parse
 from nicegui import ui, app, run, background_tasks
@@ -514,7 +520,7 @@ class ReportApp(DbPageMixin):
     # ------------------------------------------------------------------
     # Folder size scan
     # ------------------------------------------------------------------
-    def _check_type_mismatch(self):
+    async def _check_type_mismatch(self):
         # Check type mismatch before scanning
         if self._drive_type == "dwarf" and self._dwarf_id:
             from api.dwarf_backup_fct import check_dwarf_type_mismatch
@@ -527,18 +533,32 @@ class ReportApp(DbPageMixin):
             print(f"Mismatch Test - loc: {loc}")
             if loc:
                 mismatch = check_dwarf_type_mismatch(self.conn, self._dwarf_id, dwarf_name, dwarf_type, loc)
+                if DEBUG_FORCE_MISMATCH and not mismatch:
+                    mismatch = {
+                        "configured": dwarf_type, "detected": "Dwarf 3",
+                        "name": dwarf_name, "votes": {},
+                    }
                 if mismatch:
                     ui.notify(
                         t("dwarf_type_mismatch_calc").format(name=mismatch['name'], configured=mismatch['configured'], detected=mismatch['detected']),
-                        type="warning", timeout=0,
+                        type="warning", timeout=8000, close_button=True,
                     )
-                    return False
+                    # Display confirmation dialog
+                    with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
+                        ui.label(t('mismatch_ignore_warning'))
+                        with ui.row():
+                            ui.button(t("yes_continue"), on_click=lambda: dialog.submit('Yes'))
+                            ui.button(t("no"), on_click=lambda: dialog.submit('No'))
+            
+                    result = await dialog
+                    if result == 'No':
+                        return False
         return True
 
-    def _start_dwarf_size_scan(self):
+    async def _start_dwarf_size_scan(self):
         if self._scan_running:
             return
-        if not self._check_type_mismatch():
+        if not await self._check_type_mismatch():
             return
         self._scan_running = True
         self._calc_dwarf_btn.props("loading")
@@ -613,10 +633,10 @@ class ReportApp(DbPageMixin):
         self._calc_progress.set_text(t("report_calc_running"))
         background_tasks.create(self._run_size_scan(force=True))
 
-    def _start_dwarf_size_scan_force(self):
+    async def _start_dwarf_size_scan_force(self):
         if self._scan_running:
             return
-        if not self._check_type_mismatch():
+        if not await self._check_type_mismatch():
             return
         self._scan_running = True
         self._calc_dwarf_force_btn.props("loading")

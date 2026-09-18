@@ -13,6 +13,12 @@ from api.dwarf_backup_fct_ftp import check_dwarf_type_mismatch_ftp
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
 
 from api.dwarf_backup_mtp_handler import MTPManager 
+
+# Set to True to test the mismatch confirmation dialog without needing a
+# real Dwarf of the wrong type connected — injects a fake (but complete)
+# mismatch dict only when the real check found nothing. Flip back to False
+# before committing.
+DEBUG_FORCE_MISMATCH = False
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
 from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entries_and_dwarf_data, del_dwarf
@@ -48,6 +54,7 @@ class ConfigApp(DbPageMixin):
             4: "Dwarf Mini"
         }
         self.dwarf_status = None
+        self._last_declined_status = None
         self.show_info_ftp = True
         self.dwarf_mtp_id = None
         self.mtp_select = {}
@@ -207,6 +214,7 @@ class ConfigApp(DbPageMixin):
     def refresh_dwarf_list(self):
         """Refresh the list of dwarfs and update the selection dropdown."""
         self.dwarf_status = None
+        self._last_declined_status = None
         self.ftp_spinner.set_visibility(False)
         self.ftp_status_label.text = ""
         self.usb_status_label.text = ""
@@ -247,7 +255,7 @@ class ConfigApp(DbPageMixin):
         # Update the dictionary mapping
         self.dwarf_name_to_id = {f"{id} - {name}": id for id, name in self.dwarfs}
 
-    async def check_status_dwarf(self):
+    async def check_status_dwarf(self, force_ftp: bool = False):
         self.check_dir_dwarf()
         if not self.dwarf_ip_sta_mode.value:
             return
@@ -261,7 +269,7 @@ class ConfigApp(DbPageMixin):
             if current_ip == self.dwarf_ip_sta_mode.value:
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
-                if not self.dwarf_status and status_text and "✅" in status_text:
+                if (not self.dwarf_status or force_ftp) and status_text and "✅" in status_text:
                     self.dwarf_status = "FTP"
 
     async def load_selected_dwarf(self, event):
@@ -569,21 +577,48 @@ class ConfigApp(DbPageMixin):
 
         # Check Dwarf type before opening dialog — use USB or FTP path
         selected_type = self.dwarf_type_var.value
-        if self.dwarf_status == "USB":
-            mismatch = await run.io_bound(check_dwarf_type_mismatch, self.conn, self.dwarf_id, self.dwarf_name.value, selected_type, dwarf_location)
-        else:
-            mismatch = await run.io_bound(check_dwarf_type_mismatch_ftp, self.conn, self.dwarf_id, self.dwarf_name.value, selected_type, ftp, dwarf_location)
-        if mismatch:
-            ui.notify(
-                t("dwarf_type_mismatch").format(name=mismatch['name'], configured=selected_type, detected=mismatch['detected']),
-                type="warning", timeout=0,
-            )
+        try:
+            if DEBUG_FORCE_MISMATCH:
+                # Skip the real (network/USB) check entirely while testing
+                # the dialog — no point risking an FTP hang for a UI test.
+                mismatch = {
+                    "configured": selected_type, "detected": "Dwarf 3",
+                    "name": self.dwarf_name.value, "votes": {},
+                }
+            elif self.dwarf_status == "USB":
+                mismatch = await run.io_bound(check_dwarf_type_mismatch, self.conn, self.dwarf_id, self.dwarf_name.value, selected_type, dwarf_location)
+            else:
+                mismatch = await run.io_bound(check_dwarf_type_mismatch_ftp, self.conn, self.dwarf_id, self.dwarf_name.value, selected_type, ftp, dwarf_location)
+            if mismatch:
+                ui.notify(
+                    t("dwarf_type_mismatch").format(name=mismatch['name'], configured=selected_type, detected=mismatch['detected']),
+                    type="warning", timeout=8000, close_button=True,
+                )
+                # Display confirmation dialog
+                with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
+                    ui.label(t('mismatch_ignore_warning'))
+                    with ui.row():
+                        ui.button(t("yes_continue"), on_click=lambda: dialog.submit('Yes'))
+                        ui.button(t("no"), on_click=lambda: dialog.submit('No'))
+                
+                result = await dialog
+                if result == 'No':
+                    if ftp:
+                        try:
+                            ftp.quit()
+                        except Exception:
+                            pass
+                    return
+        except Exception:
+            # Any failure in the mismatch check/dialog must not leave the FTP
+            # socket dangling — a stuck connection here is what hung the app
+            # (and the terminal) last time.
             if ftp:
                 try:
                     ftp.quit()
                 except Exception:
                     pass
-            return
+            raise
 
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):
@@ -691,7 +726,7 @@ class ConfigApp(DbPageMixin):
                             for _, info in mismatches.items():
                                 ui.notify(
                                     t("dwarf_type_mismatch_scan").format(name=info['name'], configured=info['configured'], detected=info['detected']),
-                                    type="warning", timeout=0,
+                                    type="warning", timeout=8000, close_button=True,
                                 )
                     except Exception as _e:
                         print(f"[type detect] {_e}")
