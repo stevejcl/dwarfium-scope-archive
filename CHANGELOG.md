@@ -1,5 +1,9 @@
 # Changelog
 
+## [V3.2.8] - 2026-09-28
+### BugFix#
+    correction for FTP Transfert crash
+
 ## [V3.2.8] - 2026-09-19
 
 ### Add

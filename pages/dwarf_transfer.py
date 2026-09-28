@@ -1794,7 +1794,7 @@ class TransferApp:
             created_dirs_cache = set()
 
             for i, (src_file, dest_file) in enumerate(all_files):
-                src_file = win_long_path(src_file)
+                #src_file = win_long_path(src_file) ! Error FTP mode
                 dest_file = win_long_path(dest_file)
                 # Check both local flag and storage flag (set by menu "Stop & Close" button)
                 if app.storage.general.pop('transfer_cancel_requested', False):
