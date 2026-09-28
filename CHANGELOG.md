@@ -1,6 +1,6 @@
 # Changelog
 
-## [V3.2.8] - 2026-09-28
+## [V3.2.9] - 2026-09-28
 ### BugFix#
     correction for FTP Transfert crash
 
