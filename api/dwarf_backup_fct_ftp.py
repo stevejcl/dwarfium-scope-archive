@@ -7,7 +7,11 @@ from ftplib import FTP, error_perm
 # Encoding changed to UTF-8
 from contextlib import contextmanager
 
-from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5, detect_dwarf_device, normalize_dwarf_name
+import io
+import json
+
+from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5, normalize_dwarf_name
+from api.dwarf_backup_fct import identify_dwarf_device, is_mosaic_root, dwarf_type_vote_result, STACKED_JPG_NAMES
 
 DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
 DWARF3_FTP_PATH = "/Astronomy"
@@ -223,44 +227,76 @@ def files_are_different(dst, size):
 
 # --- Check Dwarf Type ---
 
-def check_dwarf_type_mismatch_ftp(conn, dwarf_id: int, dwarf_name: str, dwarf_type: int, ftp, scan_root: str, max_samples: int = 5) -> dict | None:
+def check_dwarf_type_mismatch_ftp(conn, dwarf_id: int, dwarf_name: str, dwarf_type: str, ftp, scan_root: str, max_samples: int = 5) -> dict | None:
     """
     FTP version of check_dwarf_type_mismatch.
-    Downloads up to max_samples stacked JPEGs via FTP to detect the Dwarf type.
+    - The FTP tree tells D2 from D3/Mini: only the DWARF 2 exposes /DWARF_II/Astronomy.
+      The server is probed directly because scan_root is derived from the
+      configured type, which is precisely what may be wrong.
+    - Otherwise up to max_samples stacked JPEGs (+ shotsInfo.json) are downloaded
+      to vote between DWARF 3 and Mini (mosaic roots skipped, panels used instead).
     Returns a dict {configured, detected, name, votes} if mismatch, None if OK or unknown.
     """
 
     configured = dwarf_type
+
+    try:
+        if DWARF2_FTP_PATH in ftp.nlst("/DWARF_II"):
+            return dwarf_type_vote_result({"Dwarf2": 1}, configured, dwarf_name)
+    except ftplib.all_errors:
+        pass  # no /DWARF_II folder → DWARF 3 or Mini
+    scan_root = DWARF3_FTP_PATH
+
     votes: dict = {}
     count = 0
 
+    def _read_json(entry):
+        buf = io.BytesIO()
+        try:
+            ftp.retrbinary(f"RETR {entry}", buf.write)
+            return json.loads(buf.getvalue().decode("utf-8"))
+        except Exception:
+            return None
+
     def _ftp_walk(path, depth=0):
         nonlocal count
-        if count >= max_samples or depth > 3:
+        if count >= max_samples or depth > 4:
             return
         try:
             entries = ftp.nlst(path)
         except Exception:
             return
+        # Some servers return bare names only → rebuild the full path
+        items = {}
         for entry in entries:
-            if count >= max_samples:
-                return
-            name_part = entry.split("/")[-1].split("\\")[-1]
-            if name_part.lower() in ("stacked.jpg", "stacked.jpeg"):
+            name_part = entry.replace("\\", "/").rstrip("/").split("/")[-1]
+            items[name_part] = entry if "/" in entry else f"{path.rstrip('/')}/{entry}"
+        subdirs = sorted(n for n in items if "." not in n)
+
+        if not is_mosaic_root(path.rstrip("/").split("/")[-1], bool(subdirs)):
+            stacked = next((items[n] for n in items if n.lower() in STACKED_JPG_NAMES), None)
+            if stacked:
+                tmp_path = None
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                        ftp.retrbinary(f"RETR {entry}", tmp.write)
                         tmp_path = tmp.name
-                    detected = normalize_dwarf_name(detect_dwarf_device(tmp_path))
-                    os.remove(tmp_path)
-                    print(detected)
+                        ftp.retrbinary(f"RETR {stacked}", tmp.write)
+                    json_data = _read_json(items["shotsInfo.json"]) if "shotsInfo.json" in items else None
+                    detected = identify_dwarf_device(tmp_path, json_data, source_path=stacked)
                     if detected:
+                        detected = normalize_dwarf_name(detected)
                         votes[detected] = votes.get(detected, 0) + 1
                         count += 1
                 except Exception as e:
                     print(f"[check_dwarf_type_ftp] {e}")
-            elif "." not in name_part:
-                _ftp_walk(entry, depth + 1)
+                finally:
+                    if tmp_path and os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+
+        for n in subdirs:  # sessions, or panels of a mosaic
+            if count >= max_samples:
+                return
+            _ftp_walk(items[n], depth + 1)
 
     try:
         _ftp_walk(scan_root)
@@ -268,13 +304,7 @@ def check_dwarf_type_mismatch_ftp(conn, dwarf_id: int, dwarf_name: str, dwarf_ty
         print(f"[check_dwarf_type_ftp] walk error: {e}")
         return None
 
-    if not votes:
-        return None
-
-    best = max(votes, key=votes.get)
-    if best != configured:
-        return {"configured": configured, "detected": best, "name": dwarf_name, "votes": votes}
-    return None
+    return dwarf_type_vote_result(votes, configured, dwarf_name)
 
 #################################
 # parse shotsInfo.json functions
