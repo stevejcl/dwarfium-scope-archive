@@ -165,7 +165,8 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
     image_path_safe = image_path
     if ' ' in str(image_path) or len(str(image_path)) > 200:
         suffix = Path(image_path).suffix
-        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, dir=tempfile.gettempdir())
+        # 'astap_tmp_' prefix: removed with its .ini/.wcs/.log by astrometry_scan._cleanup_temp
+        tmp = tempfile.NamedTemporaryFile(prefix="astap_tmp_", suffix=suffix, delete=False, dir=tempfile.gettempdir())
         tmp.close()
         import shutil as _shutil
         _shutil.copy2(image_path, tmp.name)

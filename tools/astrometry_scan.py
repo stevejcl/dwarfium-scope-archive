@@ -289,7 +289,7 @@ def crop_center(fits_path: Path, margin: float = 0.25) -> Path:
         if 'CRPIX1' in hdr: hdr['CRPIX1'] = float(hdr['CRPIX1']) - x0
         if 'CRPIX2' in hdr: hdr['CRPIX2'] = float(hdr['CRPIX2']) - y0
 
-        tmp_path = Path(tempfile.gettempdir()) / (fits_path.stem + '_crop_tmp.fits')
+        tmp_path = _temp_fits_path(fits_path, '_crop_tmp')
         _fits.writeto(str(tmp_path), cropped, hdr, overwrite=True)
         print(f"  [crop] {w}x{h} -> {x1-x0}x{y1-y0} (margin={int(margin*100)}%)")
         return tmp_path
@@ -297,6 +297,16 @@ def crop_center(fits_path: Path, margin: float = 0.25) -> Path:
     except Exception as e:
         print(f"  [crop] Error: {e}")
         return fits_path
+
+
+def _temp_fits_path(fits_path: Path, tag: str) -> Path:
+    """
+    Temp file for a solver input: <stem><tag>.fits in the temp folder.
+    Spaces are replaced (object names like 'HD 199579'), otherwise ASTAP
+    makes yet another temp copy of the file that is never cleaned up.
+    """
+    stem = re.sub(r"\s+", "_", fits_path.stem)
+    return Path(tempfile.gettempdir()) / f"{stem}{tag}.fits"
 
 
 def extract_mono_fits(fits_path: Path) -> Path | None:
@@ -323,7 +333,7 @@ def extract_mono_fits(fits_path: Path) -> Path | None:
         if 'NAXIS3' in hdr:
             del hdr['NAXIS3']
 
-        tmp_path = Path(tempfile.gettempdir()) / (fits_path.stem + '_mono_tmp.fits')
+        tmp_path = _temp_fits_path(fits_path, '_mono_tmp')
         _fits.writeto(str(tmp_path), mono, hdr, overwrite=True)
         return tmp_path
 
@@ -333,9 +343,10 @@ def extract_mono_fits(fits_path: Path) -> Path | None:
 
 
 def _cleanup_temp(image_path: Path | None):
-    """Remove temp mono/crop FITS files from tempdir and session folder."""
+    """Remove temp mono/crop FITS files (and ASTAP results) from tempdir and session folder."""
     tmp_dir = Path(tempfile.gettempdir())
-    for pattern in ['*_mono_tmp.fits', '*_crop_tmp.fits']:
+    # *_tmp.* also removes the .ini/.wcs/.log ASTAP writes next to its input
+    for pattern in ['*_mono_tmp.*', '*_crop_tmp.*', 'astap_tmp_*']:
         for tmp in tmp_dir.glob(pattern):
             try:
                 tmp.unlink()
