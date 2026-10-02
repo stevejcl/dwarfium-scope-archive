@@ -223,6 +223,8 @@ TRANSLATIONS: dict[str, str] = {
     "nova_no_key":                  "⚠️ Pas de clé API Astrométrie — résolution NOVA ignorée.",
     "nova_go_settings":             "Allez dans les paramètres pour enregistrer une clé NOVA_ASTRO_API.",
     "solve_not_found":              "❌ solve-field introuvable.",
+    "solve_field_use_astap":        "🪟 solve-field n'existe pas en natif sous Windows/macOS : utilisez ASTAP ci-dessus pour la résolution locale.",
+    "solve_field_no_terminal":      "Aucun terminal trouvé. Lancez cette commande dans un terminal : {cmd}",
     "solve_available":              "✅ solve-field est disponible sur ce système.",
     "install_not_supported":        "Installation automatique non supportée pour ce système.",
     "dwarf_config":                 "🔭 Configuration du répertoire parent local Dwarf",

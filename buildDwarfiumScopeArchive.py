@@ -113,6 +113,11 @@ for locale_file in Path("components/help_locales").glob("*.py"):
     print(f"Copying {locale_file} to {dest}")
     shutil.copy2(locale_file, dest)
 
+# Copy the Linux astrometry.net installer (Settings → "Install solve-field locally")
+DIST_ASTROMETRY_DIR = DIST_DIR / "extern" / "linux" / "astrometry"
+DIST_ASTROMETRY_DIR.mkdir(parents=True, exist_ok=True)
+shutil.copy2("extern/linux/astrometry/install_astrometry.sh", DIST_ASTROMETRY_DIR / "install_astrometry.sh")
+
 # Copy assets/music/ into dist/assets/music/
 DIST_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 for music_file in Path("assets/music").glob("*"):

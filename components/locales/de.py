@@ -224,6 +224,8 @@ TRANSLATIONS: dict[str, str] = {
     "nova_no_key":                  "⚠️ No Astrometry API key — NOVA astrometry resolution skipped.",  # TODO
     "nova_go_settings":             "Go to Settings to register a NOVA_ASTRO_API key.",  # TODO
     "solve_not_found":              "❌ solve-field not found.",  # TODO
+    "solve_field_use_astap":        "🪟 solve-field has no native Windows/macOS version: use ASTAP above for local solving.",  # TODO
+    "solve_field_no_terminal":      "No terminal found. Run this command in a terminal: {cmd}",  # TODO
     "solve_available":              "✅ solve-field is not available on this system.",  # TODO
     "install_not_supported":        "Automatic installation not supported for this system.",  # TODO
     "dwarf_config":                 "🔭 Configuration of Dwarf Local Parent directory",  # TODO

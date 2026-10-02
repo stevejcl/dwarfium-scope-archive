@@ -5,6 +5,7 @@ import subprocess
 import os
 import re
 import socket
+from pathlib import Path
 from components.i18n import t, set_language, get_language, AVAILABLE_LANGUAGES
 from tools.db_report_pdf import generate_report
 
@@ -282,7 +283,11 @@ class SettingsApp(DbPageMixin):
                     ui.label(t("solve_available")).classes("text-green-600")
                 else:
                     ui.label(t("solve_not_found")).classes("text-gray-400 text-sm")
-                    ui.button(t("nova_install"), on_click=self.install_local_astrometry)
+                    if platform.system() == "Linux":
+                        ui.button(t("nova_install"), on_click=self.install_local_astrometry)
+                    else:
+                        # No native solve-field on Windows/macOS — ASTAP is the local solver there
+                        ui.label(t("solve_field_use_astap")).classes("text-gray-400 text-sm")
 
             # ── FFmpeg status ─────────────────────────────────────────────────────────
             with ui.card().classes("w-full"):
@@ -347,11 +352,23 @@ class SettingsApp(DbPageMixin):
         return shutil.which("solve-field") is not None
 
     def install_local_astrometry(self):
-        system = platform.system()
-        if system == "Windows":
-            # Exemple : exécution d’un installeur dans extern/windows/
-            subprocess.Popen(["extern\\windows\\astrometry\\install_astrometry.bat"], shell=True)
-        elif system == "Linux":
-            subprocess.Popen(["bash", "extern/linux/astrometry/install_astrometry.sh"])
-        else:
-            ui.notify(t("auto_install_unsupported"), type="warning")
+        """Run the Linux installer in a terminal so that sudo can ask for the password."""
+        import sys
+        base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+        script = base / "extern" / "linux" / "astrometry" / "install_astrometry.sh"
+        if not script.exists():
+            ui.notify(f"{t('auto_install_unsupported')} ({script})", type="warning")
+            return
+        terminals = [
+            ("x-terminal-emulator", ["-e"]),
+            ("gnome-terminal", ["--"]),
+            ("konsole", ["-e"]),
+            ("xfce4-terminal", ["-x"]),
+            ("xterm", ["-e"]),
+        ]
+        for term, opt in terminals:
+            if shutil.which(term):
+                subprocess.Popen([term, *opt, "bash", str(script)])
+                return
+        ui.notify(t("solve_field_no_terminal").format(cmd=f"bash {script}"),
+                  type="warning", timeout=0, close_button=True)
