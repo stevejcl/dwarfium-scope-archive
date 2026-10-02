@@ -147,7 +147,9 @@ def get_ra_dec_hint_from_fits(image_path: str):
 
 
 # Wide-angle lens fallback when the FITS header has no usable FOCALLEN.
-# DWARF mini wide: FOCALLEN=7, XPIXSZ=2.9 (1920x1080 → ~45.5° x 25.6° field).
+# DWARF mini wide: FOCALLEN=7,   XPIXSZ=2.9 (1920x1080 → ~45.5° x 25.6° field)
+# DWARF 3 wide:    FOCALLEN=6.7, XPIXSZ=2.9 (1920x1080 → ~46.6° x 26.8° field)
+# 7 mm is within ASTAP's FOV tolerance for both.
 WIDE_FOCALLEN_FALLBACK = 7.0
 WIDE_XPIXSZ_FALLBACK   = 2.9
 
