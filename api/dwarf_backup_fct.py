@@ -472,56 +472,94 @@ def count_fits_files(directory):
     except Exception as e:
         safe_print(f"Could not access {directory}: {e}")
 
-def detect_dwarf_device(image_path: str, json_data: dict | None = None) -> str:
+STACKED_JPG_NAMES = ("stacked.jpg", "stacked.jpeg")
+
+_DWARF2_PATH_RE = re.compile(r"(^|/)DWARF_II(/|$)")
+
+
+def is_dwarf2_source(path: str) -> bool:
     """
-    DWARF 3    : 3856x2180 (bin1),  1920x1080 (bin2, "wide mode")
-    DWARF 2    : 3840x2160 (bin1),  1920x1080 (bin2)
+    The DWARF 2 is only reachable through paths containing a DWARF_II segment:
+    FTP "/DWARF_II/Astronomy" or MTP "...\\sdcard\\DWARF_II\\Astronomy".
+    DWARF 3 and DWARF Mini expose "/Astronomy" directly.
+    """
+    return bool(_DWARF2_PATH_RE.search(str(path).replace("\\", "/").upper()))
+
+
+def is_mosaic_root(dir_name: str, has_subdirs: bool) -> bool:
+    """
+    A mosaic root folder holds the assembled mosaic as stacked.jpg (non-standard
+    size) and one subfolder per panel: only the panels' stacked.jpg are usable.
+    """
+    return "MOSAIC" in str(dir_name).upper() and has_subdirs
+
+
+def _parse_binning(json_data: dict | None) -> int | None:
+    """Return 1 or 2 from shotsInfo "binning" ("1*1", "2x2", 2...), None if unknown."""
+    if not json_data:
+        return None
+    m = re.search(r"\d", str(json_data.get("binning") or ""))
+    return int(m.group(0)) if m else None
+
+
+def get_image_size(image_path: str) -> tuple[int, int] | None:
+    """Return (width, height) reading only the image header, None if unreadable."""
+    try:
+        from PIL import Image
+        with Image.open(win_long_path(image_path)) as im:
+            return im.size
+    except Exception:
+        img = cv2.imread(win_long_path(image_path))
+        return None if img is None else (img.shape[1], img.shape[0])
+
+
+def identify_dwarf_device(image_path: str, json_data: dict | None = None,
+                          source_path: str | None = None) -> str | None:
+    """
+    DWARF 3    : 3856x2180 (bin1), 1928x1090 (bin2) — both D3 only
+                 3840x2160 (bin1, some firmwares), 1920x1080 (bin2, "wide mode")
+    DWARF 2    : 3840x2160 (bin1), 1920x1080 (bin2)
     DWARF Mini : 1920x1080 (bin1 only)
 
-    Ambiguity: D3 bin2, D2 bin2 and DMini both → 1920x1080
-               → D2 vs D3 resolved by "DWARF_II" path segment, present in both
-                 D2 FTP ("/DWARF_II/Astronomy") and D2 MTP
-                 ("MTP\\sdcard\\DWARF_II\\Astronomy") paths; absent for D3.
-               → Mini resolved by binning field in JSON (bin1 at 1080p) or "MINI" path hint
+    3840x2160 and 1920x1080 are shared, so D2 vs D3 is resolved by the source
+    path (DWARF_II segment, see is_dwarf2_source), and D3 vs Mini at 1080p by
+    the shotsInfo binning (or a "MINI" path hint).
+    source_path: original location when image_path is a temporary copy (FTP).
+    Returns None when the device cannot be determined (caller should abstain).
     """
-    try:
-        img = cv2.imread(win_long_path(image_path))
-        if img is None:
-            return "DWARF3"
-        h, w = img.shape[:2]
-        binning = "1*1"
-        if json_data:
-            binning = json_data.get("binning", "1*1")
-        print(f"  Device detect: {w}x{h} bin={binning}")
-        # ── DWARF 3 bin1 ───────────────────────────────────────────────
-        if w == 3856 and h == 2180:
-            return "DWARF3"
-        # ── DWARF 3 bin2 (non-wide) ──────────────────────────────────────
-        if w == 1928 and h == 1090:
-            return "DWARF3"
-        # ── DWARF 2 bin1 ───────────────────────────────────────────────
-        if w == 3840 and h == 2160:
-            return "DWARF2"
-        # ── Ambiguous 1920x1080 — D3 wide bin2, D2 bin2, or DWARF Mini ────
-        if w == 1920 and h == 1080:
-            path_str = str(Path(image_path).parent).upper()
+    size = get_image_size(image_path)
+    if size is None:
+        return None
+    w, h = size
+    binning = _parse_binning(json_data)
+    src = str(source_path or image_path)
+    d2_source = is_dwarf2_source(src)
+    print(f"  Device detect: {w}x{h} bin={binning} d2_source={d2_source}")
 
-            # Mini is bin1 at 1080p — check this first, independent of path
-            if binning == "1*1":
-                return "DWARF_mini"
-            if "MINI" in path_str:
-                return "DWARF_mini"
-
-            # From here it's bin2 (or unknown binning) — DWARF_II segment is
-            # present for D2 across both FTP and MTP transports
-            if "DWARF_II" in path_str:
-                return "DWARF2"
-
-            # No DWARF_II hint → D3 wide mode is the default at bin2
-            return "DWARF3"
-
-        print(f"  ⚠️ Unknown resolution {w}x{h} — defaulting to DWARF3")
+    # ── DWARF 3 only resolutions ───────────────────────────────────────
+    if (w, h) in ((3856, 2180), (1928, 1090)):
         return "DWARF3"
+    # ── 4K — DWARF 2 bin1 or DWARF 3 bin1 on some firmwares ────────────
+    if (w, h) == (3840, 2160):
+        return "DWARF2" if d2_source else "DWARF3"
+    # ── 1080p — D2 bin2, D3 wide bin2 or DWARF Mini bin1 ───────────────
+    if (w, h) == (1920, 1080):
+        if d2_source:
+            return "DWARF2"
+        if binning == 1 or "MINI" in src.upper():
+            return "DWARF_mini"
+        if binning == 2:
+            return "DWARF3"
+        return None  # unknown binning → cannot tell D3 from Mini
+
+    print(f"  ⚠️ Unknown resolution {w}x{h} — ignored")  # e.g. assembled mosaic
+    return None
+
+
+def detect_dwarf_device(image_path: str, json_data: dict | None = None) -> str:
+    """Same as identify_dwarf_device but always returns a device (DWARF3 by default)."""
+    try:
+        return identify_dwarf_device(image_path, json_data) or "DWARF3"
     except Exception as e:
         print(f"  ⚠️ detect_dwarf_device failed: {e}")
         return "DWARF3"
@@ -535,42 +573,65 @@ def normalize_dwarf_name(name):
 
     return mapping.get(name, name)
 
-def check_dwarf_type_mismatch(conn, dwarf_id: int, dwarf_name: str, dwarf_type: int, scan_root: str, max_samples: int = 5) -> dict | None:
+def dwarf_type_vote_result(votes: dict, configured: str, dwarf_name: str) -> dict | None:
+    """Return the mismatch dict when the majority vote differs from the configured type."""
+    if not votes:
+        return None
+    best = max(votes, key=votes.get)
+    if best != configured:
+        return {"configured": configured, "detected": best, "name": dwarf_name, "votes": votes}
+    return None
+
+def _load_shots_info(session_dir: str) -> dict | None:
+    json_path = os.path.join(session_dir, "shotsInfo.json")
+    if not os.path.isfile(win_long_path(json_path)):
+        return None
+    try:
+        with open(win_long_path(json_path), "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def check_dwarf_type_mismatch(conn, dwarf_id: int, dwarf_name: str, dwarf_type: str, scan_root: str, max_samples: int = 5) -> dict | None:
     """
-    Scan up to max_samples stacked JPEGs in scan_root to detect the Dwarf type.
+    Detect the Dwarf type from scan_root (USB / MTP / local folder).
+    - DWARF_II in the path → DWARF 2, no image needed.
+    - Otherwise up to max_samples stacked JPEGs vote between DWARF 3 and Mini
+      (mosaic roots are skipped, their panels are used instead).
     Returns a dict {configured, detected, name, votes} if mismatch, None if OK or unknown.
     For FTP version see dwarf_backup_fct_ftp.check_dwarf_type_mismatch_ftp.
     """
 
     configured = dwarf_type
+
+    if is_dwarf2_source(scan_root):
+        return dwarf_type_vote_result({"Dwarf2": 1}, configured, dwarf_name)
+
     votes: dict = {}
     count = 0
 
     try:
-        for dirpath, _, filenames in os.walk(scan_root):
+        for dirpath, dirnames, filenames in os.walk(scan_root):
             if count >= max_samples:
                 break
-            for fname in filenames:
-                if fname.lower() in ("stacked.jpg", "stacked.jpeg"):
-                    fpath = os.path.join(dirpath, fname)
-                    detected = normalize_dwarf_name(detect_dwarf_device(fpath))
-                    print (detected)
-                    if detected:
-                        votes[detected] = votes.get(detected, 0) + 1
-                        count += 1
-                if count >= max_samples:
-                    break
+            dirnames.sort()
+            if is_mosaic_root(os.path.basename(dirpath), bool(dirnames)):
+                continue  # os.walk still descends into the panel subfolders
+            stacked = next((f for f in filenames if f.lower() in STACKED_JPG_NAMES), None)
+            if not stacked:
+                continue
+            detected = identify_dwarf_device(os.path.join(dirpath, stacked),
+                                             _load_shots_info(dirpath),
+                                             source_path=scan_root)
+            if detected:
+                detected = normalize_dwarf_name(detected)
+                votes[detected] = votes.get(detected, 0) + 1
+                count += 1
     except Exception as e:
         safe_print(f"[check_dwarf_type] {e}")
         return None
 
-    if not votes:
-        return None
-
-    best = max(votes, key=votes.get)
-    if best != configured:
-        return {"configured": configured, "detected": best, "name": dwarf_name, "votes": votes}
-    return None
+    return dwarf_type_vote_result(votes, configured, dwarf_name)
 
 
 def get_fits_raw_size(directory: str) -> int:
