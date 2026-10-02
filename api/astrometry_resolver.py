@@ -59,36 +59,66 @@ def has_solve_field():
     """Check if solve-field command is available"""
     return shutil.which("solve-field") is not None
 
+ASTAP_NAMES = ("astap", "astap_cli", "astap.exe", "astap_cli.exe")
+
+# Default install folders (executable and, on Linux/Windows, star databases)
+ASTAP_DIRS = {
+    "Linux":   ["/opt/astap", "/usr/local/bin", "/usr/bin", str(Path.home() / "astap")],
+    "Darwin":  ["/Applications/ASTAP.app/Contents/MacOS", "/usr/local/opt/astap",
+                "/opt/homebrew/opt/astap"],
+}
+
+# Star database folders used by ASTAP installers when not next to the executable
+ASTAP_DB_DIRS = ["/opt/astap", "/usr/local/opt/astap", "/opt/homebrew/opt/astap"]
+
+
 def find_astap(forced_path: str = None) -> str | None:
-    """Find astap executable — checks PATH then default install locations."""
-    # Allow override via env variable
+    """
+    Find the ASTAP executable (GUI 'astap' or command-line 'astap_cli'):
+    ASTAP_PATH / forced path, then PATH, then default install locations.
+    """
     import os
+    import platform
     forced_path = forced_path or os.environ.get('ASTAP_PATH')
     if forced_path and Path(forced_path).exists():
         return forced_path
 
-    found = shutil.which("astap") or shutil.which("astap.exe")
-    if found:
-        return found
-    import platform
-    if platform.system() == "Windows":
+    for name in ASTAP_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+
+    system = platform.system()
+    if system == "Windows":
         # Scan all drive letters for common ASTAP install locations
         import string
         drives = [f"{d}:/" for d in string.ascii_uppercase
                   if Path(f"{d}:/").exists()]
         candidates = []
         for drive in drives:
-            candidates += [
-                f"{drive}Program Files/astap/astap.exe",
-                f"{drive}Program Files (x86)/astap/astap.exe",
-                f"{drive}astap/astap.exe",
-            ]
-        for c in candidates:
-            # Use os.path for Windows path compatibility (backslash vs forward slash)
-            import os
-            if os.path.isfile(c):
-                return os.path.normpath(c)
+            for folder in ("Program Files/astap", "Program Files (x86)/astap", "astap"):
+                candidates += [f"{drive}{folder}/astap.exe", f"{drive}{folder}/astap_cli.exe"]
+    else:
+        candidates = [f"{d}/{name}" for d in ASTAP_DIRS.get(system, []) for name in ASTAP_NAMES[:2]]
+
+    for c in candidates:
+        # Use os.path for Windows path compatibility (backslash vs forward slash)
+        if os.path.isfile(c) and (system == "Windows" or os.access(c, os.X_OK)):
+            return os.path.normpath(c)
     return None
+
+
+def find_astap_db_dir(astap: str) -> str:
+    """
+    Folder holding the ASTAP star databases (d05_*, d50_*, g05_*...).
+    Usually next to the executable (Windows, /opt/astap on Linux), but the
+    macOS installer puts them in /usr/local/opt/astap.
+    """
+    astap_path = Path(astap).resolve()   # follow /usr/bin/astap → /opt/astap/astap
+    for d in [astap_path.parent, Path(astap).parent, *map(Path, ASTAP_DB_DIRS)]:
+        if d.is_dir() and any(d.glob("[a-zA-Z][0-9][0-9]_*")):
+            return str(d)
+    return str(astap_path.parent)
 
 
 def has_astap() -> bool:
@@ -144,7 +174,7 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
 
     if radius <= 10.0:
         radius = 30.0
-    astap_dir = str(Path(astap).parent)
+    astap_dir = find_astap_db_dir(astap)
     # Detect binning from FITS header — binned images have larger plate scale
     # Adjust search radius accordingly
     try:
