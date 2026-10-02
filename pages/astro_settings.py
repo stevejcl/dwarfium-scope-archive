@@ -272,6 +272,7 @@ class SettingsApp(DbPageMixin):
                             {
                                 "G05": "G05 wide (~1GB)",
                                 "V05": "V05 wide (~1GB)",
+                                "W08": "W08 very wide (>20°, wide lens)",
                             },
                             value=astap_db_wide,
                             label=t("astap_wide_db_label"),
