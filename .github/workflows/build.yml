@@ -3,7 +3,6 @@ name: Build Dwarfium Scope Archive
 on:
   push:
     branches:
-      - evolution
       - evolution-main
   pull_request:
     branches:
