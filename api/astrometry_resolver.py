@@ -59,36 +59,66 @@ def has_solve_field():
     """Check if solve-field command is available"""
     return shutil.which("solve-field") is not None
 
+ASTAP_NAMES = ("astap", "astap_cli", "astap.exe", "astap_cli.exe")
+
+# Default install folders (executable and, on Linux/Windows, star databases)
+ASTAP_DIRS = {
+    "Linux":   ["/opt/astap", "/usr/local/bin", "/usr/bin", str(Path.home() / "astap")],
+    "Darwin":  ["/Applications/ASTAP.app/Contents/MacOS", "/usr/local/opt/astap",
+                "/opt/homebrew/opt/astap"],
+}
+
+# Star database folders used by ASTAP installers when not next to the executable
+ASTAP_DB_DIRS = ["/opt/astap", "/usr/local/opt/astap", "/opt/homebrew/opt/astap"]
+
+
 def find_astap(forced_path: str = None) -> str | None:
-    """Find astap executable — checks PATH then default install locations."""
-    # Allow override via env variable
+    """
+    Find the ASTAP executable (GUI 'astap' or command-line 'astap_cli'):
+    ASTAP_PATH / forced path, then PATH, then default install locations.
+    """
     import os
+    import platform
     forced_path = forced_path or os.environ.get('ASTAP_PATH')
     if forced_path and Path(forced_path).exists():
         return forced_path
 
-    found = shutil.which("astap") or shutil.which("astap.exe")
-    if found:
-        return found
-    import platform
-    if platform.system() == "Windows":
+    for name in ASTAP_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+
+    system = platform.system()
+    if system == "Windows":
         # Scan all drive letters for common ASTAP install locations
         import string
         drives = [f"{d}:/" for d in string.ascii_uppercase
                   if Path(f"{d}:/").exists()]
         candidates = []
         for drive in drives:
-            candidates += [
-                f"{drive}Program Files/astap/astap.exe",
-                f"{drive}Program Files (x86)/astap/astap.exe",
-                f"{drive}astap/astap.exe",
-            ]
-        for c in candidates:
-            # Use os.path for Windows path compatibility (backslash vs forward slash)
-            import os
-            if os.path.isfile(c):
-                return os.path.normpath(c)
+            for folder in ("Program Files/astap", "Program Files (x86)/astap", "astap"):
+                candidates += [f"{drive}{folder}/astap.exe", f"{drive}{folder}/astap_cli.exe"]
+    else:
+        candidates = [f"{d}/{name}" for d in ASTAP_DIRS.get(system, []) for name in ASTAP_NAMES[:2]]
+
+    for c in candidates:
+        # Use os.path for Windows path compatibility (backslash vs forward slash)
+        if os.path.isfile(c) and (system == "Windows" or os.access(c, os.X_OK)):
+            return os.path.normpath(c)
     return None
+
+
+def find_astap_db_dir(astap: str) -> str:
+    """
+    Folder holding the ASTAP star databases (d05_*, d50_*, g05_*...).
+    Usually next to the executable (Windows, /opt/astap on Linux), but the
+    macOS installer puts them in /usr/local/opt/astap.
+    """
+    astap_path = Path(astap).resolve()   # follow /usr/bin/astap → /opt/astap/astap
+    for d in [astap_path.parent, Path(astap).parent, *map(Path, ASTAP_DB_DIRS)]:
+        if d.is_dir() and any(d.glob("[a-zA-Z][0-9][0-9]_*")):
+            return str(d)
+    return str(astap_path.parent)
 
 
 def has_astap() -> bool:
@@ -144,7 +174,7 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
 
     if radius <= 10.0:
         radius = 30.0
-    astap_dir = str(Path(astap).parent)
+    astap_dir = find_astap_db_dir(astap)
     # Detect binning from FITS header — binned images have larger plate scale
     # Adjust search radius accordingly
     try:
@@ -168,7 +198,7 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
             camera   = str(hdr.get('CAMERA', '')).upper()
             focallen = hdr.get('FOCALLEN')
             xpixsz   = hdr.get('XPIXSZ')
-            naxis1   = hdr.get('NAXIS1')
+            naxis2   = hdr.get('NAXIS2')   # ASTAP -fov is the image HEIGHT
             binning  = int(hdr.get('XBINNING', 1))
 
             # Detect wide lens:
@@ -184,17 +214,14 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
                 xpixsz   = xpixsz or 2.0
                 print_log(f"Wide lens detected — using focallen=24mm", log)
 
-            if focallen and xpixsz and naxis1:
-                fov = round((xpixsz * binning * naxis1) / (focallen * 1000) * (180 / math.pi), 2)
+            if focallen and xpixsz and naxis2:
+                fov = round((xpixsz * binning * naxis2) / (focallen * 1000) * (180 / math.pi), 2)
                 print_log(f"FOV estimated: {fov}° (camera={camera}, focal={focallen}mm)", log)
     except Exception:
         pass
 
-    cmd = [astap, "-f", image_path_safe, "-r", str(radius), "-s", star_db, "-D", astap_dir,
-           "-log", "-z", "0"]  # -z 0 = auto downsample
-
     # Auto-switch to wide DB for FOV > 5° (ASTAP recommends G05/V05 for large fields)
-    if fov and fov > 5.0 and star_db in ('D50', 'D20', 'D80'):
+    if fov and fov > 5.0 and star_db.upper() in ('D50', 'D20', 'D80'):
         try:
             from api.dwarf_backup_db import DB_NAME, connect_db, close_db
             from api.dwarf_backup_db_api import get_setting_text as _gst
@@ -203,23 +230,35 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
             close_db(_c)
         except Exception:
             wide_db = 'G05'
-        cmd = [astap, "-f", image_path_safe, "-r", str(radius), "-s", wide_db, "-D", astap_dir,
-               "-log", "-z", "0"]
         print_log(f"Wide FOV ({fov}°) — switching to {wide_db} database", log)
+        star_db = wide_db
 
-    if fov:
-        cmd += ["-fov", str(fov)]
-    # If no FOV — don't pass -fov, ASTAP will read from FITS header automatically
+    # ASTAP options: -d = database folder, -D = database abbreviation (d50, g05...),
+    # -s = max number of stars (NOT the database), -fov = image height in degrees.
+    cmd = [astap, "-f", image_path_safe, "-d", astap_dir, "-log", "-z", "0"]
+    db = (star_db or "").lower()
+    if db and any(Path(astap_dir).glob(f"{db}_*")):
+        cmd += ["-D", db]
+    else:
+        # Requested database not installed — let ASTAP pick the installed one
+        print_log(f"ASTAP database '{star_db}' not found in {astap_dir} — using ASTAP default", log)
+
+    # Unknown FOV (e.g. JPEG without FITS header) → 0 = ASTAP auto-detects the scale
+    cmd += ["-fov", str(fov) if fov else "0"]
+
     if ra_hint is not None and dec_hint is not None:
-        cmd += ["-ra", str(round(ra_hint / 15.0, 6))]   # degrees → hours
+        cmd += ["-r", str(radius)]
+        cmd += ["-ra", str(round(ra_hint / 15.0, 6))]    # degrees → hours
         cmd += ["-spd", str(round(dec_hint + 90.0, 4))]  # dec → south pole distance
     else:
-        # No hint — replace radius with blind solve
-        cmd = [astap, "-f", image_path_safe, "-s", star_db, "-D", astap_dir,
-               "-log", "-z", "0", "-r", "180"]
-        if fov:
-            cmd += ["-fov", str(fov)]
-    # RA/DEC hints optional — ASTAP finds solution without them with wide radius
+        cmd += ["-r", "180"]  # no hint → blind solve
+
+    # Remove results of a previous run so a stale .ini is never read as a success
+    for ext in (".ini", ".wcs"):
+        try:
+            Path(image_path_safe).with_suffix(ext).unlink()
+        except Exception:
+            pass
 
     print_log(f"ASTAP: {' '.join(cmd)}", log)
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -256,32 +295,54 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
 
 
 
-def solve_locally(image_path, log=None, downsample=2):
-    """Run astrometry.net locally using solve-field"""
+def solve_locally(image_path, log=None, downsample=2, ra_hint=None, dec_hint=None,
+                  radius: float = 30.0, cpulimit: int = 180):
+    """
+    Run astrometry.net locally using solve-field.
+    Works in a temporary folder (solve-field writes many side files) and copies
+    the resulting WCS header next to the image as <name>.wcs.fits, like the
+    Nova online solver. Returns the path of that .wcs.fits file.
+    Needs index files (e.g. apt package astrometry-data-tycho2).
+    """
     if not has_solve_field():
         raise EnvironmentError("solve-field not found. Install astrometry.net locally.")
 
-    output_dir = Path(image_path).parent
-    cmd = [
-        "solve-field", image_path,
-        "--overwrite",
-        "--downsample", str(downsample),
-        "--dir", str(output_dir),
-        "--no-plots",
-    ]
-    print_log(f"🔭 Execute : {' '.join(cmd)}", log)
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="solve_field_") as work_dir:
+        cmd = [
+            "solve-field", str(image_path),
+            "--overwrite",
+            "--no-plots",
+            "--new-fits", "none",
+            "--downsample", str(downsample),
+            "--dir", work_dir,
+            "--cpulimit", str(cpulimit),
+            # Dwarf fields go from ~1° (tele) to ~60° (wide): bound the scale search
+            "--scale-units", "degwidth", "--scale-low", "0.5", "--scale-high", "90",
+        ]
+        if ra_hint is not None and dec_hint is not None:
+            cmd += ["--ra", str(ra_hint), "--dec", str(dec_hint), "--radius", str(radius)]
+        print_log(f"🔭 Execute : {' '.join(cmd)}", log)
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
-    if result.returncode != 0:
-        print_log(result.stderr, log)
-        raise RuntimeError("Local resolution failed: " + result.stderr)
+        if result.returncode != 0:
+            print_log(result.stderr, log)
+            raise RuntimeError("Local resolution failed: " + result.stderr)
 
-    solved_file = str(Path(image_path).with_suffix(".solved"))
-    if os.path.exists(solved_file):
-        print_log(f"✅ Successful local resolution:{solved_file}", log)
-        return solved_file
-    else:
-        raise FileNotFoundError("Local resolution complete, but .solved file not found")
+        stem = Path(image_path).stem
+        solved = Path(work_dir) / f"{stem}.solved"
+        wcs = Path(work_dir) / f"{stem}.wcs"
+        if not solved.exists() or not wcs.exists():
+            print_log(result.stdout[-2000:], log)
+            raise RuntimeError("Local resolution failed: no solution found "
+                               "(check that astrometry.net index files are installed)")
+
+        wcs_file = Path(image_path).with_suffix(".wcs.fits")
+        shutil.copy2(wcs, wcs_file)
+
+    print_log(f"✅ Successful local resolution: {wcs_file}", log)
+    return str(wcs_file)
+
 
 def solve_online(api_key, image_path, log=None):
     """Solve using Astrometry.net API (nova.astrometry.net)"""
@@ -438,13 +499,14 @@ def auto_resolve(api_key: str, image_path: str, log=None, astap_db: str = "D20",
     """
     print_log(f"Attempted resolution for: {image_path}", log)
 
+    if ra_hint is None or dec_hint is None:
+        _ra, _dec = get_ra_dec_hint_from_fits(image_path)
+        ra_hint  = ra_hint  if ra_hint  is not None else _ra
+        dec_hint = dec_hint if dec_hint is not None else _dec
+
     # 1. ASTAP — fastest, Windows-native
     if has_astap():
         print_log(f"Mode: ASTAP (local, fast, db={astap_db})", log)
-        if ra_hint is None or dec_hint is None:
-            _ra, _dec = get_ra_dec_hint_from_fits(image_path)
-            ra_hint  = ra_hint  if ra_hint  is not None else _ra
-            dec_hint = dec_hint if dec_hint is not None else _dec
         try:
             return solve_astap(image_path, log=log, ra_hint=ra_hint, dec_hint=dec_hint, star_db=astap_db)
         except RuntimeError as e:
@@ -456,7 +518,12 @@ def auto_resolve(api_key: str, image_path: str, log=None, astap_db: str = "D20",
     # 2. solve-field — astrometry.net local
     if has_solve_field():
         print_log("Mode: solve-field (local)", log)
-        return solve_locally(image_path, log)
+        try:
+            return solve_locally(image_path, log, ra_hint=ra_hint, dec_hint=dec_hint)
+        except RuntimeError as e:
+            if not api_key:
+                raise
+            print_log(f"solve-field failed — falling back to Nova API ({e})", log)
 
     # 3. Nova API — online fallback
     if api_key:

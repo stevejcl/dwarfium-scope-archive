@@ -219,11 +219,13 @@ TRANSLATIONS: dict[str, str] = {
     "nova_config":                  "🔭 Configuration of NOVA Astrometry",  # TODO
     "nova_online":                  "🌐 Online mode (Astrometry.net)",  # TODO
     "nova_local":                   "💻 Local Mode (solve-field)",  # TODO
+    "nova_local_astap":             "💻 Local Mode (ASTAP)",  # TODO
     "nova_create_key":              "Create an API key on Astrometry.net",  # TODO
     "nova_install":                 "Install solve-field localy",  # TODO
     "nova_no_key":                  "⚠️ No Astrometry API key — NOVA astrometry resolution skipped.",  # TODO
     "nova_go_settings":             "Go to Settings to register a NOVA_ASTRO_API key.",  # TODO
     "solve_not_found":              "❌ solve-field not found.",  # TODO
+    "solve_field_no_terminal":      "No terminal found. Run this command in a terminal: {cmd}",  # TODO
     "solve_available":              "✅ solve-field is not available on this system.",  # TODO
     "install_not_supported":        "Automatic installation not supported for this system.",  # TODO
     "dwarf_config":                 "🔭 Configuration of Dwarf Local Parent directory",  # TODO
