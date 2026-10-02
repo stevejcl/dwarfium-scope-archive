@@ -6,6 +6,12 @@ Add or edit strings here to translate the UI into French.
 Every key must be present — missing keys fall back to English at runtime.
 """
 
+# Label shown in the language selector (Settings page).
+LANGUAGE_NAME = "🇫🇷 Français"
+# Set to True once the translation is ready: the language then appears in the
+# selector after restarting the application (no code change needed).
+ENABLED = True
+
 TRANSLATIONS: dict[str, str] = {
 
     # ── Common actions ────────────────────────────────────────────────────────────

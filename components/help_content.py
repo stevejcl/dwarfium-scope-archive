@@ -5,24 +5,21 @@ Dwarfium Scope Archive — Inline help engine.
 Help content lives in components/help_locales/<lang>.py, each exporting a
 HELP dict[str, dict[str, str]] keyed by route path.
 
+The help language follows the UI language (see components/i18n.py):
+help_locales/<code>.py is used when that language is enabled in
+locales/<code>.py. Routes missing from it fall back to English.
+
 Adding a new language:
   1. Copy help_locales/en.py to help_locales/<code>.py
   2. Translate each 'title' and 'content' value
-  3. Add the code to SUPPORTED_HELP_LANGUAGES below
 
 Usage (unchanged from before):
     from components.help_content import get_help
     entry = get_help('/Dwarf')   # {'title': ..., 'content': ...}
 """
 
-import importlib.util
-from pathlib import Path
+from components.i18n import get_language, load_locale_module
 
-from nicegui import app
-
-# ── Supported languages ───────────────────────────────────────────────────────
-# Add a new code here once its help_locales/<code>.py file is ready.
-SUPPORTED_HELP_LANGUAGES: list[str] = ["en", "fr"]
 DEFAULT_HELP_LANGUAGE: str = "en"
 
 # ── Locale cache ──────────────────────────────────────────────────────────────
@@ -31,28 +28,9 @@ _help_cache: dict[str, dict[str, dict[str, str]]] = {}
 
 def _load_help_locale(lang: str) -> dict[str, dict[str, str]]:
     """Load and cache the HELP dict for *lang*."""
-    if lang in _help_cache:
-        return _help_cache[lang]
-    import sys as _sys
-    candidates = [
-        Path(__file__).parent / "help_locales" / f"{lang}.py",
-        Path("components") / "help_locales" / f"{lang}.py",
-    ]
-    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
-        candidates.insert(0, Path(_sys._MEIPASS) / "components" / "help_locales" / f"{lang}.py")
-    for locale_path in candidates:
-        if not locale_path.exists():
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location(f"help_locales.{lang}", locale_path)
-            module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
-            spec.loader.exec_module(module)                      # type: ignore[union-attr]
-            _help_cache[lang] = module.HELP
-            return _help_cache[lang]
-        except Exception as e:
-            print(f"[help] Failed to load help locale '{lang}' from {locale_path}: {e}")
-    print(f"[help] WARNING: help locale '{lang}' not found")
-    _help_cache[lang] = {}
+    if lang not in _help_cache:
+        module = load_locale_module("help_locales", lang)
+        _help_cache[lang] = getattr(module, "HELP", {}) if module else {}
     return _help_cache[lang]
 
 
@@ -84,12 +62,7 @@ def get_help(route: str) -> dict[str, str]:
     Falls back to English if the route is not translated yet.
     Returns an empty dict if the route is unknown in both languages.
     """
-    try:
-        lang = app.storage.general.get("language", DEFAULT_HELP_LANGUAGE)
-        if lang not in SUPPORTED_HELP_LANGUAGES:
-            lang = DEFAULT_HELP_LANGUAGE
-    except Exception:
-        lang = DEFAULT_HELP_LANGUAGE
+    lang = get_language()
 
     if lang != DEFAULT_HELP_LANGUAGE:
         locale = _load_help_locale(lang)

@@ -7,6 +7,12 @@ Replace each value with the German translation.
 Lines marked # TODO have not been translated yet.
 """
 
+# Label shown in the language selector (Settings page).
+LANGUAGE_NAME = "🇩🇪 Deutsch"
+# Set to True once the translation is ready: the language then appears in the
+# selector after restarting the application (no code change needed).
+ENABLED = False
+
 TRANSLATIONS: dict[str, str] = {
 
     # ── Common actions ────────────────────────────────────────────────────────────
