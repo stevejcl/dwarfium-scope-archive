@@ -5,6 +5,10 @@ on:
     branches:
       - evolution
       - evolution-main
+  pull_request:
+    branches:
+      - evolution
+      - evolution-main
   workflow_dispatch:
 
 permissions:
@@ -45,7 +49,8 @@ jobs:
       - name: 📤 Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zip-${{ github.ref_name }}-${{ runner.os }}
+          # On a PR, ref_name is '<n>/merge' and artifact names cannot contain '/'
+          name: zip-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || github.ref_name }}-${{ runner.os }}
           path: DwarfiumScopeArchive-${{ runner.os }}.zip
 
 
