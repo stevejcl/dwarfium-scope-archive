@@ -6,6 +6,10 @@ Add or edit strings here to translate the UI into English.
 Every key must be present — missing keys fall back to English at runtime.
 """
 
+# Label shown in the language selector (Settings page).
+LANGUAGE_NAME = "🇬🇧 English"
+ENABLED = True
+
 TRANSLATIONS: dict[str, str] = {
 
     # ── Common actions ────────────────────────────────────────────────────────────

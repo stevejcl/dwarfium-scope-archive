@@ -5,7 +5,7 @@ import subprocess
 import os
 import re
 import socket
-from components.i18n import t, set_language, get_language, SUPPORTED_LANGUAGES
+from components.i18n import t, set_language, get_language, AVAILABLE_LANGUAGES
 from tools.db_report_pdf import generate_report
 
 def _get_app_version():
@@ -108,7 +108,7 @@ class SettingsApp(DbPageMixin):
                 with ui.row().classes("items-center gap-2 mt-2"):
                     ui.label(t("lang_label")).classes("text-sm text-gray-600")
                     ui.select(
-                        {"en": "🇬🇧 English", "fr": "🇫🇷 Français"},
+                        AVAILABLE_LANGUAGES,
                         value=get_language(),
                         on_change=lambda e: (set_language(e.value), ui.navigate.reload())
                     ).classes("w-40")

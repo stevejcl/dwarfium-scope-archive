@@ -2,9 +2,16 @@
 """
 Dwarfium Scope Archive — Internationalization (i18n) engine.
 
-Locale files live in components/locales/<lang>.py, each exporting a
-TRANSLATIONS dict[str, str].  Adding a new language is as simple as
-dropping a new file there and adding the code to SUPPORTED_LANGUAGES.
+Locale files live in components/locales/<lang>.py, each exporting:
+    LANGUAGE_NAME = "🇩🇪 Deutsch"     # label shown in the language selector
+    ENABLED       = True              # False while the translation is not ready
+    TRANSLATIONS  = {...}             # dict[str, str]
+
+Languages are discovered at startup from the locale files, so adding a
+language only requires dropping a new file there with ENABLED = True —
+no code change. Locale files are shipped next to the executable
+(dist/components/locales/), so translators can work with the packaged
+app: edit <lang>.py, set ENABLED = True and restart.
 
 Usage:
     from components.i18n import t, set_language, get_language
@@ -14,48 +21,101 @@ Usage:
 """
 
 import importlib.util
+import sys
 from pathlib import Path
+from types import ModuleType
 from nicegui import app
 
-# ── Supported languages ───────────────────────────────────────────────────────
-# Add a new language code here once its locales/<code>.py file is ready.
-SUPPORTED_LANGUAGES: list[str] = ["en", "fr"]
 DEFAULT_LANGUAGE: str = "en"
 
+# ── Locale file lookup ────────────────────────────────────────────────────────
+
+def locale_dirs(subdir: str) -> list[Path]:
+    """
+    Candidate folders for components/<subdir>, in priority order.
+    The folder next to the executable comes first so that locale files
+    edited in the distribution override any copy bundled in the exe.
+    """
+    dirs = []
+    if getattr(sys, "frozen", False):
+        dirs.append(Path(sys.executable).parent / "components" / subdir)
+        if hasattr(sys, "_MEIPASS"):
+            dirs.append(Path(sys._MEIPASS) / "components" / subdir)
+    dirs += [
+        Path(__file__).parent / subdir,
+        Path("components") / subdir,
+        Path(subdir),
+    ]
+    return dirs
+
+
+def find_locale_file(subdir: str, lang: str) -> Path | None:
+    """Return the first existing components/<subdir>/<lang>.py, or None."""
+    for d in locale_dirs(subdir):
+        path = d / f"{lang}.py"
+        if path.exists():
+            return path
+    return None
+
+
+def load_locale_module(subdir: str, lang: str) -> ModuleType | None:
+    """Execute components/<subdir>/<lang>.py and return it as a module, or None."""
+    path = find_locale_file(subdir, lang)
+    if path is None:
+        print(f"[i18n] WARNING: {subdir}/{lang}.py not found. Tried:")
+        for d in locale_dirs(subdir):
+            print(f"  ❌  {(d / f'{lang}.py').resolve()}")
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location(f"{subdir}.{lang}", path)
+        module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
+        spec.loader.exec_module(module)                      # type: ignore[union-attr]
+        return module
+    except Exception as e:
+        print(f"[i18n] Failed to load {subdir}/{lang}.py from {path}: {e}")
+        return None
+
+
 # ── Locale cache ──────────────────────────────────────────────────────────────
-_cache: dict[str, dict[str, str]] = {}
+_modules: dict[str, ModuleType | None] = {}
+
+
+def _locale_module(lang: str) -> ModuleType | None:
+    if lang not in _modules:
+        _modules[lang] = load_locale_module("locales", lang)
+    return _modules[lang]
 
 
 def _load_locale(lang: str) -> dict[str, str]:
-    """Load and cache the TRANSLATIONS dict for *lang*."""
-    if lang in _cache:
-        return _cache[lang]
-    import sys as _sys
-    # Try multiple paths: normal script, PyInstaller exe (_MEIPASS), CWD variants
-    candidates = [
-        Path(__file__).parent / "locales" / f"{lang}.py",
-        Path(__file__).parent.parent / "components" / "locales" / f"{lang}.py",
-        Path("components") / "locales" / f"{lang}.py",
-        Path("locales") / f"{lang}.py",
-    ]
-    if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
-        candidates.insert(0, Path(_sys._MEIPASS) / "components" / "locales" / f"{lang}.py")
-    for locale_path in candidates:
-        if not locale_path.exists():
+    """Return the TRANSLATIONS dict for *lang* (empty if unavailable)."""
+    module = _locale_module(lang)
+    return getattr(module, "TRANSLATIONS", {}) if module else {}
+
+
+def _discover_languages() -> dict[str, str]:
+    """
+    Scan the locale folders and return {code: display name} for every
+    enabled language. English is always available (fallback language).
+    """
+    codes = set()
+    for d in locale_dirs("locales"):
+        if d.is_dir():
+            codes.update(p.stem for p in d.glob("*.py") if not p.stem.startswith("_"))
+
+    languages: dict[str, str] = {}
+    for code in sorted(codes | {DEFAULT_LANGUAGE}):
+        module = _locale_module(code)
+        if module is None:
             continue
-        try:
-            spec = importlib.util.spec_from_file_location(f"locales.{lang}", locale_path)
-            module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
-            spec.loader.exec_module(module)                      # type: ignore[union-attr]
-            _cache[lang] = module.TRANSLATIONS
-            return _cache[lang]
-        except Exception as e:
-            print(f"[i18n] Failed to load locale '{lang}' from {locale_path}: {e}")
-    print(f"[i18n] WARNING: locale '{lang}' not found. Tried:")
-    for p in candidates:
-        print(f"  {'✅' if p.exists() else '❌'}  {p.resolve()}")
-    _cache[lang] = {}
-    return _cache[lang]
+        if code != DEFAULT_LANGUAGE and not getattr(module, "ENABLED", False):
+            continue
+        languages[code] = getattr(module, "LANGUAGE_NAME", code)
+    return languages
+
+
+# {code: display name} of the enabled languages, e.g. {"en": "🇬🇧 English", "fr": "🇫🇷 Français"}
+AVAILABLE_LANGUAGES: dict[str, str] = _discover_languages()
+SUPPORTED_LANGUAGES: list[str] = list(AVAILABLE_LANGUAGES)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
