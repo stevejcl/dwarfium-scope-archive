@@ -146,6 +146,41 @@ def get_ra_dec_hint_from_fits(image_path: str):
     return None, None
 
 
+# Wide-angle lens fallback when the FITS header has no usable FOCALLEN.
+# DWARF mini wide: FOCALLEN=7,   XPIXSZ=2.9 (1920x1080 → ~45.5° x 25.6° field)
+# DWARF 3 wide:    FOCALLEN=6.7, XPIXSZ=2.9 (1920x1080 → ~46.6° x 26.8° field)
+# 7 mm is within ASTAP's FOV tolerance for both.
+WIDE_FOCALLEN_FALLBACK = 7.0
+WIDE_XPIXSZ_FALLBACK   = 2.9
+
+
+def dwarf_optics(hdr, image_path: str) -> tuple[float | None, float | None, bool]:
+    """
+    Return (focallen_mm, pixel_size_um, is_wide) from a Dwarf FITS header.
+    Wide lens: CAMERA header contains 'WIDE' (recent firmware) or the session
+    folder is DWARF_RAW_WIDE_... / contains _WIDE_.
+    The header FOCALLEN is trusted for the wide lens; the fallback is only used
+    when it is missing or is the tele focal length (> 50 mm).
+    """
+    camera   = str(hdr.get('CAMERA', '')).upper()
+    focallen = hdr.get('FOCALLEN')
+    xpixsz   = hdr.get('XPIXSZ')
+    session_folder = Path(image_path).parent.name.upper()
+    is_wide = ('WIDE' in camera or
+               '_WIDE_' in session_folder or
+               session_folder.startswith('DWARF_RAW_WIDE'))
+    try:
+        focallen = float(focallen) if focallen else None
+        xpixsz   = float(xpixsz) if xpixsz else None
+    except (TypeError, ValueError):
+        focallen, xpixsz = None, None
+    if is_wide:
+        if not focallen or focallen > 50:
+            focallen = WIDE_FOCALLEN_FALLBACK
+        xpixsz = xpixsz or WIDE_XPIXSZ_FALLBACK
+    return focallen, xpixsz, is_wide
+
+
 def solve_astap(image_path: str, log=None, ra_hint=None,
                 dec_hint=None, radius: float = 10.0, downsample: int = 0,
                 star_db: str = "D20") -> str:
@@ -165,7 +200,8 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
     image_path_safe = image_path
     if ' ' in str(image_path) or len(str(image_path)) > 200:
         suffix = Path(image_path).suffix
-        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, dir=tempfile.gettempdir())
+        # 'astap_tmp_' prefix: removed with its .ini/.wcs/.log by astrometry_scan._cleanup_temp
+        tmp = tempfile.NamedTemporaryFile(prefix="astap_tmp_", suffix=suffix, delete=False, dir=tempfile.gettempdir())
         tmp.close()
         import shutil as _shutil
         _shutil.copy2(image_path, tmp.name)
@@ -196,23 +232,12 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
         with _fits.open(image_path_safe) as hdul:
             hdr = hdul[0].header
             camera   = str(hdr.get('CAMERA', '')).upper()
-            focallen = hdr.get('FOCALLEN')
-            xpixsz   = hdr.get('XPIXSZ')
             naxis2   = hdr.get('NAXIS2')   # ASTAP -fov is the image HEIGHT
             binning  = int(hdr.get('XBINNING', 1))
-
-            # Detect wide lens:
-            # 1. CAMERA header = 'WIDE' (recent Dwarf firmware)
-            # 2. Session folder name contains '_WIDE_' (D3/Mini naming convention)
-            #    e.g. DWARF_RAW_WIDE_NGC7000_EXP_... vs DWARF_RAW_TELE_...
-            session_folder = Path(image_path).parent.name.upper()
-            is_wide = ('WIDE' in camera or
-                       '_WIDE_' in session_folder or
-                       session_folder.startswith('DWARF_RAW_WIDE'))
+            # image_path, not the temp copy: the session folder name tells the lens
+            focallen, xpixsz, is_wide = dwarf_optics(hdr, image_path)
             if is_wide:
-                focallen = 24.0
-                xpixsz   = xpixsz or 2.0
-                print_log(f"Wide lens detected — using focallen=24mm", log)
+                print_log(f"Wide lens detected — focallen={focallen}mm, pixel={xpixsz}µm", log)
 
             if focallen and xpixsz and naxis2:
                 fov = round((xpixsz * binning * naxis2) / (focallen * 1000) * (180 / math.pi), 2)
@@ -221,7 +246,7 @@ def solve_astap(image_path: str, log=None, ra_hint=None,
         pass
 
     # Auto-switch to wide DB for FOV > 5° (ASTAP recommends G05/V05 for large fields)
-    if fov and fov > 5.0 and star_db.upper() in ('D50', 'D20', 'D80'):
+    if fov and fov > 5.0 and star_db.upper() in ('D05', 'D50', 'D20', 'D80'):
         try:
             from api.dwarf_backup_db import DB_NAME, connect_db, close_db
             from api.dwarf_backup_db_api import get_setting_text as _gst
@@ -387,13 +412,13 @@ def solve_online(api_key, image_path, log=None):
             with _fits.open(image_path) as hdul:
                 hdr      = hdul[0].header
                 telescop = str(hdr.get('TELESCOP', '')).strip()
-                focallen = hdr.get('FOCALLEN')
-                xpixsz   = hdr.get('XPIXSZ')
+                focallen, xpixsz, is_wide = dwarf_optics(hdr, image_path)
                 naxis1   = hdr.get('NAXIS1', 1)
                 binning  = int(hdr.get('XBINNING', 1))
 
-        # Try known Dwarf plate scales first — adjust for binning
-        ps = next((v for k, v in DWARF_PS.items() if k.upper() in telescop.upper()), None)
+        # Try known Dwarf plate scales first — adjust for binning.
+        # The table holds TELE scales only: skipped for the wide lens.
+        ps = None if is_wide else next((v for k, v in DWARF_PS.items() if k.upper() in telescop.upper()), None)
         if ps and binning > 1:
             ps = ps * binning
 
