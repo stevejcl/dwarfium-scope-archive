@@ -137,6 +137,19 @@ def ensure_wcs_table(conn: sqlite3.Connection):
     conn.commit()
 
 
+# Star-trail sessions (STARTRAILS/ folder, STARTRAILS_DWARF_RAW_WIDE_...
+# sessions, "*_startrails_*" images) are trails, not a star field: ASTAP
+# and Nova can never solve them, so they are never queued for solving.
+_STARTRAILS_LIKE = "%startrails%"
+
+
+def _not_startrails_sql(*columns):
+    """SQL condition excluding rows where any of `columns` mentions
+    startrails (case-insensitive); returns (sql, params)."""
+    sql = " AND ".join(f"LOWER(COALESCE({c}, '')) NOT LIKE ?" for c in columns)
+    return f" AND ({sql})", [_STARTRAILS_LIKE] * len(columns)
+
+
 def get_sessions_to_solve(conn, date_from, date_to, force, min_quality, limit,
                            session_filter=None, re_solver=None, exact=False, entry_type=None,
                            max_quality=None, dwarf_filter=None, fix_null_ra=False):
@@ -168,6 +181,10 @@ def get_sessions_to_solve(conn, date_from, date_to, force, min_quality, limit,
             WHERE (SessionQuality.quality_score >= ? OR (? = 0 AND SessionQuality.backup_entry_id IS NULL))
         """
         params = [min_quality, min_quality]
+        sql, extra = _not_startrails_sql("BackupEntry.session_dir", "DwarfData.file_path",
+                                         "DwarfData.stacked_fits_path", "AstroObject.name")
+        q += sql
+        params += extra
         if max_quality is not None:
             q += " AND SessionQuality.quality_score <= ?"
             params.append(max_quality)
@@ -228,10 +245,14 @@ def get_sessions_to_solve(conn, date_from, date_to, force, min_quality, limit,
             LEFT JOIN AstroObject        ON ManualSessionEntry.astro_object_id = AstroObject.id
             LEFT JOIN SessionWCS         ON SessionWCS.entry_type = 'manual'
                                         AND SessionWCS.entry_id  = ManualSessionEntry.id
-            WHERE ManualSession.jpeg_path IS NOT NULL
-               OR ManualSession.stacked_fits_path IS NOT NULL
+            WHERE (ManualSession.jpeg_path IS NOT NULL
+               OR ManualSession.stacked_fits_path IS NOT NULL)
         """
-        params2 = []
+        # (Parentheses above: without them every condition appended below
+        # only applied to the stacked_fits_path branch of the OR.)
+        sql, params2 = _not_startrails_sql("ManualSessionEntry.session_dir", "ManualSession.jpeg_path",
+                                           "ManualSession.stacked_fits_path", "AstroObject.name")
+        q2 += sql
         if not force:
             q2 += " AND SessionWCS.id IS NULL"
         if date_from:

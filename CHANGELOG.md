@@ -20,6 +20,8 @@
     are passed, with Nova as fallback when an API key is set. Linux installer fixed (terminal for sudo, Tycho-2 index files);
     the broken Windows solve-field .bat is removed.
     Astrometry scan no longer leaks temp files (FITS copies and ASTAP results) in the temp folder.
+    Astrometry scan skips star-trail sessions (STARTRAILS folder / *_startrails_* images): they cannot be solved and were queued
+    first (high quality score), each one costing an ASTAP try and a Nova upload. Manual sessions already solved are no longer re-queued.
     Dwarf type mismatch detection: D2 / D3 decided by the source (D3 4K firmware outputs 3840x2160), mosaic roots skipped,
     D3 bin2 (1920x1080) no longer reported as a DWARF Mini, unreadable or ambiguous images no longer vote DWARF3.
 
