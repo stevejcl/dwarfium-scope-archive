@@ -1,5 +1,30 @@
 # Changelog
 
+## [V3.3.0] - 2026-10-02
+
+### Add
+    Local plate solving: ASTAP is now found on Linux and macOS too (astap_cli, /opt/astap, ~/astap, ASTAP.app, /usr/local/opt/astap),
+    with its star database located separately (next to the executable or in the installer folders).
+    Astrometry: wide-angle sessions use the real lens optics (header FOCALLEN, falling back to 7 mm / 2.9 µm instead of a hard-coded 24 mm),
+    so ASTAP gets the right field of view and Nova the right plate scale; W08 added to the wide database selector,
+    D05 switches to the wide database for fields > 5°.
+    UI languages are discovered from the locale files (LANGUAGE_NAME / ENABLED flag): a translator can add or test a language
+    in the packaged app without overwriting en.py or fr.py. The Settings selector and Help follow the available languages.
+    Settings: on Windows and macOS the local solver card shows ASTAP only ("Local Mode (ASTAP)"), unless solve-field is really reachable.
+    CI: the 3-OS build also runs on pull requests to evolution-main.
+
+### BugFix#
+    ASTAP solves always failed (frequent fallback to Nova): wrong -s/-D options for the database, -fov computed from the image width
+    instead of its height, stale .ini/.wcs from a previous run. Unknown FOV now uses -fov 0 (auto).
+    solve-field: the WCS result is now returned and copied next to the image (<name>.wcs.fits); RA/Dec hints, scale range and CPU limit
+    are passed, with Nova as fallback when an API key is set. Linux installer fixed (terminal for sudo, Tycho-2 index files);
+    the broken Windows solve-field .bat is removed.
+    Astrometry scan no longer leaks temp files (FITS copies and ASTAP results) in the temp folder.
+    Astrometry scan skips star-trail sessions (STARTRAILS folder / *_startrails_* images): they cannot be solved and were queued
+    first (high quality score), each one costing an ASTAP try and a Nova upload. Manual sessions already solved are no longer re-queued.
+    Dwarf type mismatch detection: D2 / D3 decided by the source (D3 4K firmware outputs 3840x2160), mosaic roots skipped,
+    D3 bin2 (1920x1080) no longer reported as a DWARF Mini, unreadable or ambiguous images no longer vote DWARF3.
+
 ## [V3.2.9] - 2026-09-28
 ### BugFix#
     correction for FTP Transfert crash
