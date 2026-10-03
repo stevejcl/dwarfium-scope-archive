@@ -575,6 +575,23 @@ TRANSLATIONS: dict[str, str] = {
     "search_dso":                   "Search (designation, name, constellation, type)",  # TODO
     "dso_astro_assoc":              "🔭 AstroObject to DSO Association",  # TODO
     "error_astro_purge":            "Error occurs during AstroObject purge!",  # TODO
+    "dso_wizard_open":              "Link objects without DSO",  # TODO
+    "dso_wizard_title":             "🔗 Link objects without DSO",  # TODO
+    "dso_wizard_loading":           "Loading catalog and objects…",  # TODO
+    "dso_wizard_load_error":        "Loading error: {error}",  # TODO
+    "dso_wizard_progress":          "Object {current} / {total}",  # TODO
+    "dso_wizard_session_n":         "Session {current} / {total}",  # TODO
+    "dso_wizard_no_image":          "No stacked image found for this session.",  # TODO
+    "dso_wizard_proposal":          "Proposal: {designation} — {name} ({sep}° away)",  # TODO
+    "dso_wizard_no_proposal":       "No catalog object within 1°: pick a nearby one below or search manually.",  # TODO
+    "dso_wizard_candidate":         "Catalog object to link",  # TODO
+    "dso_wizard_name_match":        "name match",  # TODO
+    "dso_wizard_update_desc":       "Replace the description with the catalog one",  # TODO
+    "dso_wizard_yes":               "Yes, link",  # TODO
+    "dso_wizard_no":                "No, next",  # TODO
+    "dso_wizard_manual":            "Search manually…",  # TODO
+    "dso_wizard_stop":              "Stop",  # TODO
+    "dso_wizard_summary":           "Done: {linked} object(s) linked, {skipped} skipped, {no_coords} without session coordinates.",  # TODO
 
     # ── Session Notes ─────────────────────────────────────────────────────────────
     "notes_title":                  "🔭 Session Observations",  # TODO

@@ -8,6 +8,7 @@ from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_fil
 
 from components.menu import menu
 from components.astro_object_associate import show_assign_dialog
+from components.dso_association_wizard import DsoAssociationWizard
 from components.win_log import WinLog
 from components.db_page_mixin import DbPageMixin
 
@@ -51,6 +52,7 @@ class CatalogApp(DbPageMixin):
             with ui.row().classes('gap-4'):
                 ui.button(t("export_csv"), on_click=self.on_export_click)
                 ui.button(t("delete_unused"), on_click=self.on_delete_click)
+                ui.button(t("dso_wizard_open"), icon="link", on_click=self.on_wizard_click)
             self.loading_spinner = ui.spinner(size='lg').classes('m-4')
 
             columns=[
@@ -84,6 +86,10 @@ class CatalogApp(DbPageMixin):
     def on_export_click(self):
         csv_data = export_associations(self.conn)
         ui.download.content(csv_data, 'astroobject_dso_associations.csv')
+
+    # Semi-automatic association of objects without DSO
+    async def on_wizard_click(self):
+        await DsoAssociationWizard(self.database, on_linked=self.update_row).open()
 
     # Delete Button
     async def on_delete_click(self):
