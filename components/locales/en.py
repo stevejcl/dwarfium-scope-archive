@@ -622,6 +622,7 @@ TRANSLATIONS: dict[str, str] = {
     "check_detected":               "Detected: {detected}",
     "check_distance":               "{sep}° from the reference",
     "preview_image":                "View the image",
+    "open_in_explore":              "Open in Explore (identify the target…)",
     "move_sessions_btn":            "Sessions",
     "move_sessions_tip":            "Archive sessions (move)",
     "move_sessions_title":          "📁 Archive sessions — {name}",

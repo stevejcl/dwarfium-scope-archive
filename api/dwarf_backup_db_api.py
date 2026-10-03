@@ -286,9 +286,9 @@ def get_backupDrive_id_from_location(conn: sqlite3.Connection, location=None):
 def get_backupDrive_id_from_backupEntry(conn: sqlite3.Connection, backupEntry=None):
     try:
         if backupEntry:
-            cursor = self.conn.cursor()
+            cursor = conn.cursor()
             cursor.execute(
-                "SELECT backup_drive_id FROM BackupEntry WHERE id=?", (self.SessionId,)
+                "SELECT backup_drive_id FROM BackupEntry WHERE id=?", (backupEntry,)
             )
             return cursor.fetchone()
         else:
