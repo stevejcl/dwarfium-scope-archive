@@ -600,6 +600,7 @@ TRANSLATIONS: dict[str, str] = {
     "dso_check_other_sessions":     "{count} other session(s) of this object match {designation}.",
     "dso_check_separation":         "This session is {sep}° away from {designation}.",
     "dso_check_summary":            "Done: {relinked} object(s) linked to a new DSO, {skipped} skipped.",
+    "move_sessions_btn":            "Sessions",
     "move_sessions_tip":            "Archive sessions (move)",
     "move_sessions_title":          "📁 Archive sessions — {name}",
     "move_no_session":              "No archive session for this object.",

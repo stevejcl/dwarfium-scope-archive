@@ -64,7 +64,7 @@ class CatalogApp(DbPageMixin):
                 {'name': 'description', 'label': 'Description', 'field': 'description', 'sortable': True,  'style': 'width: 320px; white-space: normal; word-break: break-word'},
                 {'name': 'dso',         'label': 'DSO',         'field': 'dso',         'sortable': True,  'style': 'width: 120px'},
                 {'name': 'type',       'label': '',            'field': 'is_group',                       'style': 'width: 40px'},
-                {'name': 'actions',     'label': 'Actions',     'field': 'actions',                        'style': 'width: 140px'},
+                {'name': 'actions',     'label': 'Actions',     'field': 'actions',                        'style': 'width: 260px'},
             ]
 
             # Create the table
@@ -161,7 +161,7 @@ class CatalogApp(DbPageMixin):
         self.table.rows = [
             {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3],
              'is_group': r[4] if len(r) > 4 else 0, 'actions': '',
-             'sessions_tip': t("move_sessions_tip")}
+             'sessions_label': t("move_sessions_btn"), 'sessions_tip': t("move_sessions_tip")}
             for r in rows
         ]
         self.table.update()
@@ -199,6 +199,7 @@ class CatalogApp(DbPageMixin):
                     size="sm"
                     icon="folder_open"
                     class="q-mr-xs"
+                    :label="props.row.sessions_label"
                     :title="props.row.sessions_tip"
                     @click="$parent.$emit('object_sessions', props.row.id)"
                   />
