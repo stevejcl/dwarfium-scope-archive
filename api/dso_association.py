@@ -150,6 +150,72 @@ def parse_coords(ra, dec) -> Optional[tuple[float, float]]:
     return ra_deg, dec_deg
 
 
+def solved_center(conn, entry_type: str, entry_id: int) -> Optional[tuple[float, float]]:
+    """Plate-solved centre of a session (SessionWCS): the panel 0 solve, else
+    the mean of the individual mosaic panels; None when not solved."""
+    try:
+        rows = conn.execute("""
+            SELECT panel_num, ra_center, dec_center FROM SessionWCS
+            WHERE entry_type = ? AND entry_id = ?
+              AND ra_center IS NOT NULL AND dec_center IS NOT NULL
+        """, (entry_type, entry_id)).fetchall()
+    except Exception:
+        return None  # SessionWCS not created yet
+    if not rows:
+        return None
+    main = [r for r in rows if r[0] == 0]
+    if main:
+        return float(main[0][1]), float(main[0][2])
+    # Raw mosaic solved panel by panel: mean direction of the panels
+    import math
+    x = y = z = 0.0
+    for _, ra, dec in rows:
+        ra_r, dec_r = math.radians(ra), math.radians(dec)
+        x += math.cos(dec_r) * math.cos(ra_r)
+        y += math.cos(dec_r) * math.sin(ra_r)
+        z += math.sin(dec_r)
+    ra = math.degrees(math.atan2(y, x)) % 360.0
+    dec = math.degrees(math.atan2(z, math.hypot(x, y)))
+    return ra, dec
+
+
+def session_position(conn, source: str, entry_id: int, ra, dec,
+                     data_id: Optional[int] = None) -> dict:
+    """
+    Position to use for a session: its plate-solved centre when available
+    (the goto RA/DEC of shotsInfo.json is only the requested position and
+    may be wrong), else the goto RA/DEC.
+
+    source: 'backup' (BackupEntry id), 'dwarf' (DwarfEntry id) or 'manual'
+    (ManualSessionEntry id). For Dwarf / backup sessions, a plate solving of
+    another archive copy of the same DwarfData is used too.
+
+    Returns {"ra_deg", "dec_deg" (None when unknown), "source": 'solved' |
+    'goto' | None, "goto_offset_deg": distance goto ↔ solved or None}.
+    """
+    goto = parse_coords(ra, dec)
+    solved = None
+    if source == "manual":
+        solved = solved_center(conn, "manual", entry_id)
+    else:
+        if source == "backup":
+            solved = solved_center(conn, "backup", entry_id)
+        if solved is None and data_id is not None:
+            for (be_id,) in conn.execute("SELECT id FROM BackupEntry WHERE dwarf_data_id = ?",
+                                         (data_id,)).fetchall():
+                solved = solved_center(conn, "backup", be_id)
+                if solved:
+                    break
+    if solved:
+        offset = (round(angular_sep_deg_fast(goto[0], goto[1], solved[0], solved[1]), 2)
+                  if goto else None)
+        return {"ra_deg": solved[0], "dec_deg": solved[1], "source": "solved",
+                "goto_offset_deg": offset}
+    if goto:
+        return {"ra_deg": goto[0], "dec_deg": goto[1], "source": "goto", "goto_offset_deg": None}
+    return {"ra_deg": None, "dec_deg": None, "source": None, "goto_offset_deg": None}
+
+
 def _first_existing(paths) -> Optional[str]:
     for p in paths:
         if p and os.path.isfile(p):
@@ -185,10 +251,13 @@ def get_unlinked_astro_objects(conn) -> list[tuple]:
 
 def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True) -> list[dict]:
     """
-    Sessions referencing an AstroObject that carry usable RA/DEC, newest
-    first. Each item: source ('backup' | 'dwarf' | 'manual'), entry_id,
+    Sessions referencing an AstroObject that have a position (plate-solved
+    centre, else goto RA/DEC — see session_position), newest first. Each
+    item: source ('backup' | 'dwarf' | 'manual'), entry_id,
     data_id (DwarfData.id, backup/dwarf) or manual_session_id (manual),
-    session_date, session_dir, target, ra, dec (raw), ra_deg, dec_deg,
+    session_date, session_dir, target, ra, dec (raw goto values), ra_deg,
+    dec_deg (position used), position_source ('solved' | 'goto'),
+    goto_offset_deg,
     image_ref (what resolve_session_image needs) and image_path (full path
     to an existing image, or None — only looked up when resolve_images).
     A DwarfData present both on the Dwarf and in a backup is listed once
@@ -218,15 +287,17 @@ def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True)
         for entry_id, session_date, session_dir, data_id, target, ra, dec, file_path, root, dwarf_id in rows:
             if data_id in seen_data_ids:
                 continue
-            coords = parse_coords(ra, dec)
-            if not coords:
+            position = session_position(conn, source, entry_id, ra, dec, data_id)
+            if position["ra_deg"] is None:
                 continue
             seen_data_ids.add(data_id)
             sessions.append({
                 "source": source, "entry_id": entry_id, "data_id": data_id,
                 "session_date": session_date, "session_dir": session_dir,
                 "target": target,
-                "ra": ra, "dec": dec, "ra_deg": coords[0], "dec_deg": coords[1],
+                "ra": ra, "dec": dec, "ra_deg": position["ra_deg"], "dec_deg": position["dec_deg"],
+                "position_source": position["source"],
+                "goto_offset_deg": position["goto_offset_deg"],
                 "image_ref": ("dwarf", root, file_path, dwarf_id),
             })
 
@@ -245,8 +316,8 @@ def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True)
          session_dir, location, manual_location) in manual_rows:
         if manual_session_id in seen_manual_ids:
             continue
-        coords = parse_coords(ra, dec)
-        if not coords:
+        position = session_position(conn, "manual", entry_id, ra, dec)
+        if position["ra_deg"] is None:
             continue
         seen_manual_ids.add(manual_session_id)
         # Same resolution order as the Home page favorites
@@ -263,7 +334,9 @@ def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True)
             "manual_session_id": manual_session_id,
             "session_date": session_date, "session_dir": session_dir,
             "target": name,
-            "ra": ra, "dec": dec, "ra_deg": coords[0], "dec_deg": coords[1],
+            "ra": ra, "dec": dec, "ra_deg": position["ra_deg"], "dec_deg": position["dec_deg"],
+            "position_source": position["source"],
+            "goto_offset_deg": position["goto_offset_deg"],
             "image_ref": ("manual", candidates),
         })
 
@@ -446,7 +519,10 @@ def check_sessions(conn, index: dict, astro_object_id: int, sessions: list[dict]
 
     coords = {}
     for s in sessions:
-        c = parse_coords(s.get("ra"), s.get("dec"))
+        if s.get("ra_deg") is not None:
+            c = (s["ra_deg"], s["dec_deg"])   # plate-solved centre when available
+        else:
+            c = parse_coords(s.get("ra"), s.get("dec"))
         if c:
             coords[s["entry_id"]] = c
 
@@ -491,5 +567,7 @@ def check_sessions(conn, index: dict, astro_object_id: int, sessions: list[dict]
             "detected": detected, "separation_deg": sep,
             "inconsistent": sep is not None and sep > session_threshold(s, threshold_deg),
             "no_coords": False,
+            "solved": s.get("position_source") == "solved",
+            "goto_offset_deg": s.get("goto_offset_deg"),
         }
     return {"reference": reference, "sessions": result}

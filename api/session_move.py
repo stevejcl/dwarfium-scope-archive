@@ -49,10 +49,19 @@ def is_session_folder(path: str) -> bool:
             or os.path.isfile(os.path.join(path, "shotsInfo.json")))
 
 
+def _position_fields(conn, entry_id, ra, dec, data_id) -> dict:
+    from api.dso_association import session_position
+    p = session_position(conn, "backup", entry_id, ra, dec, data_id)
+    return {"ra_deg": p["ra_deg"], "dec_deg": p["dec_deg"],
+            "position_source": p["source"], "goto_offset_deg": p["goto_offset_deg"]}
+
+
 def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
     """Archive session of a BackupEntry, with its paths:
     entry_id, backup_drive_id, drive_name, dwarf_id, dwarf_name, dwarf_data_id,
-    ra, dec (raw DwarfData values),
+    ra, dec (raw goto values), ra_deg, dec_deg, position_source,
+    goto_offset_deg (plate-solved centre when available, see
+    dso_association.session_position),
     astro_object_id, object_name, group_name, session_date, location,
     astronomy_dir, data_root, session_path (full path of the folder),
     session_name, subfolder (top-level folder holding it, None at root)."""
@@ -82,6 +91,7 @@ def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
         "entry_id": entry_id, "backup_drive_id": drive_id, "drive_name": drive_name,
         "dwarf_id": dwarf_id, "dwarf_name": dwarf_name, "dwarf_data_id": data_id,
         "ra": ra, "dec": dec,
+        **_position_fields(conn, entry_id, ra, dec, data_id),
         "astro_object_id": ao_id, "object_name": ao_name, "group_name": group_name,
         "session_date": session_date,
         "location": location, "astronomy_dir": astronomy_dir, "data_root": data_root,

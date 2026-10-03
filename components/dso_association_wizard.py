@@ -31,6 +31,16 @@ def _session_date(value):
     return value if text == "N/A" else text
 
 
+def _position_label(session):
+    if session.get("position_source") == "solved":
+        label = t("position_solved")
+        offset = session.get("goto_offset_deg")
+        if offset is not None and offset > 1.0:
+            label += " " + t("position_goto_offset", offset=f"{offset:.1f}")
+        return label
+    return t("position_goto")
+
+
 def render_session(session, thumb, nav=None):
     """Session line (source, date, target, RA/DEC, Aladin link) and its
     thumbnail. nav: optional (label, on_prev, on_next) to browse sessions."""
@@ -40,7 +50,7 @@ def render_session(session, thumb, nav=None):
         ui.label(
             f"{_SOURCE_ICONS.get(session['source'], '')} "
             f"{_session_date(session['session_date'])} · {session['target'] or ''} · "
-            f"RA {ra_txt} · DEC {dec_txt}"
+            f"RA {ra_txt} · DEC {dec_txt} · {_position_label(session)}"
         ).classes("text-sm")
         aladin = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
                   f"{session['ra_deg']:.5f}+{session['dec_deg']:+.5f}"
