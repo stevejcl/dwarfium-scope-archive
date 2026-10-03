@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Add
+    DSO catalog add-on: db/catalog_add_on.json (same schema as dso_catalog.json, written by Astro Dwarf Session when targets sent
+    from its /catalog page are kept) is imported after dso_catalog.json; dso_catalog.json wins when both have the same designation.
+    The add-on objects are also used by the automatic session -> object matching.
+    The catalog is also refreshed before each session import (Dwarf / Backup pages, CLI) and when the manual session page opens,
+    so objects added by Astro Dwarf Session while this app is running can be linked to the new sessions without a restart.
+
+### BugFix#
+    The catalog was re-imported at every start as soon as the table and dso_catalog.json didn't have the same number of objects:
+    the import is now run only when an object of the JSON files is missing from the table. Rows are never deleted (sessions point to them).
+    Re-importing the catalog no longer resets DsoCatalog.favorite.
+    dso_sky_search_catalog.json (catalog used to match sessions to objects) was built once and never updated: it is now rebuilt
+    when dso_catalog.json or catalog_add_on.json is newer - incrementally: coordinates already converted are reused, only new
+    or changed objects go through SkyCoord.
+
 ## [V3.3.0] - 2026-10-02
 
 ### Add
