@@ -10,9 +10,8 @@ BackupEntry / DwarfEntry, or ManualSession through ManualSessionEntry),
 find the nearest catalog object and let the user confirm it while looking
 at the session's stacked image.
 
-Step 2 — find sessions whose RA/DEC does not match the DSO of their
-AstroObject, and move them (in the database) to a more representative
-existing object or to a new one.
+Step 2 — find AstroObjects whose sessions' RA/DEC do not match their DSO,
+and link them to the right one.
 
 Pure functions only — no NiceGUI/UI code here.
 """
@@ -28,7 +27,6 @@ from api.dso_matching import (
     load_dso_catalog, find_nearest_catalog_object, angular_sep_deg_fast,
     build_catalog_name_index, normalize_name,
 )
-from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES, update_astro_object_dso
 from api.dwarf_backup_fct import hms_to_hours, dms_to_degrees, get_Backup_fullpath
 
 
@@ -172,16 +170,15 @@ def _session_image(image_path: Optional[str]) -> Optional[str]:
 
 
 def get_unlinked_astro_objects(conn) -> list[tuple]:
-    """AstroObjects (not groups, not the default groups) without dso_id:
-    (id, name, description)."""
-    placeholders = ", ".join(["?"] * len(DEFAULT_GROUP_NAMES))
-    return conn.execute(f"""
+    """AstroObjects (not groups) without dso_id: (id, name, description).
+    Unknown / MOSAIC_Unknown / Manual objects are included: the scan creates
+    one per position, so each can be linked to its own DSO."""
+    return conn.execute("""
         SELECT id, name, description FROM AstroObject
         WHERE dso_id IS NULL
           AND COALESCE(is_group, 0) = 0
-          AND name NOT IN ({placeholders})
-        ORDER BY name COLLATE NOCASE
-    """, DEFAULT_GROUP_NAMES).fetchall()
+        ORDER BY name COLLATE NOCASE, id
+    """).fetchall()
 
 
 def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True) -> list[dict]:
@@ -315,7 +312,7 @@ def make_thumbnail_data_url(image_path: Optional[str], max_size: int = 640) -> O
         return None
 
 
-# ── Step 2: sessions inconsistent with their object's DSO ────────────────────
+# ── Step 2: objects whose sessions do not match their DSO ────────────────────
 
 # A session whose RA/DEC is further than this from its object's catalog
 # position is reported (Dwarf tele fields are < 1°, wide fields a few °).
@@ -323,118 +320,50 @@ INCONSISTENT_DEFAULT_DEG = 2.0
 
 
 def get_linked_astro_objects(conn) -> list[tuple]:
-    """AstroObjects (not groups, not the default groups) linked to a DSO:
+    """AstroObjects (not groups) linked to a DSO:
     (id, name, description, dso_id, designation)."""
-    placeholders = ", ".join(["?"] * len(DEFAULT_GROUP_NAMES))
-    return conn.execute(f"""
+    return conn.execute("""
         SELECT ao.id, ao.name, ao.description, ao.dso_id, d.designation
         FROM AstroObject ao
         JOIN DsoCatalog d ON ao.dso_id = d.id
         WHERE COALESCE(ao.is_group, 0) = 0
-          AND ao.name NOT IN ({placeholders})
-        ORDER BY ao.name COLLATE NOCASE
-    """, DEFAULT_GROUP_NAMES).fetchall()
+        ORDER BY ao.name COLLATE NOCASE, ao.id
+    """).fetchall()
 
 
-def find_inconsistent_sessions(conn, index: dict,
-                               threshold_deg: float = INCONSISTENT_DEFAULT_DEG) -> list[dict]:
+def find_inconsistent_objects(conn, index: dict,
+                              threshold_deg: float = INCONSISTENT_DEFAULT_DEG) -> list[dict]:
     """
-    Sessions whose RA/DEC is more than threshold_deg away from the catalog
-    position of the DSO linked to their AstroObject (e.g. object named
-    after a sub-folder instead of the real target, or session filed under
-    the wrong object). Each item: astro_object (id, name, description),
-    dso_id, designation, session (see get_object_sessions, image not
-    resolved) and separation_deg. Sorted by object name, then separation
-    (largest first).
+    AstroObjects having sessions whose RA/DEC is more than threshold_deg
+    away from the catalog position of the linked DSO (wrong DSO chosen,
+    Unknown object linked to the wrong neighbour, ...). The session object
+    itself comes from the session folder name and is kept: the fix is to
+    link the object to the right DSO, which survives a rescan.
+
+    Each item: astro_object (id, name, description), dso_id, designation,
+    sessions [(session, separation_deg)] (largest separation first, image
+    not resolved — see get_object_sessions) and total_sessions (sessions
+    with coordinates, consistent ones included).
     """
     result = []
     for ao_id, name, description, dso_id, designation in get_linked_astro_objects(conn):
         obj = index["by_designation"].get(designation)
         if not obj:
             continue
-        for session in get_object_sessions(conn, ao_id, resolve_images=False):
+        all_sessions = get_object_sessions(conn, ao_id, resolve_images=False)
+        bad = []
+        for session in all_sessions:
             sep = angular_sep_deg_fast(session["ra_deg"], session["dec_deg"],
                                        obj["ra_deg"], obj["dec_deg"])
             if sep > threshold_deg:
-                result.append({
-                    "astro_object": (ao_id, name, description),
-                    "dso_id": dso_id,
-                    "designation": designation,
-                    "session": session,
-                    "separation_deg": round(sep, 2),
-                })
-    result.sort(key=lambda r: (r["astro_object"][1].lower(), -r["separation_deg"]))
+                bad.append((session, round(sep, 2)))
+        if bad:
+            bad.sort(key=lambda b: -b[1])
+            result.append({
+                "astro_object": (ao_id, name, description),
+                "dso_id": dso_id,
+                "designation": designation,
+                "sessions": bad,
+                "total_sessions": len(all_sessions),
+            })
     return result
-
-
-def get_astro_objects_by_dso(conn, dso_ids) -> dict[int, list[tuple]]:
-    """Existing AstroObjects (not groups) linked to each DSO id:
-    {dso_id: [(id, name), ...]}."""
-    dso_ids = [d for d in dso_ids if d is not None]
-    if not dso_ids:
-        return {}
-    placeholders = ", ".join(["?"] * len(dso_ids))
-    result: dict[int, list[tuple]] = {}
-    for ao_id, name, dso_id in conn.execute(f"""
-        SELECT id, name, dso_id FROM AstroObject
-        WHERE COALESCE(is_group, 0) = 0 AND dso_id IN ({placeholders})
-        ORDER BY name COLLATE NOCASE
-    """, dso_ids).fetchall():
-        result.setdefault(dso_id, []).append((ao_id, name))
-    return result
-
-
-def reassign_session(conn, session: dict, from_astro_object_id: int,
-                     to_astro_object_id: int) -> int:
-    """
-    Move a session from one AstroObject to another in the database. For a
-    Dwarf session both its BackupEntry rows and its DwarfEntry row are
-    updated (same DwarfData); for a manual session all its
-    ManualSessionEntry rows. Returns the number of rows updated.
-
-    Note: a backup / Dwarf rescan assigns the object again from the session
-    folder name (or shotsInfo.json target), so this only lasts if the
-    session folder is moved / renamed accordingly.
-    """
-    updated = 0
-    with conn:
-        if session["source"] == "manual":
-            cur = conn.execute(
-                "UPDATE ManualSessionEntry SET astro_object_id = ? "
-                "WHERE manual_session_id = ? AND astro_object_id = ?",
-                (to_astro_object_id, session["manual_session_id"], from_astro_object_id))
-            updated += cur.rowcount
-        else:
-            for table in ("BackupEntry", "DwarfEntry"):
-                cur = conn.execute(
-                    f"UPDATE {table} SET astro_object_id = ? "
-                    f"WHERE dwarf_data_id = ? AND astro_object_id = ?",
-                    (to_astro_object_id, session["data_id"], from_astro_object_id))
-                updated += cur.rowcount
-    return updated
-
-
-def create_astro_object_for_dso(conn, name: str, dso_id: int) -> tuple[Optional[int], bool]:
-    """
-    AstroObject named `name` linked to dso_id: reuse the existing one with
-    that name (linking it to dso_id if it has no DSO yet), else create it.
-    Returns (astro_object_id, created).
-    """
-    name = (name or "").strip()
-    if not name:
-        return None, False
-    row = conn.execute(
-        "SELECT id, dso_id FROM AstroObject WHERE COALESCE(is_group, 0) = 0 AND name = ?",
-        (name,)).fetchone()
-    if row:
-        ao_id, existing_dso = row
-        if existing_dso is None:
-            update_astro_object_dso(conn, ao_id, dso_id, "")
-        return ao_id, False
-    with conn:
-        cur = conn.execute(
-            "INSERT INTO AstroObject (name, description, is_group) VALUES (?, '', 0)", (name,))
-        ao_id = cur.lastrowid
-    # Sets dso_id and builds the description from the catalog
-    update_astro_object_dso(conn, ao_id, dso_id, "")
-    return ao_id, True

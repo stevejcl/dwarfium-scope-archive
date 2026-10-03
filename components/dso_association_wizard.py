@@ -11,7 +11,7 @@ visual check, and let the user accept (yes) or skip (no) before moving on.
 from nicegui import ui, run, background_tasks
 
 from api.dwarf_backup_db import connect_db, close_db
-from api.dwarf_backup_db_api import update_astro_object_dso
+from api.dwarf_backup_db_api import update_astro_object_dso, DEFAULT_GROUP_NAMES
 from api.dwarf_backup_fct import hours_to_hms, deg_to_dms, show_short_date_session
 from api.dso_association import (
     load_catalog_index, get_unlinked_astro_objects, get_object_sessions,
@@ -60,6 +60,12 @@ def render_session(session, thumb, nav=None):
         ui.image(thumb).classes("w-full rounded").style("max-height: 420px; object-fit: contain")
     else:
         ui.label(t("dso_wizard_no_image")).classes("text-sm text-orange-600")
+
+
+def object_title(ao_id, ao_name):
+    """Unknown / MOSAIC_Unknown / Manual objects share their name (one per
+    position): add the id to tell them apart."""
+    return f"{ao_name} #{ao_id}" if ao_name in DEFAULT_GROUP_NAMES else ao_name
 
 
 def candidate_label(c):
@@ -175,7 +181,7 @@ class DsoAssociationWizard:
                                      current=self.pos + 1, total=len(self.objects))
         self.body.clear()
         with self.body:
-            ui.label(f"⭐ {ao_name}").classes("text-lg font-bold")
+            ui.label(f"⭐ {object_title(ao_id, ao_name)}").classes("text-lg font-bold")
             if ao_desc:
                 ui.label(ao_desc).classes("text-sm text-gray-500")
 
