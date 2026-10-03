@@ -91,8 +91,9 @@ def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
 
 
 def session_image_path(session: dict) -> Optional[str]:
-    """Stacked image of an archive session folder (jpg first, then png,
-    then the thumbnail), or None."""
+    """Stacked image of an archive session folder, or None: stacked.jpg
+    first, then another stacked*.jpg, then stacked.png (first versions only
+    had the png) or another stacked*.png, then the thumbnail."""
     folder = session.get("session_path")
     if not folder or not os.path.isdir(folder):
         return None
@@ -102,6 +103,7 @@ def session_image_path(session: dict) -> Optional[str]:
         return None
     for wanted in (lambda n: n == "stacked.jpg",
                    lambda n: n.startswith("stacked") and n.endswith(".jpg") and "thumbnail" not in n,
+                   lambda n: n == "stacked.png",
                    lambda n: n.startswith("stacked") and n.endswith(".png"),
                    lambda n: n == "stacked_thumbnail.jpg"):
         for n in sorted(names):

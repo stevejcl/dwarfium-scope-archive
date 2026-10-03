@@ -158,14 +158,15 @@ def _first_existing(paths) -> Optional[str]:
 
 
 def _session_image(image_path: Optional[str]) -> Optional[str]:
-    """The session image itself, else stacked.jpg / stacked_thumbnail.jpg
-    next to it."""
+    """The session image itself, else stacked.jpg, stacked.png (first
+    versions only had the png) or stacked_thumbnail.jpg next to it."""
     if not image_path:
         return None
     directory = os.path.dirname(image_path)
     return _first_existing([
         image_path,
         os.path.join(directory, "stacked.jpg"),
+        os.path.join(directory, "stacked.png"),
         os.path.join(directory, "stacked_thumbnail.jpg"),
     ])
 
@@ -303,6 +304,12 @@ def make_thumbnail_data_url(image_path: Optional[str], max_size: int = 640) -> O
         from PIL import Image
         with Image.open(image_path) as img:
             img.draft("RGB", (max_size, max_size))  # fast JPEG downscale
+            if img.mode in ("I;16", "I;16B", "I;16L", "I", "F"):
+                # 16-bit / float grey PNG: a plain convert() saturates to white
+                import numpy as np
+                arr = np.asarray(img, dtype=np.float32)
+                top = 65535.0 if img.mode.startswith("I;16") else max(float(arr.max()), 1.0)
+                img = Image.fromarray(np.clip(arr * (255.0 / top), 0, 255).astype(np.uint8))
             img = img.convert("RGB")
             img.thumbnail((max_size, max_size))
             buf = io.BytesIO()
