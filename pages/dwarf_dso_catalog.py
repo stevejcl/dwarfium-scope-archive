@@ -56,6 +56,12 @@ class CatalogApp(DbPageMixin):
                 ui.button(t("delete_unused"), on_click=self.on_delete_click)
                 ui.button(t("dso_wizard_open"), icon="link", on_click=self.on_wizard_click)
                 ui.button(t("dso_check_open"), icon="rule", on_click=self.on_check_click)
+            # Show all rows, only objects or only groups (default groups
+            # Unknown / MOSAIC_Unknown / Manual are listed with the groups)
+            self.view_filter = self._stored_filter()
+            ui.toggle({'all': t("catalog_filter_all"), 'objects': t("catalog_filter_objects"),
+                       'groups': t("catalog_filter_groups")},
+                      value=self.view_filter, on_change=self.on_filter_change)
             self.loading_spinner = ui.spinner(size='lg').classes('m-4')
 
             columns=[
@@ -72,6 +78,22 @@ class CatalogApp(DbPageMixin):
             self.table.on('assign_dso', self.on_assign_dso)
             self.table.on('delete_astro', self.on_delete_astro)
             self.table.on('object_sessions', self.on_object_sessions)
+
+    @staticmethod
+    def _stored_filter():
+        try:
+            value = app.storage.user.get('catalog_filter', 'all')
+        except Exception:
+            value = 'all'
+        return value if value in ('all', 'objects', 'groups') else 'all'
+
+    def on_filter_change(self, e):
+        self.view_filter = e.value
+        try:
+            app.storage.user['catalog_filter'] = e.value
+        except Exception:
+            pass
+        self.reload()
 
     async def load_data(self):
         """Load catalog data in a thread so spinner renders first."""
@@ -154,13 +176,17 @@ class CatalogApp(DbPageMixin):
             rows = self._preloaded_rows
             self._preloaded_rows = None
         else:
-            from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
-            placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
             rows = load_catalog_data(self.conn)
+        rows = [tuple(r) + (0,) for r in rows]   # is_default = 0
+        view = getattr(self, 'view_filter', 'all')
+        if view == 'objects':
+            rows = [r for r in rows if not r[4]]
+        elif view == 'groups':
+            rows = [r for r in rows if r[4]] + self._default_groups()
         self.data = [(r[0], r[1], r[2], None) for r in rows]
         self.table.rows = [
             {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3],
-             'is_group': r[4] if len(r) > 4 else 0, 'actions': '',
+             'is_group': r[4] if len(r) > 4 else 0, 'is_default': r[5], 'actions': '',
              'sessions_label': t("move_sessions_btn"), 'sessions_tip': t("move_sessions_tip")}
             for r in rows
         ]
@@ -188,6 +214,7 @@ class CatalogApp(DbPageMixin):
                 </q-td>
                 <q-td key="actions" :props="props">
                   <q-btn
+                    v-if="!props.row.is_default"
                     dense
                     size="sm"
                     label="Assign/Change DSO"
@@ -204,6 +231,7 @@ class CatalogApp(DbPageMixin):
                     @click="$parent.$emit('object_sessions', props.row.id)"
                   />
                   <q-btn
+                    v-if="!props.row.is_default"
                     dense
                     size="sm"
                     color="negative"
@@ -215,6 +243,16 @@ class CatalogApp(DbPageMixin):
             ''')
 
         ui.update() 
+
+    def _default_groups(self):
+        """Unknown / MOSAIC_Unknown / Manual groups: hidden from the catalog
+        (no DSO to assign), listed with the groups for their sessions."""
+        from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
+        placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
+        return [(r[0], r[1], r[2], '', 1, 1) for r in self.conn.execute(
+            f"SELECT id, name, description FROM AstroObject "
+            f"WHERE is_group = 1 AND name IN ({placeholders}) ORDER BY name",
+            DEFAULT_GROUP_NAMES).fetchall()]
 
     def update_row(self, ao_id: int):
         """Refresh only the row that was just modified — no full reload."""

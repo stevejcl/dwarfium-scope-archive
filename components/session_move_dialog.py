@@ -15,6 +15,7 @@ from api.session_move import (
     list_subfolders, suggested_subfolders, count_attached_data,
     validate_subfolder_name, move_backup_session,
 )
+from api.dso_association import load_catalog_index, check_sessions, INCONSISTENT_DEFAULT_DEG
 from components.i18n import t
 
 
@@ -23,7 +24,9 @@ def _location_label(session):
 
 
 async def show_object_sessions_dialog(database, astro_object_id, title, on_done=None):
-    """Archive sessions of an object (or group), each with a Move button."""
+    """Archive sessions of an object (or group), each with a Move button.
+    "Check consistency" only annotates the list: catalog object detected at
+    each session's RA/DEC, sessions too far from the object / group."""
     def _load():
         conn = connect_db(database)
         try:
@@ -31,28 +34,92 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
         finally:
             close_db(conn)
     sessions = await run.io_bound(_load)
+    state = {"check": None}
 
-    with ui.dialog() as dialog, ui.card().style("width: 860px; max-width: 95vw"):
+    with ui.dialog() as dialog, ui.card().style("width: 900px; max-width: 95vw"):
         ui.label(t("move_sessions_title", name=title)).classes("text-xl font-semibold")
-        if not sessions:
-            ui.label(t("move_no_session"))
-        for s in sessions:
-            with ui.row().classes("w-full items-center justify-between no-wrap"):
-                with ui.column().classes("gap-0"):
-                    ui.label(s["session_name"]).classes("text-sm font-medium break-all")
-                    ui.label(f"💾 {s['drive_name']} · {_location_label(s)} · "
-                             f"⭐ {s['object_name'] or ''}").classes("text-xs text-gray-500")
+        with ui.row().classes("w-full items-end gap-4"):
+            threshold = ui.number(t("dso_check_threshold"), value=INCONSISTENT_DEFAULT_DEG,
+                                  min=0.1, max=90, step=0.5, format="%.1f").classes("w-40")
+            check_btn = ui.button(t("dso_check_open"), icon="rule").props("flat")
+            summary = ui.label("").classes("text-sm")
 
-                async def _move(entry_id=s["entry_id"]):
-                    async def _moved():
-                        dialog.close()
-                        if on_done:
-                            on_done()
-                    await show_move_session_dialog(database, entry_id, on_done=_moved)
-                ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
+        @ui.refreshable
+        def session_list():
+            if not sessions:
+                ui.label(t("move_no_session"))
+            check = state["check"]
+            for s in sessions:
+                info = check["sessions"].get(s["entry_id"]) if check else None
+                with ui.row().classes("w-full items-center justify-between no-wrap"):
+                    with ui.column().classes("gap-0"):
+                        ui.label(s["session_name"]).classes("text-sm font-medium break-all")
+                        ui.label(f"🔭 {s['dwarf_name'] or '?'} · 💾 {s['drive_name']} · "
+                                 f"{_location_label(s)} · ⭐ {s['object_name'] or ''}"
+                                 ).classes("text-xs text-gray-500")
+                        if info:
+                            _check_label(info, check["reference"])
+
+                    async def _move(entry_id=s["entry_id"]):
+                        async def _moved():
+                            dialog.close()
+                            if on_done:
+                                on_done()
+                        await show_move_session_dialog(database, entry_id, on_done=_moved)
+                    ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
+
+        with ui.column().classes("w-full gap-2").style("max-height: 65vh; overflow-y: auto"):
+            session_list()
+
+        async def _check():
+            def _run():
+                conn = connect_db(database)
+                try:
+                    index = load_catalog_index(conn)
+                    return check_sessions(conn, index, astro_object_id, sessions,
+                                          float(threshold.value or INCONSISTENT_DEFAULT_DEG))
+                finally:
+                    close_db(conn)
+            check_btn.disable()
+            try:
+                state["check"] = await run.io_bound(_run)
+            finally:
+                check_btn.enable()
+            bad = sum(1 for i in state["check"]["sessions"].values() if i["inconsistent"])
+            ref = state["check"]["reference"]
+            if not ref:
+                summary.text = t("check_no_reference")
+                summary.classes(replace="text-sm text-gray-500")
+            else:
+                ref_txt = ref[1] if ref[0] == "dso" else t("check_ref_medoid")
+                summary.text = t("check_summary", count=bad, reference=ref_txt)
+                summary.classes(replace="text-sm " + ("text-orange-600" if bad else "text-green-700"))
+            session_list.refresh()
+        check_btn.on_click(_check)
+
         with ui.row().classes("w-full justify-end"):
             ui.button(t("close"), on_click=dialog.close).props("flat")
     dialog.open()
+
+
+def _check_label(info, reference):
+    if info["no_coords"]:
+        ui.label(t("check_no_coords")).classes("text-xs text-gray-500")
+        return
+    d = info["detected"]
+    if d:
+        # First common name only, and not when it repeats the designation
+        name = (d["name"] or "").split(",")[0].strip()
+        detected = d["designation"] + (f" — {name}" if name and name != d["designation"] else "")
+    else:
+        detected = t("check_nothing_nearby")
+    text = t("check_detected", detected=detected)
+    if info["separation_deg"] is not None:
+        text += " · " + t("check_distance", sep=f"{info['separation_deg']:.1f}")
+    if info["inconsistent"]:
+        ui.label(f"⚠️ {text}").classes("text-xs font-semibold text-orange-600")
+    else:
+        ui.label(text).classes("text-xs text-gray-600")
 
 
 async def show_move_session_dialog(database, backup_entry_id, on_done=None):
@@ -81,7 +148,7 @@ async def show_move_session_dialog(database, backup_entry_id, on_done=None):
     with ui.dialog().props("persistent") as dialog, ui.card().style("width: 720px; max-width: 95vw"):
         ui.label(t("move_title")).classes("text-xl font-semibold")
         ui.label(session["session_name"]).classes("text-sm font-medium break-all")
-        ui.label(t("move_current", drive=session["drive_name"],
+        ui.label(t("move_current", drive=f"🔭 {session['dwarf_name'] or '?'} · {session['drive_name']}",
                    location=_location_label(session))).classes("text-sm text-gray-500")
 
         archive_options = {
