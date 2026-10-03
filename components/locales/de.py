@@ -613,6 +613,7 @@ TRANSLATIONS: dict[str, str] = {
     "check_nothing_nearby":         "no catalog object nearby",  # TODO
     "check_detected":               "Detected: {detected}",  # TODO
     "check_distance":               "{sep}° from the reference",  # TODO
+    "preview_image":                "View the image",  # TODO
     "move_sessions_btn":            "Sessions",  # TODO
     "move_sessions_tip":            "Archive sessions (move)",  # TODO
     "move_sessions_title":          "📁 Archive sessions — {name}",  # TODO

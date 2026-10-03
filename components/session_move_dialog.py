@@ -11,11 +11,14 @@ from nicegui import ui, run
 
 from api.dwarf_backup_db import connect_db, close_db
 from api.session_move import (
-    get_backup_session, get_object_backup_sessions, get_dwarf_archives,
+    session_image_path, get_backup_session, get_object_backup_sessions, get_dwarf_archives,
     list_subfolders, suggested_subfolders, count_attached_data,
     validate_subfolder_name, move_backup_session,
 )
-from api.dso_association import load_catalog_index, check_sessions, INCONSISTENT_DEFAULT_DEG
+from api.dso_association import (
+    load_catalog_index, check_sessions, parse_coords, make_thumbnail_data_url,
+    INCONSISTENT_DEFAULT_DEG,
+)
 from components.i18n import t
 
 
@@ -66,7 +69,10 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
                             if on_done:
                                 on_done()
                         await show_move_session_dialog(database, entry_id, on_done=_moved)
-                    ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
+                    with ui.row().classes("gap-1 no-wrap"):
+                        ui.button(icon="image", on_click=lambda s=s, info=info: show_session_image(s, info)
+                                  ).props("flat dense").tooltip(t("preview_image"))
+                        ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
 
         with ui.column().classes("w-full gap-2").style("max-height: 65vh; overflow-y: auto"):
             session_list()
@@ -102,6 +108,39 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
     dialog.open()
 
 
+def _is_wide_field(session):
+    name = (session.get("session_name") or "").upper()
+    return "_WIDE_" in name or "_MOSAIC_" in name
+
+
+async def show_session_image(session, info=None):
+    """Larger view of the session's stacked image, to check a wide-angle or
+    mosaic field when several catalog objects are close."""
+    path = await run.io_bound(session_image_path, session)
+    image = await run.io_bound(make_thumbnail_data_url, path, 1600) if path else None
+    with ui.dialog() as dialog, ui.card().style("width: 1100px; max-width: 95vw"):
+        ui.label(session["session_name"]).classes("text-sm font-medium break-all")
+        ui.label(f"🔭 {session.get('dwarf_name') or '?'} · 💾 {session['drive_name']} · "
+                 f"{_location_label(session)} · ⭐ {session.get('object_name') or ''}"
+                 ).classes("text-xs text-gray-500")
+        if info:
+            _check_label(info, None)
+        if image:
+            ui.image(image).classes("w-full rounded").style("max-height: 75vh; object-fit: contain")
+        else:
+            ui.label(t("dso_wizard_no_image")).classes("text-sm text-orange-600")
+        with ui.row().classes("w-full justify-end gap-2"):
+            coords = parse_coords(session.get("ra"), session.get("dec"))
+            if coords:
+                fov = 10 if _is_wide_field(session) else 3
+                url = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
+                       f"{coords[0]:.5f}+{coords[1]:+.5f}&fov={fov}&survey=P%2FDSS2%2Fcolor")
+                ui.button("Aladin", icon="public",
+                          on_click=lambda u=url: ui.navigate.to(u, new_tab=True)).props("flat")
+            ui.button(t("close"), on_click=dialog.close).props("flat")
+    dialog.open()
+
+
 def _check_label(info, reference):
     if info["no_coords"]:
         ui.label(t("check_no_coords")).classes("text-xs text-gray-500")
@@ -129,7 +168,7 @@ async def show_move_session_dialog(database, backup_entry_id, on_done=None):
         try:
             session = get_backup_session(conn, backup_entry_id)
             if not session:
-                return None, [], {}, {}
+                return None, [], {}, {}, None
             archives = get_dwarf_archives(conn, session["dwarf_id"])
             folders = {}
             for a in archives:
@@ -137,10 +176,11 @@ async def show_move_session_dialog(database, backup_entry_id, on_done=None):
                 suggested = suggested_subfolders(conn, a["id"], session["astro_object_id"],
                                                  exclude_entry_id=backup_entry_id)
                 folders[a["id"]] = (existing, [f for f in suggested if f in existing])
-            return session, archives, folders, count_attached_data(conn, backup_entry_id)
+            thumb = make_thumbnail_data_url(session_image_path(session), 480)
+            return session, archives, folders, count_attached_data(conn, backup_entry_id), thumb
         finally:
             close_db(conn)
-    session, archives, folders, attached = await run.io_bound(_load)
+    session, archives, folders, attached, thumb = await run.io_bound(_load)
     if not session:
         ui.notify(t("move_err_not_found"), type="negative")
         return
@@ -150,6 +190,11 @@ async def show_move_session_dialog(database, backup_entry_id, on_done=None):
         ui.label(session["session_name"]).classes("text-sm font-medium break-all")
         ui.label(t("move_current", drive=f"🔭 {session['dwarf_name'] or '?'} · {session['drive_name']}",
                    location=_location_label(session))).classes("text-sm text-gray-500")
+        if thumb:
+            # Click to check the field in a larger view
+            ui.image(thumb).classes("w-full rounded cursor-pointer").style(
+                "max-height: 220px; object-fit: contain").on(
+                "click", lambda: show_session_image(session)).tooltip(t("preview_image"))
 
         archive_options = {
             a["id"]: a["name"] + ("" if a["available"] else f" — {t('move_unavailable')}")
