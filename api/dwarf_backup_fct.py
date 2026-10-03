@@ -991,12 +991,28 @@ def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_p
 
     raw_catalog = load_catalog_entries(original_json_path)
 
+    # Incremental: coordinates already converted in the previous file are
+    # reused (same designation, same ra/dec strings) - SkyCoord is slow,
+    # and a catalog_add_on.json change usually adds only a few objects.
+    previous = {}
+    try:
+        with open(output_json_path, 'r', encoding='utf-8') as f:
+            for old in json.load(f):
+                previous[(old.get("designation"), old.get("ra"), old.get("dec"))] = (old.get("ra_deg"), old.get("dec_deg"))
+    except (OSError, ValueError):
+        pass
+
     processed_catalog = []
 
     for entry in raw_catalog:
         try:
             ra_str = entry.get("ra")
             dec_str = entry.get("dec")
+            known = previous.get((entry.get("designation"), ra_str, dec_str))
+            if known and None not in known:
+                entry["ra_deg"], entry["dec_deg"] = known
+                processed_catalog.append(entry)
+                continue
             coord = SkyCoord(ra=ra_str, dec=dec_str, unit=(u.hourangle, u.deg), frame='icrs')
             entry["ra_deg"] = coord.ra.degree
             entry["dec_deg"] = coord.dec.degree

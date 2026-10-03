@@ -14,7 +14,8 @@
     the import is now run only when an object of the JSON files is missing from the table. Rows are never deleted (sessions point to them).
     Re-importing the catalog no longer resets DsoCatalog.favorite.
     dso_sky_search_catalog.json (catalog used to match sessions to objects) was built once and never updated: it is now rebuilt
-    when dso_catalog.json or catalog_add_on.json is newer.
+    when dso_catalog.json or catalog_add_on.json is newer - incrementally: coordinates already converted are reused, only new
+    or changed objects go through SkyCoord.
 
 ## [V3.3.0] - 2026-10-02
 
