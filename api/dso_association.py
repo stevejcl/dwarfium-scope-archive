@@ -390,6 +390,26 @@ def find_inconsistent_objects(conn, index: dict,
 
 # ── Sessions list check (object or group) ────────────────────────────────────
 
+def designation_in_name(name: Optional[str], index: dict) -> Optional[str]:
+    """Catalog designation contained in a folder / group name, e.g.
+    "IC1396_Trunk_Nebula" → "IC 1396", "M42 Orion" → "M 42" (only objects
+    present in the DsoCatalog table)."""
+    import re
+    if not name:
+        return None
+    tokens = [t for t in re.split(r"[^A-Za-z0-9+\-]+", name) if t]
+    names = index["name_index"]
+    for i, tok in enumerate(tokens):
+        for cand in (tok, tok + tokens[i + 1] if i + 1 < len(tokens) else None):
+            key = normalize_name(cand)
+            # A designation has a catalogue prefix and a number
+            if key and any(ch.isdigit() for ch in key) and any(ch.isalpha() for ch in key):
+                designation = names.get(key)
+                if designation in index["db_ids"]:
+                    return designation
+    return None
+
+
 def _medoid(points: list[tuple[float, float]]) -> Optional[tuple[float, float]]:
     """Point with the smallest total separation to the others: a reference
     position not pulled by the misfiled sessions (needs 3 points)."""
@@ -405,12 +425,15 @@ def check_sessions(conn, index: dict, astro_object_id: int, sessions: list[dict]
     Annotate the sessions of an object / group (each a dict with entry_id,
     ra, dec raw values, session_name, target) without changing anything.
 
-    Reference position: the DSO linked to the object / group, else the
-    medoid of the sessions (groups not linked to a DSO). The default groups
-    (Unknown / MOSAIC_Unknown / Manual) gather unrelated targets: no
-    reference, detection only.
+    Reference position: the DSO linked to the object / group, else a
+    catalog designation found in its name (group "IC1396_Trunk_Nebula" →
+    IC 1396), else the medoid of the sessions when more than half of them
+    are close to it ("split" otherwise: the group mixes several targets, no
+    session is flagged). The default groups (Unknown / MOSAIC_Unknown /
+    Manual) gather unrelated targets: no reference, detection only.
 
-    Returns {"reference": (kind, label) or None, kind in ('dso', 'medoid'),
+    Returns {"reference": (kind, label) or None,
+             kind in ('dso', 'name', 'medoid', 'split'),
              "sessions": {entry_id: {"detected": candidate or None,
                                      "separation_deg": float or None,
                                      "inconsistent": bool, "no_coords": bool}}}
@@ -434,10 +457,24 @@ def check_sessions(conn, index: dict, astro_object_id: int, sessions: list[dict]
         if obj:
             ref_pos = (obj["ra_deg"], obj["dec_deg"])
             reference = ("dso", designation)
+        elif (named := designation_in_name(name, index)):
+            # e.g. group "IC1396_Trunk_Nebula" → IC 1396
+            obj = index["by_designation"][named]
+            ref_pos = (obj["ra_deg"], obj["dec_deg"])
+            reference = ("name", named)
         else:
-            ref_pos = _medoid(list(coords.values()))
-            if ref_pos:
-                reference = ("medoid", None)
+            points = list(coords.values())
+            medoid = _medoid(points)
+            if medoid:
+                close = sum(1 for p in points
+                            if angular_sep_deg_fast(p[0], p[1], medoid[0], medoid[1]) <= threshold_deg)
+                if close * 2 > len(points):
+                    ref_pos = medoid
+                    reference = ("medoid", None)
+                else:
+                    # No clear majority: the group mixes several targets,
+                    # no session is singled out
+                    reference = ("split", None)
 
     result = {}
     for s in sessions:
