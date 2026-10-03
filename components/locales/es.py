@@ -603,6 +603,16 @@ TRANSLATIONS: dict[str, str] = {
     "dso_check_other_sessions":     "{count} other session(s) of this object match {designation}.",  # TODO
     "dso_check_separation":         "This session is {sep}° away from {designation}.",  # TODO
     "dso_check_summary":            "Done: {relinked} object(s) linked to a new DSO, {skipped} skipped.",  # TODO
+    "catalog_filter_all":           "All",  # TODO
+    "catalog_filter_objects":       "⭐ Objects",  # TODO
+    "catalog_filter_groups":        "✨ Groups",  # TODO
+    "check_summary":                "{count} inconsistent session(s) — reference: {reference}",  # TODO
+    "check_ref_medoid":             "position of most sessions",  # TODO
+    "check_no_reference":           "No reference (group without DSO and fewer than 3 sessions, or default group): detection only.",  # TODO
+    "check_no_coords":              "No coordinates",  # TODO
+    "check_nothing_nearby":         "no catalog object nearby",  # TODO
+    "check_detected":               "Detected: {detected}",  # TODO
+    "check_distance":               "{sep}° from the reference",  # TODO
     "move_sessions_btn":            "Sessions",  # TODO
     "move_sessions_tip":            "Archive sessions (move)",  # TODO
     "move_sessions_title":          "📁 Archive sessions — {name}",  # TODO

@@ -42,11 +42,6 @@ def render_session(session, thumb, nav=None):
             f"{_session_date(session['session_date'])} · {session['target'] or ''} · "
             f"RA {ra_txt} · DEC {dec_txt}"
         ).classes("text-sm")
-        if nav:
-            label, on_prev, on_next = nav
-            ui.button(icon="chevron_left", on_click=on_prev).props("flat dense round")
-            ui.label(label).classes("text-sm")
-            ui.button(icon="chevron_right", on_click=on_next).props("flat dense round")
         aladin = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
                   f"{session['ra_deg']:.5f}+{session['dec_deg']:+.5f}"
                   f"&fov=3&survey=P%2FDSS2%2Fcolor")
@@ -55,6 +50,13 @@ def render_session(session, thumb, nav=None):
                   ).props("flat dense size=sm")
     if session.get("session_dir"):
         ui.label(f"📁 {session['session_dir']}").classes("text-xs text-gray-500")
+    if nav:
+        # On its own line: the session line above is often long
+        label, on_prev, on_next = nav
+        with ui.row().classes("w-full items-center justify-center gap-2"):
+            ui.button(icon="chevron_left", on_click=on_prev).props("flat dense round")
+            ui.label(label).classes("text-sm")
+            ui.button(icon="chevron_right", on_click=on_next).props("flat dense round")
 
     if thumb:
         ui.image(thumb).classes("w-full rounded").style("max-height: 420px; object-fit: contain")
