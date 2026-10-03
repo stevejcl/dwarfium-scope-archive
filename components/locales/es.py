@@ -603,6 +603,33 @@ TRANSLATIONS: dict[str, str] = {
     "dso_check_other_sessions":     "{count} other session(s) of this object match {designation}.",  # TODO
     "dso_check_separation":         "This session is {sep}° away from {designation}.",  # TODO
     "dso_check_summary":            "Done: {relinked} object(s) linked to a new DSO, {skipped} skipped.",  # TODO
+    "move_sessions_tip":            "Archive sessions (move)",  # TODO
+    "move_sessions_title":          "📁 Archive sessions — {name}",  # TODO
+    "move_no_session":              "No archive session for this object.",  # TODO
+    "move_button":                  "Move",  # TODO
+    "move_in_archive":              "Move in the archive…",  # TODO
+    "move_title":                   "📦 Move the session in the archive",  # TODO
+    "move_current":                 "Currently: {drive} · {location}",  # TODO
+    "move_archive":                 "Destination archive",  # TODO
+    "move_unavailable":             "not available",  # TODO
+    "move_root":                    "Archive root (no group)",  # TODO
+    "move_existing":                "Existing sub-folder",  # TODO
+    "move_new":                     "New sub-folder",  # TODO
+    "move_existing_folder":         "Sub-folder (★ = already holds sessions of this object)",  # TODO
+    "move_new_folder":              "Name of the new sub-folder",  # TODO
+    "move_attached_warning":        "This session has {notes} note(s) and {wcs} plate solving result(s): as for a session moved by hand, they stay with the old location and are removed with it.",  # TODO
+    "move_scan_info":               "The session folder is not renamed. After the move, only this folder is analysed, as after a transfer: the sub-folder gives the group, the folder name keeps the object.",  # TODO
+    "move_done":                    "Session moved to {path}",  # TODO
+    "move_err_name":                "Invalid sub-folder name.",  # TODO
+    "move_err_not_found":           "Session not found in the database.",  # TODO
+    "move_err_other_dwarf":         "The destination archive belongs to another Dwarf.",  # TODO
+    "move_err_manual":              "A manual session is built on this session: it cannot be moved.",  # TODO
+    "move_err_src_missing":         "The session folder is not available (drive disconnected?).",  # TODO
+    "move_err_dst_missing":         "The destination archive is not available.",  # TODO
+    "move_err_same":                "The session is already there.",  # TODO
+    "move_err_exists":              "A folder with this name already exists at the destination.",  # TODO
+    "move_err_io":                  "The move failed (see the log).",  # TODO
+    "move_err_scan":                "Folder moved, but the analysis did not register it: run an analysis from Backup Settings.",  # TODO
 
     # ── Session Notes ─────────────────────────────────────────────────────────────
     "notes_title":                  "🔭 Session Observations",  # TODO
