@@ -6,6 +6,8 @@
     DSO catalog add-on: db/catalog_add_on.json (same schema as dso_catalog.json, written by Astro Dwarf Session when targets sent
     from its /catalog page are kept) is imported after dso_catalog.json; dso_catalog.json wins when both have the same designation.
     The add-on objects are also used by the automatic session -> object matching.
+    The catalog is also refreshed before each session import (Dwarf / Backup pages, CLI) and when the manual session page opens,
+    so objects added by Astro Dwarf Session while this app is running can be linked to the new sessions without a restart.
 
 ### BugFix#
     The catalog was re-imported at every start as soon as the table and dso_catalog.json didn't have the same number of objects:

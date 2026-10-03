@@ -19,7 +19,7 @@ import numpy as np
 from auto_stretch import apply_stretch
 import cv2
 
-from api.dwarf_backup_db import connect_db, close_db, commit_db
+from api.dwarf_backup_db import connect_db, close_db, commit_db, dso_catalog_needs_import, import_dso_catalog
 from api.dwarf_backup_db_api import get_backupDrive_id_from_location, insert_astro_object, insert_astro_group, insert_DwarfData, insert_BackupEntry, insert_DwarfEntry, update_astro_object_coord, get_db_local_dwarf_dir
 from api.dwarf_backup_db_api import is_dwarf_exists, get_dwarf_Names, add_dwarf_detail, delete_notpresent_backup_entries_and_dwarf_data, delete_notpresent_dwarf_entries_and_dwarf_data
 from api.dwarf_backup_db_api import set_dwarf_scan_date, set_backup_scan_date, get_astro_object_groupId, rebuild_manual_session_entries, write_missing_shotsInfo
@@ -985,7 +985,7 @@ def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_p
     # objects added by Astro Dwarf Session are matched too.
     if os.path.exists(output_json_path) and os.path.getmtime(output_json_path) >= latest_mtime(original_json_path):
         safe_print(f"[INFO] Using cached DSO catalog: {output_json_path}")
-        return  # Already up to date
+        return False  # Already up to date
 
     safe_print("[INFO] Preprocessing original DSO catalog...")
 
@@ -1008,6 +1008,25 @@ def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_p
         json.dump(processed_catalog, f, indent=2)
 
     safe_print(f"[OK] Preprocessed catalog saved to: {output_json_path}")
+    return True
+
+
+def refresh_dso_catalog(conn, log=None):
+    """Brings the DSO catalog up to date while the app is running - called
+    before importing sessions (scan_backup_folder) and when the manual
+    session page opens, so objects added to catalog_add_on.json by Astro
+    Dwarf Session in the meantime can be linked to the new sessions.
+    Cheap when nothing changed: the table import only runs when a
+    designation is missing, the search catalog only when a file is newer."""
+    try:
+        if dso_catalog_needs_import(conn):
+            print_log("🔄 DSO catalog: importing new objects", log)
+            import_dso_catalog(conn)
+        if preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE):
+            from api import dso_matching
+            dso_matching._dso_cache = None  # reloaded on next use
+    except Exception as e:
+        print_log(f"⚠️ DSO catalog refresh failed: {e}", log)
 
 
 def write_target_json(session_dir, original_target, name, description):
@@ -1889,6 +1908,8 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     if not conn:
         print_log(f"❌ {db_name} database couldn't be opened!",log)
         return 0,0
+
+    refresh_dso_catalog(conn, log)
 
     if astronomy_dir:
         data_root = os.path.join(backup_root, astronomy_dir)

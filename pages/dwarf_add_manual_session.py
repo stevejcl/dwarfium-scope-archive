@@ -20,7 +20,7 @@ from astropy.wcs import WCS
 
 from components.menu import menu
 from api.dwarf_backup_fct import ( 
-    hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
+    hours_to_hms, deg_to_dms, format_seconds_hms, read_fits_metadata, preprocess_dso_catalog_json, refresh_dso_catalog, transform_session_name, extract_core_name, extract_datetime_from_session_name, is_Restacked, get_name_object,
     show_short_date_session, get_total_exposure, get_total_mosaic_exposure, parse_exposure, get_Backup_fullpath, check_files, create_thumbnail, get_session_detail,compute_md5, get_session_file_ref, safe_copy2, get_relative_file_path
 )
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
@@ -448,8 +448,9 @@ class AddManualSession(DbPageMixin):
         self.register_conn_close()
         nbcol = 3 if self.BackUrl else 1
 
-        # Load the preprocessed catalog once at app start
-        preprocess_dso_catalog_json(CATALOG_FILE, SKY_CATALOG_FILE)
+        # Load the preprocessed catalog (refreshed first: objects added to
+        # catalog_add_on.json since the app started)
+        refresh_dso_catalog(self.conn)
 
         if os.path.exists(SKY_CATALOG_FILE): 
             with open(SKY_CATALOG_FILE  , "r", encoding="utf-8") as f:
