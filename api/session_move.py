@@ -51,17 +51,19 @@ def is_session_folder(path: str) -> bool:
 
 def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
     """Archive session of a BackupEntry, with its paths:
-    entry_id, backup_drive_id, drive_name, dwarf_id, dwarf_data_id,
+    entry_id, backup_drive_id, drive_name, dwarf_id, dwarf_name, dwarf_data_id,
+    ra, dec (raw DwarfData values),
     astro_object_id, object_name, group_name, session_date, location,
     astronomy_dir, data_root, session_path (full path of the folder),
     session_name, subfolder (top-level folder holding it, None at root)."""
     row = conn.execute("""
         SELECT be.id, be.backup_drive_id, bd.name, be.dwarf_id, be.dwarf_data_id,
                be.astro_object_id, ao.name, grp.name, be.session_date,
-               bd.location, bd.astronomy_dir, dd.file_path
+               bd.location, bd.astronomy_dir, dd.file_path, dw.name, dd.ra, dd.dec
         FROM BackupEntry be
         JOIN BackupDrive bd ON be.backup_drive_id = bd.id
         JOIN DwarfData dd ON be.dwarf_data_id = dd.id
+        LEFT JOIN Dwarf dw ON be.dwarf_id = dw.id
         LEFT JOIN AstroObject ao ON be.astro_object_id = ao.id
         LEFT JOIN AstroObject grp ON be.astro_group_id = grp.id
         WHERE be.id = ?
@@ -69,7 +71,7 @@ def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
     if not row:
         return None
     (entry_id, drive_id, drive_name, dwarf_id, data_id, ao_id, ao_name, group_name,
-     session_date, location, astronomy_dir, file_path) = row
+     session_date, location, astronomy_dir, file_path, dwarf_name, ra, dec) = row
     data_root = _data_root(location, astronomy_dir)
     session_path = os.path.dirname(os.path.join(location, file_path))
     if os.path.basename(session_path) == "Thumbnail":
@@ -78,7 +80,8 @@ def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
     parts = rel.split(os.sep)
     return {
         "entry_id": entry_id, "backup_drive_id": drive_id, "drive_name": drive_name,
-        "dwarf_id": dwarf_id, "dwarf_data_id": data_id,
+        "dwarf_id": dwarf_id, "dwarf_name": dwarf_name, "dwarf_data_id": data_id,
+        "ra": ra, "dec": dec,
         "astro_object_id": ao_id, "object_name": ao_name, "group_name": group_name,
         "session_date": session_date,
         "location": location, "astronomy_dir": astronomy_dir, "data_root": data_root,

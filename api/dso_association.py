@@ -27,6 +27,7 @@ from api.dso_matching import (
     load_dso_catalog, find_nearest_catalog_object, angular_sep_deg_fast,
     build_catalog_name_index, normalize_name,
 )
+from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
 from api.dwarf_backup_fct import hms_to_hours, dms_to_degrees, get_Backup_fullpath
 
 
@@ -319,6 +320,17 @@ def make_thumbnail_data_url(image_path: Optional[str], max_size: int = 640) -> O
 INCONSISTENT_DEFAULT_DEG = 2.0
 
 
+def is_mosaic_session(session: dict) -> bool:
+    return ("_MOSAIC_" in (session.get("session_dir") or session.get("session_name") or "").upper()
+            or (session.get("target") or "").upper().startswith("MOSAIC"))
+
+
+def session_threshold(session: dict, threshold_deg: float) -> float:
+    """A mosaic covers a wider field and its RA/DEC is the field centre:
+    allow twice the distance."""
+    return threshold_deg * 2 if is_mosaic_session(session) else threshold_deg
+
+
 def get_linked_astro_objects(conn) -> list[tuple]:
     """AstroObjects (not groups) linked to a DSO:
     (id, name, description, dso_id, designation)."""
@@ -335,7 +347,7 @@ def find_inconsistent_objects(conn, index: dict,
                               threshold_deg: float = INCONSISTENT_DEFAULT_DEG) -> list[dict]:
     """
     AstroObjects having sessions whose RA/DEC is more than threshold_deg
-    away from the catalog position of the linked DSO (wrong DSO chosen,
+    (twice for a mosaic) away from the catalog position of the linked DSO (wrong DSO chosen,
     Unknown object linked to the wrong neighbour, ...). The session object
     itself comes from the session folder name and is kept: the fix is to
     link the object to the right DSO, which survives a rescan.
@@ -355,7 +367,7 @@ def find_inconsistent_objects(conn, index: dict,
         for session in all_sessions:
             sep = angular_sep_deg_fast(session["ra_deg"], session["dec_deg"],
                                        obj["ra_deg"], obj["dec_deg"])
-            if sep > threshold_deg:
+            if sep > session_threshold(session, threshold_deg):
                 bad.append((session, round(sep, 2)))
         if bad:
             bad.sort(key=lambda b: -b[1])
@@ -367,3 +379,73 @@ def find_inconsistent_objects(conn, index: dict,
                 "total_sessions": len(all_sessions),
             })
     return result
+
+
+# ── Sessions list check (object or group) ────────────────────────────────────
+
+def _medoid(points: list[tuple[float, float]]) -> Optional[tuple[float, float]]:
+    """Point with the smallest total separation to the others: a reference
+    position not pulled by the misfiled sessions (needs 3 points)."""
+    if len(points) < 3:
+        return None
+    return min(points, key=lambda p: sum(angular_sep_deg_fast(p[0], p[1], q[0], q[1])
+                                         for q in points))
+
+
+def check_sessions(conn, index: dict, astro_object_id: int, sessions: list[dict],
+                   threshold_deg: float = INCONSISTENT_DEFAULT_DEG) -> dict:
+    """
+    Annotate the sessions of an object / group (each a dict with entry_id,
+    ra, dec raw values, session_name, target) without changing anything.
+
+    Reference position: the DSO linked to the object / group, else the
+    medoid of the sessions (groups not linked to a DSO). The default groups
+    (Unknown / MOSAIC_Unknown / Manual) gather unrelated targets: no
+    reference, detection only.
+
+    Returns {"reference": (kind, label) or None, kind in ('dso', 'medoid'),
+             "sessions": {entry_id: {"detected": candidate or None,
+                                     "separation_deg": float or None,
+                                     "inconsistent": bool, "no_coords": bool}}}
+    """
+    row = conn.execute("""
+        SELECT ao.name, COALESCE(ao.is_group, 0), d.designation
+        FROM AstroObject ao LEFT JOIN DsoCatalog d ON ao.dso_id = d.id
+        WHERE ao.id = ?""", (astro_object_id,)).fetchone()
+    name, is_group, designation = row if row else (None, 0, None)
+
+    coords = {}
+    for s in sessions:
+        c = parse_coords(s.get("ra"), s.get("dec"))
+        if c:
+            coords[s["entry_id"]] = c
+
+    reference = None
+    ref_pos = None
+    if not (is_group and name in DEFAULT_GROUP_NAMES):
+        obj = index["by_designation"].get(designation) if designation else None
+        if obj:
+            ref_pos = (obj["ra_deg"], obj["dec_deg"])
+            reference = ("dso", designation)
+        else:
+            ref_pos = _medoid(list(coords.values()))
+            if ref_pos:
+                reference = ("medoid", None)
+
+    result = {}
+    for s in sessions:
+        c = coords.get(s["entry_id"])
+        if not c:
+            result[s["entry_id"]] = {"detected": None, "separation_deg": None,
+                                     "inconsistent": False, "no_coords": True}
+            continue
+        proposal, candidates = find_dso_candidates(c[0], c[1], index, s.get("target"))
+        detected = proposal or (candidates[0] if candidates else None)
+        sep = (round(angular_sep_deg_fast(c[0], c[1], ref_pos[0], ref_pos[1]), 2)
+               if ref_pos else None)
+        result[s["entry_id"]] = {
+            "detected": detected, "separation_deg": sep,
+            "inconsistent": sep is not None and sep > session_threshold(s, threshold_deg),
+            "no_coords": False,
+        }
+    return {"reference": reference, "sessions": result}
