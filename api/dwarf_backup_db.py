@@ -3,7 +3,7 @@ import os
 import re
 # Encoding changed to UTF-8
 DB_NAME = os.path.join("db", "dwarf_backup.db")
-CATALOG_FILE = os.path.join("db", "dso_catalog.json")
+from api.dso_catalog_files import CATALOG_FILE, load_catalog_entries
 
 def create_DsoCatalog_sql():
     return """
@@ -444,11 +444,9 @@ def init_db(conn):
         cursor.execute("""
           CREATE INDEX IF NOT EXISTS idx_constellation ON DsoCatalog(constellation);
         """)
-        # Check if the table is empty
-        cursor.execute("SELECT COUNT(*) FROM DsoCatalog")
-        row_count = cursor.fetchone()[0]
-
-        if row_count == 0 or row_count != count_catalog_elements():
+        # (Re)import when an object of dso_catalog.json or
+        # catalog_add_on.json is not in the table yet
+        if dso_catalog_needs_import(conn):
             import_dso_catalog(conn)
 
         cursor.execute(create_AstroObject_sql())
@@ -1376,68 +1374,73 @@ def get_astro_object_summary(conn):
         print(f"[DB ERROR] Failed to fetch astro object summary: {e}")
         return []
 
-import json
-def count_catalog_elements():
-    with open(CATALOG_FILE, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return len(data)
+def dso_catalog_needs_import(conn):
+    """True when a designation of dso_catalog.json or catalog_add_on.json
+    is missing from DsoCatalog. Rows are never deleted (AstroObject.dso_id
+    points to them), so the table may hold more objects than the files -
+    comparing counts would re-import on every start."""
+    try:
+        wanted = {obj.get('designation') for obj in load_catalog_entries(CATALOG_FILE) if obj.get('designation')}
+    except Exception as e:
+        print(f"[DB ERROR] Failed to read dso_catalog: {e}")
+        return False
+    in_db = {row[0] for row in conn.execute("SELECT designation FROM DsoCatalog")}
+    return not wanted <= in_db
 
 def import_dso_catalog(conn):
     try:
         cursor = conn.cursor()
 
-        with open(CATALOG_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = load_catalog_entries(CATALOG_FILE)
 
-            for obj in data:
-                cursor.execute("""
-                    INSERT INTO DsoCatalog (
-                        designation, displayName, catalogue, objectNumber,
-                        type, typeCategory, ra, dec, magnitude,
-                        constellation, size, notes, favorite, alternateNames
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(designation) DO UPDATE SET
-                        displayName=excluded.displayName,
-                        catalogue=excluded.catalogue,
-                        objectNumber=excluded.objectNumber,
-                        type=excluded.type,
-                        typeCategory=excluded.typeCategory,
-                        ra=excluded.ra,
-                        dec=excluded.dec,
-                        magnitude=excluded.magnitude,
-                        constellation=excluded.constellation,
-                        size=excluded.size,
-                        notes=excluded.notes,
-                        favorite=excluded.favorite,
-                        alternateNames=excluded.alternateNames
-                """, (
-                    obj.get('designation'),
-                    obj.get('displayName'),
-                    obj.get('catalogue'),
-                    obj.get('objectNumber'),
-                    obj.get('type'),
-                    obj.get('typeCategory'),
-                    obj.get('ra'),
-                    obj.get('dec'),
-                    obj.get('magnitude'),
-                    obj.get('constellation'),
-                    obj.get('size'),
-                    obj.get('notes'),
-                    int(obj.get('favorite', False)),
-                    obj.get('alternateNames')
-                ))
+        for obj in data:
+            cursor.execute("""
+                INSERT INTO DsoCatalog (
+                    designation, displayName, catalogue, objectNumber,
+                    type, typeCategory, ra, dec, magnitude,
+                    constellation, size, notes, favorite, alternateNames
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(designation) DO UPDATE SET
+                    displayName=excluded.displayName,
+                    catalogue=excluded.catalogue,
+                    objectNumber=excluded.objectNumber,
+                    type=excluded.type,
+                    typeCategory=excluded.typeCategory,
+                    ra=excluded.ra,
+                    dec=excluded.dec,
+                    magnitude=excluded.magnitude,
+                    constellation=excluded.constellation,
+                    size=excluded.size,
+                    notes=excluded.notes,
+                    alternateNames=excluded.alternateNames
+            """, (
+                obj.get('designation'),
+                obj.get('displayName'),
+                obj.get('catalogue'),
+                obj.get('objectNumber'),
+                obj.get('type'),
+                obj.get('typeCategory'),
+                obj.get('ra'),
+                obj.get('dec'),
+                obj.get('magnitude'),
+                obj.get('constellation'),
+                obj.get('size'),
+                obj.get('notes'),
+                int(obj.get('favorite', False)),
+                obj.get('alternateNames')
+            ))
 
-            conn.commit()
+        conn.commit()
 
-            # Check inserted data
-            cursor.execute("SELECT COUNT(*) FROM DsoCatalog")
-            row_count = cursor.fetchone()[0]
-            if row_count == 0:
-                print(f" no object found in DSO catalog")
-            elif row_count == 1:
-                print(f" {row_count} object has been inserted in DSO catalog")
-            else:
-                print(f" {row_count} objects have been inserted in DSO catalog")
+        # Check inserted data
+        cursor.execute("SELECT COUNT(*) FROM DsoCatalog")
+        row_count = cursor.fetchone()[0]
+        if row_count == 0:
+            print(f" no object found in DSO catalog")
+        elif row_count == 1:
+            print(f" {row_count} object has been inserted in DSO catalog")
+        else:
+            print(f" {row_count} objects have been inserted in DSO catalog")
 
     except Exception as e:
         print(f"[DB ERROR] Failed to insert dso_catalog: {e}")

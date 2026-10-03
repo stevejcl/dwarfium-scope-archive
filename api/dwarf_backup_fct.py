@@ -30,7 +30,7 @@ from astropy.coordinates import SkyCoord
 from astropy.io.fits import VerifyError
 import astropy.units as u
 
-CATALOG_FILE = os.path.join("db", "dso_catalog.json")
+from api.dso_catalog_files import CATALOG_FILE, load_catalog_entries, latest_mtime
 SKY_CATALOG_FILE = os.path.join("db","dso_sky_search_catalog.json")
 UNKNOWN = "unknown"
 MOSAIC_UNKNOWN = "mosaic_unknown"
@@ -981,14 +981,15 @@ def format_seconds_hms( total_seconds):
 #########################
 
 def preprocess_dso_catalog_json(original_json_path = CATALOG_FILE, output_json_path = SKY_CATALOG_FILE):
-    if os.path.exists(output_json_path):
+    # Rebuilt when dso_catalog.json or catalog_add_on.json is newer, so
+    # objects added by Astro Dwarf Session are matched too.
+    if os.path.exists(output_json_path) and os.path.getmtime(output_json_path) >= latest_mtime(original_json_path):
         safe_print(f"[INFO] Using cached DSO catalog: {output_json_path}")
-        return  # Already exists
+        return  # Already up to date
 
     safe_print("[INFO] Preprocessing original DSO catalog...")
 
-    with open(original_json_path, 'r', encoding='utf-8') as f:
-        raw_catalog = json.load(f)
+    raw_catalog = load_catalog_entries(original_json_path)
 
     processed_catalog = []
 
