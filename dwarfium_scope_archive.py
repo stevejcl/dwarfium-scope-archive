@@ -110,6 +110,18 @@ from api.db_backup import shutdown_backup_db
 
 app.native.settings['ALLOW_DOWNLOADS'] = True
 
+# Persistent WebView data folder instead of pywebview's private mode: private
+# mode uses a temp folder deleted at exit, which fails on Windows while
+# msedgewebview2 still holds its lockfile ("Failed to delete user data
+# folder ... EBWebView\lockfile"). It also keeps the browser cookie, so the
+# per-user preferences (app.storage.user) survive a restart.
+# Next to the exe for the PyInstaller onefile build (its __file__ folder is
+# the temporary extraction folder), next to the sources otherwise.
+_webview_base = (pathlib.Path(sys.executable).parent if getattr(sys, "frozen", False)
+                 else _app_dir)
+app.native.start_args['private_mode'] = False
+app.native.start_args['storage_path'] = str(_webview_base / ".nicegui" / "webview")
+
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
