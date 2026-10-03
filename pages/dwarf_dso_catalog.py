@@ -10,6 +10,7 @@ from components.menu import menu
 from components.astro_object_associate import show_assign_dialog
 from components.dso_association_wizard import DsoAssociationWizard
 from components.dso_consistency_wizard import DsoConsistencyWizard
+from components.session_move_dialog import show_object_sessions_dialog
 from components.win_log import WinLog
 from components.db_page_mixin import DbPageMixin
 
@@ -70,6 +71,7 @@ class CatalogApp(DbPageMixin):
             self.table = ui.table(columns=columns, rows=[], row_key='id').classes('w-full')
             self.table.on('assign_dso', self.on_assign_dso)
             self.table.on('delete_astro', self.on_delete_astro)
+            self.table.on('object_sessions', self.on_object_sessions)
 
     async def load_data(self):
         """Load catalog data in a thread so spinner renders first."""
@@ -158,7 +160,8 @@ class CatalogApp(DbPageMixin):
         self.data = [(r[0], r[1], r[2], None) for r in rows]
         self.table.rows = [
             {'id': r[0], 'name': r[1], 'description': r[2], 'dso': r[3],
-             'is_group': r[4] if len(r) > 4 else 0, 'actions': ''}
+             'is_group': r[4] if len(r) > 4 else 0, 'actions': '',
+             'sessions_tip': t("move_sessions_tip")}
             for r in rows
         ]
         self.table.update()
@@ -190,6 +193,14 @@ class CatalogApp(DbPageMixin):
                     label="Assign/Change DSO"
                     @click="$parent.$emit('assign_dso', props.row.id)"
                     class="q-mr-xs"
+                  />
+                  <q-btn
+                    dense
+                    size="sm"
+                    icon="folder_open"
+                    class="q-mr-xs"
+                    :title="props.row.sessions_tip"
+                    @click="$parent.$emit('object_sessions', props.row.id)"
                   />
                   <q-btn
                     dense
@@ -237,6 +248,13 @@ class CatalogApp(DbPageMixin):
                 ui.button(t("clear"), on_click=do_clear).props("color=warning")
                 ui.button(t("cancel"), on_click=dialog.close).props("flat")
         dialog.open()
+
+    async def on_object_sessions(self, msg: Dict):
+        """Archive sessions of the object / group, to move them."""
+        ao_id = msg.args
+        row = next((r for r in self.table.rows if r['id'] == ao_id), None)
+        title = row['name'] if row else str(ao_id)
+        await show_object_sessions_dialog(self.database, ao_id, title, on_done=self.reload)
 
     def on_assign_dso(self, msg: Dict):
         ao_id = msg.args

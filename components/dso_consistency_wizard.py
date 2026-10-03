@@ -19,6 +19,7 @@ from api.dso_association import (
     resolve_session_image, make_thumbnail_data_url, INCONSISTENT_DEFAULT_DEG,
 )
 from components.dso_association_wizard import render_session, candidate_label, object_title
+from components.session_move_dialog import show_move_session_dialog
 from components.i18n import t
 
 
@@ -182,6 +183,11 @@ class DsoConsistencyWizard:
                               on_click=lambda: self._relink(ao_id, choice.value))
                     ui.button(t("dso_wizard_no"), icon="close", color="warning",
                               on_click=self._skip)
+                    if session["source"] == "backup":
+                        # Re-file the session folder (group) in the archive
+                        ui.button(t("move_in_archive"), icon="drive_file_move",
+                                  on_click=lambda: show_move_session_dialog(
+                                      self.database, session["entry_id"])).props("flat")
                 ui.button(t("dso_wizard_stop"), on_click=self._show_summary).props("flat")
 
     # ── Actions ──────────────────────────────────────────────────────────────
