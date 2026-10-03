@@ -591,6 +591,17 @@ TRANSLATIONS: dict[str, str] = {
     "dso_wizard_manual":            "Recherche manuelle…",
     "dso_wizard_stop":              "Arrêter",
     "dso_wizard_summary":           "Terminé : {linked} objet(s) associé(s), {skipped} ignoré(s), {no_coords} sans coordonnées de session.",
+    "dso_check_open":               "Vérifier la cohérence des sessions",
+    "dso_check_title":              "🧭 Objets dont les sessions ne correspondent pas au DSO",
+    "dso_check_intro":              "Recherche les objets ayant des sessions dont le RA/DEC est loin de la position catalogue du DSO associé (mauvais DSO choisi, objet Unknown associé au mauvais voisin…). L'objet d'une session vient du nom de son dossier et est conservé : la correction consiste à associer l'objet au bon DSO, ce qui est conservé au rescan.",
+    "dso_check_threshold":          "Distance maximale (°)",
+    "dso_check_run":                "Analyser",
+    "dso_check_none":               "Aucun objet incohérent trouvé.",
+    "dso_check_progress":           "Objet {current} / {total}",
+    "dso_check_relink":             "Associer l'objet à ce DSO",
+    "dso_check_other_sessions":     "{count} autre(s) session(s) de cet objet correspondent à {designation}.",
+    "dso_check_separation":         "Cette session est à {sep}° de {designation}.",
+    "dso_check_summary":            "Terminé : {relinked} objet(s) associé(s) à un nouveau DSO, {skipped} ignoré(s).",
 
     # ── Session Notes ─────────────────────────────────────────────────────────────
     "notes_title":                  "🔭 Observations de session",

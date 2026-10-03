@@ -11,8 +11,8 @@ visual check, and let the user accept (yes) or skip (no) before moving on.
 from nicegui import ui, run, background_tasks
 
 from api.dwarf_backup_db import connect_db, close_db
-from api.dwarf_backup_db_api import update_astro_object_dso
-from api.dwarf_backup_fct import hours_to_hms, deg_to_dms
+from api.dwarf_backup_db_api import update_astro_object_dso, DEFAULT_GROUP_NAMES
+from api.dwarf_backup_fct import hours_to_hms, deg_to_dms, show_short_date_session
 from api.dso_association import (
     load_catalog_index, get_unlinked_astro_objects, get_object_sessions,
     find_dso_candidates, make_thumbnail_data_url,
@@ -22,6 +22,58 @@ from components.i18n import t
 
 
 _SOURCE_ICONS = {"backup": "💾", "dwarf": "🔭", "manual": "📷"}
+
+
+def _session_date(value):
+    if not value:
+        return ""
+    text = show_short_date_session(value)
+    return value if text == "N/A" else text
+
+
+def render_session(session, thumb, nav=None):
+    """Session line (source, date, target, RA/DEC, Aladin link) and its
+    thumbnail. nav: optional (label, on_prev, on_next) to browse sessions."""
+    ra_txt = hours_to_hms(session["ra_deg"] / 15.0)
+    dec_txt = deg_to_dms(session["dec_deg"])
+    with ui.row().classes("w-full items-center gap-2"):
+        ui.label(
+            f"{_SOURCE_ICONS.get(session['source'], '')} "
+            f"{_session_date(session['session_date'])} · {session['target'] or ''} · "
+            f"RA {ra_txt} · DEC {dec_txt}"
+        ).classes("text-sm")
+        if nav:
+            label, on_prev, on_next = nav
+            ui.button(icon="chevron_left", on_click=on_prev).props("flat dense round")
+            ui.label(label).classes("text-sm")
+            ui.button(icon="chevron_right", on_click=on_next).props("flat dense round")
+        aladin = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
+                  f"{session['ra_deg']:.5f}+{session['dec_deg']:+.5f}"
+                  f"&fov=3&survey=P%2FDSS2%2Fcolor")
+        ui.button("Aladin", icon="public",
+                  on_click=lambda u=aladin: ui.navigate.to(u, new_tab=True)
+                  ).props("flat dense size=sm")
+    if session.get("session_dir"):
+        ui.label(f"📁 {session['session_dir']}").classes("text-xs text-gray-500")
+
+    if thumb:
+        ui.image(thumb).classes("w-full rounded").style("max-height: 420px; object-fit: contain")
+    else:
+        ui.label(t("dso_wizard_no_image")).classes("text-sm text-orange-600")
+
+
+def object_title(ao_id, ao_name):
+    """Unknown / MOSAIC_Unknown / Manual objects share their name (one per
+    position): add the id to tell them apart."""
+    return f"{ao_name} #{ao_id}" if ao_name in DEFAULT_GROUP_NAMES else ao_name
+
+
+def candidate_label(c):
+    label = (f"{c['designation']} — {c['name']} ({c['type']}, "
+             f"{c['constellation']}) · {c['separation_deg']:.2f}°")
+    if c["by_name"]:
+        label += f" · {t('dso_wizard_name_match')}"
+    return label
 
 
 class DsoAssociationWizard:
@@ -129,37 +181,17 @@ class DsoAssociationWizard:
                                      current=self.pos + 1, total=len(self.objects))
         self.body.clear()
         with self.body:
-            ui.label(f"⭐ {ao_name}").classes("text-lg font-bold")
+            ui.label(f"⭐ {object_title(ao_id, ao_name)}").classes("text-lg font-bold")
             if ao_desc:
                 ui.label(ao_desc).classes("text-sm text-gray-500")
 
             # Session info + navigation between the object's sessions
-            ra_txt = hours_to_hms(session["ra_deg"] / 15.0)
-            dec_txt = deg_to_dms(session["dec_deg"])
-            with ui.row().classes("w-full items-center gap-2"):
-                ui.label(
-                    f"{_SOURCE_ICONS.get(session['source'], '')} "
-                    f"{session['session_date'] or ''} · {session['target'] or ''} · "
-                    f"RA {ra_txt} · DEC {dec_txt}"
-                ).classes("text-sm")
-                if len(self.sessions) > 1:
-                    ui.button(icon="chevron_left",
-                              on_click=lambda: self._change_session(-1)).props("flat dense round")
-                    ui.label(t("dso_wizard_session_n", current=self.session_pos + 1,
-                               total=len(self.sessions))).classes("text-sm")
-                    ui.button(icon="chevron_right",
-                              on_click=lambda: self._change_session(1)).props("flat dense round")
-                aladin = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
-                          f"{session['ra_deg']:.5f}+{session['dec_deg']:+.5f}"
-                          f"&fov=3&survey=P%2FDSS2%2Fcolor")
-                ui.button("Aladin", icon="public",
-                          on_click=lambda u=aladin: ui.navigate.to(u, new_tab=True)
-                          ).props("flat dense size=sm")
-
-            if thumb:
-                ui.image(thumb).classes("w-full rounded").style("max-height: 420px; object-fit: contain")
-            else:
-                ui.label(t("dso_wizard_no_image")).classes("text-sm text-orange-600")
+            nav = None
+            if len(self.sessions) > 1:
+                nav = (t("dso_wizard_session_n", current=self.session_pos + 1,
+                         total=len(self.sessions)),
+                       lambda: self._change_session(-1), lambda: self._change_session(1))
+            render_session(session, thumb, nav)
 
             # Proposal + alternatives
             if proposal:
@@ -169,13 +201,7 @@ class DsoAssociationWizard:
             else:
                 ui.label(t("dso_wizard_no_proposal")).classes("text-orange-600")
 
-            options = {}
-            for c in self.candidates:
-                label = (f"{c['designation']} — {c['name']} ({c['type']}, "
-                         f"{c['constellation']}) · {c['separation_deg']:.2f}°")
-                if c["by_name"]:
-                    label += f" · {t('dso_wizard_name_match')}"
-                options[c["dso_id"]] = label
+            options = {c["dso_id"]: candidate_label(c) for c in self.candidates}
             choice = ui.select(options, label=t("dso_wizard_candidate"),
                                value=proposal["dso_id"] if proposal else None
                                ).classes("w-full")

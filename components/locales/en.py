@@ -589,6 +589,17 @@ TRANSLATIONS: dict[str, str] = {
     "dso_wizard_manual":            "Search manually…",
     "dso_wizard_stop":              "Stop",
     "dso_wizard_summary":           "Done: {linked} object(s) linked, {skipped} skipped, {no_coords} without session coordinates.",
+    "dso_check_open":               "Check session consistency",
+    "dso_check_title":              "🧭 Objects whose sessions do not match their DSO",
+    "dso_check_intro":              "Finds the objects having sessions whose RA/DEC is far from the catalog position of the linked DSO (wrong DSO chosen, Unknown object linked to the wrong neighbour…). The object of a session comes from its folder name and is kept: the fix is to link the object to the right DSO, which survives a rescan.",
+    "dso_check_threshold":          "Maximum distance (°)",
+    "dso_check_run":                "Analyse",
+    "dso_check_none":               "No inconsistent object found.",
+    "dso_check_progress":           "Object {current} / {total}",
+    "dso_check_relink":             "Link the object to this DSO",
+    "dso_check_other_sessions":     "{count} other session(s) of this object match {designation}.",
+    "dso_check_separation":         "This session is {sep}° away from {designation}.",
+    "dso_check_summary":            "Done: {relinked} object(s) linked to a new DSO, {skipped} skipped.",
 
     # ── Session Notes ─────────────────────────────────────────────────────────────
     "notes_title":                  "🔭 Session Observations",

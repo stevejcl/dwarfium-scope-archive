@@ -10,6 +10,9 @@ BackupEntry / DwarfEntry, or ManualSession through ManualSessionEntry),
 find the nearest catalog object and let the user confirm it while looking
 at the session's stacked image.
 
+Step 2 — find AstroObjects whose sessions' RA/DEC do not match their DSO,
+and link them to the right one.
+
 Pure functions only — no NiceGUI/UI code here.
 """
 
@@ -24,7 +27,6 @@ from api.dso_matching import (
     load_dso_catalog, find_nearest_catalog_object, angular_sep_deg_fast,
     build_catalog_name_index, normalize_name,
 )
-from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
 from api.dwarf_backup_fct import hms_to_hours, dms_to_degrees, get_Backup_fullpath
 
 
@@ -168,24 +170,25 @@ def _session_image(image_path: Optional[str]) -> Optional[str]:
 
 
 def get_unlinked_astro_objects(conn) -> list[tuple]:
-    """AstroObjects (not groups, not the default groups) without dso_id:
-    (id, name, description)."""
-    placeholders = ", ".join(["?"] * len(DEFAULT_GROUP_NAMES))
-    return conn.execute(f"""
+    """AstroObjects (not groups) without dso_id: (id, name, description).
+    Unknown / MOSAIC_Unknown / Manual objects are included: the scan creates
+    one per position, so each can be linked to its own DSO."""
+    return conn.execute("""
         SELECT id, name, description FROM AstroObject
         WHERE dso_id IS NULL
           AND COALESCE(is_group, 0) = 0
-          AND name NOT IN ({placeholders})
-        ORDER BY name COLLATE NOCASE
-    """, DEFAULT_GROUP_NAMES).fetchall()
+        ORDER BY name COLLATE NOCASE, id
+    """).fetchall()
 
 
-def get_object_sessions(conn, astro_object_id: int) -> list[dict]:
+def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True) -> list[dict]:
     """
     Sessions referencing an AstroObject that carry usable RA/DEC, newest
     first. Each item: source ('backup' | 'dwarf' | 'manual'), entry_id,
-    session_date, target, ra, dec (raw), ra_deg, dec_deg, image_path
-    (full path to an existing image, or None).
+    data_id (DwarfData.id, backup/dwarf) or manual_session_id (manual),
+    session_date, session_dir, target, ra, dec (raw), ra_deg, dec_deg,
+    image_ref (what resolve_session_image needs) and image_path (full path
+    to an existing image, or None — only looked up when resolve_images).
     A DwarfData present both on the Dwarf and in a backup is listed once
     (backup copy preferred).
     """
@@ -193,7 +196,7 @@ def get_object_sessions(conn, astro_object_id: int) -> list[dict]:
     seen_data_ids: set[int] = set()
 
     backup_rows = conn.execute("""
-        SELECT be.id, be.session_date, dd.id, dd.target, dd.ra, dd.dec,
+        SELECT be.id, be.session_date, be.session_dir, dd.id, dd.target, dd.ra, dd.dec,
                dd.file_path, bd.location, be.dwarf_id
         FROM BackupEntry be
         JOIN DwarfData dd ON be.dwarf_data_id = dd.id
@@ -201,7 +204,7 @@ def get_object_sessions(conn, astro_object_id: int) -> list[dict]:
         WHERE be.astro_object_id = ?
     """, (astro_object_id,)).fetchall()
     dwarf_rows = conn.execute("""
-        SELECT de.id, de.session_date, dd.id, dd.target, dd.ra, dd.dec,
+        SELECT de.id, de.session_date, de.session_dir, dd.id, dd.target, dd.ra, dd.dec,
                dd.file_path, d.usb_astronomy_dir, de.dwarf_id
         FROM DwarfEntry de
         JOIN DwarfData dd ON de.dwarf_data_id = dd.id
@@ -210,29 +213,23 @@ def get_object_sessions(conn, astro_object_id: int) -> list[dict]:
     """, (astro_object_id,)).fetchall()
 
     for source, rows in (("backup", backup_rows), ("dwarf", dwarf_rows)):
-        for entry_id, session_date, data_id, target, ra, dec, file_path, root, dwarf_id in rows:
+        for entry_id, session_date, session_dir, data_id, target, ra, dec, file_path, root, dwarf_id in rows:
             if data_id in seen_data_ids:
                 continue
             coords = parse_coords(ra, dec)
             if not coords:
                 continue
             seen_data_ids.add(data_id)
-            image_path = None
-            if file_path:
-                try:
-                    image_path = _session_image(
-                        get_Backup_fullpath(conn, root, "", file_path, dwarf_id))
-                except Exception:
-                    image_path = None
             sessions.append({
-                "source": source, "entry_id": entry_id,
-                "session_date": session_date, "target": target,
+                "source": source, "entry_id": entry_id, "data_id": data_id,
+                "session_date": session_date, "session_dir": session_dir,
+                "target": target,
                 "ra": ra, "dec": dec, "ra_deg": coords[0], "dec_deg": coords[1],
-                "image_path": image_path,
+                "image_ref": ("dwarf", root, file_path, dwarf_id),
             })
 
     manual_rows = conn.execute("""
-        SELECT mse.id, mse.session_date, ms.session_name, ms.ra, ms.dec,
+        SELECT mse.id, mse.manual_session_id, mse.session_date, ms.session_name, ms.ra, ms.dec,
                COALESCE(ms.jpeg_path, ms.stacked_png_path), mse.session_dir,
                bd.location, msd.location
         FROM ManualSessionEntry mse
@@ -241,30 +238,57 @@ def get_object_sessions(conn, astro_object_id: int) -> list[dict]:
         LEFT JOIN ManualSessionDrive msd ON mse.manual_session_drive = msd.id
         WHERE mse.astro_object_id = ?
     """, (astro_object_id,)).fetchall()
-    for entry_id, session_date, name, ra, dec, jpeg_path, session_dir, location, manual_location in manual_rows:
+    seen_manual_ids: set[int] = set()
+    for (entry_id, manual_session_id, session_date, name, ra, dec, jpeg_path,
+         session_dir, location, manual_location) in manual_rows:
+        if manual_session_id in seen_manual_ids:
+            continue
         coords = parse_coords(ra, dec)
         if not coords:
             continue
-        image_path = None
+        seen_manual_ids.add(manual_session_id)
+        # Same resolution order as the Home page favorites
+        candidates = []
         if jpeg_path:
-            # Same resolution order as the Home page favorites
-            image_path = _first_existing([
+            candidates = [
                 jpeg_path if os.path.isabs(jpeg_path) else None,
                 os.path.join(session_dir, os.path.basename(jpeg_path)) if session_dir else None,
                 os.path.join(manual_location, jpeg_path) if manual_location else None,
                 os.path.join(location, jpeg_path) if location else None,
-            ])
+            ]
         sessions.append({
             "source": "manual", "entry_id": entry_id,
-            "session_date": session_date, "target": name,
+            "manual_session_id": manual_session_id,
+            "session_date": session_date, "session_dir": session_dir,
+            "target": name,
             "ra": ra, "dec": dec, "ra_deg": coords[0], "dec_deg": coords[1],
-            "image_path": image_path,
+            "image_ref": ("manual", candidates),
         })
 
+    for session in sessions:
+        session["image_path"] = resolve_session_image(conn, session) if resolve_images else None
+
     sessions.sort(key=lambda s: s["session_date"] or "", reverse=True)
-    # Sessions with an image to check first
-    sessions.sort(key=lambda s: s["image_path"] is None)
+    if resolve_images:
+        # Sessions with an image to check first
+        sessions.sort(key=lambda s: s["image_path"] is None)
     return sessions
+
+
+def resolve_session_image(conn, session: dict) -> Optional[str]:
+    """Full path to an existing image of the session, or None."""
+    ref = session.get("image_ref")
+    if not ref:
+        return None
+    if ref[0] == "manual":
+        return _first_existing(ref[1])
+    _, root, file_path, dwarf_id = ref
+    if not file_path:
+        return None
+    try:
+        return _session_image(get_Backup_fullpath(conn, root, "", file_path, dwarf_id))
+    except Exception:
+        return None
 
 
 # ── Thumbnail ────────────────────────────────────────────────────────────────
@@ -286,3 +310,60 @@ def make_thumbnail_data_url(image_path: Optional[str], max_size: int = 640) -> O
     except Exception as e:
         print(f"[dso_association] thumbnail failed for {image_path}: {e}")
         return None
+
+
+# ── Step 2: objects whose sessions do not match their DSO ────────────────────
+
+# A session whose RA/DEC is further than this from its object's catalog
+# position is reported (Dwarf tele fields are < 1°, wide fields a few °).
+INCONSISTENT_DEFAULT_DEG = 2.0
+
+
+def get_linked_astro_objects(conn) -> list[tuple]:
+    """AstroObjects (not groups) linked to a DSO:
+    (id, name, description, dso_id, designation)."""
+    return conn.execute("""
+        SELECT ao.id, ao.name, ao.description, ao.dso_id, d.designation
+        FROM AstroObject ao
+        JOIN DsoCatalog d ON ao.dso_id = d.id
+        WHERE COALESCE(ao.is_group, 0) = 0
+        ORDER BY ao.name COLLATE NOCASE, ao.id
+    """).fetchall()
+
+
+def find_inconsistent_objects(conn, index: dict,
+                              threshold_deg: float = INCONSISTENT_DEFAULT_DEG) -> list[dict]:
+    """
+    AstroObjects having sessions whose RA/DEC is more than threshold_deg
+    away from the catalog position of the linked DSO (wrong DSO chosen,
+    Unknown object linked to the wrong neighbour, ...). The session object
+    itself comes from the session folder name and is kept: the fix is to
+    link the object to the right DSO, which survives a rescan.
+
+    Each item: astro_object (id, name, description), dso_id, designation,
+    sessions [(session, separation_deg)] (largest separation first, image
+    not resolved — see get_object_sessions) and total_sessions (sessions
+    with coordinates, consistent ones included).
+    """
+    result = []
+    for ao_id, name, description, dso_id, designation in get_linked_astro_objects(conn):
+        obj = index["by_designation"].get(designation)
+        if not obj:
+            continue
+        all_sessions = get_object_sessions(conn, ao_id, resolve_images=False)
+        bad = []
+        for session in all_sessions:
+            sep = angular_sep_deg_fast(session["ra_deg"], session["dec_deg"],
+                                       obj["ra_deg"], obj["dec_deg"])
+            if sep > threshold_deg:
+                bad.append((session, round(sep, 2)))
+        if bad:
+            bad.sort(key=lambda b: -b[1])
+            result.append({
+                "astro_object": (ao_id, name, description),
+                "dso_id": dso_id,
+                "designation": designation,
+                "sessions": bad,
+                "total_sessions": len(all_sessions),
+            })
+    return result
