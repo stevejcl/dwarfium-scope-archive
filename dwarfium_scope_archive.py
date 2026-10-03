@@ -50,7 +50,12 @@ _setup_logging()
 # Repair corrupted or empty storage BEFORE NiceGUI loads it
 import pathlib, json as _json
 _app_dir = pathlib.Path(__file__).parent
-_storage_file = _app_dir / ".nicegui" / "storage-general.json"
+# Same folder as NiceGUI's own storage (nicegui/storage.py): NICEGUI_STORAGE_PATH
+# or ".nicegui" in the current directory. Not next to __file__: in the
+# PyInstaller onefile exe that is the temporary extraction folder, so the
+# repair below and the shutdown clean-up never reached the real file.
+_storage_dir = pathlib.Path(_os.environ.get('NICEGUI_STORAGE_PATH', '.nicegui')).resolve()
+_storage_file = _storage_dir / "storage-general.json"
 if _storage_file.exists():
     try:
         _raw = _storage_file.read_text(encoding='utf-8').strip()
@@ -147,7 +152,7 @@ def _safe_storage_write(snapshot: dict) -> None:
     Using tmp+replace ensures no half-written file on crash.
     """
     try:
-        _storage_file.parent.mkdir(exist_ok=True)
+        _storage_file.parent.mkdir(parents=True, exist_ok=True)
         _tmp = _storage_file.with_suffix('.tmp')
         _tmp.write_text(_json.dumps(snapshot), encoding='utf-8')
         _tmp.replace(_storage_file)
