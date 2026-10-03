@@ -2201,6 +2201,8 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
 def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_id, backup_drive_id=None, new_data = False, astro_group_id = None): 
     added = 0
     data_ids = set()
+    # Needed by the error-session registration below (mosaic without ZIP)
+    session_dir = os.path.basename(os.path.normpath(dwarf_path))
     session_date = extract_session_datetime(dwarf_path)
     if not session_date:
         # Fallback: use folder mtime (battery cutoff may produce non-standard folder names)
