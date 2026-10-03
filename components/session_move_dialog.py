@@ -232,7 +232,8 @@ async def show_session_image(session, info=None):
         else:
             ui.label(t("dso_wizard_no_image")).classes("text-sm text-orange-600")
         with ui.row().classes("w-full justify-end gap-2"):
-            coords = parse_coords(session.get("ra"), session.get("dec"))
+            coords = ((session["ra_deg"], session["dec_deg"]) if session.get("ra_deg") is not None
+                      else parse_coords(session.get("ra"), session.get("dec")))
             if coords:
                 fov = 10 if _is_wide_field(session) else 3
                 url = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
@@ -241,6 +242,17 @@ async def show_session_image(session, info=None):
                           on_click=lambda u=url: ui.navigate.to(u, new_tab=True)).props("flat")
             ui.button(t("close"), on_click=dialog.close).props("flat")
     dialog.open()
+
+
+def _position_note(p):
+    """'📐 solved position' (+ goto offset when > 1°) or 'goto position'."""
+    if p.get("solved") or p.get("position_source") == "solved":
+        note = t("position_solved")
+        offset = p.get("goto_offset_deg")
+        if offset is not None and offset > 1.0:
+            note += " " + t("position_goto_offset", offset=f"{offset:.1f}")
+        return note
+    return t("position_goto")
 
 
 def _check_label(info, reference):
@@ -257,6 +269,7 @@ def _check_label(info, reference):
     text = t("check_detected", detected=detected)
     if info["separation_deg"] is not None:
         text += " · " + t("check_distance", sep=f"{info['separation_deg']:.1f}")
+    text += " · " + _position_note(info)
     if info["inconsistent"]:
         ui.label(f"⚠️ {text}").classes("text-xs font-semibold text-orange-600")
     else:

@@ -626,6 +626,9 @@ TRANSLATIONS: dict[str, str] = {
     "check_distance":               "{sep}° from the reference",  # TODO
     "preview_image":                "View the image",  # TODO
     "open_in_explore":              "Open in Explore (identify the target…)",  # TODO
+    "position_solved":              "📐 solved position",  # TODO
+    "position_goto":                "goto position",  # TODO
+    "position_goto_offset":         "(goto {offset}° away)",  # TODO
     "use_plate_solving":            "Use plate solving (ignore the goto coordinates)",  # TODO
     "plate_solving_running":        "Blind plate solving in progress (can take a few minutes)…",  # TODO
     "plate_solving_existing":       "Existing plate solving ({solver}, {date})",  # TODO
