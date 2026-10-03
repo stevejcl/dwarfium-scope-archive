@@ -10,19 +10,33 @@ from components.menu import menu
 from components.astro_object_associate import show_assign_dialog
 from components.dso_association_wizard import DsoAssociationWizard
 from components.dso_consistency_wizard import DsoConsistencyWizard
-from components.session_move_dialog import show_object_sessions_dialog
+from components.session_move_dialog import show_object_sessions_dialog, show_groups_check_dialog
+from api.dso_association import INCONSISTENT_DEFAULT_DEG
 from components.win_log import WinLog
 from components.db_page_mixin import DbPageMixin
 
 @ui.page('/Catalog/')
-async def dwarf_catalog():
+async def dwarf_catalog(reopen: str = None, object_id: int = None, title: str = None,
+                        check: int = 0, threshold: float = None, BackupDriveId: int = None):
+    # reopen / object_id / title / check / threshold: back from Explore,
+    # open again the dialog the session was opened from
 
     menu(t("page_catalog"))
     await ui.context.client.connected(timeout=10.0)
     try:
-        ui.context.catalog_app = CatalogApp(DB_NAME)
+        catalog_app = CatalogApp(DB_NAME)
+        ui.context.catalog_app = catalog_app
         # Defer load after page is fully connected — avoids drawer JS timeout
-        ui.timer(0.5, ui.context.catalog_app.load_data, once=True)
+        ui.timer(0.5, catalog_app.load_data, once=True)
+        if reopen == "groups":
+            ui.timer(1.0, lambda: show_groups_check_dialog(
+                DB_NAME, threshold or INCONSISTENT_DEFAULT_DEG,
+                on_done=catalog_app.reload), once=True)
+        elif reopen == "sessions" and object_id:
+            ui.timer(1.0, lambda: show_object_sessions_dialog(
+                DB_NAME, object_id, title or str(object_id),
+                on_done=catalog_app.reload,
+                auto_check=bool(check), threshold_value=threshold), once=True)
     except Exception as e:
         print(f"[Catalog] load Catalog error: {e}")
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
