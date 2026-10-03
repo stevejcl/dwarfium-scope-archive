@@ -939,12 +939,16 @@ def hms_to_hours(hms_str: str) -> float:
         return 0.0
 
 def dms_to_degrees(dms_str: str) -> float:
-    """Convert '+DD° MM′ SS.S″' to decimal degrees (float)."""
+    """Convert '+DD° MM′ SS.S″' (or '+DDdMMmSS.Ss', as written in some
+    shotsInfo.json) to decimal degrees (float)."""
     if isinstance(dms_str, (float, int)):
         return float(dms_str)  # Already numeric
 
     try:
-        dms_str = dms_str.replace('°', ' ').replace('′', ' ').replace('″', '').replace('’', ' ')
+        dms_str = (dms_str.lower()
+                   .replace('°', ' ').replace('′', ' ').replace('″', '').replace('’', ' ')
+                   .replace('d', ' ').replace('m', ' ').replace('s', '')
+                   .replace("'", ' ').replace('"', ''))
         sign = -1 if dms_str.strip().startswith('-') else 1
         parts = dms_str.strip().lstrip('+-').split()
         d = float(parts[0]) if len(parts) > 0 else 0
