@@ -122,6 +122,46 @@ def get_object_backup_sessions(conn, astro_object_id: int) -> list[dict]:
     return [s for s in (get_backup_session(conn, i) for i in ids) if s]
 
 
+def find_misfiled_sessions(conn, index: dict, threshold_deg: float) -> list[dict]:
+    """
+    Check every user group (the default groups Unknown / MOSAIC_Unknown /
+    Manual gather unrelated targets and are skipped) like the sessions list
+    does, and keep the sessions too far from their group's reference: a
+    session filed in the wrong sub-folder, which the object check cannot
+    see (the session is consistent with its own object).
+
+    Returns [{"group": (id, name), "reference": (kind, label),
+              "sessions": [(session, info)]}] for the groups having at
+    least one inconsistent session, sorted by group name. A group without
+    a clear majority (reference kind "split") is listed with all its
+    sessions.
+    """
+    from api.dso_association import check_sessions
+    from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
+    placeholders = ", ".join(["?"] * len(DEFAULT_GROUP_NAMES))
+    result = []
+    for group_id, name in conn.execute(f"""
+            SELECT id, name FROM AstroObject
+            WHERE is_group = 1 AND name NOT IN ({placeholders})
+            ORDER BY name COLLATE NOCASE""", DEFAULT_GROUP_NAMES).fetchall():
+        sessions = get_object_backup_sessions(conn, group_id)
+        if not sessions:
+            continue
+        check = check_sessions(conn, index, group_id, sessions, threshold_deg)
+        if check["reference"] and check["reference"][0] == "split":
+            # No clear majority: list the whole group, nothing singled out
+            result.append({"group": (group_id, name), "reference": check["reference"],
+                           "sessions": [(s, check["sessions"][s["entry_id"]]) for s in sessions]})
+            continue
+        bad = [(s, check["sessions"][s["entry_id"]]) for s in sessions
+               if check["sessions"][s["entry_id"]]["inconsistent"]]
+        if bad:
+            bad.sort(key=lambda b: -(b[1]["separation_deg"] or 0))
+            result.append({"group": (group_id, name), "reference": check["reference"],
+                           "sessions": bad})
+    return result
+
+
 def get_dwarf_archives(conn, dwarf_id: int) -> list[dict]:
     """Archives (BackupDrive) of a Dwarf: id, name, location, astronomy_dir,
     data_root, available (folder reachable now)."""

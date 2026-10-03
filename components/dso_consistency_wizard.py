@@ -19,7 +19,7 @@ from api.dso_association import (
     resolve_session_image, make_thumbnail_data_url, INCONSISTENT_DEFAULT_DEG,
 )
 from components.dso_association_wizard import render_session, candidate_label, object_title
-from components.session_move_dialog import show_move_session_dialog
+from components.session_move_dialog import show_move_session_dialog, show_groups_check_dialog
 from components.i18n import t
 
 
@@ -62,13 +62,25 @@ class DsoConsistencyWizard:
     def _show_settings(self):
         self.body.clear()
         with self.body:
-            ui.label(t("dso_check_intro")).classes("text-sm")
+            mode = ui.radio({"objects": t("dso_check_mode_objects"),
+                             "groups": t("dso_check_mode_groups")}, value="objects")
+            intro = ui.label(t("dso_check_intro")).classes("text-sm")
+            mode.on_value_change(lambda e: intro.set_text(
+                t("dso_check_intro") if e.value == "objects" else t("groups_check_intro")))
             threshold = ui.number(t("dso_check_threshold"), value=INCONSISTENT_DEFAULT_DEG,
                                   min=0.1, max=90, step=0.5, format="%.1f").classes("w-48")
+
+            async def _run():
+                value = threshold.value or INCONSISTENT_DEFAULT_DEG
+                if mode.value == "groups":
+                    # Misfiled sessions of every group: its own list dialog
+                    self.dialog.close()
+                    await show_groups_check_dialog(self.database, value, on_done=self.on_done)
+                else:
+                    await self._analyse(value)
             with ui.row().classes("w-full justify-end gap-2"):
                 ui.button(t("cancel"), on_click=self._close).props("flat")
-                ui.button(t("dso_check_run"), icon="search",
-                          on_click=lambda: self._analyse(threshold.value or INCONSISTENT_DEFAULT_DEG))
+                ui.button(t("dso_check_run"), icon="search", on_click=_run)
 
     async def _analyse(self, threshold):
         self.body.clear()

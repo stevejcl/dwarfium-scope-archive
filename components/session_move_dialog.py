@@ -13,13 +13,22 @@ from api.dwarf_backup_db import connect_db, close_db
 from api.session_move import (
     session_image_path, get_backup_session, get_object_backup_sessions, get_dwarf_archives,
     list_subfolders, suggested_subfolders, count_attached_data,
-    validate_subfolder_name, move_backup_session,
+    validate_subfolder_name, move_backup_session, find_misfiled_sessions,
 )
 from api.dso_association import (
     load_catalog_index, check_sessions, parse_coords, make_thumbnail_data_url,
     INCONSISTENT_DEFAULT_DEG,
 )
 from components.i18n import t
+
+
+def _reference_text(reference):
+    kind, label = reference or (None, None)
+    if kind == "dso":
+        return label
+    if kind == "name":
+        return t("check_ref_name", designation=label)
+    return t("check_ref_medoid")
 
 
 def _location_label(session):
@@ -54,25 +63,12 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
             check = state["check"]
             for s in sessions:
                 info = check["sessions"].get(s["entry_id"]) if check else None
-                with ui.row().classes("w-full items-center justify-between no-wrap"):
-                    with ui.column().classes("gap-0"):
-                        ui.label(s["session_name"]).classes("text-sm font-medium break-all")
-                        ui.label(f"🔭 {s['dwarf_name'] or '?'} · 💾 {s['drive_name']} · "
-                                 f"{_location_label(s)} · ⭐ {s['object_name'] or ''}"
-                                 ).classes("text-xs text-gray-500")
-                        if info:
-                            _check_label(info, check["reference"])
 
-                    async def _move(entry_id=s["entry_id"]):
-                        async def _moved():
-                            dialog.close()
-                            if on_done:
-                                on_done()
-                        await show_move_session_dialog(database, entry_id, on_done=_moved)
-                    with ui.row().classes("gap-1 no-wrap"):
-                        ui.button(icon="image", on_click=lambda s=s, info=info: show_session_image(s, info)
-                                  ).props("flat dense").tooltip(t("preview_image"))
-                        ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
+                async def _moved():
+                    dialog.close()
+                    if on_done:
+                        on_done()
+                _session_row(database, s, info, _moved)
 
         with ui.column().classes("w-full gap-2").style("max-height: 65vh; overflow-y: auto"):
             session_list()
@@ -96,9 +92,11 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
             if not ref:
                 summary.text = t("check_no_reference")
                 summary.classes(replace="text-sm text-gray-500")
+            elif ref[0] == "split":
+                summary.text = t("check_split")
+                summary.classes(replace="text-sm text-orange-600")
             else:
-                ref_txt = ref[1] if ref[0] == "dso" else t("check_ref_medoid")
-                summary.text = t("check_summary", count=bad, reference=ref_txt)
+                summary.text = t("check_summary", count=bad, reference=_reference_text(ref))
                 summary.classes(replace="text-sm " + ("text-orange-600" if bad else "text-green-700"))
             session_list.refresh()
         check_btn.on_click(_check)
@@ -106,6 +104,99 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
         with ui.row().classes("w-full justify-end"):
             ui.button(t("close"), on_click=dialog.close).props("flat")
     dialog.open()
+
+
+def _session_row(database, s, info, on_moved):
+    """One archive session: name, Dwarf / archive / sub-folder / object, the
+    consistency annotation if any, image and Move buttons."""
+    with ui.row().classes("w-full items-center justify-between no-wrap"):
+        with ui.column().classes("gap-0"):
+            ui.label(s["session_name"]).classes("text-sm font-medium break-all")
+            ui.label(f"🔭 {s['dwarf_name'] or '?'} · 💾 {s['drive_name']} · "
+                     f"{_location_label(s)} · ⭐ {s['object_name'] or ''}"
+                     ).classes("text-xs text-gray-500")
+            if info:
+                _check_label(info, None)
+
+        async def _move():
+            await show_move_session_dialog(database, s["entry_id"], on_done=on_moved)
+        with ui.row().classes("gap-1 no-wrap"):
+            ui.button(icon="image", on_click=lambda: show_session_image(s, info)
+                      ).props("flat dense").tooltip(t("preview_image"))
+            ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
+
+
+async def show_groups_check_dialog(database, threshold=INCONSISTENT_DEFAULT_DEG, on_done=None):
+    """Check every group at once and list only the misfiled sessions (to be
+    run from time to time), grouped by group, with image and Move."""
+    state = {"results": None, "moved": 0}
+
+    with ui.dialog() as dialog, ui.card().style("width: 900px; max-width: 95vw"):
+        ui.label(t("groups_check_title")).classes("text-xl font-semibold")
+        summary = ui.label(t("dso_wizard_loading")).classes("text-sm")
+        spinner = ui.spinner(size="lg")
+
+        @ui.refreshable
+        def results_list():
+            for res in state["results"] or []:
+                group_id, name = res["group"]
+                if res["reference"][0] == "split":
+                    ui.label(f"✨ {name} — {t('check_split')}").classes("text-base font-semibold mt-2")
+                else:
+                    ui.label(f"✨ {name} — "
+                             f"{t('groups_check_reference', reference=_reference_text(res['reference']))} · "
+                             f"{t('groups_check_count', count=len(res['sessions']))}"
+                             ).classes("text-base font-semibold mt-2")
+                for s, info in res["sessions"]:
+                    async def _moved(res=res, s=s):
+                        # Drop the moved session from the list, keep the dialog open
+                        res["sessions"] = [b for b in res["sessions"] if b[0] is not s]
+                        state["results"] = [r for r in state["results"] if r["sessions"]]
+                        state["moved"] += 1
+                        _update_summary()
+                        results_list.refresh()
+                    _session_row(database, s, info, _moved)
+
+        with ui.column().classes("w-full gap-2").style("max-height: 65vh; overflow-y: auto"):
+            results_list()
+
+        def _update_summary():
+            results = state["results"] or []
+            n = sum(len(r["sessions"]) for r in results if r["reference"][0] != "split")
+            split = sum(1 for r in results if r["reference"][0] == "split")
+            text = (t("groups_check_summary", count=n, groups=len(results) - split)
+                    if n else t("groups_check_none"))
+            if split:
+                text += " " + t("groups_check_split_count", count=split)
+            n += split
+            summary.text = text
+            summary.classes(replace="text-sm " + ("text-orange-600" if n else "text-green-700"))
+
+        def _close():
+            dialog.close()
+            if on_done and state["moved"]:
+                on_done()
+        with ui.row().classes("w-full justify-end"):
+            ui.button(t("close"), on_click=_close).props("flat")
+    dialog.open()
+
+    def _run():
+        conn = connect_db(database)
+        try:
+            return find_misfiled_sessions(conn, load_catalog_index(conn), float(threshold))
+        finally:
+            close_db(conn)
+    try:
+        state["results"] = await run.io_bound(_run)
+    except Exception as e:
+        print(f"[GroupsCheck] error: {e}")
+        state["results"] = []
+        summary.text = t("dso_wizard_load_error", error=e)
+        spinner.set_visibility(False)
+        return
+    spinner.set_visibility(False)
+    _update_summary()
+    results_list.refresh()
 
 
 def _is_wide_field(session):
