@@ -209,7 +209,9 @@ def find_nearby_comets_skybot(ra_deg, dec_deg, session_date, radius_deg=4.0):
     results = sorted(comets + asteroids, key=lambda x: x["separation_deg"])
     return results, err
 
-def show_unknown_target_dialog(conn: sqlite3.Connection, dwarf_data: DwarfData, dso_catalog, only_unknown=True, on_done = None):
+def show_unknown_target_dialog(conn: sqlite3.Connection, dwarf_data: DwarfData, dso_catalog, only_unknown=True, on_done = None, solve_entry=None):
+    """solve_entry: optional (entry_type, entry_id) — 'backup' / BackupEntry.id
+    or 'manual' / ManualSessionEntry.id — enabling "Use plate solving"."""
     ra = hms_to_hours(dwarf_data.ra) * 15  # convert hours to degrees
     dec = dms_to_degrees(dwarf_data.dec)
     target = dwarf_data.target
@@ -251,28 +253,43 @@ def show_unknown_target_dialog(conn: sqlite3.Connection, dwarf_data: DwarfData, 
         ui.label(error).classes('text-red-600')
     elif not objects:
         ui.label(t("no_nearby_dso")).classes('text-red-600').classes("mt-2")
-        show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done, session_date=session_date)
+        show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done, session_date=session_date,
+                        dso_catalog=dso_catalog, solve_entry=solve_entry)
     else:
-        show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done, session_date=session_date)
+        show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done, session_date=session_date,
+                        dso_catalog=dso_catalog, solve_entry=solve_entry)
 
-def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done = None, session_date = None):
+def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done = None, session_date = None,
+                    dso_catalog=None, solve_entry=None):
+    # Position used for the nearby objects / Aladin: the recorded goto RA/DEC,
+    # or the plate-solved centre once "Use plate solving" was clicked
+    pos = {"ra": ra, "dec": dec}
     with ui.dialog() as dialog:
         with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
             ui.label(f'🔭 Target: {target} - RA: {hours_to_hms(ra/15)}, DEC: {deg_to_dms(dec)}').classes('text-lg font-bold')
+            solved_label = ui.label("").classes("text-md font-semibold text-green-700")
+            solved_label.set_visibility(False)
 
-            if not objects:
-                ui.label(t("no_nearby_dso")).classes('text-red-600')
-            else:
-                columns = [
-                    {'name': 'name', 'label': 'Object', 'field': 'name'},
-                    {'name': 'type', 'label': t('col_type'), 'field': 'type'},
-                    {'name': 'ra', 'label': 'RA (H)', 'field': 'ra'},
-                    {'name': 'dec', 'label': 'DEC (°)', 'field': 'dec'},
-                    {'name': 'separation_deg', 'label': 'Δθ (°)', 'field': 'separation_deg'},
-                    {'name': 'actions', 'label': 'Actions'},
-                ]
+            if solve_entry and dso_catalog:
+                with ui.row().classes("items-center gap-2"):
+                    solve_btn = ui.button(t("use_plate_solving"), icon="my_location").props("color=primary outline")
+                    solve_spinner = ui.spinner(size="md")
+                    solve_spinner.set_visibility(False)
+                    solve_status = ui.label("").classes("text-sm text-gray-500")
 
-                table = ui.table(columns=columns, rows=[], row_key='name').classes('w-full')
+            no_dso_label = ui.label(t("no_nearby_dso")).classes('text-red-600')
+            no_dso_label.set_visibility(not objects)
+            columns = [
+                {'name': 'name', 'label': 'Object', 'field': 'name'},
+                {'name': 'type', 'label': t('col_type'), 'field': 'type'},
+                {'name': 'ra', 'label': 'RA (H)', 'field': 'ra'},
+                {'name': 'dec', 'label': 'DEC (°)', 'field': 'dec'},
+                {'name': 'separation_deg', 'label': 'Δθ (°)', 'field': 'separation_deg'},
+                {'name': 'actions', 'label': 'Actions'},
+            ]
+
+            table = ui.table(columns=columns, rows=[], row_key='name').classes('w-full')
+            table.set_visibility(bool(objects))
 
             def save_custom_name():
                 description = custom_name.value.strip()
@@ -290,8 +307,49 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group
                         
                 ui.update() 
 
-                # Bind the action
-                table.on('add_dso', on_add_dso)
+            # Bind the action
+            table.on('add_dso', on_add_dso)
+
+            if solve_entry and dso_catalog:
+                async def use_plate_solving():
+                    from nicegui import run
+                    from api.session_solve import get_solved_position, solve_session_blind
+                    entry_type, entry_id = solve_entry
+                    position = get_solved_position(conn, entry_type, entry_id)
+                    if not position:
+                        # No plate solving yet: blind solve (the goto RA/DEC is not trusted)
+                        db_path = conn.execute("PRAGMA database_list").fetchone()[2]
+                        solve_btn.disable()
+                        solve_spinner.set_visibility(True)
+                        solve_status.set_text(t("plate_solving_running"))
+                        try:
+                            res = await run.io_bound(solve_session_blind, db_path, entry_type, entry_id)
+                        finally:
+                            solve_spinner.set_visibility(False)
+                            solve_btn.enable()
+                        if not res["ok"]:
+                            solve_status.set_text(t(res["error"]) + (f" ({res['detail']})" if res["detail"] else ""))
+                            ui.notify(t(res["error"]), type="negative")
+                            return
+                        position = res["position"]
+                        solve_status.set_text("")
+                    else:
+                        solve_status.set_text(t("plate_solving_existing", solver=position["solver"] or "?",
+                                                date=(position["solved_at"] or "")[:10]))
+                    pos["ra"], pos["dec"] = position["ra_deg"], position["dec_deg"]
+                    offset = angular_sep_deg(ra, dec, pos["ra"], pos["dec"])
+                    solved_label.set_text(t("plate_solved_position", ra=hours_to_hms(pos["ra"] / 15),
+                                            dec=deg_to_dms(pos["dec"]), offset=f"{offset:.1f}"))
+                    solved_label.classes(replace="text-md font-semibold " +
+                                         ("text-orange-600" if offset > 1.0 else "text-green-700"))
+                    solved_label.set_visibility(True)
+                    new_objects, _ = find_nearby_dso_from_json(pos["ra"], pos["dec"], dso_catalog)
+                    no_dso_label.set_visibility(not new_objects)
+                    table.set_visibility(bool(new_objects))
+                    if new_objects:
+                        reload(table, target, new_objects, astro_object_id, astro_group_id)
+                        table.update()
+                solve_btn.on_click(use_plate_solving)
 
             # ── ☄️ Comet search via SkyBot (IMCCE) ────────────────────────────
             ui.separator().classes('my-3')
@@ -458,7 +516,7 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group
 
 
             # ── end comet section ──────────────────────────────────────────────
-            ui.button(t('open_in_aladin'), on_click=lambda: open_aladin_sky_map(ra, dec, fov=3.0)).props('flat color=primary')
+            ui.button(t('open_in_aladin'), on_click=lambda: open_aladin_sky_map(pos["ra"], pos["dec"], fov=3.0)).props('flat color=primary')
 
             with ui.row().classes("justify-end mt-4"):
                 custom_name = ui.input(label=t('custom_description2'), value=old_description).bind_value(shared, 'custom_name').classes('mt-2').style('width: 600px; ; max-width: none')
