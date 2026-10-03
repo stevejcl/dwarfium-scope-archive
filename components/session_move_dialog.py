@@ -117,7 +117,7 @@ async def show_move_session_dialog(database, backup_entry_id, on_done=None):
 
         if attached["notes"] or attached["wcs"]:
             ui.label(t("move_attached_warning", notes=attached["notes"], wcs=attached["wcs"])
-                     ).classes("text-sm text-orange-600")
+                     ).classes("text-sm text-gray-600")
         ui.label(t("move_scan_info")).classes("text-xs text-gray-500")
         log = ui.log(max_lines=200).classes("w-full h-32")
         log.set_visibility(False)

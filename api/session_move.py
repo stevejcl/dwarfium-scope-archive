@@ -12,9 +12,11 @@ in the same archive or in another archive of the same Dwarf.
 
 The database is not edited by hand: like after a transfer, the backup scan
 is run on the moved session folder only (scan_backup_folder with
-session_dir_path), then the entry of the old location is removed as the
-Explore page does when a session folder is deleted. A later full rescan
-therefore finds exactly the same data.
+session_dir_path). What is attached to the old entry (notes, quality /
+SkyBot scores, plate solving) is then re-attached to the new one, and the
+entry of the old location is removed as the Explore page does when a
+session folder is deleted. A later full rescan therefore finds exactly
+the same data.
 
 Pure functions only — no NiceGUI/UI code here.
 """
@@ -144,8 +146,8 @@ def suggested_subfolders(conn, backup_drive_id: int, astro_object_id: int,
 
 
 def count_attached_data(conn, backup_entry_id: int) -> dict:
-    """Data attached to the BackupEntry, which goes with it when the entry of
-    the old location is removed (as for a session moved by hand)."""
+    """Data attached to the BackupEntry (re-attached to the new entry by a
+    move; ManualSessionEntry blocks the move)."""
     def _count(sql):
         try:
             return conn.execute(sql, (backup_entry_id,)).fetchone()[0]
@@ -168,6 +170,54 @@ def validate_subfolder_name(name: str) -> Optional[str]:
     if name in SKIP_DIRS or extract_astro_name_from_folder(name) or "_MOSAIC_" in name:
         return "move_err_name"
     return None
+
+
+def _carry_over_attached_data(conn, old_entry_id: int, new_entry_id: int,
+                              old_path: str, new_path: str):
+    """
+    Re-attach to the new BackupEntry what was computed or entered for the
+    old one (the session is the same, only its folder moved): notes,
+    quality / SkyBot scores and plate solving results. Without this they
+    would be deleted with the old entry (ON DELETE CASCADE), as for a
+    session moved by hand.
+    """
+    with conn:
+        conn.execute("UPDATE SessionNotes SET backup_entry_id = ? WHERE backup_entry_id = ?",
+                     (new_entry_id, old_entry_id))
+        conn.execute("UPDATE SkyBotResult SET backup_entry_id = ? WHERE backup_entry_id = ?",
+                     (new_entry_id, old_entry_id))
+        # The scan has just created a quality row (folder size) for the new
+        # entry: keep the old one, which also holds the scores
+        if conn.execute("SELECT 1 FROM SessionQuality WHERE backup_entry_id = ?",
+                        (old_entry_id,)).fetchone():
+            size_cols = ("folder_size_bytes", "folder_sized_at", "dwarf_size_bytes",
+                         "dwarf_size_no_fits_bytes", "dwarf_sized_at")
+            fresh = conn.execute(
+                f"SELECT {', '.join(size_cols)} FROM SessionQuality WHERE backup_entry_id = ?",
+                (new_entry_id,)).fetchone()
+            conn.execute("DELETE FROM SessionQuality WHERE backup_entry_id = ?", (new_entry_id,))
+            if fresh:
+                # Fill the sizes the old row does not have yet
+                conn.execute(
+                    f"UPDATE SessionQuality SET "
+                    f"{', '.join(f'{c} = COALESCE({c}, ?)' for c in size_cols)} "
+                    f"WHERE backup_entry_id = ?", (*fresh, old_entry_id))
+            conn.execute("UPDATE SessionQuality SET backup_entry_id = ? WHERE backup_entry_id = ?",
+                         (new_entry_id, old_entry_id))
+        # Plate solving: same entry, and the .wcs file moved with the folder
+        old_prefix = os.path.normpath(old_path) + os.sep
+        rows = conn.execute(
+            "SELECT id, wcs_file FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?",
+            (old_entry_id,)).fetchall()
+        if rows:
+            conn.execute("DELETE FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?",
+                         (new_entry_id,))
+        for wcs_id, wcs_file in rows:
+            if wcs_file and os.path.normpath(wcs_file).startswith(old_prefix):
+                wcs_file = os.path.join(new_path, os.path.relpath(os.path.normpath(wcs_file),
+                                                                  os.path.normpath(old_path)))
+            conn.execute("UPDATE SessionWCS SET entry_id = ?, wcs_file = ? WHERE id = ?",
+                         (new_entry_id, wcs_file, wcs_id))
 
 
 def _remove_old_entry(conn, backup_drive_id: int, dwarf_id: int, dwarf_data_id: int):
@@ -275,6 +325,8 @@ def move_backup_session(db_name: str, backup_entry_id: int, dst_drive_id: int,
             return result
         result["new_entry_id"] = new_id
         if new_id != backup_entry_id:
+            _carry_over_attached_data(conn, backup_entry_id, new_id,
+                                      src["session_path"], dst_path)
             _remove_old_entry(conn, src["backup_drive_id"], src["dwarf_id"], src["dwarf_data_id"])
         result["ok"] = True
         return result

@@ -616,7 +616,7 @@ TRANSLATIONS: dict[str, str] = {
     "move_new":                     "Nouveau sous-répertoire",
     "move_existing_folder":         "Sous-répertoire (★ = contient déjà des sessions de cet objet)",
     "move_new_folder":              "Nom du nouveau sous-répertoire",
-    "move_attached_warning":        "Cette session a {notes} note(s) et {wcs} résolution(s) astrométrique(s) : comme pour un déplacement à la main, elles restent attachées à l'ancien emplacement et sont supprimées avec lui.",
+    "move_attached_warning":        "Les {notes} note(s) et {wcs} résolution(s) astrométrique(s) de cette session sont conservées.",
     "move_scan_info":               "Le dossier de la session n'est pas renommé. Après le déplacement, seul ce dossier est analysé, comme après un transfert : le sous-répertoire donne le groupe, le nom du dossier garde l'objet.",
     "move_done":                    "Session déplacée vers {path}",
     "move_err_name":                "Nom de sous-répertoire invalide.",

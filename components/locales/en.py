@@ -614,7 +614,7 @@ TRANSLATIONS: dict[str, str] = {
     "move_new":                     "New sub-folder",
     "move_existing_folder":         "Sub-folder (★ = already holds sessions of this object)",
     "move_new_folder":              "Name of the new sub-folder",
-    "move_attached_warning":        "This session has {notes} note(s) and {wcs} plate solving result(s): as for a session moved by hand, they stay with the old location and are removed with it.",
+    "move_attached_warning":        "{notes} note(s) and {wcs} plate solving result(s) of this session are kept with it.",
     "move_scan_info":               "The session folder is not renamed. After the move, only this folder is analysed, as after a transfer: the sub-folder gives the group, the folder name keeps the object.",
     "move_done":                    "Session moved to {path}",
     "move_err_name":                "Invalid sub-folder name.",
