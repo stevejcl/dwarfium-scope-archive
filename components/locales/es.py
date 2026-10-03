@@ -626,6 +626,14 @@ TRANSLATIONS: dict[str, str] = {
     "check_distance":               "{sep}° from the reference",  # TODO
     "preview_image":                "View the image",  # TODO
     "open_in_explore":              "Open in Explore (identify the target…)",  # TODO
+    "use_plate_solving":            "Use plate solving (ignore the goto coordinates)",  # TODO
+    "plate_solving_running":        "Blind plate solving in progress (can take a few minutes)…",  # TODO
+    "plate_solving_existing":       "Existing plate solving ({solver}, {date})",  # TODO
+    "plate_solved_position":        "📐 Solved position: RA {ra}, DEC {dec} — {offset}° from the goto coordinates",  # TODO
+    "solve_err_not_found":          "Session not found.",  # TODO
+    "solve_err_mosaic":             "Raw mosaic: solved panel by panel by the astrometry scan.",  # TODO
+    "solve_err_no_image":           "No image to solve for this session.",  # TODO
+    "solve_err_failed":             "Plate solving failed",  # TODO
     "move_sessions_btn":            "Sessions",  # TODO
     "move_sessions_tip":            "Archive sessions (move)",  # TODO
     "move_sessions_title":          "📁 Archive sessions — {name}",  # TODO

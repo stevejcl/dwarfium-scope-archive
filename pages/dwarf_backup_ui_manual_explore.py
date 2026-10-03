@@ -1180,6 +1180,7 @@ class ManualExploreApp(DbPageMixin):
                         on_click=lambda: show_unknown_target_dialog(
                             self.conn, dwarf_data_obj, self.dso_catalog, False,
                             lambda: None,
+                            solve_entry=("manual", entry_id) if entry_id else None,
                         ),
                     )
 

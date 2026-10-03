@@ -1704,7 +1704,9 @@ class ExploreApp(DbPageMixin):
                 with ui.row().classes('w-full gap-8 items-start'):
                     ui.item(f"🛰️ {t('dwarf_target')}: {init_target}").classes('text-green-600')
                     if self.dso_catalog:
-                        ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(DwarfData.from_row(row), descriptiondb))
+                        ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(
+                            DwarfData.from_row(row), descriptiondb,
+                            row[22] if self.mode == "backup" and len(row) > 22 else None))
 
                 self.classified_label = ui.label().classes('text-gray-500').classes("m-4")
                 self.update_classified_label(astro_object_id, init_target, descriptiondb)
@@ -1806,7 +1808,7 @@ class ExploreApp(DbPageMixin):
             await self.update_preview(full_path)
             self.update_preview_icons()
 
-    def on_identify_target_click(self, dwarf_data: DwarfData, descriptiondb):
+    def on_identify_target_click(self, dwarf_data: DwarfData, descriptiondb, backup_entry_id=None):
         #dwarf_data = DwarfData.from_row(row)
         #dwarf_data_id = row[0]
         #target = row[13]
@@ -1816,7 +1818,8 @@ class ExploreApp(DbPageMixin):
         #astro_group_id = row[18]
 
         on_done = lambda: self.update_classified_label(dwarf_data.astro_object_id, dwarf_data.target, "")
-        show_unknown_target_dialog(self.conn, dwarf_data, self.dso_catalog, False, on_done)
+        show_unknown_target_dialog(self.conn, dwarf_data, self.dso_catalog, False, on_done,
+                                   solve_entry=("backup", backup_entry_id) if backup_entry_id else None)
 
     # Function to update classified label
     def update_classified_label(self, object_id, target, descriptiondb = "", text_only = False):

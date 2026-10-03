@@ -516,15 +516,20 @@ def solve_online(api_key, image_path, log=None):
     return str(wcs_file)
 
 def auto_resolve(api_key: str, image_path: str, log=None, astap_db: str = "D20",
-                 ra_hint: float = None, dec_hint: float = None) -> str:
+                 ra_hint: float = None, dec_hint: float = None, blind: bool = False) -> str:
     """
     Solve image astrometry using the best available solver.
     Priority: ASTAP (fast, local) > solve-field (local) > Nova API (online)
     ra_hint/dec_hint: explicit coordinates to skip reading from file (useful for temp files)
+    blind: ignore any position hint (FITS header included) and search the
+    whole sky — for sessions whose recorded goto position is wrong.
     """
     print_log(f"Attempted resolution for: {image_path}", log)
 
-    if ra_hint is None or dec_hint is None:
+    if blind:
+        ra_hint = dec_hint = None
+        print_log("Blind solve: position hint ignored", log)
+    elif ra_hint is None or dec_hint is None:
         _ra, _dec = get_ra_dec_hint_from_fits(image_path)
         ra_hint  = ra_hint  if ra_hint  is not None else _ra
         dec_hint = dec_hint if dec_hint is not None else _dec
