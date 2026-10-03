@@ -90,6 +90,26 @@ def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
     }
 
 
+def session_image_path(session: dict) -> Optional[str]:
+    """Stacked image of an archive session folder (jpg first, then png,
+    then the thumbnail), or None."""
+    folder = session.get("session_path")
+    if not folder or not os.path.isdir(folder):
+        return None
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    for wanted in (lambda n: n == "stacked.jpg",
+                   lambda n: n.startswith("stacked") and n.endswith(".jpg") and "thumbnail" not in n,
+                   lambda n: n.startswith("stacked") and n.endswith(".png"),
+                   lambda n: n == "stacked_thumbnail.jpg"):
+        for n in sorted(names):
+            if wanted(n.lower()):
+                return os.path.join(folder, n)
+    return None
+
+
 def get_object_backup_sessions(conn, astro_object_id: int) -> list[dict]:
     """Archive sessions whose object or group is astro_object_id."""
     ids = [r[0] for r in conn.execute("""

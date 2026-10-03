@@ -612,6 +612,7 @@ TRANSLATIONS: dict[str, str] = {
     "check_nothing_nearby":         "aucun objet du catalogue à proximité",
     "check_detected":               "Détecté : {detected}",
     "check_distance":               "à {sep}° de la référence",
+    "preview_image":                "Voir l'image",
     "move_sessions_btn":            "Sessions",
     "move_sessions_tip":            "Sessions d'archive (déplacer)",
     "move_sessions_title":          "📁 Sessions d'archive — {name}",
