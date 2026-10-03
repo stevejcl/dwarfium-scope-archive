@@ -35,7 +35,8 @@ def _location_label(session):
     return f"📁 {session['subfolder']}" if session["subfolder"] else t("move_root")
 
 
-async def show_object_sessions_dialog(database, astro_object_id, title, on_done=None):
+async def show_object_sessions_dialog(database, astro_object_id, title, on_done=None,
+                                      auto_check=False, threshold_value=None):
     """Archive sessions of an object (or group), each with a Move button.
     "Check consistency" only annotates the list: catalog object detected at
     each session's RA/DEC, sessions too far from the object / group."""
@@ -51,10 +52,18 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
     with ui.dialog() as dialog, ui.card().style("width: 900px; max-width: 95vw"):
         ui.label(t("move_sessions_title", name=title)).classes("text-xl font-semibold")
         with ui.row().classes("w-full items-end gap-4"):
-            threshold = ui.number(t("dso_check_threshold"), value=INCONSISTENT_DEFAULT_DEG,
+            threshold = ui.number(t("dso_check_threshold"),
+                                  value=threshold_value or INCONSISTENT_DEFAULT_DEG,
                                   min=0.1, max=90, step=0.5, format="%.1f").classes("w-40")
             check_btn = ui.button(t("dso_check_open"), icon="rule").props("flat")
             summary = ui.label("").classes("text-sm")
+
+        def reopen_params():
+            # Back from Explore: this list again, checked again if it was
+            params = {"reopen": "sessions", "object_id": astro_object_id, "title": title}
+            if state["check"] is not None:
+                params.update(check=1, threshold=threshold.value or INCONSISTENT_DEFAULT_DEG)
+            return params
 
         @ui.refreshable
         def session_list():
@@ -68,7 +77,7 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
                     dialog.close()
                     if on_done:
                         on_done()
-                _session_row(database, s, info, _moved)
+                _session_row(database, s, info, _moved, reopen_params)
 
         with ui.column().classes("w-full gap-2").style("max-height: 65vh; overflow-y: auto"):
             session_list()
@@ -104,18 +113,25 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
         with ui.row().classes("w-full justify-end"):
             ui.button(t("close"), on_click=dialog.close).props("flat")
     dialog.open()
+    if auto_check:
+        await _check()
 
 
-def open_in_explore(session):
+def open_in_explore(session, reopen=None):
     """Open the session in Explore (e.g. to identify its target again), with
-    a back button to Catalog Edition."""
-    from urllib.parse import quote
-    back = quote("/Catalog/?BackupDriveId=", safe="")
+    a back button to Catalog Edition. reopen: query parameters (dict, or a
+    callable returning one) telling Catalog Edition which dialog to open
+    again on return (sessions list / groups check)."""
+    from urllib.parse import quote, urlencode
+    params = reopen() if callable(reopen) else (reopen or {})
+    # Explore appends the archive id to the back url
+    back_path = "/Catalog/?" + (urlencode(params) + "&" if params else "") + "BackupDriveId="
+    back = quote(back_path, safe="")
     ui.navigate.to(f"/Explore/?BackupDriveId={session['backup_drive_id']}"
                    f"&SessionId={session['entry_id']}&mode=backup&back_url={back}")
 
 
-def _session_row(database, s, info, on_moved):
+def _session_row(database, s, info, on_moved, reopen=None):
     """One archive session: name, Dwarf / archive / sub-folder / object, the
     consistency annotation if any, image and Move buttons."""
     with ui.row().classes("w-full items-center justify-between no-wrap"):
@@ -132,7 +148,7 @@ def _session_row(database, s, info, on_moved):
         with ui.row().classes("gap-1 no-wrap"):
             ui.button(icon="image", on_click=lambda: show_session_image(s, info)
                       ).props("flat dense").tooltip(t("preview_image"))
-            ui.button(icon="travel_explore", on_click=lambda: open_in_explore(s)
+            ui.button(icon="travel_explore", on_click=lambda: open_in_explore(s, reopen)
                       ).props("flat dense").tooltip(t("open_in_explore"))
             ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
 
@@ -166,7 +182,8 @@ async def show_groups_check_dialog(database, threshold=INCONSISTENT_DEFAULT_DEG,
                         state["moved"] += 1
                         _update_summary()
                         results_list.refresh()
-                    _session_row(database, s, info, _moved)
+                    _session_row(database, s, info, _moved,
+                                 {"reopen": "groups", "threshold": threshold})
 
         with ui.column().classes("w-full gap-2").style("max-height: 65vh; overflow-y: auto"):
             results_list()
