@@ -746,7 +746,7 @@ class ExploreApp(DbPageMixin):
 
         session = sessions[0]
         try:
-            row = get_backupDrive_id_from_backupEntry(self.conn)
+            row = get_backupDrive_id_from_backupEntry(self.conn, self.SessionId)
             if row and row[0]:
                 self.BackupDriveId = row[0]
                 for bid, name in self.backup_options:

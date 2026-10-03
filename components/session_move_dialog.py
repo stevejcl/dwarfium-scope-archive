@@ -106,6 +106,15 @@ async def show_object_sessions_dialog(database, astro_object_id, title, on_done=
     dialog.open()
 
 
+def open_in_explore(session):
+    """Open the session in Explore (e.g. to identify its target again), with
+    a back button to Catalog Edition."""
+    from urllib.parse import quote
+    back = quote("/Catalog/?BackupDriveId=", safe="")
+    ui.navigate.to(f"/Explore/?BackupDriveId={session['backup_drive_id']}"
+                   f"&SessionId={session['entry_id']}&mode=backup&back_url={back}")
+
+
 def _session_row(database, s, info, on_moved):
     """One archive session: name, Dwarf / archive / sub-folder / object, the
     consistency annotation if any, image and Move buttons."""
@@ -123,6 +132,8 @@ def _session_row(database, s, info, on_moved):
         with ui.row().classes("gap-1 no-wrap"):
             ui.button(icon="image", on_click=lambda: show_session_image(s, info)
                       ).props("flat dense").tooltip(t("preview_image"))
+            ui.button(icon="travel_explore", on_click=lambda: open_in_explore(s)
+                      ).props("flat dense").tooltip(t("open_in_explore"))
             ui.button(t("move_button"), icon="drive_file_move", on_click=_move).props("flat dense")
 
 
