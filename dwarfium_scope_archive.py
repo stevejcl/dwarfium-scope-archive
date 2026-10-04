@@ -73,6 +73,43 @@ import sys
 import asyncio
 import logging
 import argparse
+import socket
+
+
+def _port_in_use(port: int) -> bool:
+    """True when a server already answers on this port on the loopback."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _can_bind(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if sys.platform == "win32":
+            # Without it Windows lets 127.0.0.1:port bind while another
+            # process holds 0.0.0.0:port (and the other way round)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def find_free_port(host: str, start_port: int = 8000, end_port: int = 8999) -> int:
+    """Replacement for nicegui.native.find_open_port(), which only test-binds
+    on localhost: on Windows that succeeds even when another NiceGUI app
+    (e.g. Astro Dwarf Session, listening on 0.0.0.0) already uses the port,
+    so both apps ended up on the same port. A port is free only when nothing
+    answers on it and it binds on the loopback, on all interfaces and on the
+    host the server will use."""
+    hosts = {"127.0.0.1", "0.0.0.0", host}
+    for port in range(start_port, end_port + 1):
+        if _port_in_use(port):
+            continue
+        if all(_can_bind(h, port) for h in hosts):
+            return port
+    raise OSError("No open port found")
 
 # -------------------------
 # CLI CONFIG
@@ -84,7 +121,7 @@ args, _ = parser.parse_known_args()
 
 LAN_MODE = args.lan
 HOST = "0.0.0.0" if LAN_MODE else "127.0.0.1"
-PORT = args.port if args.port else native.find_open_port()
+PORT = args.port if args.port else find_free_port(HOST)
 
 # Global flag for app mode
 ON_AIR = False
