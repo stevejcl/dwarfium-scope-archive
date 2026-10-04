@@ -11,6 +11,9 @@
     so objects added while the app is running can be linked to the new sessions without a restart.
 
 ### BugFix#
+    Port detection: launched one after the other, this app and Astro Dwarf Session could pick the same port on Windows
+    (a free test bind on 127.0.0.1 doesn't see a server listening on 0.0.0.0). A port is now free only when nothing answers on
+    it and it binds on 127.0.0.1 and 0.0.0.0 (exclusive bind on Windows).
     The DSO catalog was re-imported at every start as soon as the table and dso_catalog.json didn't have the same number of
     objects: it is now imported only when an object of the JSON files is missing from the table. Catalog rows are never deleted
     (sessions are linked to them).
