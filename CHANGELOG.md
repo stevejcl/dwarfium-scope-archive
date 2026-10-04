@@ -1,21 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## [V3.3.1] - 2026-10-04
 
 ### Add
-    DSO catalog add-on: db/catalog_add_on.json (same schema as dso_catalog.json, written by Astro Dwarf Session when targets sent
-    from its /catalog page are kept) is imported after dso_catalog.json; dso_catalog.json wins when both have the same designation.
-    The add-on objects are also used by the automatic session -> object matching.
-    The catalog is also refreshed before each session import (Dwarf / Backup pages, CLI) and when the manual session page opens,
-    so objects added by Astro Dwarf Session while this app is running can be linked to the new sessions without a restart.
+    DSO catalog add-on: objects kept in Astro Dwarf Session (targets sent from its /catalog page with "Keep these targets
+    in the catalog" ticked) are written to db/catalog_add_on.json and imported after dso_catalog.json, which is never modified
+    and wins when both have the same designation. They can then be linked to sessions like any other catalog object
+    ("Identify the target", Catalog page, association wizards).
+    The catalog is refreshed before each session import (Dwarf / Backup pages, CLI) and when the manual session page opens,
+    so objects added while the app is running can be linked to the new sessions without a restart.
 
 ### BugFix#
-    The catalog was re-imported at every start as soon as the table and dso_catalog.json didn't have the same number of objects:
-    the import is now run only when an object of the JSON files is missing from the table. Rows are never deleted (sessions point to them).
-    Re-importing the catalog no longer resets DsoCatalog.favorite.
-    dso_sky_search_catalog.json (catalog used to match sessions to objects) was built once and never updated: it is now rebuilt
-    when dso_catalog.json or catalog_add_on.json is newer - incrementally: coordinates already converted are reused, only new
-    or changed objects go through SkyCoord.
+    The DSO catalog was re-imported at every start as soon as the table and dso_catalog.json didn't have the same number of
+    objects: it is now imported only when an object of the JSON files is missing from the table. Catalog rows are never deleted
+    (sessions are linked to them).
+    Re-importing the catalog no longer resets the catalog objects' favorite flag.
+    The catalog used to match sessions to objects (dso_sky_search_catalog.json) was built once and never updated: it is now
+    rebuilt when dso_catalog.json or catalog_add_on.json changes, and only the new or changed objects are converted (much faster).
 
 ## [V3.3.0] - 2026-10-02
 
