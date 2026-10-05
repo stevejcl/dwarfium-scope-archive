@@ -1094,4 +1094,19 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_image_credit_unknown": "Wikimedia Commons",
     "tonight_size":                 "Taille",
 
+
+    # ── Import one session (from Astro Dwarf Session) ──
+    "page_import_session":          "Import d'une Session",
+    "import_session_title":         "Import de la session {session}",
+    "import_session_running":       "Lecture de la session sur le Dwarf et enregistrement...",
+    "import_session_done":          "Session enregistrée - ouverture de la page Transfert.",
+    "import_session_failed":        "Échec de l'import - voir le journal.",
+    "import_session_missing_params": "DwarfId ou session manquant dans l'adresse.",
+    "import_session_unknown_dwarf": "Dwarf inconnu : vérifiez son DwarfId dans Configuration Dwarf.",
+    "import_session_not_connected": "Dwarf injoignable : branchez-le en USB ou vérifiez son IP (FTP) dans Configuration Dwarf.",
+    "import_session_not_found":     "Session introuvable sur le Dwarf.",
+    "import_session_local_dir_error": "Impossible de créer le dossier local du Dwarf.",
+    "import_session_db_error":      "Impossible d'ouvrir la base de données.",
+    "import_session_open_transfer": "Ouvrir quand même la page Transfert",
+
 }

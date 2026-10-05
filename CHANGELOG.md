@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Add
+    Import one session: /ImportSession?DwarfId=<id>&session=<session folder> (link from Astro Dwarf Session's session
+    explorer and View / Check dialogs). Same two steps as the Dwarf Configuration page's analysis, for this session only:
+    its stacked / shotsInfo files are synced from the Dwarf (USB when its astronomy folder is reachable, else FTP) and
+    scanned into the database, then the Transfer page opens with it preselected (Archive mode) - choosing the backup
+    drive and starting the copy stay with the user. On failure the log stays shown, with a link to the Transfer page.
+
 ## [V3.3.2] - 2026-10-04
 
 ### BugFix#

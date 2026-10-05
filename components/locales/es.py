@@ -1095,4 +1095,19 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_image_credit_unknown": "Wikimedia Commons", # TODO
     "tonight_size":                 "Size", # TODO
 
+
+    # ── Import one session (from Astro Dwarf Session) ──
+    "page_import_session":          "Import a Session",  # TODO
+    "import_session_title":         "Importing session {session}",  # TODO
+    "import_session_running":       "Reading the session on the Dwarf and registering it...",  # TODO
+    "import_session_done":          "Session registered - opening the Transfer page.",  # TODO
+    "import_session_failed":        "Import failed - see the log.",  # TODO
+    "import_session_missing_params": "Missing DwarfId or session in the address.",  # TODO
+    "import_session_unknown_dwarf": "Unknown Dwarf: check its DwarfId in Dwarf Configuration.",  # TODO
+    "import_session_not_connected": "Dwarf not reachable: connect it by USB, or check its IP (FTP) in Dwarf Configuration.",  # TODO
+    "import_session_not_found":     "Session not found on the Dwarf.",  # TODO
+    "import_session_local_dir_error": "Couldn't create the local Dwarf folder.",  # TODO
+    "import_session_db_error":      "Couldn't open the database.",  # TODO
+    "import_session_open_transfer": "Open the Transfer page anyway",  # TODO
+
 }
