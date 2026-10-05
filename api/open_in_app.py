@@ -9,14 +9,20 @@ GET /api/open-in-app?path=/ImportSession?DwarfId=8&session=...
                        opens the page in a browser instead
 
 Only this app's own pages: path must be a local path ("/..."), never
-another site."""
+another site.
+
+The page is opened like a click in the app (user-reported Oct 2026:
+reloading the whole window with load_url() froze the interface): the
+NiceGUI page shown in the app's window - known from window.pywebview,
+which only pywebview's window has - navigates with ui.navigate.to(). The
+window is only reloaded when no page of it is connected yet."""
 from __future__ import annotations
 
 import asyncio
 from urllib.parse import quote, urlsplit
 
 from fastapi.responses import JSONResponse
-from nicegui import app
+from nicegui import Client, app, background_tasks, ui
 
 
 SAFE_URL_CHARS = "/?&=%+:;,'()!*~-._@$"
@@ -27,7 +33,37 @@ def _local_path(path: str) -> bool:
     return bool(path) and path.startswith("/") and not path.startswith("//") and not parts.scheme and not parts.netloc
 
 
+# Ids of the connected pages shown in the app's window (not in a browser)
+_window_client_ids: list[str] = []
+
+
+async def _note_window_client(client: Client) -> None:
+    try:
+        in_window = bool(await client.run_javascript("!!window.pywebview", timeout=3.0))
+    except Exception:
+        return
+    if in_window and client.id not in _window_client_ids:
+        _window_client_ids.append(client.id)
+
+
+def _forget_client(client: Client) -> None:
+    if client.id in _window_client_ids:
+        _window_client_ids.remove(client.id)
+
+
+def _window_client() -> Client | None:
+    """The most recently connected page of the app's window, still alive."""
+    for client_id in reversed(_window_client_ids):
+        client = Client.instances.get(client_id)
+        if client is not None and client.has_socket_connection:
+            return client
+    return None
+
+
 def register(port: int) -> None:
+    app.on_connect(lambda client: background_tasks.create(_note_window_client(client)))
+    app.on_disconnect(_forget_client)
+
     @app.get("/api/open-in-app")
     async def open_in_app(path: str = ""):
         if not _local_path(path):
@@ -35,10 +71,15 @@ def register(port: int) -> None:
         window = getattr(app.native, "main_window", None)
         if window is None:
             return JSONResponse({"opened": False})
+        # Spaces and the like encoded, what's already encoded kept
+        target = quote(path, safe=SAFE_URL_CHARS)
         try:
-            # Spaces and the like encoded, what's already encoded kept
-            window.load_url(f"http://127.0.0.1:{port}{quote(path, safe=SAFE_URL_CHARS)}")
-            window.restore()
+            client = _window_client()
+            if client is not None:
+                with client:
+                    ui.navigate.to(target)
+            else:
+                window.load_url(f"http://127.0.0.1:{port}{target}")
             window.show()
             # Brought to front: on top for a moment (Windows won't let a
             # background app simply take the focus)
