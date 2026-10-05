@@ -24,7 +24,9 @@ import asyncio
 from urllib.parse import quote, urlsplit
 
 from fastapi.responses import JSONResponse
-from nicegui import Client, app, background_tasks, ui
+from nicegui import Client, app, background_tasks, run, ui
+
+from api.window_front import bring_to_front
 
 
 SAFE_URL_CHARS = "/?&=%+:;,'()!*~-._@$"
@@ -82,6 +84,12 @@ def register(port: int) -> None:
                 # app when used on top of it (user-reported Oct 2026)
                 with client:
                     ui.navigate.to(target)
+                # Front through Win32 in a thread (window_front.py), not
+                # pywebview's own calls, which blocked the app
+                try:
+                    await run.io_bound(bring_to_front)
+                except Exception:
+                    pass
             else:
                 window.load_url(f"http://127.0.0.1:{port}{target}")
                 window.show()
