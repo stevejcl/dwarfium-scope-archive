@@ -155,8 +155,14 @@ async def import_session_page(DwarfId: int = None, session: str = None):
         except Exception:
             pass
 
+    def _show_progress(visible: bool) -> None:
+        # Empty until an import starts (user-reported Oct 2026: shown
+        # empty under the "already backed up" box, it looked broken)
+        for element in (spinner, progress_bar, progress_label, status_label, log):
+            element.set_visibility(visible)
+
     async def _run_import() -> None:
-        spinner.set_visibility(True)
+        _show_progress(True)
         status_label.set_text(t("import_session_running"))
         try:
             ok, key = await run.io_bound(_import_session, DwarfId, session, log, _progress)
@@ -180,8 +186,7 @@ async def import_session_page(DwarfId: int = None, session: str = None):
     if not backups:
         await _run_import()
         return
-    spinner.set_visibility(False)
-    status_label.set_text("")
+    _show_progress(False)
     with backup_box:
         # Theme colours (readable in dark mode), an amber side border for the warning
         with ui.card().classes("w-full already-backed").style("border-left: 4px solid #f59e0b"):
