@@ -1107,4 +1107,10 @@ TRANSLATIONS: dict[str, str] = {
     "import_session_db_error":      "Couldn't open the database.",
     "import_session_open_transfer": "Open the Transfer page anyway",
 
+
+    # ── Folder picker (pages shown in a browser) ──
+    "folder_picker_title":          "Choose a folder",
+    "folder_picker_choose":         "Choose this folder",
+    "folder_picker_empty":          "No subfolder",
+
 }
