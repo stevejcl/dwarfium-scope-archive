@@ -10,6 +10,7 @@ import traceback
 from pathlib import Path
 
 from components.menu import menu
+from components.folder_picker import choose_folder
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
 from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
@@ -666,16 +667,11 @@ class TransferApp:
     async def select_source_folder(self):
         # Repair mode: local folder picker constrained to src_root (backup directory)
         if self.mode == "Repair" or self.mode == "Merge":
-            if hasattr(webview, 'FileDialog'):
-                folder_mode = webview.FileDialog.FOLDER
-            else:
-                folder_mode = webview.FOLDER_DIALOG
-
             start_dir = os.path.abspath(self.input_src_dir.value or self.src_root or "")
-            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False, directory=start_dir)
+            # App window: system dialog; browser: in-page picker (components/folder_picker.py)
+            selected = await choose_folder(self.client, start_dir, self.src_root or None)
 
-            if folder:
-                selected = folder[0]
+            if selected:
                 constraint = self.src_root or ""
                 if constraint and not selected.startswith(constraint):
                     ui.notify(t("access_denied_source", path=constraint), type="negative")
@@ -720,23 +716,16 @@ class TransferApp:
 
         else:
 
-            """Open folder selection dialog."""
-            if hasattr(webview, 'FileDialog'):
-                folder_mode = webview.FileDialog.FOLDER
-            else:
-                folder_mode = webview.FOLDER_DIALOG
+            """Open folder selection dialog (system dialog in the app's
+            window, in-page picker in a browser - folder_picker.py)."""
+            start_dir = os.path.abspath(self.input_src_dir.value) if self.input_src_dir.value else None
+            folder = await choose_folder(self.client, start_dir, self.src_main_dir or None)
 
-            if self.input_src_dir.value:
-                full_path = os.path.abspath(self.input_src_dir.value)
-                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=full_path)
-            else:
-                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
-
-            if folder and not folder[0].startswith(self.src_main_dir):
+            if folder and not folder.startswith(self.src_main_dir):
                 ui.notify(t("access_denied_outside", path=self.SourceMainDir), type="negative")
             elif folder:
-                ui.notify(folder[0])
-                folder = os.path.normpath(folder[0])
+                ui.notify(folder)
+                folder = os.path.normpath(folder)
                 self.input_src_dir.set_options([folder], value = folder)
                 self.manual_update_dir = True
 
@@ -761,23 +750,16 @@ class TransferApp:
 
         else:
 
-            """Open folder selection dialog."""
-            if hasattr(webview, 'FileDialog'):
-                folder_mode = webview.FileDialog.FOLDER
-            else:
-                folder_mode = webview.FOLDER_DIALOG
+            """Open folder selection dialog (system dialog in the app's
+            window, in-page picker in a browser - folder_picker.py)."""
+            start_dir = os.path.abspath(self.dest_main_dir) if self.input_dest_dir.value and self.dest_main_dir else None
+            folder = await choose_folder(self.client, start_dir, self.dest_main_dir or None)
 
-            if self.input_dest_dir.value:
-                full_path = os.path.abspath(self.dest_main_dir) # self.input_dest_dir.value
-                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False,directory=full_path)
-            else:
-                folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
-        
-            if folder and not folder[0].startswith(self.dest_main_dir):
+            if folder and not folder.startswith(self.dest_main_dir):
                 ui.notify(t("access_denied_outside", path=self.DestinationMainDir), type="negative")
             elif folder:
-                ui.notify(t("folder_selected", path=folder[0]), type="positive")
-                folder = os.path.normpath(folder[0])
+                ui.notify(t("folder_selected", path=folder), type="positive")
+                folder = os.path.normpath(folder)
                 self.input_dest_dir.set_options([folder], value = folder)
 
     async def start_backup(self):
