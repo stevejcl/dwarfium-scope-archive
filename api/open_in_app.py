@@ -14,8 +14,10 @@ another site.
 The page is opened like a click in the app (user-reported Oct 2026:
 reloading the whole window with load_url() froze the interface): the
 NiceGUI page shown in the app's window - known from window.pywebview,
-which only pywebview's window has - navigates with ui.navigate.to(). The
-window is only reloaded when no page of it is connected yet."""
+which only pywebview's window has - navigates with ui.navigate.to(), and
+nothing else (show / always-on-top on top of it blocked the app). The
+window is only reloaded and brought to front when no page of it is
+connected yet."""
 from __future__ import annotations
 
 import asyncio
@@ -76,16 +78,18 @@ def register(port: int) -> None:
         try:
             client = _window_client()
             if client is not None:
+                # Only the navigation: the window calls below blocked the
+                # app when used on top of it (user-reported Oct 2026)
                 with client:
                     ui.navigate.to(target)
             else:
                 window.load_url(f"http://127.0.0.1:{port}{target}")
-            window.show()
-            # Brought to front: on top for a moment (Windows won't let a
-            # background app simply take the focus)
-            window.set_always_on_top(True)
-            await asyncio.sleep(0.5)
-            window.set_always_on_top(False)
+                window.show()
+                # Brought to front: on top for a moment (Windows won't let a
+                # background app simply take the focus)
+                window.set_always_on_top(True)
+                await asyncio.sleep(0.5)
+                window.set_always_on_top(False)
         except Exception as e:  # window closing, pywebview error: browser fallback
             return JSONResponse({"opened": False, "error": str(e)})
         return JSONResponse({"opened": True})

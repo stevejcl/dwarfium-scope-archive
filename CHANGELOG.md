@@ -3,9 +3,12 @@
 ## [Unreleased]
 
 ### BugFix
+    "JavaScript did not respond within 1.0 s" (drawer.py) on page load: the help drawer is created open / closed
+    from the start, so NiceGUI no longer asks the browser for its state with a 1 s timeout.
     Open in the app's window (/api/open-in-app): it reloaded the whole window (load_url), which froze the interface.
     The page shown in the app's window (known from window.pywebview) now navigates like a click in the app
-    (ui.navigate.to); the window is only reloaded when no page of it is connected yet.
+    (ui.navigate.to), without the window calls (show / always-on-top), which blocked the app too; the window is
+    only reloaded and brought to front when no page of it is connected yet.
     Transfer page in a web browser (opened from Astro Dwarf Session's "Archive" link): the folder buttons did nothing -
     they open the system dialog of the app's own window, out of sight from a browser. They now keep that dialog in the
     app's window and show a folder picker in the page in a browser (folders of this PC, from the start folder, never
