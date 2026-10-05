@@ -9,6 +9,10 @@
     above the allowed root - backup drive or source).
 
 ### Add
+    Open in the app's window: GET /api/open-in-app?path=<page of this app> loads that page in the app's own window and
+    brings it to front ({"opened": true}), or answers {"opened": false} when there's no app window (browser / server
+    mode). Used by Astro Dwarf Session's "Archive" link, so the import and Transfer pages open in the app, with its
+    system folder dialogs, instead of a web browser. Only this app's own pages (a local path) are accepted.
     Import one session: /ImportSession?DwarfId=<id>&session=<session folder> (link from Astro Dwarf Session's session
     explorer and View / Check dialogs). Same two steps as the Dwarf Configuration page's analysis, for this session only:
     its stacked / shotsInfo files are synced from the Dwarf (USB when its astronomy folder is reachable, else FTP) and
