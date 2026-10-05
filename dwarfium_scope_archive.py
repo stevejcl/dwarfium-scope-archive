@@ -136,6 +136,7 @@ import pages.dwarf_backup_ui_backup
 import pages.dwarf_backup_ui_explore
 import pages.dwarf_mtp_devices
 import pages.dwarf_transfer
+import pages.dwarf_import_session
 import pages.dwarf_transfer_usb
 import pages.dwarf_mosaic
 import pages.dwarf_add_manual_session
