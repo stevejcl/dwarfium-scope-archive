@@ -9,12 +9,10 @@ timer_drawer = None
 def register_drawer():
     global help_drawer, timer_drawer
 
-    help_drawer = ui.right_drawer().classes('w-96')
-
-    if not app.storage.user.get('help_open', False):
-        help_drawer.value = False
-    else:
-        help_drawer.value = True
+    # Open / closed given at creation: without a value, NiceGUI asks the
+    # browser for it when the page connects, with a 1 s timeout - "JavaScript
+    # did not respond within 1.0 s" when the window is busy loading
+    help_drawer = ui.right_drawer(value=bool(app.storage.user.get('help_open', False))).classes('w-96')
 
     timer_drawer =  ui.timer(0.3, lambda: refresh_if_open(), once=True)
 
