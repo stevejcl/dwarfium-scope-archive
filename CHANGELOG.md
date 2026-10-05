@@ -3,8 +3,9 @@
 ## [Unreleased]
 
 ### BugFix
-    "JavaScript did not respond within 1.0 s" (drawer.py) on page load: the help drawer is created open / closed
-    from the start, so NiceGUI no longer asks the browser for its state with a 1 s timeout.
+    Open in the app's window: after the page navigates, the window is brought to front again on Windows - through
+    Win32 (ctypes, in a thread), not pywebview's show() / always-on-top which blocked the app. The window is the
+    app's own (its pywebview child process), never a browser tab with the same title.
     Open in the app's window (/api/open-in-app): it reloaded the whole window (load_url), which froze the interface.
     The page shown in the app's window (known from window.pywebview) now navigates like a click in the app
     (ui.navigate.to), without the window calls (show / always-on-top), which blocked the app too; the window is
