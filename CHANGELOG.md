@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### BugFix
+    Open in the app's window (/api/open-in-app): it reloaded the whole window (load_url), which froze the interface.
+    The page shown in the app's window (known from window.pywebview) now navigates like a click in the app
+    (ui.navigate.to); the window is only reloaded when no page of it is connected yet.
     Transfer page in a web browser (opened from Astro Dwarf Session's "Archive" link): the folder buttons did nothing -
     they open the system dialog of the app's own window, out of sight from a browser. They now keep that dialog in the
     app's window and show a folder picker in the page in a browser (folders of this PC, from the start folder, never
