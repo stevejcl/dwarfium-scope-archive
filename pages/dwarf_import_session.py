@@ -183,8 +183,11 @@ async def import_session_page(DwarfId: int = None, session: str = None):
     spinner.set_visibility(False)
     status_label.set_text("")
     with backup_box:
-        with ui.card().classes("w-full bg-amber-50"):
-            ui.label(t("import_session_already_backed")).classes("font-medium")
+        # Theme colours (readable in dark mode), an amber side border for the warning
+        with ui.card().classes("w-full already-backed").style("border-left: 4px solid #f59e0b"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("inventory_2").classes("text-amber-600 text-xl")
+                ui.label(t("import_session_already_backed")).classes("font-medium")
             for backup in backups:
                 state = t("import_session_backup_present") if backup["present"] else t("import_session_backup_missing")
                 ui.label(f"• {backup['name']} ({backup['location']}) - {state}").classes("text-sm")
