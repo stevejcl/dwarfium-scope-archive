@@ -1,34 +1,24 @@
 # Changelog
 
-## [Unreleased]
-
-### BugFix
-    Open in the app's window: after the page navigates, the window is brought to front again on Windows - through
-    Win32 (ctypes, in a thread), not pywebview's show() / always-on-top which blocked the app. The window is the
-    app's own (its pywebview child process), never a browser tab with the same title.
-    Open in the app's window (/api/open-in-app): it reloaded the whole window (load_url), which froze the interface.
-    The page shown in the app's window (known from window.pywebview) now navigates like a click in the app
-    (ui.navigate.to), without the window calls (show / always-on-top), which blocked the app too; the window is
-    only reloaded and brought to front when no page of it is connected yet.
-    Transfer page in a web browser (opened from Astro Dwarf Session's "Archive" link): the folder buttons did nothing -
-    they open the system dialog of the app's own window, out of sight from a browser. They now keep that dialog in the
-    app's window and show a folder picker in the page in a browser (folders of this PC, from the start folder, never
-    above the allowed root - backup drive or source).
+## [V3.4.0] - 2026-10-05
 
 ### Add
-    Import one session: checked first whether the session is already backed up (same rule as the Explore page - a
-    backup entry with this session folder for this Dwarf). If so, its drives are listed with whether the folder is
-    still on each, with "See it in the backups" (Explore, that drive) or "Import and transfer anyway"; nothing is
-    read on the Dwarf until then. Not backed up: the import starts directly, as before.
-    Open in the app's window: GET /api/open-in-app?path=<page of this app> loads that page in the app's own window and
-    brings it to front ({"opened": true}), or answers {"opened": false} when there's no app window (browser / server
-    mode). Used by Astro Dwarf Session's "Archive" link, so the import and Transfer pages open in the app, with its
-    system folder dialogs, instead of a web browser. Only this app's own pages (a local path) are accepted.
-    Import one session: /ImportSession?DwarfId=<id>&session=<session folder> (link from Astro Dwarf Session's session
-    explorer and View / Check dialogs). Same two steps as the Dwarf Configuration page's analysis, for this session only:
-    its stacked / shotsInfo files are synced from the Dwarf (USB when its astronomy folder is reachable, else FTP) and
-    scanned into the database, then the Transfer page opens with it preselected (Archive mode) - choosing the backup
-    drive and starting the copy stay with the user. On failure the log stays shown, with a link to the Transfer page.
+    Import one session: /ImportSession?DwarfId=<id>&session=<session folder>, opened from Astro Dwarf Session's "Archive
+    in Dwarfium Scope Archive" button. It first says if the session is already backed up (same rule as the Explore page),
+    listing its drives and whether the folder is still on each, with "See it in the backups" or "Import and transfer
+    anyway". Then the same two steps as the Dwarf Configuration page's analysis, for this session only: its stacked /
+    shotsInfo files are synced from the Dwarf (USB when its astronomy folder is reachable, else FTP) and scanned into the
+    database, and the Transfer page opens with it preselected (Archive mode) - choosing the backup drive and starting the
+    copy stay with the user. On failure the log stays shown, with a link to the Transfer page.
+    Open in the app's window: GET /api/open-in-app?path=<page of this app>. The page shown in the app's window navigates
+    to it like a click in the app, and the window is brought to front on Windows (Win32); {"opened": false} when there's
+    no app window (browser / server mode), so the caller opens a browser tab instead. Only this app's own pages are
+    accepted. Used by Astro Dwarf Session for "Archive" and its "Config / Sessions on the Dwarf / Backed-up sessions" links.
+
+### BugFix#
+    Transfer page in a web browser: the folder buttons did nothing - they open the system dialog of the app's own window,
+    out of sight from a browser. In a browser they now show a folder picker in the page (folders of this PC, from the
+    start folder, never above the allowed root - backup drive or source); the app's window keeps the system dialog.
 
 ## [V3.3.2] - 2026-10-04
 
