@@ -16,6 +16,10 @@
     above the allowed root - backup drive or source).
 
 ### Add
+    Import one session: checked first whether the session is already backed up (same rule as the Explore page - a
+    backup entry with this session folder for this Dwarf). If so, its drives are listed with whether the folder is
+    still on each, with "See it in the backups" (Explore, that drive) or "Import and transfer anyway"; nothing is
+    read on the Dwarf until then. Not backed up: the import starts directly, as before.
     Open in the app's window: GET /api/open-in-app?path=<page of this app> loads that page in the app's own window and
     brings it to front ({"opened": true}), or answers {"opened": false} when there's no app window (browser / server
     mode). Used by Astro Dwarf Session's "Archive" link, so the import and Transfer pages open in the app, with its

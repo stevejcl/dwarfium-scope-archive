@@ -9,7 +9,11 @@ only: sync its stacked / shotsInfo files from the Dwarf (USB when its
 astronomy folder is reachable, else FTP) into the local Dwarf folder,
 then scan it into the database - the session is then registered. The
 Transfer page opens next with it preselected (Archive mode); choosing
-the backup drive and starting the copy stay with the user there."""
+the backup drive and starting the copy stay with the user there.
+
+Checked first (user-requested Oct 2026): a session already on a backup
+drive (same rule as the Explore page) is shown with its drives, and the
+import only starts when the user asks for it anyway."""
 from __future__ import annotations
 
 import os
@@ -48,6 +52,38 @@ def _local_session_dir(local_dwarf_dir: str, session: str) -> str | None:
         if os.path.isdir(candidate):
             return candidate
     return None
+
+
+def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
+    """Backups already holding this session (same rule as the Explore
+    page: a BackupEntry with this session_dir for this Dwarf), with each
+    drive's name / location and whether the folder is still on it."""
+    conn = connect_db(DB_NAME)
+    if not conn:
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir
+            FROM BackupEntry be JOIN BackupDrive bd ON bd.id = be.backup_drive_id
+            WHERE be.dwarf_id = ? AND (be.session_dir = ? OR be.session_dir LIKE ? OR be.session_dir LIKE ?)
+            """,
+            (dwarf_id, session, f"%/{session}", f"%\\{session}"),
+        ).fetchall()
+    except Exception:
+        return []
+    finally:
+        close_db(conn)
+    out = []
+    for drive_id, name, location, astro_dir, session_dir in rows:
+        folder = os.path.join(location or "", astro_dir or "", session_dir or "")
+        out.append({
+            "drive_id": drive_id,
+            "name": name or location or "?",
+            "location": location or "",
+            "present": bool(location) and os.path.isdir(folder),
+        })
+    return out
 
 
 def _import_session(dwarf_id: int, session: str, log, progress_cb) -> tuple[bool, str]:
@@ -98,6 +134,7 @@ async def import_session_page(DwarfId: int = None, session: str = None):
             ui.label(t("import_session_missing_params")).classes("text-negative")
             return
         ui.label(t("import_session_title", session=session)).classes("text-lg font-medium")
+        backup_box = ui.column().classes("w-full")
         spinner = ui.spinner(size="lg")
         progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
         progress_label = ui.label("").classes("text-sm text-gray-500")
@@ -118,19 +155,50 @@ async def import_session_page(DwarfId: int = None, session: str = None):
         except Exception:
             pass
 
-    try:
-        ok, key = await run.io_bound(_import_session, DwarfId, session, log, _progress)
-    except Exception as e:  # FTP drop, copy error...: shown, never a blank page
-        ok, key = False, ""
-        log.push(f"❌ {e}")
+    async def _run_import() -> None:
+        spinner.set_visibility(True)
+        status_label.set_text(t("import_session_running"))
+        try:
+            ok, key = await run.io_bound(_import_session, DwarfId, session, log, _progress)
+        except Exception as e:  # FTP drop, copy error...: shown, never a blank page
+            ok, key = False, ""
+            log.push(f"❌ {e}")
+        spinner.set_visibility(False)
+        progress_bar.set_value(1 if ok else 0)
+        if ok:
+            status_label.set_text(t(key))
+            status_label.classes("text-positive")
+            # The session is registered: on to the Transfer page, preselected
+            ui.navigate.to(_transfer_url(DwarfId, session))
+        else:
+            status_label.set_text(t(key) if key else t("import_session_failed"))
+            status_label.classes("text-negative")
+            transfer_button.set_visibility(True)
+
+    # Already backed up? Asked first, before reading anything on the Dwarf
+    backups = await run.io_bound(_existing_backups, DwarfId, session)
+    if not backups:
+        await _run_import()
+        return
     spinner.set_visibility(False)
-    progress_bar.set_value(1 if ok else 0)
-    if ok:
-        status_label.set_text(t(key))
-        status_label.classes("text-positive")
-        # The session is registered: on to the Transfer page, preselected
-        ui.navigate.to(_transfer_url(DwarfId, session))
-    else:
-        status_label.set_text(t(key) if key else t("import_session_failed"))
-        status_label.classes("text-negative")
-        transfer_button.set_visibility(True)
+    status_label.set_text("")
+    with backup_box:
+        with ui.card().classes("w-full bg-amber-50"):
+            ui.label(t("import_session_already_backed")).classes("font-medium")
+            for backup in backups:
+                state = t("import_session_backup_present") if backup["present"] else t("import_session_backup_missing")
+                ui.label(f"• {backup['name']} ({backup['location']}) - {state}").classes("text-sm")
+            with ui.row().classes("gap-2 mt-1"):
+                ui.button(
+                    t("import_session_see_backups"),
+                    on_click=lambda: ui.navigate.to(
+                        f"/Explore/?DwarfId={DwarfId}&BackupDriveId={backups[0]['drive_id']}"
+                    ),
+                ).props("flat color=primary")
+
+                async def _anyway() -> None:
+                    # Hidden, not cleared: this handler runs in its slot
+                    backup_box.set_visibility(False)
+                    await _run_import()
+
+                ui.button(t("import_session_import_anyway"), on_click=_anyway).props("color=primary")

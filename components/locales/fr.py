@@ -1108,6 +1108,11 @@ TRANSLATIONS: dict[str, str] = {
     "import_session_local_dir_error": "Impossible de créer le dossier local du Dwarf.",
     "import_session_db_error":      "Impossible d'ouvrir la base de données.",
     "import_session_open_transfer": "Ouvrir quand même la page Transfert",
+    "import_session_already_backed": "Cette session est déjà sauvegardée :",
+    "import_session_backup_present": "dossier présent",
+    "import_session_backup_missing": "dossier introuvable sur le disque",
+    "import_session_see_backups":   "Voir dans les sauvegardes",
+    "import_session_import_anyway": "Importer et transférer quand même",
 
 
     # ── Folder picker (pages shown in a browser) ──

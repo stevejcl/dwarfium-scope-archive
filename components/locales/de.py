@@ -1109,6 +1109,11 @@ TRANSLATIONS: dict[str, str] = {
     "import_session_local_dir_error": "Couldn't create the local Dwarf folder.",  # TODO
     "import_session_db_error":      "Couldn't open the database.",  # TODO
     "import_session_open_transfer": "Open the Transfer page anyway",  # TODO
+    "import_session_already_backed": "This session is already backed up:",  # TODO
+    "import_session_backup_present": "folder present",  # TODO
+    "import_session_backup_missing": "folder not found on the drive",  # TODO
+    "import_session_see_backups":   "See it in the backups",  # TODO
+    "import_session_import_anyway": "Import and transfer anyway",  # TODO
 
 
     # ── Folder picker (pages shown in a browser) ──
