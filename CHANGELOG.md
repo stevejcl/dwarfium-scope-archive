@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### BugFix#
+    Import one session: the empty log and progress bar are no longer shown under the "already backed up" box; they
+    appear when the import starts.
+
 ## [V3.4.0] - 2026-10-05
 
 ### Add
