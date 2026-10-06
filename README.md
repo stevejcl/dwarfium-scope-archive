@@ -22,6 +22,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
   - [Dark Library](#dark-library)
   - [Siril Integration](#siril-integration)
   - [Transfer](#transfer)
+  - [Import a Session](#import-a-session)
   - [Storage Report](#storage-report)
   - [Sky Map](#sky-map)
   - [Mosaic](#mosaic)
@@ -45,6 +46,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 | **Dark Library** | Manage `CALI_FRAME` folders, inventory darks by exposure / gain / binning / temperature
 | **Siril Integration** | export a `siril_session.json` for the [Dwarfium Archive Selector] Siril script |
 | **Transfer** | Copy sessions between the Dwarf and a backup drive via USB or FTP, with background transfer (navigate freely while copying) |
+| **Astro Dwarf Session link** | Archive one session straight from [Astro Dwarf Session](https://github.com/stevejcl/astro_dwarf_session): import it from the Dwarf, then transfer it; its links open this app's pages in its own window |
 | **Mosaic** | Stitch multi-panel mosaics, repair partially transferred mosaics, merge panels from different sessions |
 | **Storage Report** | View session sizes by backup drive or Dwarf, identify large sessions, trigger size calculation and Clean/Restore FITS directly |
 | **Image Quality Score** | Automatically score sessions 0–100 based on metadata (stack rate, exposure, darks) and image analysis (dynamic range, contrast, entropy) |
@@ -408,6 +410,39 @@ come back — the transfer continues in the background. A badge in the menu show
 live progress. Closing the application will stop the transfer.
 
 A **Transfer History** log is maintained in `transfer_journal.json`.
+
+**Folder buttons:** in the app's own window they open the system folder dialog;
+in a web browser they show a folder picker in the page instead (folders of this
+PC, never above the backup drive or source).
+
+---
+
+### Import a Session
+
+`/ImportSession?DwarfId=<id>&session=<session folder>` imports **one** session,
+opened from [Astro Dwarf Session](https://github.com/stevejcl/astro_dwarf_session)'s
+**Archive in Dwarfium Scope Archive** button.
+
+1. If the session is already on a backup drive (same rule as Explore), it says so
+   first, listing each drive and whether the folder is still there, with
+   **See it in the backups** or **Import and transfer anyway**.
+2. It runs the same two steps as Dwarf Configuration's analysis, for this
+   session only: its stacked / shotsInfo files are synced from the Dwarf (USB
+   when its astronomy folder is reachable, else FTP) and scanned into the
+   database.
+3. The [Transfer](#transfer) page opens with the session preselected (Archive
+   mode); choosing the backup drive and starting the copy stay with you.
+
+On failure the log stays shown, with a link to the Transfer page.
+
+**Opening pages from Astro Dwarf Session.** `GET /api/open-in-app?path=<page of
+this app>` shows that page in this app's window, through a small relay page
+(`/Init`), and brings the window to front on Windows. Without an app window
+(browser / server mode) it answers `{"opened": false}` and Astro Dwarf Session
+opens a browser tab instead. Only this app's own pages are accepted. Astro Dwarf
+Session uses it for **Archive** and for its **Config · Sessions on the Dwarf ·
+Backed-up sessions** links (set this app's URL and the Dwarf's id there, in the
+device's Settings).
 
 ---
 
