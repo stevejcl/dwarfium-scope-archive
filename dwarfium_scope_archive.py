@@ -174,6 +174,8 @@ logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 # Pages opened from Astro Dwarf Session go to this app's window when there is one
 from api.open_in_app import register as register_open_in_app
 register_open_in_app(PORT)
+from api.loop_watchdog import register as register_loop_watchdog
+register_loop_watchdog()
 
 @app.get('/preview/{file_path:path}')
 def preview_image(file_path: str):
