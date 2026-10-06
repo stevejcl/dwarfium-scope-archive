@@ -90,8 +90,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 ![Backup page](https://github.com/user-attachments/assets/2c73c433-e4fb-40d2-887e-bb748ebe40ef)
 
 ### DSO Catalog — assign target
-![Catalog](https://github.com/user-attachments/assets/b566b572-6575-4741-aeb1-dad76df3cd02)
-
+![Catalog](https://github.com/user-attachments/assets/6e18c15c-157b-4c92-b8b9-169b79b85bd0)
 ---
 
 ## Installation
