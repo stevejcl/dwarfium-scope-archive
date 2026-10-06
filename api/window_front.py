@@ -8,8 +8,11 @@ runs pywebview in a child process - so a browser tab titled "Dwarfium
 Scope Archive" is never picked; by its title (ending with the app's
 name, as in "⚠️ TRANSFER RUNNING — Dwarfium Scope Archive") only when no
 child window is found. Windows lets a background process take the foreground only
-right after a key press: an Alt press / release is sent first, the usual
-workaround. Other systems: nothing (returns False)."""
+when it shares the foreground window's input: this thread is attached to
+the foreground window's thread for the call (AttachThreadInput). An Alt
+press / release did it before, but the window received the Alt release
+and went into menu mode: it looked frozen until clicked (user-reported
+Oct 2026). Other systems: nothing (returns False)."""
 from __future__ import annotations
 
 import multiprocessing
@@ -58,11 +61,20 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
         return False
     hwnd = candidates[0]
 
-    sw_restore, vk_menu, keyeventf_keyup = 9, 0x12, 0x0002
+    sw_restore = 9
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, sw_restore)
-    user32.keybd_event(vk_menu, 0, 0, 0)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    this_thread = kernel32.GetCurrentThreadId()
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    foreground = user32.GetForegroundWindow()
+    foreground_thread = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+    attached = bool(foreground_thread) and foreground_thread != this_thread and bool(
+        user32.AttachThreadInput(this_thread, foreground_thread, True)
+    )
     try:
+        user32.BringWindowToTop(hwnd)
         return bool(user32.SetForegroundWindow(hwnd))
     finally:
-        user32.keybd_event(vk_menu, 0, keyeventf_keyup, 0)
+        if attached:
+            user32.AttachThreadInput(this_thread, foreground_thread, False)

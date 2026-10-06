@@ -27,6 +27,8 @@
     import ended with "Session not found on the Dwarf" although its files were copied. It now goes to
     RESTACKED\<session>, as with FTP. The Transfer page's single-session sync keeps RESTACKED\<session>, and now puts a
     STARTRAILS session in STARTRAILS\<session> where its scan looks for it (it went to the top of the Dwarf folder).
+    Page opened from Astro Dwarf Session in the app's window: it looked frozen until a click (the window was brought to
+    front with an Alt key press, whose release put it in menu mode). Brought to front without a key press now.
 
 ## [V3.3.2] - 2026-10-04
 
