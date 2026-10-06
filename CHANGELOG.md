@@ -1,16 +1,6 @@
 # Changelog
 
-## [Unreleased]
-
-### BugFix#
-    Pages opened from Astro Dwarf Session: the app's window now goes through a small relay page (/Init) that then opens
-    the requested page itself; opening it directly froze the interface.
-    Home page: its slideshow timers and favorites loading are stopped right before a page opened from Astro Dwarf
-    Session (/api/open-in-app) replaces it in the app's window, not only once the page is disconnected.
-    Import one session: the empty log and progress bar are no longer shown under the "already backed up" box; they
-    appear when the import starts.
-
-## [V3.4.0] - 2026-10-05
+## [V3.4.0] - 2026-10-06
 
 ### Add
     Import one session: /ImportSession?DwarfId=<id>&session=<session folder>, opened from Astro Dwarf Session's "Archive
@@ -19,9 +9,11 @@
     anyway". Then the same two steps as the Dwarf Configuration page's analysis, for this session only: its stacked /
     shotsInfo files are synced from the Dwarf (USB when its astronomy folder is reachable, else FTP) and scanned into the
     database, and the Transfer page opens with it preselected (Archive mode) - choosing the backup drive and starting the
-    copy stay with the user. On failure the log stays shown, with a link to the Transfer page.
-    Open in the app's window: GET /api/open-in-app?path=<page of this app>. The page shown in the app's window navigates
-    to it like a click in the app, and the window is brought to front on Windows (Win32); {"opened": false} when there's
+    copy stay with the user. The log and progress bar appear once the import starts; on failure the log stays shown,
+    with a link to the Transfer page.
+    Open in the app's window: GET /api/open-in-app?path=<page of this app>. The page shown in the app's window goes
+    through a small relay page (/Init) that then opens the requested page itself (opening it directly froze the
+    interface), and the window is brought to front on Windows (Win32); {"opened": false} when there's
     no app window (browser / server mode), so the caller opens a browser tab instead. Only this app's own pages are
     accepted. Used by Astro Dwarf Session for "Archive" and its "Config / Sessions on the Dwarf / Backed-up sessions" links.
 
