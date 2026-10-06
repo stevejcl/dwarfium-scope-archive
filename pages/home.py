@@ -15,6 +15,7 @@ from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session, get_rel
 from api.dwarf_backup_fct import format_seconds_hms, parse_exposure, is_Restacked, get_total_exposure, get_total_mosaic_exposure
 
 from api.image_preview import set_base_folder, build_preview_url
+from api.open_in_app import on_before_open
 
 from components.menu import menu
 from tools.video_export import VideoExportConfig, export_video, list_fonts, VIDEO_RESOLUTIONS, FONT_SIZES, get_music_files
@@ -91,6 +92,9 @@ async def home_page(client: Client):
     # Cancel the slideshow timer when the client discon nects
     # (browser tab closed, page navigated away, window closed)
     ui.context.client.on_disconnect(home.on_disconnect)
+    # ... and before Astro Dwarf Session's links open another page in this
+    # window (api/open_in_app.py)
+    on_before_open(ui.context.client, home.on_disconnect)
   
 class HomeApp(DbPageMixin):
     def __init__(self, client: Client, database, ON_AIR):
