@@ -7,15 +7,9 @@ visible top-level window of one of this process's children - NiceGUI
 runs pywebview in a child process - so a browser tab titled "Dwarfium
 Scope Archive" is never picked; by its title (ending with the app's
 name, as in "⚠️ TRANSFER RUNNING — Dwarfium Scope Archive") only when no
-child window is found.
-
-Nothing here simulates input or waits on another window's thread
-(user-reported Oct 2026: the earlier Alt-key trick froze the app's
-interface after each open-in-app): titles are read with
-InternalGetWindowText (no message sent), a minimized window is restored
-with ShowWindowAsync, and when Windows refuses SetForegroundWindow (a
-background process usually may not take the focus) the window flashes in
-the taskbar instead. Other systems: nothing (returns False)."""
+child window is found. Windows lets a background process take the foreground only
+right after a key press: an Alt press / release is sent first, the usual
+workaround. Other systems: nothing (returns False)."""
 from __future__ import annotations
 
 import multiprocessing
@@ -43,9 +37,11 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
     def _visit(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
-        title = ctypes.create_unicode_buffer(512)
-        if not user32.InternalGetWindowText(hwnd, title, 512):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if not length:
             return True
+        title = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, title, length + 1)
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if pid.value in child_pids:
@@ -62,29 +58,11 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
         return False
     hwnd = candidates[0]
 
-    sw_restore = 9
+    sw_restore, vk_menu, keyeventf_keyup = 9, 0x12, 0x0002
     if user32.IsIconic(hwnd):
-        user32.ShowWindowAsync(hwnd, sw_restore)
-    if user32.SetForegroundWindow(hwnd):
-        return True
-    _flash(user32, hwnd)
-    return False
-
-
-def _flash(user32, hwnd) -> None:
-    """Taskbar flash until the window comes to front (FlashWindowEx)."""
-    import ctypes
-    from ctypes import wintypes
-
-    class FLASHWINFO(ctypes.Structure):
-        _fields_ = [
-            ("cbSize", wintypes.UINT),
-            ("hwnd", wintypes.HWND),
-            ("dwFlags", wintypes.DWORD),
-            ("uCount", wintypes.UINT),
-            ("dwTimeout", wintypes.DWORD),
-        ]
-
-    flashw_all, flashw_timernofg = 0x3, 0xC
-    info = FLASHWINFO(ctypes.sizeof(FLASHWINFO), hwnd, flashw_all | flashw_timernofg, 0, 0)
-    user32.FlashWindowEx(ctypes.byref(info))
+        user32.ShowWindow(hwnd, sw_restore)
+    user32.keybd_event(vk_menu, 0, 0, 0)
+    try:
+        return bool(user32.SetForegroundWindow(hwnd))
+    finally:
+        user32.keybd_event(vk_menu, 0, keyeventf_keyup, 0)
