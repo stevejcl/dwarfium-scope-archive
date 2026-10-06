@@ -18,6 +18,8 @@
     accepted. Used by Astro Dwarf Session for "Archive" and its "Config / Sessions on the Dwarf / Backed-up sessions" links.
 
 ### BugFix#
+    Catalog Edition help: rewritten for what the page does now (DSO links, the association wizard, the objects / groups
+    consistency checks, sessions of an object or group with Move); it still described an older catalog browser.
     Transfer page in a web browser: the folder buttons did nothing - they open the system dialog of the app's own window,
     out of sight from a browser. In a browser they now show a folder picker in the page (folders of this PC, from the
     start folder, never above the allowed root - backup drive or source); the app's window keeps the system dialog.

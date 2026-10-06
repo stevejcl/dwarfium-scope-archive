@@ -591,33 +591,73 @@ Connect to a Dwarf 2 telescope via MTP (Media Transfer Protocol) —
     },
 
     '/Catalog': {
-        'title': 'Catalog',
+        'title': 'Catalog Edition',
         'content': '''
 ## Purpose
 
-Browse the built-in astronomical object catalog used for automatic
-target identification and session classification.
+Link the **objects** of your archive (one per target name found in the
+session folders, plus the groups = sub-folders) to the built-in **DSO
+catalog** (Messier, NGC, IC, Caldwell...), and keep the archive consistent:
+sessions linked to the wrong DSO, sessions filed in the wrong group.
 
-## Features
+## The list
 
-- Search by object name, type, or constellation
-- View RA/Dec coordinates, size, and magnitude
-- See which sessions in your archive match each object
+- **{t:catalog_filter_all}** / **{t:catalog_filter_objects}** /
+  **{t:catalog_filter_groups}**: show every row, only objects, or only groups
+  (the default groups Unknown / MOSAIC_Unknown / Manual are listed with the
+  groups). The choice is remembered.
+- Per row:
+  - **Assign/Change DSO**: search the catalog (name, constellation, type),
+    pick the DSO, and optionally set your own description
+  - **{t:move_sessions_btn}**: the archive sessions of this object or group
+    (see below)
+  - 🗑️: removes the **DSO link** of the object (the object itself is kept)
 
-## Object types
+## Buttons
 
-- **Galaxy** — external galaxies (M31, NGC 891...)
-- **Nebula** — emission, reflection, planetary nebulae
-- **Cluster** — open and globular clusters
-- **HII Region** — ionised hydrogen regions
+- **{t:dso_wizard_open}**: one by one, each object without DSO. The
+  nearest catalog object to one of its sessions is proposed, with the
+  session's stacked image to check: **{t:dso_wizard_yes}**,
+  **{t:dso_wizard_no}**, another nearby candidate, or
+  **{t:dso_wizard_manual}**. The plate-solved centre of the session is used
+  when available, else its goto position.
+- **{t:dso_check_open}**, two checks:
+  - **{t:dso_check_mode_objects}**: objects having sessions further than the
+    chosen distance (twice for a mosaic) from their DSO, with the DSO
+    detected at each session's position — **{t:dso_check_relink}** fixes it
+    (kept by the next rescan)
+  - **{t:dso_check_mode_groups}**: every group at once, listing only the
+    sessions far from their group (its DSO, or the position of most of its
+    sessions)
+- **{t:export_csv}**: the object ↔ DSO links as a CSV file.
+- **{t:delete_unused}**: objects no session uses anymore.
+
+## Sessions of an object or group
+
+The archive sessions, newest first, with Dwarf, archive, sub-folder and
+object. For each one:
+- 🖼️ the stacked image, larger (with an Aladin link), to check a wide or
+  mosaic field when several catalog objects are close
+- 🔍 open it in Explore (e.g. to identify its target again) — the back button
+  returns here with this list open
+- **{t:move_button}**: moves the session folder within the archives of its
+  Dwarf — to the **{t:move_root}**, an **{t:move_existing}** (sub-folders
+  already holding this object are suggested) or a **{t:move_new}**, in the
+  same or another archive. The folder is never renamed; only that folder is
+  rescanned, and its notes, scores and plate solving follow it.
+
+**{t:dso_check_open}** in this list only annotates it: catalog object
+detected at each session's position, sessions too far from the object or
+group. Nothing is changed.
 
 ## Tips
 
-- The catalog is used automatically when you analyze a backup drive —
-  session targets are matched and classified
-- Use **{t:identify_target_btn}** on any unresolved session in Explore to
-  manually link it to a catalog object
-- The catalog is based on standard DSO databases (NGC, IC, Messier)
+- An object's name comes from the session folder name and is never changed
+  here: fix a wrong match by linking the object to the right DSO.
+- Unknown / MOSAIC_Unknown / Manual objects are created one per position by
+  the scan, so each can be linked to its own DSO.
+- Run the groups check from time to time after adding sessions to
+  sub-folders.
 ''',
     },
 
