@@ -51,7 +51,7 @@ def on_before_open(client: Client, callback) -> None:
     the home page's timers kept running then and blocked the app)."""
     _before_leave.setdefault(client.id, []).append(callback)
 
-
+# not used not working
 def _run_before_leave(client: Client) -> None:
     for callback in _before_leave.pop(client.id, []):
         try:
@@ -100,10 +100,6 @@ def register(port: int) -> None:
         try:
             client = _window_client()
             if client is not None:
-                # Only the navigation: the window calls below blocked the
-                # app when used on top of it (user-reported Oct 2026)
-                # The page's own background work stopped first
-                _run_before_leave(client)
                 # Through the /Init relay page (pages/init.py): straight to
                 # the target froze the interface (user-found Oct 2026).
                 # Target encoded whole, its own ? and & included
