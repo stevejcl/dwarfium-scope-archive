@@ -3,7 +3,7 @@
 
 A desktop application to **back up, organise, explore and process** your [DWARF telescope](https://www.dwarflab.com/) astrophotography sessions.
 
-> **Current version:** V3.1.x (evolution-test branch) — actively developed.
+> **Current version:** V3.4.x (evolution-main branch) — actively developed.
 
 ---
 
