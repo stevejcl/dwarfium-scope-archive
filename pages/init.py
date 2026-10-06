@@ -11,11 +11,22 @@ from nicegui import ui
 
 from api.open_in_app import local_path
 from components.menu import menu
+from components.i18n import t
 
 
 @ui.page('/Init')
 async def init_page(Target: str = None):
-    menu("Init")
+    menu(t("loading"))
     await ui.context.client.connected(timeout=10.0)
-    ui.spinner(size="lg").classes("mx-auto mt-8")
-    ui.navigate.to(Target if Target and local_path(Target) else "/")
+
+    InitApp(Target)
+
+
+class InitApp():
+    def __init__(self, Target=None):
+        self.target = Target
+        self.build_ui()
+
+    def build_ui(self):
+
+        ui.navigate.to(self.target if self.target and local_path(self.target) else "/")
