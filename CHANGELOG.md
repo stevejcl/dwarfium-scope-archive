@@ -25,7 +25,8 @@
     start folder, never above the allowed root - backup drive or source); the app's window keeps the system dialog.
     Import one session (USB / mapped folder): a RESTACKED session was copied to RESTACKED\RESTACKED\<session>, so the
     import ended with "Session not found on the Dwarf" although its files were copied. It now goes to
-    RESTACKED\<session>, as with FTP.
+    RESTACKED\<session>, as with FTP. The Transfer page's single-session sync keeps RESTACKED\<session>, and now puts a
+    STARTRAILS session in STARTRAILS\<session> where its scan looks for it (it went to the top of the Dwarf folder).
 
 ## [V3.3.2] - 2026-10-04
 
