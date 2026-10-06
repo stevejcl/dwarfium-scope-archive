@@ -8,8 +8,9 @@ runs pywebview in a child process - so a browser tab titled "Dwarfium
 Scope Archive" is never picked; by its title (ending with the app's
 name, as in "⚠️ TRANSFER RUNNING — Dwarfium Scope Archive") only when no
 child window is found. Windows lets a background process take the foreground only
-right after a key press: an Alt press / release is sent first, the usual
-workaround. Other systems: nothing (returns False)."""
+right after a key press: an Alt press / release is sent around it, the
+usual workaround, with a mask key between so the Alt release doesn't
+open the window's menu mode. Other systems: nothing (returns False)."""
 from __future__ import annotations
 
 import multiprocessing
@@ -59,10 +60,19 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
     hwnd = candidates[0]
 
     sw_restore, vk_menu, keyeventf_keyup = 9, 0x12, 0x0002
+    # Unassigned virtual key, pressed between Alt's press and release:
+    # an Alt released alone puts the window that now has the focus in
+    # menu mode (as pressing and releasing Alt does), where it no longer
+    # reacts until Esc / Alt (user-reported Oct 2026: the whole interface
+    # froze after each open-in-app). Same mask key as AutoHotkey's.
+    vk_mask = 0xE8
     if user32.IsIconic(hwnd):
-        user32.ShowWindow(hwnd, sw_restore)
+        # Async: never waits on the window's own thread
+        user32.ShowWindowAsync(hwnd, sw_restore)
     user32.keybd_event(vk_menu, 0, 0, 0)
     try:
         return bool(user32.SetForegroundWindow(hwnd))
     finally:
+        user32.keybd_event(vk_mask, 0, 0, 0)
+        user32.keybd_event(vk_mask, 0, keyeventf_keyup, 0)
         user32.keybd_event(vk_menu, 0, keyeventf_keyup, 0)
