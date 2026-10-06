@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### BugFix#
+    Home page: its slideshow timers and favorites loading are stopped right before a page opened from Astro Dwarf
+    Session (/api/open-in-app) replaces it in the app's window, not only once the page is disconnected.
     Import one session: the empty log and progress bar are no longer shown under the "already backed up" box; they
     appear when the import starts.
 

@@ -40,6 +40,25 @@ def _local_path(path: str) -> bool:
 # Ids of the connected pages shown in the app's window (not in a browser)
 _window_client_ids: list[str] = []
 
+# Per page (client id): what to stop before this route navigates it away
+_before_leave: dict[str, list] = {}
+
+
+def on_before_open(client: Client, callback) -> None:
+    """Called by a page with background work (the home page's slideshow
+    timers and favorites loading): `callback` runs right before this
+    route navigates that page to another one (user-requested Oct 2026:
+    the home page's timers kept running then and blocked the app)."""
+    _before_leave.setdefault(client.id, []).append(callback)
+
+
+def _run_before_leave(client: Client) -> None:
+    for callback in _before_leave.pop(client.id, []):
+        try:
+            callback()
+        except Exception as e:
+            print(f"[open-in-app] before-open callback error: {e}")
+
 
 async def _note_window_client(client: Client) -> None:
     try:
@@ -51,6 +70,7 @@ async def _note_window_client(client: Client) -> None:
 
 
 def _forget_client(client: Client) -> None:
+    _before_leave.pop(client.id, None)
     if client.id in _window_client_ids:
         _window_client_ids.remove(client.id)
 
@@ -82,6 +102,8 @@ def register(port: int) -> None:
             if client is not None:
                 # Only the navigation: the window calls below blocked the
                 # app when used on top of it (user-reported Oct 2026)
+                # The page's own background work stopped first
+                _run_before_leave(client)
                 with client:
                     ui.navigate.to(target)
                 # Front through Win32 in a thread (window_front.py), not
