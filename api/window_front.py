@@ -7,10 +7,15 @@ visible top-level window of one of this process's children - NiceGUI
 runs pywebview in a child process - so a browser tab titled "Dwarfium
 Scope Archive" is never picked; by its title (ending with the app's
 name, as in "⚠️ TRANSFER RUNNING — Dwarfium Scope Archive") only when no
-child window is found. Windows lets a background process take the foreground only
-right after a key press: an Alt press / release is sent around it, the
-usual workaround, with a mask key between so the Alt release doesn't
-open the window's menu mode. Other systems: nothing (returns False)."""
+child window is found.
+
+Nothing here simulates input or waits on another window's thread
+(user-reported Oct 2026: the earlier Alt-key trick froze the app's
+interface after each open-in-app): titles are read with
+InternalGetWindowText (no message sent), a minimized window is restored
+with ShowWindowAsync, and when Windows refuses SetForegroundWindow (a
+background process usually may not take the focus) the window flashes in
+the taskbar instead. Other systems: nothing (returns False)."""
 from __future__ import annotations
 
 import multiprocessing
@@ -38,11 +43,9 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
     def _visit(hwnd, _lparam):
         if not user32.IsWindowVisible(hwnd):
             return True
-        length = user32.GetWindowTextLengthW(hwnd)
-        if not length:
+        title = ctypes.create_unicode_buffer(512)
+        if not user32.InternalGetWindowText(hwnd, title, 512):
             return True
-        title = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, title, length + 1)
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if pid.value in child_pids:
@@ -59,20 +62,29 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
         return False
     hwnd = candidates[0]
 
-    sw_restore, vk_menu, keyeventf_keyup = 9, 0x12, 0x0002
-    # Unassigned virtual key, pressed between Alt's press and release:
-    # an Alt released alone puts the window that now has the focus in
-    # menu mode (as pressing and releasing Alt does), where it no longer
-    # reacts until Esc / Alt (user-reported Oct 2026: the whole interface
-    # froze after each open-in-app). Same mask key as AutoHotkey's.
-    vk_mask = 0xE8
+    sw_restore = 9
     if user32.IsIconic(hwnd):
-        # Async: never waits on the window's own thread
         user32.ShowWindowAsync(hwnd, sw_restore)
-    user32.keybd_event(vk_menu, 0, 0, 0)
-    try:
-        return bool(user32.SetForegroundWindow(hwnd))
-    finally:
-        user32.keybd_event(vk_mask, 0, 0, 0)
-        user32.keybd_event(vk_mask, 0, keyeventf_keyup, 0)
-        user32.keybd_event(vk_menu, 0, keyeventf_keyup, 0)
+    if user32.SetForegroundWindow(hwnd):
+        return True
+    _flash(user32, hwnd)
+    return False
+
+
+def _flash(user32, hwnd) -> None:
+    """Taskbar flash until the window comes to front (FlashWindowEx)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class FLASHWINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.UINT),
+            ("hwnd", wintypes.HWND),
+            ("dwFlags", wintypes.DWORD),
+            ("uCount", wintypes.UINT),
+            ("dwTimeout", wintypes.DWORD),
+        ]
+
+    flashw_all, flashw_timernofg = 0x3, 0xC
+    info = FLASHWINFO(ctypes.sizeof(FLASHWINFO), hwnd, flashw_all | flashw_timernofg, 0, 0)
+    user32.FlashWindowEx(ctypes.byref(info))

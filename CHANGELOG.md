@@ -3,8 +3,9 @@
 ## [Unreleased]
 
 ### BugFix#
-    Pages opened from Astro Dwarf Session: the app's interface no longer freezes afterwards. Bringing the window to
-    front released a lone Alt key on it, which put it in menu mode; a neutral key is now pressed in between.
+    Pages opened from Astro Dwarf Session: bringing the app's window to front no longer simulates an Alt key press
+    (released on the window, it put it in menu mode and the interface froze) nor waits on other windows: Windows
+    brings it to front when it allows it, otherwise the window flashes in the taskbar.
     Dwarf Configuration page: the MTP device detection (Windows Shell COM object) now runs entirely in a worker thread
     with COM initialized there, instead of on the app's event loop, where it could freeze the app's window (seen when
     the page was opened from Astro Dwarf Session while the home page was shown).
