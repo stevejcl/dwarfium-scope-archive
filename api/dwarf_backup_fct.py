@@ -1861,13 +1861,11 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
                 pass
         print_log(f"✅ Checking local session {session}.", log)
         src_session = os.path.join(source_root, session)
-        dst_session = (
-            os.path.join(dwarf_dir, "RESTACKED", session)
-            if session_name and session_name.startswith("RESTACKED_")
-            else os.path.join(dwarf_dir, "STARTRAILS", session)
-            if session_name and session_name.startswith("RESTACKED_")
-            else os.path.join(dwarf_dir, session)
-        )
+        # session already carries its RESTACKED / STARTRAILS subfolder, as
+        # in ftp_sync_dwarf_sessions (user-reported Oct 2026: prefixing it
+        # again put a single RESTACKED import in RESTACKED/RESTACKED, where
+        # the ImportSession page didn't find it)
+        dst_session = os.path.join(dwarf_dir, session)
         os.makedirs(dst_session, exist_ok=True)
         safe_print(f"src_session {src_session}")
         safe_print(f"dst_session {dst_session}")

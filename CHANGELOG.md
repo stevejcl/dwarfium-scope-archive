@@ -23,6 +23,9 @@
     Transfer page in a web browser: the folder buttons did nothing - they open the system dialog of the app's own window,
     out of sight from a browser. In a browser they now show a folder picker in the page (folders of this PC, from the
     start folder, never above the allowed root - backup drive or source); the app's window keeps the system dialog.
+    Import one session (USB / mapped folder): a RESTACKED session was copied to RESTACKED\RESTACKED\<session>, so the
+    import ended with "Session not found on the Dwarf" although its files were copied. It now goes to
+    RESTACKED\<session>, as with FTP.
 
 ## [V3.3.2] - 2026-10-04
 
