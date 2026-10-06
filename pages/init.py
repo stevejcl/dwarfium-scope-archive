@@ -29,4 +29,5 @@ class InitApp():
 
     def build_ui(self):
 
-        ui.navigate.to(self.target if self.target and local_path(self.target) else "/")
+        # After a short delay, not right at load (user-tuned Oct 2026)
+        ui.timer(0.5, lambda: ui.navigate.to(self.target if self.target and local_path(self.target) else "/"), once=True)
