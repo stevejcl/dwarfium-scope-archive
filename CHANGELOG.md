@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### BugFix#
+    Dwarf Configuration page: the MTP device detection (Windows Shell COM object) now runs entirely in a worker thread
+    with COM initialized there, instead of on the app's event loop, where it could freeze the app's window (seen when
+    the page was opened from Astro Dwarf Session while the home page was shown).
     Home page: its slideshow timers and favorites loading are stopped right before a page opened from Astro Dwarf
     Session (/api/open-in-app) replaces it in the app's window, not only once the page is disconnected.
     Import one session: the empty log and progress bar are no longer shown under the "already backed up" box; they

@@ -8,6 +8,36 @@ import logging as log
 # Encoding changed to UTF-8
 MTP_NAMESPACE_ID = 17
 
+
+def detect_mtp_devices_blocking():
+    """(available, [(name, path), ...]) - blocking, for run.io_bound().
+
+    On Windows the Shell.Application COM object is created, used and
+    released in the calling worker thread, with COM initialized there
+    (user-reported Oct 2026: created on NiceGUI's event-loop thread, which
+    pumps no Windows messages, the Dwarf page froze the app's window).
+    Only plain tuples leave the thread, never a COM object."""
+    com_initialized = False
+    if platform.system() == "Windows":
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+            com_initialized = True
+        except ImportError:
+            pass
+    try:
+        mtp = MTPManager()
+        if not mtp.is_MTP_available():
+            return False, []
+        return True, mtp.list_mtp_devices()
+    except Exception as e:
+        log.error(f"MTP detection failed: {e}")
+        return False, []
+    finally:
+        if com_initialized:
+            import pythoncom
+            pythoncom.CoUninitialize()
+
 class MTPManager:
     def __init__(self):
         self.platform = platform.system()
