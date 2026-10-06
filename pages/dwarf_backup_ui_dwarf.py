@@ -12,7 +12,7 @@ from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_
 from api.dwarf_backup_fct_ftp import check_dwarf_type_mismatch_ftp
 from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
 
-from api.dwarf_backup_mtp_handler import MTPManager 
+from api.dwarf_backup_mtp_handler import detect_mtp_devices_blocking
 
 # Set to True to test the mismatch confirmation dialog without needing a
 # real Dwarf of the wrong type connected — injects a fake (but complete)
@@ -438,14 +438,12 @@ class ConfigApp(DbPageMixin):
 
     async def detect_mtp_devices(self):
         add_new = False
-        mtp = MTPManager()
-
-        available = await run.io_bound(
-                mtp.is_MTP_available
-            )
+        # Whole detection in a worker thread (COM on Windows) - see
+        # detect_mtp_devices_blocking()
+        available, devices = await run.io_bound(detect_mtp_devices_blocking)
 
         if available:
-            self.mtp_devices = mtp.list_mtp_devices()
+            self.mtp_devices = devices
             print(f"detect_mtp_devices {len(self.mtp_devices)}")
         
             for name, path in self.mtp_devices:
