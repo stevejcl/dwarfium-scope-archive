@@ -591,33 +591,75 @@ Connectez-vous à un télescope Dwarf 2 via MTP (Media Transfer Protocol).
     },
 
     '/Catalog': {
-        'title': 'Catalogue',
+        'title': 'Édition du catalogue',
         'content': '''
-## Objectif
+## Rôle
 
-Parcourez le catalogue intégré d'objets astronomiques utilisé pour l'identification
-automatique des cibles et la classification des sessions.
+Relie les **objets** de votre archive (un par nom de cible trouvé dans les
+dossiers de session, plus les groupes = sous-dossiers) au **catalogue DSO**
+intégré (Messier, NGC, IC, Caldwell...), et garde l'archive cohérente :
+sessions reliées au mauvais DSO, sessions rangées dans le mauvais groupe.
 
-## Fonctionnalités
+## La liste
 
-- Rechercher par nom d'objet, type ou constellation
-- Voir les coordonnées RA/Dec, la taille et la magnitude
-- Voir quelles sessions de votre archive correspondent à chaque objet
+- **{t:catalog_filter_all}** / **{t:catalog_filter_objects}** /
+  **{t:catalog_filter_groups}** : toutes les lignes, seulement les objets ou
+  seulement les groupes (les groupes par défaut Unknown / MOSAIC_Unknown /
+  Manual sont listés avec les groupes). Le choix est mémorisé.
+- Par ligne :
+  - **Assign/Change DSO** : recherche dans le catalogue (nom, constellation,
+    type), choix du DSO, et si besoin votre propre description
+  - **{t:move_sessions_btn}** : les sessions archivées de cet objet ou groupe
+    (voir plus bas)
+  - 🗑️ : retire le **lien DSO** de l'objet (l'objet lui-même est conservé)
 
-## Types d'objets
+## Boutons
 
-- **Galaxy** — galaxies extérieures (M31, NGC 891...)
-- **Nebula** — nébuleuses en émission, réflexion, planétaires
-- **Cluster** — amas ouverts et globulaires
-- **HII Region** — régions d'hydrogène ionisé
+- **{t:dso_wizard_open}** : un par un, chaque objet sans DSO. L'objet du
+  catalogue le plus proche d'une de ses sessions est proposé, avec l'image
+  empilée de la session pour vérifier : **{t:dso_wizard_yes}**,
+  **{t:dso_wizard_no}**, un autre candidat proche, ou
+  **{t:dso_wizard_manual}**. Le centre plate-solvé de la session est utilisé
+  s'il existe, sinon sa position de goto.
+- **{t:dso_check_open}**, deux vérifications :
+  - **{t:dso_check_mode_objects}** : objets ayant des sessions plus loin que
+    la distance choisie (le double pour une mosaïque) de leur DSO, avec le DSO
+    détecté à la position de chaque session — **{t:dso_check_relink}** corrige
+    (conservé au prochain rescan)
+  - **{t:dso_check_mode_groups}** : tous les groupes d'un coup, en ne listant
+    que les sessions éloignées de leur groupe (son DSO, ou la position de la
+    plupart de ses sessions)
+- **{t:export_csv}** : les liens objet ↔ DSO dans un fichier CSV.
+- **{t:delete_unused}** : les objets qu'aucune session n'utilise plus.
+
+## Sessions d'un objet ou d'un groupe
+
+Les sessions archivées, les plus récentes d'abord, avec Dwarf, archive,
+sous-dossier et objet. Pour chacune :
+- 🖼️ l'image empilée en grand (avec un lien Aladin), pour vérifier un champ
+  large ou une mosaïque quand plusieurs objets du catalogue sont proches
+- 🔍 l'ouvrir dans Explore (par exemple pour identifier à nouveau sa cible) —
+  le bouton retour revient ici avec cette liste ouverte
+- **{t:move_button}** : déplace le dossier de la session dans les archives de
+  son Dwarf — à la **{t:move_root}**, dans un **{t:move_existing}** (les
+  sous-dossiers contenant déjà cet objet sont proposés) ou un
+  **{t:move_new}**, dans la même archive ou une autre. Le dossier n'est jamais
+  renommé ; seul ce dossier est rescanné, et ses notes, scores et plate
+  solving le suivent.
+
+**{t:dso_check_open}** dans cette liste ne fait que l'annoter : objet du
+catalogue détecté à la position de chaque session, sessions trop éloignées
+de l'objet ou du groupe. Rien n'est modifié.
 
 ## Conseils
 
-- Le catalogue est utilisé automatiquement lorsque vous analysez un disque de sauvegarde —
-  les cibles de session sont associées et classifiées
-- Utilisez **{t:identify_target_btn}** sur toute session non résolue dans Explorer pour
-  la lier manuellement à un objet du catalogue
-- Le catalogue est basé sur les bases de données DSO standard (NGC, IC, Messier)
+- Le nom d'un objet vient du nom du dossier de session et n'est jamais
+  modifié ici : corrigez une mauvaise correspondance en reliant l'objet au
+  bon DSO.
+- Les objets Unknown / MOSAIC_Unknown / Manual sont créés un par position
+  par le scan : chacun peut donc être relié à son propre DSO.
+- Lancez la vérification des groupes de temps en temps après avoir ajouté des
+  sessions dans des sous-dossiers.
 ''',
     },
 
