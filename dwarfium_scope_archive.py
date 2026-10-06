@@ -132,6 +132,7 @@ app.storage.general['LAN_PORT'] = PORT
 # Import page content (each file registers its own route)
 import pages.dwarf_backup_ui_dwarf
 import pages.home
+import pages.init
 import pages.dwarf_backup_ui_backup
 import pages.dwarf_backup_ui_explore
 import pages.dwarf_mtp_devices

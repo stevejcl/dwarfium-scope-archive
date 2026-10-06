@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### BugFix#
+    Pages opened from Astro Dwarf Session: the app's window now goes through a small relay page (/Init) that then opens
+    the requested page itself; opening it directly froze the interface.
     Home page: its slideshow timers and favorites loading are stopped right before a page opened from Astro Dwarf
     Session (/api/open-in-app) replaces it in the app's window, not only once the page is disconnected.
     Import one session: the empty log and progress bar are no longer shown under the "already backed up" box; they

@@ -21,7 +21,7 @@ connected yet."""
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi.responses import JSONResponse
 from nicegui import Client, app, background_tasks, run, ui
@@ -32,7 +32,7 @@ from api.window_front import bring_to_front
 SAFE_URL_CHARS = "/?&=%+:;,'()!*~-._@$"
 
 
-def _local_path(path: str) -> bool:
+def local_path(path: str) -> bool:
     parts = urlsplit(path or "")
     return bool(path) and path.startswith("/") and not path.startswith("//") and not parts.scheme and not parts.netloc
 
@@ -90,7 +90,7 @@ def register(port: int) -> None:
 
     @app.get("/api/open-in-app")
     async def open_in_app(path: str = ""):
-        if not _local_path(path):
+        if not local_path(path):
             return JSONResponse({"opened": False, "error": "path"}, status_code=400)
         window = getattr(app.native, "main_window", None)
         if window is None:
@@ -104,8 +104,11 @@ def register(port: int) -> None:
                 # app when used on top of it (user-reported Oct 2026)
                 # The page's own background work stopped first
                 _run_before_leave(client)
+                # Through the /Init relay page (pages/init.py): straight to
+                # the target froze the interface (user-found Oct 2026).
+                # Target encoded whole, its own ? and & included
                 with client:
-                    ui.navigate.to(target)
+                    ui.navigate.to("/Init?" + urlencode({"Target": target}))
                 # Front through Win32 in a thread (window_front.py), not
                 # pywebview's own calls, which blocked the app
                 try:
