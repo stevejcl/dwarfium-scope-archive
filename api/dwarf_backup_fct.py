@@ -1861,13 +1861,18 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
                 pass
         print_log(f"✅ Checking local session {session}.", log)
         src_session = os.path.join(source_root, session)
-        dst_session = (
-            os.path.join(dwarf_dir, "RESTACKED", session)
-            if session_name and session_name.startswith("RESTACKED_")
-            else os.path.join(dwarf_dir, "STARTRAILS", session)
-            if session_name and session_name.startswith("RESTACKED_")
-            else os.path.join(dwarf_dir, session)
-        )
+        # One session: into its RESTACKED / STARTRAILS folder. Found in the
+        # source's own RESTACKED / STARTRAILS subfolder (the Dwarf, from the
+        # ImportSession page), session already carries it - added again, it
+        # went to RESTACKED/RESTACKED (user-reported Oct 2026). Found at the
+        # top (the Transfer page's source is the session's parent folder),
+        # it's added from the session's name.
+        dst_session = os.path.join(dwarf_dir, session)
+        if session_name and not os.path.dirname(session):
+            if session.startswith("RESTACKED"):
+                dst_session = os.path.join(dwarf_dir, "RESTACKED", session)
+            elif session.startswith("STARTRAILS"):
+                dst_session = os.path.join(dwarf_dir, "STARTRAILS", session)
         os.makedirs(dst_session, exist_ok=True)
         safe_print(f"src_session {src_session}")
         safe_print(f"dst_session {dst_session}")

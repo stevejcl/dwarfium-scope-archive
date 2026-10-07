@@ -2,7 +2,7 @@
 (user-requested Oct 2026, link from Astro Dwarf Session's explorer and
 View / Check dialogs).
 
-/ImportSession?DwarfId=<id>&session=<session folder>
+/ImportSession?DwarfId=<id>&session=<session folder>[&DwarfIp=<ip>]
 
 Same two steps as the Setup Dwarfs page's analysis, for this session
 only: sync its stacked / shotsInfo files from the Dwarf (USB when its
@@ -13,7 +13,14 @@ the backup drive and starting the copy stay with the user there.
 
 Checked first (user-requested Oct 2026): a session already on a backup
 drive (same rule as the Explore page) is shown with its drives, and the
-import only starts when the user asks for it anyway."""
+import only starts when the user asks for it anyway.
+
+DwarfIp (user-requested Oct 2026): the Dwarf's IP as Astro Dwarf Session
+sees it, tried first for FTP before the Dwarf Configuration's IP and the
+Dwarf's session IP (api/dwarf_session_ip.py), for this import and the
+Transfer page that follows: a remote site's Astro Dwarf Session (Dwarf
+reached through Tailscale) gives its own while the configured one stays
+the local site's."""
 from __future__ import annotations
 
 import os
@@ -29,7 +36,8 @@ from api.dwarf_backup_fct import (
     scan_backup_folder,
     sync_dwarf_sessions,
 )
-from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH, ftp_conn, ftp_sync_dwarf_sessions
+from api.dwarf_session_ip import pick_ftp_ip
+from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH, dwarf_ip_param, ftp_conn, ftp_sync_dwarf_sessions
 from components.i18n import t
 from components.menu import menu
 
@@ -37,8 +45,11 @@ from components.menu import menu
 _DWARF2_TYPE = 1
 
 
-def _transfer_url(dwarf_id: int, session: str) -> str:
-    return "/Transfer?" + urllib.parse.urlencode({"DwarfId": dwarf_id, "session": session, "mode": "Archive"})
+def _transfer_url(dwarf_id: int, session: str, dwarf_ip: str = "") -> str:
+    query = {"DwarfId": dwarf_id, "session": session, "mode": "Archive"}
+    if dwarf_ip:
+        query["DwarfIp"] = dwarf_ip
+    return "/Transfer?" + urllib.parse.urlencode(query)
 
 
 def _local_session_dir(local_dwarf_dir: str, session: str) -> str | None:
@@ -86,8 +97,10 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
     return out
 
 
-def _import_session(dwarf_id: int, session: str, log, progress_cb) -> tuple[bool, str]:
-    """Blocking: sync + scan of one session. (ok, message key)."""
+def _import_session(dwarf_id: int, session: str, log, progress_cb, dwarf_ip: str = "") -> tuple[bool, str]:
+    """Blocking: sync + scan of one session. (ok, message key). FTP goes
+    to the first answering of dwarf_ip (the link's), the configured IP and
+    the Dwarf's session IP."""
     conn = connect_db(DB_NAME)
     if not conn:
         return False, "import_session_db_error"
@@ -104,7 +117,7 @@ def _import_session(dwarf_id: int, session: str, log, progress_cb) -> tuple[bool
         if usb_dir and os.path.isdir(usb_dir):
             log.push(f"🔌 USB: {usb_dir}")
             sync_dwarf_sessions(dwarf_id, usb_dir, local_main_dir, session, log, progress_cb)
-        elif ip:
+        elif ip := pick_ftp_ip(dwarf_id, ip, dwarf_ip):
             ftp_root = DWARF2_FTP_PATH if dwarf_type == _DWARF2_TYPE else DWARF3_FTP_PATH
             log.push(f"🌐 FTP: {ip}{ftp_root}")
             with ftp_conn(ip) as ftp:
@@ -125,8 +138,9 @@ def _import_session(dwarf_id: int, session: str, log, progress_cb) -> tuple[bool
 
 
 @ui.page('/ImportSession')
-async def import_session_page(DwarfId: int = None, session: str = None):
+async def import_session_page(DwarfId: int = None, session: str = None, DwarfIp: str = None):
     menu(t("page_import_session"))
+    dwarf_ip = dwarf_ip_param(DwarfIp)
     await ui.context.client.connected(timeout=10.0)
 
     with ui.column().classes("w-full max-w-4xl mx-auto p-4 gap-3"):
@@ -143,7 +157,7 @@ async def import_session_page(DwarfId: int = None, session: str = None):
         with ui.row().classes("gap-2"):
             transfer_button = ui.button(
                 t("import_session_open_transfer"),
-                on_click=lambda: ui.navigate.to(_transfer_url(DwarfId, session)),
+                on_click=lambda: ui.navigate.to(_transfer_url(DwarfId, session, dwarf_ip)),
             ).props("color=primary")
             ui.button(t("page_dwarf"), on_click=lambda: ui.navigate.to(f"/Dwarf?DwarfId={DwarfId}")).props("flat")
         transfer_button.set_visibility(False)
@@ -165,7 +179,7 @@ async def import_session_page(DwarfId: int = None, session: str = None):
         _show_progress(True)
         status_label.set_text(t("import_session_running"))
         try:
-            ok, key = await run.io_bound(_import_session, DwarfId, session, log, _progress)
+            ok, key = await run.io_bound(_import_session, DwarfId, session, log, _progress, dwarf_ip)
         except Exception as e:  # FTP drop, copy error...: shown, never a blank page
             ok, key = False, ""
             log.push(f"❌ {e}")
@@ -175,7 +189,7 @@ async def import_session_page(DwarfId: int = None, session: str = None):
             status_label.set_text(t(key))
             status_label.classes("text-positive")
             # The session is registered: on to the Transfer page, preselected
-            ui.navigate.to(_transfer_url(DwarfId, session))
+            ui.navigate.to(_transfer_url(DwarfId, session, dwarf_ip))
         else:
             status_label.set_text(t(key) if key else t("import_session_failed"))
             status_label.classes("text-negative")

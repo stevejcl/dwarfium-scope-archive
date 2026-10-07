@@ -1,4 +1,5 @@
 import os
+import re
 import ftplib
 import shutil
 import tempfile
@@ -17,6 +18,16 @@ DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
 DWARF3_FTP_PATH = "/Astronomy"
 
 from components.i18n import t
+
+_HOST_RE = re.compile(r"^[A-Za-z0-9.:-]{1,253}$")
+
+
+def dwarf_ip_param(value):
+    """A Dwarf IP given in a page's address (DwarfIp, from Astro Dwarf
+    Session) when it's an IP / host name, else ""."""
+    value = (value or "").strip()
+    return value if _HOST_RE.match(value) else ""
+
 
 @contextmanager
 def ftp_conn(ip_address):

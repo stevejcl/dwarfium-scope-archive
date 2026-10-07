@@ -10,7 +10,8 @@ from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_fct import create_local_dwarf_dir, get_local_dwarf_dir, sync_dwarf_sessions, scan_backup_folder, insert_or_get_backup_drive, get_directory_size_format, empty_local_archive_dwarf_dir, get_disk_space_info, check_dwarf_type_mismatch
 from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, connect_to_dwarf, ftp_sync_dwarf_sessions
 from api.dwarf_backup_fct_ftp import check_dwarf_type_mismatch_ftp
-from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH
+from api.dwarf_backup_fct_ftp import DWARF2_FTP_PATH, DWARF3_FTP_PATH, dwarf_ip_param
+from api.dwarf_session_ip import get_session_ip, set_session_ip, pick_ftp_ip
 
 from api.dwarf_backup_mtp_handler import MTPManager 
 
@@ -31,18 +32,26 @@ from components.disk_space_widget import disk_space_widget
 
 
 @ui.page('/Dwarf')
-async def dwarf_settings(DwarfId:int = None, FirstInit=False):
+async def dwarf_settings(DwarfId:int = None, FirstInit=False, DwarfIp: str = None):
 
     menu(t("page_dwarf"))
     await ui.context.client.connected(timeout=10.0)
     # Launch the GUI
-    ConfigApp(DB_NAME, DwarfId=DwarfId, FirstInit=FirstInit)
+    ConfigApp(DB_NAME, DwarfId=DwarfId, FirstInit=FirstInit, DwarfIp=dwarf_ip_param(DwarfIp))
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
     
 
 class ConfigApp(DbPageMixin):
-    def __init__(self, database, DwarfId=None, FirstInit=False):
+    def __init__(self, database, DwarfId=None, FirstInit=False, DwarfIp=""):
         self.FirstInit = FirstInit
+        # IP Astro Dwarf Session reaches DwarfId at (its "Config" link, user-
+        # requested Oct 2026): when it's neither the FTP IP nor the session
+        # IP, the user picks what to do with it (ask_link_ip)
+        self.link_ip = DwarfIp or ""
+        self.link_dwarf_id = DwarfId
+        self.link_ip_asked = False
+        # The IP the FTP status check found answering (FTP or session IP)
+        self.ftp_ip = ""
         self.database = database
         self.dwarfs = []
         self.dwarf_id = DwarfId
@@ -152,6 +161,12 @@ class ConfigApp(DbPageMixin):
                         with ui.row().classes("gap-4 mt-4"):
                             self.ftp_spinner = ui.spinner(size="1em")
                             self.ftp_status_label = ui.label("").classes('pt-4')
+                        # Second FTP IP, kept outside the database (api/dwarf_session_ip.py)
+                        self.dwarf_session_ip = ui.input(
+                            t("session_ip"),
+                            validation={'Invalid IP address': lambda value: self.is_valid_ip(value)}
+                        ).classes('w-55').tooltip(t("session_ip_hint"))
+                        self.dwarf_session_ip.on('blur', self.save_session_ip)
 
                     with ui.grid(columns=2):
                         with ui.card().tight():
@@ -257,16 +272,24 @@ class ConfigApp(DbPageMixin):
 
     async def check_status_dwarf(self, force_ftp: bool = False):
         self.check_dir_dwarf()
-        if not self.dwarf_ip_sta_mode.value:
+        self.ftp_ip = ""
+        configured = (self.dwarf_ip_sta_mode.value or "").strip()
+        if not configured and not get_session_ip(self.dwarf_id):
             return
-        current_ip = self.dwarf_ip_sta_mode.value
+        current_ips = (self.dwarf_ip_sta_mode.value, self.dwarf_session_ip.value)
         status_text = "❌ Unable to check status."  # valeur par défaut
         try:
             self.ftp_spinner.set_visibility(True)
-            status_text = await run.io_bound(check_ftp_connection, self.dwarf_ip_sta_mode.value)
+            # The answering one of the FTP IP and the session IP
+            ip = await run.io_bound(pick_ftp_ip, self.dwarf_id, configured)
+            status_text = await run.io_bound(check_ftp_connection, ip)
+            if "✅" in status_text:
+                self.ftp_ip = ip
+                if ip != configured:
+                    status_text = f"{status_text} ({t('session_ip')} {ip})"
         finally:
-            # Update only if the IP has not changed
-            if current_ip == self.dwarf_ip_sta_mode.value:
+            # Update only if the IPs have not changed
+            if current_ips == (self.dwarf_ip_sta_mode.value, self.dwarf_session_ip.value):
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
                 if (not self.dwarf_status or force_ftp) and status_text and "✅" in status_text:
@@ -297,11 +320,49 @@ class ConfigApp(DbPageMixin):
             self.dwarf_type_var.value = self.dwarf_type_map[int(row[3])]
             self.dwarf_scan_date.text = row[4]
             self.dwarf_ip_sta_mode.value = row[5]
+            self.dwarf_session_ip.value = get_session_ip(self.dwarf_id)
             self.dwarf_mtp_id = row[6]
             self.modif_dwarf_type()
             self.refresh_error_sessions_btn()
             await self.show_local_data()
             await self.check_status_dwarf()
+            await self.ask_link_ip()
+
+    async def save_session_ip(self):
+        """The session IP field, kept on leaving it (when valid)."""
+        value = (self.dwarf_session_ip.value or "").strip()
+        if not self.dwarf_id or not self.is_valid_ip(value) or value == get_session_ip(self.dwarf_id):
+            return
+        set_session_ip(self.dwarf_id, value)
+        await self.check_status_dwarf()
+
+    async def ask_link_ip(self):
+        """Opened from Astro Dwarf Session with the IP it reaches this
+        Dwarf at: nothing when it's the FTP or the session IP already, else
+        save it as FTP IP, keep it as session IP, or ignore it. Asked once."""
+        ip = self.link_ip
+        if not ip or self.link_ip_asked or not self.dwarf_id or self.dwarf_id != self.link_dwarf_id:
+            return
+        self.link_ip_asked = True
+        configured = (self.dwarf_ip_sta_mode.value or "").strip()
+        if ip in (configured, get_session_ip(self.dwarf_id)):
+            return
+        with ui.dialog() as dialog, ui.card():
+            ui.label(t("link_ip_title")).classes("text-lg font-medium")
+            ui.label(t("link_ip_text", ip=ip, configured=configured or "-"))
+            with ui.row().classes("gap-2"):
+                ui.button(t("link_ip_save"), on_click=lambda: dialog.submit("save"))
+                ui.button(t("link_ip_session"), on_click=lambda: dialog.submit("session"))
+                ui.button(t("link_ip_ignore"), on_click=lambda: dialog.submit(None)).props("flat")
+        choice = await dialog
+        if choice == "save":
+            self.dwarf_ip_sta_mode.value = ip
+            await self.save_or_update_dwarf()
+        elif choice == "session":
+            self.dwarf_session_ip.value = ip
+            set_session_ip(self.dwarf_id, ip)
+        if choice:
+            await self.check_status_dwarf(force_ftp=True)
 
 
     def _toggle_error_sessions(self):
@@ -471,6 +532,8 @@ class ConfigApp(DbPageMixin):
         self.dwarf_astroDir.value = ""
         self.dwarf_type_var.value = self.dwarf_type_map[2]  # Default to Dwarf3
         self.dwarf_ip_sta_mode.value = ""
+        self.dwarf_session_ip.value = ""
+        self.ftp_ip = ""
         self.dwarf_scan_date.text = ""
         self.dwarf_status = None
         self.ftp_spinner.set_visibility(False)
@@ -566,7 +629,8 @@ class ConfigApp(DbPageMixin):
             else:
                 ui.notify(t("unsupported_device"), type="negative")
                 return
-            ftp_ctx = ftp_conn(self.dwarf_ip_sta_mode.value) if self.dwarf_ip_sta_mode.value else None
+            ftp_ip = self.ftp_ip or self.dwarf_ip_sta_mode.value
+            ftp_ctx = ftp_conn(ftp_ip) if ftp_ip else None
             ftp = ftp_ctx.__enter__() if ftp_ctx else None
             if not ftp:
                 ui.notify(t("ftp_disconnected"), type="negative")
