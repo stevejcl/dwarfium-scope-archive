@@ -11,6 +11,7 @@ from pathlib import Path
 
 from components.menu import menu
 from components.folder_picker import choose_folder
+from api.dwarf_session_ip import pick_ftp_ip
 from api.dwarf_backup_fct_ftp import dwarf_ip_param, ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
 from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
@@ -75,8 +76,8 @@ class TransferApp:
         # Dark library download: force destination to CALI_FRAME dir (locked)
         self.dest_override = DestOverride  # e.g. "X:\DWARF_MINI_NEW\CALI_FRAME"
         # IP given by Astro Dwarf Session for DwarfId (a remote site's, user-
-        # requested Oct 2026): used for FTP instead of the configured one
-        # while this Dwarf is selected, never saved
+        # requested Oct 2026): tried first for FTP while this Dwarf is
+        # selected, before the configured and the session IP, never saved
         self.dwarf_ip_override = DwarfIp or ""
 
         self.src_dir = ''
@@ -368,9 +369,9 @@ class TransferApp:
         row = get_dwarf_detail(self.conn, self.DwarfId)
         if row:
             self.dwarf_astroDir = row[2] or ""
-            self.dwarf_ip_sta_mode = row[5] or ""
-            if self.dwarf_ip_override and self.DwarfId == self.DwarfId_Init:
-                self.dwarf_ip_sta_mode = self.dwarf_ip_override
+            preferred = self.dwarf_ip_override if self.DwarfId == self.DwarfId_Init else ""
+            # The answering one of the link's, the configured and the session IP
+            self.dwarf_ip_sta_mode = await run.io_bound(pick_ftp_ip, self.DwarfId, row[5] or "", preferred)
             self.dwarf_type = row[3] or None
             print(f"dwarf_ip_sta_mode: {self.dwarf_ip_sta_mode}")
             print(f"dwarf_type: {int(self.dwarf_type)+1}")

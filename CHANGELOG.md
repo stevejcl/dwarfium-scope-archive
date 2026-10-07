@@ -16,9 +16,11 @@
     interface), and the window is brought to front on Windows (Win32); {"opened": false} when there's
     no app window (browser / server mode), so the caller opens a browser tab instead. Only this app's own pages are
     accepted. Used by Astro Dwarf Session for "Archive" and its "Config / Sessions on the Dwarf / Backed-up sessions" links.
-    Import one session from a remote site: Astro Dwarf Session adds the Dwarf's IP (DwarfIp) to the /ImportSession link,
-    used for FTP instead of the Dwarf Configuration's one for this import and the Transfer page that follows. Never
-    saved: the configured IP stays the local site's (user-requested Oct 2026, Dwarf reached through Tailscale).
+    Session IP: a second FTP IP per Dwarf, next to the configured one, kept on this PC only (not in the database) - e.g.
+    the Dwarf's IP on a remote site reached through Tailscale, the configured one staying the local site's. The Dwarf
+    Configuration, Transfer and import pages use whichever IP answers. Astro Dwarf Session's links give the IP it reaches
+    the Dwarf at (DwarfIp): tried first by the import and the Transfer page that follows; on the Dwarf Configuration
+    page, when it's neither IP, a dialog offers to save it as FTP IP, use it as session IP, or ignore it.
 
 ### BugFix#
     Catalog Edition help: rewritten for what the page does now (DSO links, the association wizard, the objects / groups
