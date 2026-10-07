@@ -11,7 +11,7 @@ from pathlib import Path
 
 from components.menu import menu
 from components.folder_picker import choose_folder
-from api.dwarf_backup_fct_ftp import ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
+from api.dwarf_backup_fct_ftp import dwarf_ip_param, ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
 from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
 
@@ -32,6 +32,7 @@ async def transfer_page(
     src_override: str = None,   # pre-filled source dir (e.g. repaired Mosaic temp dir)
     src_root: str = None,       # browsing constraint root (must be inside backup dir)
     dest_override: str = None,  # force destination to this path (e.g. CALI_FRAME dir)
+    DwarfIp: str = None,        # this Dwarf's IP from Astro Dwarf Session (ImportSession page)
 ):
     menu(t("page_transfer"))
     await ui.context.client.connected(timeout=10.0)
@@ -47,11 +48,12 @@ async def transfer_page(
         SrcOverride=src_override,
         SrcRoot=src_root,
         DestOverride=dest_override,
+        DwarfIp=dwarf_ip_param(DwarfIp),
     )
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class TransferApp:
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None, DestOverride=None):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None, DestOverride=None, DwarfIp=""):
         self.client = client
         self.mode = Mode  # "Archive" | "Restore" | "Repair" | "Merge"
         self.database = database
@@ -72,6 +74,10 @@ class TransferApp:
         self.src_root      = SrcRoot       # e.g. "D:\Backup" — folder picker stays inside here
         # Dark library download: force destination to CALI_FRAME dir (locked)
         self.dest_override = DestOverride  # e.g. "X:\DWARF_MINI_NEW\CALI_FRAME"
+        # IP given by Astro Dwarf Session for DwarfId (a remote site's, user-
+        # requested Oct 2026): used for FTP instead of the configured one
+        # while this Dwarf is selected, never saved
+        self.dwarf_ip_override = DwarfIp or ""
 
         self.src_dir = ''
         self.dest_dir = ''
@@ -363,6 +369,8 @@ class TransferApp:
         if row:
             self.dwarf_astroDir = row[2] or ""
             self.dwarf_ip_sta_mode = row[5] or ""
+            if self.dwarf_ip_override and self.DwarfId == self.DwarfId_Init:
+                self.dwarf_ip_sta_mode = self.dwarf_ip_override
             self.dwarf_type = row[3] or None
             print(f"dwarf_ip_sta_mode: {self.dwarf_ip_sta_mode}")
             print(f"dwarf_type: {int(self.dwarf_type)+1}")
