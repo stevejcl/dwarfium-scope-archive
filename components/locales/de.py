@@ -175,7 +175,7 @@ TRANSLATIONS: dict[str, str] = {
     "session_ip":                   "Session IP",  # TODO
     "session_ip_hint":              "Second FTP IP of this Dwarf, kept on this PC only (not in the database) - e.g. its IP on a remote site reached through Tailscale. The FTP pages use whichever of the two IPs answers.",  # TODO
     "link_ip_title":                "Dwarf IP from Astro Dwarf Session",  # TODO
-    "link_ip_text":                 "Astro Dwarf Session reaches this Dwarf at {ip}. FTP IP set here: {configured}.",  # TODO
+    "link_ip_text":                 "Astro Dwarf Session reaches this Dwarf at {ip}.\nFTP IP set here: {configured}.",  # TODO
     "link_ip_save":                 "Save as FTP IP",  # TODO
     "link_ip_session":              "Use as session IP",  # TODO
     "link_ip_ignore":               "Ignore",  # TODO

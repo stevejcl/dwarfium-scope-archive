@@ -61,9 +61,11 @@ def bring_to_front(title_part: str = APP_TITLE) -> bool:
         return False
     hwnd = candidates[0]
 
+    #sw_restore, vk_menu, keyeventf_keyup = 9, 0x12, 0x0002
     sw_restore = 9
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, sw_restore)
+    #user32.keybd_event(vk_menu, 0, 0, 0)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     this_thread = kernel32.GetCurrentThreadId()
     user32.GetForegroundWindow.restype = wintypes.HWND

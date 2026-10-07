@@ -174,7 +174,7 @@ TRANSLATIONS: dict[str, str] = {
     "session_ip":                   "IP de session",
     "session_ip_hint":              "Deuxième IP FTP de ce Dwarf, gardée sur ce PC seulement (pas dans la base) - par exemple son IP sur un site distant joint via Tailscale. Les pages FTP utilisent celle des deux IP qui répond.",
     "link_ip_title":                "IP du Dwarf transmise par Astro Dwarf Session",
-    "link_ip_text":                 "Astro Dwarf Session joint ce Dwarf à l'adresse {ip}. IP FTP définie ici : {configured}.",
+    "link_ip_text":                 "Astro Dwarf Session joint ce Dwarf à l'adresse {ip}.\nIP FTP définie ici : {configured}.",
     "link_ip_save":                 "Enregistrer comme IP FTP",
     "link_ip_session":              "Utiliser comme IP de session",
     "link_ip_ignore":               "Ignorer",

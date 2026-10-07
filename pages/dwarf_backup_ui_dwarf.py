@@ -160,7 +160,7 @@ class ConfigApp(DbPageMixin):
                         ).classes('w-55')
                         with ui.row().classes("gap-4 mt-4"):
                             self.ftp_spinner = ui.spinner(size="1em")
-                            self.ftp_status_label = ui.label("").classes('pt-4')
+                            self.ftp_status_label = ui.label("").classes('pt-4 whitespace-pre-line')
                         # Second FTP IP, kept outside the database (api/dwarf_session_ip.py)
                         self.dwarf_session_ip = ui.input(
                             t("session_ip"),
@@ -286,7 +286,7 @@ class ConfigApp(DbPageMixin):
             if "✅" in status_text:
                 self.ftp_ip = ip
                 if ip != configured:
-                    status_text = f"{status_text} ({t('session_ip')} {ip})"
+                    status_text = f"{status_text}\n({t('session_ip')} {ip})"
         finally:
             # Update only if the IPs have not changed
             if current_ips == (self.dwarf_ip_sta_mode.value, self.dwarf_session_ip.value):
@@ -349,7 +349,7 @@ class ConfigApp(DbPageMixin):
             return
         with ui.dialog() as dialog, ui.card():
             ui.label(t("link_ip_title")).classes("text-lg font-medium")
-            ui.label(t("link_ip_text", ip=ip, configured=configured or "-"))
+            ui.label(t("link_ip_text", ip=ip, configured=configured or "-")).classes('whitespace-pre-line')
             with ui.row().classes("gap-2"):
                 ui.button(t("link_ip_save"), on_click=lambda: dialog.submit("save"))
                 ui.button(t("link_ip_session"), on_click=lambda: dialog.submit("session"))
