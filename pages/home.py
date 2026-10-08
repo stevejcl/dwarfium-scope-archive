@@ -15,7 +15,7 @@ from api.dwarf_backup_fct import get_Backup_fullpath, show_date_session, get_rel
 from api.dwarf_backup_fct import format_seconds_hms, parse_exposure, is_Restacked, get_total_exposure, get_total_mosaic_exposure
 
 from api.image_preview import set_base_folder, build_preview_url
-from api.open_in_app import on_before_open
+from api.open_in_app import on_before_open, page_busy, page_ready
 
 from components.menu import menu
 from tools.video_export import VideoExportConfig, export_video, list_fonts, VIDEO_RESOLUTIONS, FONT_SIZES, get_music_files
@@ -48,6 +48,17 @@ async def ensure_init():
 
 @ui.page('/')
 async def home_page(client: Client):
+    # Not navigated by /api/open-in-app while it builds (user-reported Oct
+    # 2026: Config opened from Astro Dwarf Session while the home page was
+    # starting froze the window)
+    page_busy(client)
+    try:
+        await _home_page(client)
+    finally:
+        page_ready(client)
+
+
+async def _home_page(client: Client):
     status = None
     curent_init = is_app_started
     if not is_app_started:
@@ -95,7 +106,7 @@ async def home_page(client: Client):
     # ... and before Astro Dwarf Session's links open another page in this
     # window (api/open_in_app.py)
     on_before_open(ui.context.client, home.on_disconnect)
-  
+
 class HomeApp(DbPageMixin):
     def __init__(self, client: Client, database, ON_AIR):
         self.client = client
