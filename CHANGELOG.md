@@ -1,5 +1,27 @@
 # Changelog
 
+## [V3.4.1] - 2026-10-08
+
+### Add
+    Session IP: a second FTP IP per Dwarf, next to the configured one, kept on this PC only (not in the database) - e.g.
+    the Dwarf's IP on a remote site reached through Tailscale, the configured one staying the local site's. The Dwarf
+    Configuration, Transfer and import pages use whichever IP answers. Astro Dwarf Session's links give the IP it reaches
+    the Dwarf at (DwarfIp): tried first by the import and the Transfer page that follows; on the Dwarf Configuration
+    page, when it's neither IP, a dialog offers to save it as FTP IP, use it as session IP, or ignore it.
+
+### BugFix#
+    Open in the app's window right after the app started: the request no longer reloads the window (the pywebview
+    calls that blocked it) while its page hasn't reported itself yet - it waits for it and lets a page connected less
+    than 3 s ago settle before navigating it. The home page also says when it is built: a request while it is still
+    starting waits for it, 4 s at most, then is answered {"opened": false, "busy": true} instead of touching the
+    window (Astro Dwarf Session then asks to try again).
+    Import one session (USB / mapped folder): a RESTACKED session was copied to RESTACKED\RESTACKED\<session>, so the
+    import ended with "Session not found on the Dwarf" although its files were copied. It now goes to
+    RESTACKED\<session>, as with FTP. The Transfer page's single-session sync keeps RESTACKED\<session>, and now puts a
+    STARTRAILS session in STARTRAILS\<session> where its scan looks for it (it went to the top of the Dwarf folder).
+    Page opened from Astro Dwarf Session in the app's window: it looked frozen until a click (the window was brought to
+    front with an Alt key press, whose release put it in menu mode). Brought to front without a key press now.
+
 ## [V3.4.0] - 2026-10-06
 
 ### Add
@@ -16,29 +38,13 @@
     interface), and the window is brought to front on Windows (Win32); {"opened": false} when there's
     no app window (browser / server mode), so the caller opens a browser tab instead. Only this app's own pages are
     accepted. Used by Astro Dwarf Session for "Archive" and its "Config / Sessions on the Dwarf / Backed-up sessions" links.
-    Session IP: a second FTP IP per Dwarf, next to the configured one, kept on this PC only (not in the database) - e.g.
-    the Dwarf's IP on a remote site reached through Tailscale, the configured one staying the local site's. The Dwarf
-    Configuration, Transfer and import pages use whichever IP answers. Astro Dwarf Session's links give the IP it reaches
-    the Dwarf at (DwarfIp): tried first by the import and the Transfer page that follows; on the Dwarf Configuration
-    page, when it's neither IP, a dialog offers to save it as FTP IP, use it as session IP, or ignore it.
 
 ### BugFix#
-    Open in the app's window right after the app started: the request no longer reloads the window (the pywebview
-    calls that blocked it) while its page hasn't reported itself yet - it waits for it and lets a page connected less
-    than 3 s ago settle before navigating it. The home page also says when it is built: a request while it is still
-    starting waits for it, 4 s at most, then is answered {"opened": false, "busy": true} instead of touching the
-    window (Astro Dwarf Session then asks to try again).
     Catalog Edition help: rewritten for what the page does now (DSO links, the association wizard, the objects / groups
     consistency checks, sessions of an object or group with Move); it still described an older catalog browser.
     Transfer page in a web browser: the folder buttons did nothing - they open the system dialog of the app's own window,
     out of sight from a browser. In a browser they now show a folder picker in the page (folders of this PC, from the
     start folder, never above the allowed root - backup drive or source); the app's window keeps the system dialog.
-    Import one session (USB / mapped folder): a RESTACKED session was copied to RESTACKED\RESTACKED\<session>, so the
-    import ended with "Session not found on the Dwarf" although its files were copied. It now goes to
-    RESTACKED\<session>, as with FTP. The Transfer page's single-session sync keeps RESTACKED\<session>, and now puts a
-    STARTRAILS session in STARTRAILS\<session> where its scan looks for it (it went to the top of the Dwarf folder).
-    Page opened from Astro Dwarf Session in the app's window: it looked frozen until a click (the window was brought to
-    front with an Alt key press, whose release put it in menu mode). Brought to front without a key press now.
 
 ## [V3.3.2] - 2026-10-04
 
