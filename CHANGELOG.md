@@ -23,6 +23,9 @@
     page, when it's neither IP, a dialog offers to save it as FTP IP, use it as session IP, or ignore it.
 
 ### BugFix#
+    Open in the app's window right after the app started: the request no longer reloads the window (the pywebview
+    calls that blocked it) while its page hasn't reported itself yet - it waits for it (3.5 s at most) and lets a page
+    connected less than 3 s ago settle before navigating it.
     Catalog Edition help: rewritten for what the page does now (DSO links, the association wizard, the objects / groups
     consistency checks, sessions of an object or group with Move); it still described an older catalog browser.
     Transfer page in a web browser: the folder buttons did nothing - they open the system dialog of the app's own window,

@@ -21,6 +21,7 @@ connected yet."""
 from __future__ import annotations
 
 import asyncio
+import time
 from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi.responses import JSONResponse
@@ -39,6 +40,16 @@ def local_path(path: str) -> bool:
 
 # Ids of the connected pages shown in the app's window (not in a browser)
 _window_client_ids: list[str] = []
+# When each of them connected (time.monotonic())
+_connected_at: dict[str, float] = {}
+
+# A page of the window connected less than this ago is left to finish
+# loading before it is navigated, and a request arriving before the
+# window's page has reported itself waits for it (user-reported Oct 2026:
+# once, on the first start of the day, the window froze; never when the
+# app had been open a while)
+_SETTLE_S = 3.0
+_MAX_WAIT_S = 3.5
 
 # Per page (client id): what to stop before this route navigates it away
 _before_leave: dict[str, list] = {}
@@ -61,16 +72,19 @@ def _run_before_leave(client: Client) -> None:
 
 
 async def _note_window_client(client: Client) -> None:
+    connected_at = time.monotonic()
     try:
         in_window = bool(await client.run_javascript("!!window.pywebview", timeout=3.0))
     except Exception:
         return
     if in_window and client.id not in _window_client_ids:
         _window_client_ids.append(client.id)
+        _connected_at[client.id] = connected_at
 
 
 def _forget_client(client: Client) -> None:
     _before_leave.pop(client.id, None)
+    _connected_at.pop(client.id, None)
     if client.id in _window_client_ids:
         _window_client_ids.remove(client.id)
 
@@ -82,6 +96,28 @@ def _window_client() -> Client | None:
         if client is not None and client.has_socket_connection:
             return client
     return None
+
+
+async def _settled_window_client() -> Client | None:
+    """The window's page to navigate, once it has settled (see _SETTLE_S),
+    waiting for it when the app has just started: until its page has
+    reported being in the window, there is none, and the reload fallback
+    below (load_url / show / always-on-top) is what blocked the app. Waits
+    at most _MAX_WAIT_S, under Astro Dwarf Session's 5 s request timeout."""
+    deadline = time.monotonic() + _MAX_WAIT_S
+    client = _window_client()
+    while client is None and time.monotonic() < deadline:
+        await asyncio.sleep(0.2)
+        client = _window_client()
+    if client is None:
+        return None
+    age = time.monotonic() - _connected_at.get(client.id, 0.0)
+    wait = min(_SETTLE_S - age, deadline - time.monotonic())
+    if wait > 0:
+        await asyncio.sleep(wait)
+        if not client.has_socket_connection:
+            client = _window_client()
+    return client
 
 
 def register(port: int) -> None:
@@ -98,7 +134,7 @@ def register(port: int) -> None:
         # Spaces and the like encoded, what's already encoded kept
         target = quote(path, safe=SAFE_URL_CHARS)
         try:
-            client = _window_client()
+            client = await _settled_window_client()
             if client is not None:
                 # Through the /Init relay page (pages/init.py): straight to
                 # the target froze the interface (user-found Oct 2026).
