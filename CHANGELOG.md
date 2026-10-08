@@ -24,8 +24,10 @@
 
 ### BugFix#
     Open in the app's window right after the app started: the request no longer reloads the window (the pywebview
-    calls that blocked it) while its page hasn't reported itself yet - it waits for it (3.5 s at most) and lets a page
-    connected less than 3 s ago settle before navigating it.
+    calls that blocked it) while its page hasn't reported itself yet - it waits for it and lets a page connected less
+    than 3 s ago settle before navigating it. The home page also says when it is built: a request while it is still
+    starting waits for it, 4 s at most, then is answered {"opened": false, "busy": true} instead of touching the
+    window (Astro Dwarf Session then asks to try again).
     Catalog Edition help: rewritten for what the page does now (DSO links, the association wizard, the objects / groups
     consistency checks, sessions of an object or group with Move); it still described an older catalog browser.
     Transfer page in a web browser: the folder buttons did nothing - they open the system dialog of the app's own window,

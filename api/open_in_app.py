@@ -49,7 +49,26 @@ _connected_at: dict[str, float] = {}
 # once, on the first start of the day, the window froze; never when the
 # app had been open a while)
 _SETTLE_S = 3.0
-_MAX_WAIT_S = 3.5
+# Under Astro Dwarf Session's 5 s request timeout
+_MAX_WAIT_S = 4.0
+
+# Pages still building, which said so (page_busy) - the home page until
+# its favorites are loaded (user-reported Oct 2026: a request while the
+# home page was starting froze the window). Navigated only once ready.
+_busy_ids: set[str] = set()
+_started_at = time.monotonic()
+# Right after the app started, no page of the window yet means it is still
+# starting, not that there is none: answered "busy", never reloaded
+_STARTUP_S = 60.0
+
+
+def page_busy(client: Client) -> None:
+    """A page of the window still building: not navigated until page_ready()."""
+    _busy_ids.add(client.id)
+
+
+def page_ready(client: Client) -> None:
+    _busy_ids.discard(client.id)
 
 # Per page (client id): what to stop before this route navigates it away
 _before_leave: dict[str, list] = {}
@@ -85,6 +104,7 @@ async def _note_window_client(client: Client) -> None:
 def _forget_client(client: Client) -> None:
     _before_leave.pop(client.id, None)
     _connected_at.pop(client.id, None)
+    _busy_ids.discard(client.id)
     if client.id in _window_client_ids:
         _window_client_ids.remove(client.id)
 
@@ -98,26 +118,25 @@ def _window_client() -> Client | None:
     return None
 
 
-async def _settled_window_client() -> Client | None:
-    """The window's page to navigate, once it has settled (see _SETTLE_S),
-    waiting for it when the app has just started: until its page has
-    reported being in the window, there is none, and the reload fallback
-    below (load_url / show / always-on-top) is what blocked the app. Waits
-    at most _MAX_WAIT_S, under Astro Dwarf Session's 5 s request timeout."""
+def _settled(client: Client) -> bool:
+    if client.id in _busy_ids:
+        return False
+    return time.monotonic() - _connected_at.get(client.id, 0.0) >= _SETTLE_S
+
+
+async def _settled_window_client() -> tuple[Client | None, bool]:
+    """(the window's page to navigate, ready). Waits, _MAX_WAIT_S at most,
+    for the window's page to report itself, to have said it is ready if it
+    said it was building (page_busy), and to be connected for _SETTLE_S.
+    Not ready in time: (page, False) - the caller answers "busy"."""
     deadline = time.monotonic() + _MAX_WAIT_S
-    client = _window_client()
-    while client is None and time.monotonic() < deadline:
-        await asyncio.sleep(0.2)
+    while True:
         client = _window_client()
-    if client is None:
-        return None
-    age = time.monotonic() - _connected_at.get(client.id, 0.0)
-    wait = min(_SETTLE_S - age, deadline - time.monotonic())
-    if wait > 0:
-        await asyncio.sleep(wait)
-        if not client.has_socket_connection:
-            client = _window_client()
-    return client
+        if client is not None and _settled(client):
+            return client, True
+        if time.monotonic() >= deadline:
+            return client, False
+        await asyncio.sleep(0.2)
 
 
 def register(port: int) -> None:
@@ -134,7 +153,12 @@ def register(port: int) -> None:
         # Spaces and the like encoded, what's already encoded kept
         target = quote(path, safe=SAFE_URL_CHARS)
         try:
-            client = await _settled_window_client()
+            client, ready = await _settled_window_client()
+            just_started = time.monotonic() - _started_at < _STARTUP_S
+            if not ready and (client is not None or just_started):
+                # Still starting / building: refused rather than navigated
+                # or reloaded, the caller says so and the user tries again
+                return JSONResponse({"opened": False, "busy": True})
             if client is not None:
                 # Through the /Init relay page (pages/init.py): straight to
                 # the target froze the interface (user-found Oct 2026).
