@@ -10,12 +10,18 @@ from components.i18n import t, set_language, get_language, AVAILABLE_LANGUAGES
 from tools.db_report_pdf import generate_report
 
 def _get_app_version():
-    """Read version from version.py (built executable) or CHANGELOG.md (dev mode)."""
-    try:
-        from version import APP_VERSION
-        return APP_VERSION
-    except ImportError:
-        pass
+    """Read version from version.py (built executable) or CHANGELOG.md (dev mode).
+
+    version.py only in the executable (user-reported Oct 2026: the build
+    writes it in the source folder too, so a source run showed the last
+    built version instead of CHANGELOG.md's)."""
+    import sys
+    if getattr(sys, "frozen", False):
+        try:
+            from version import APP_VERSION
+            return APP_VERSION
+        except ImportError:
+            pass
     try:
         import pathlib
         changelog = pathlib.Path(__file__).parent.parent / "CHANGELOG.md"
