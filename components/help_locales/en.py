@@ -91,11 +91,20 @@ preview the field before observing.
 
 ## Plan on the Dwarf
 
-The 📅 button opens Astro Dwarf Session's planning page (external browser) with the
-target and its window tonight (above 25°): pick the Dwarf, a program or a native
-schedule, the exposure and filter there, then send. Astro Dwarf Session (3.2.3 and
-later) must be running with this app's address in its Settings: it says hello every 30 s,
-which is how this app knows where it is.
+The 📅 button on each card offers two choices:
+
+- **Plan this target tonight** — opens Astro Dwarf Session's planning page (external
+  browser) with the target and its window tonight (above 25°).
+- **Add to tonight's plan** — adds it to a list of up to 5 targets, shown at the bottom
+  of the window with each target's window: ✕ removes one, **Clear** empties it, and
+  **Plan these targets** opens the planning page with all of them, chained over the
+  night. When the list is full, adding a target offers to replace one of the five. The
+  list belongs to one night and site, and is kept when you change page.
+
+On the planning page, pick the Dwarf, programs or a native schedule, the exposure and
+filter (and adjust the slots), then send. Astro Dwarf Session (3.2.3 and later) must be
+running with this app's address in its Settings: it says hello every 30 s, which is how
+this app knows where it is.
 
 ## Session matching
 

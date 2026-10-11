@@ -11,6 +11,10 @@
     page (external browser) with the target and its best slot tonight (the stretch above 25° around its best time, now
     computed with its visibility): the Dwarf, a program or a native schedule and the settings are chosen there. Needs
     Astro Dwarf Session 3.2.3 or later, running (else said so). Help updated.
+    Tonight's plan (components/tonight_plan.py, reusable by other pages): the 📅 button now offers "Plan this target
+    tonight" or "Add to tonight's plan", a list of up to 5 targets with their windows, floating at the bottom of the
+    window (remove one, clear, "Plan these targets": Astro Dwarf Session chains them over the night). When full,
+    adding offers to replace one. Kept by the app for one night and site (survives a page change).
 
 ## [V3.4.1] - 2026-10-08
 

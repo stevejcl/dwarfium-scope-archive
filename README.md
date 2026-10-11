@@ -46,7 +46,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 | **Dark Library** | Manage `CALI_FRAME` folders, inventory darks by exposure / gain / binning / temperature
 | **Siril Integration** | export a `siril_session.json` for the [Dwarfium Archive Selector] Siril script |
 | **Transfer** | Copy sessions between the Dwarf and a backup drive via USB or FTP, with background transfer (navigate freely while copying) |
-| **Astro Dwarf Session link** | Archive one session straight from [Astro Dwarf Session](https://github.com/stevejcl/astro_dwarf_session): import it from the Dwarf, then transfer it; its links open this app's pages in its own window. The other way, **Recommended tonight** plans a target on a Dwarf in Astro Dwarf Session (program or native schedule) |
+| **Astro Dwarf Session link** | Archive one session straight from [Astro Dwarf Session](https://github.com/stevejcl/astro_dwarf_session): import it from the Dwarf, then transfer it; its links open this app's pages in its own window. The other way, **Recommended tonight** plans a target, or a list of up to 5 (tonight's plan), on a Dwarf in Astro Dwarf Session (programs or native schedule) |
 | **Mosaic** | Stitch multi-panel mosaics, repair partially transferred mosaics, merge panels from different sessions |
 | **Storage Report** | View session sizes by backup drive or Dwarf, identify large sessions, trigger size calculation and Clean/Restore FITS directly |
 | **Image Quality Score** | Automatically score sessions 0–100 based on metadata (stack rate, exposure, darks) and image analysis (dynamic range, contrast, entropy) |

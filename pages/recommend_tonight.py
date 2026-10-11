@@ -10,16 +10,14 @@ NEW / INCOMPLETE / WELL_COVERED.
 from __future__ import annotations
 
 import os
-import webbrowser
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
-from urllib.parse import urlencode
 
 from nicegui import ui, run, background_tasks
 
-from api.peer import peer_url
+from components.tonight_plan import PlanTarget, TonightPlan, iso_utc
 from components.i18n import t
 from components.menu import menu
 from components.db_page_mixin import DbPageMixin
@@ -657,6 +655,8 @@ class RecommendTonightApp(DbPageMixin):
         self.target_date: date = date.today()
         self.results: list[TargetRecommendation] = []
         self.results_location: Optional[dict] = None
+        self.results_night: Optional[date] = None
+        self.tonight_plan = TonightPlan()
         self.build_ui()
 
     def build_ui(self):
@@ -712,7 +712,11 @@ class RecommendTonightApp(DbPageMixin):
                 self.magnitude_filter.on("blur", lambda: self.render_results.refresh())
                 self.type_filter.on_value_change(lambda: self.render_results.refresh())
 
-        self.results_container = ui.column().classes("w-full mt-4")
+        # Tonight's plan: targets added with each card's 📅 button (floating)
+        self.tonight_plan.panel()
+
+        # (room under the targets for the floating plan)
+        self.results_container = ui.column().classes("w-full mt-4 pb-72")
         with self.results_container:
             self.render_results()
 
@@ -756,6 +760,7 @@ class RecommendTonightApp(DbPageMixin):
                 _compute_recommendations, self.database, self.location, self.target_date
             )
             self.results_location = dict(self.location)
+            self.results_night = self.target_date
         except Exception as e:
             ui.notify(t("error_generic", error=str(e)), type="negative")
             self.results = []
@@ -804,23 +809,12 @@ class RecommendTonightApp(DbPageMixin):
         open_aladin_sky_map(r.ra_deg, r.dec_deg)
 
     def _plan_on_dwarf(self, r: TargetRecommendation):
-        """Opens Astro Dwarf Session's /plan-target page with this target and
-        its window tonight (external browser, like Aladin): the Dwarf, a
-        program or a native schedule, and the settings are chosen there.
-        Astro Dwarf Session's address comes from its hellos (api/peer.py)."""
-        base = peer_url()
-        if not base:
-            ui.notify(t("tonight_ads_not_running"), type="warning")
-            return
-        vis, loc = r.visibility, self.results_location or self.location or {}
-        params = {"name": r.display_name, "id": r.catalog_id,
-                  "ra": f"{r.ra_deg / 15:.6f}", "dec": f"{r.dec_deg:.6f}"}
-        if vis.window_start_utc and vis.window_end_utc:
-            iso = lambda d: d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            params.update(start=iso(vis.window_start_utc), end=iso(vis.window_end_utc))
-        if loc.get("lat") is not None and loc.get("lon") is not None:
-            params.update(site=loc.get("name", ""), lat=loc["lat"], lon=loc["lon"])
-        webbrowser.open(f"{base}/plan-target?{urlencode(params)}")
+        """Plan this target alone in Astro Dwarf Session, or add it to
+        tonight's plan (components/tonight_plan.py), with its window."""
+        vis = r.visibility
+        target = PlanTarget(name=r.display_name, catalog_id=r.catalog_id, ra_deg=r.ra_deg, dec_deg=r.dec_deg,
+                            start_utc=iso_utc(vis.window_start_utc), end_utc=iso_utc(vis.window_end_utc))
+        self.tonight_plan.choose(target, self.results_location or self.location or {}, self.results_night or self.target_date)
 
     def _render_target_card(self, r: TargetRecommendation):
         with ui.card().classes("w-full mb-2"):

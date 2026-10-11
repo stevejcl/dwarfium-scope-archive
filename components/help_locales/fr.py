@@ -92,11 +92,20 @@ pour visualiser le champ avant d'observer.
 
 ## Programmer sur le Dwarf
 
-Le bouton 📅 ouvre la page de planification d'Astro Dwarf Session (navigateur externe)
-avec la cible et son créneau cette nuit (au-dessus de 25°) : on y choisit le Dwarf, un
-programme ou un planning natif, l'exposition et le filtre, puis on envoie. Astro Dwarf
-Session (3.2.3 et plus) doit être lancé, avec l'adresse de cette application dans ses
-Settings : il se signale toutes les 30 s, c'est ainsi que cette application le trouve.
+Le bouton 📅 de chaque carte propose deux choix :
+
+- **Programmer cette cible cette nuit** — ouvre la page de planification d'Astro Dwarf
+  Session (navigateur externe) avec la cible et son créneau cette nuit (au-dessus de 25°).
+- **Ajouter au plan de la nuit** — l'ajoute à une liste de 5 cibles au plus, affichée en
+  bas de la fenêtre avec le créneau de chacune : ✕ en retire une, **Vider** la vide, et
+  **Programmer ces cibles** ouvre la page de planification avec toutes, enchaînées sur la
+  nuit. Quand la liste est pleine, ajouter une cible propose d'en remplacer une des cinq.
+  La liste est liée à une nuit et un site, et reste quand on change de page.
+
+Sur la page de planification, choisissez le Dwarf, des programmes ou un planning natif,
+l'exposition et le filtre (et ajustez les créneaux), puis envoyez. Astro Dwarf Session
+(3.2.3 et plus) doit être lancé, avec l'adresse de cette application dans ses Settings :
+il se signale toutes les 30 s, c'est ainsi que cette application le trouve.
 
 ## Rattachement des sessions
 
