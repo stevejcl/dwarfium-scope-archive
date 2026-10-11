@@ -27,7 +27,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
-from nicegui import app, ui
+from nicegui import app, run, ui
 
 from api.peer import peer_url
 from components.i18n import t
@@ -50,12 +50,33 @@ def iso_utc(d: Optional[datetime]) -> Optional[str]:
     return d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if d else None
 
 
-def window_for(ra_deg: float, dec_deg: float, location: dict, night: date) -> tuple[Optional[str], Optional[str]]:
-    """The target's stretch above the minimum altitude around its best
-    time in that night's dark window (Recommended tonight's computation)."""
+# Night contexts (dark window, Moon) by site and night: the costly part,
+# computed once; a target's visibility in it takes a few milliseconds.
+_night_cache: dict = {}
+
+
+def tonight() -> date:
+    """Tonight's date as Recommended tonight takes it by default (today):
+    the same list key from every page."""
+    return date.today()
+
+
+def visibility_for(ra_deg: float, dec_deg: float, location: dict, night: date):
+    """(window start, window end, max altitude) of a target that night at
+    that site: its stretch above the minimum altitude around its best time
+    in the dark window (Recommended tonight's computation). Blocking."""
     from pages.recommend_tonight import compute_night_context, compute_visibility_fast
-    vis = compute_visibility_fast(ra_deg, dec_deg, compute_night_context(location, night))
-    return iso_utc(vis.window_start_utc), iso_utc(vis.window_end_utc)
+    key = (round(float(location["lat"]), 4), round(float(location["lon"]), 4), night)
+    if key not in _night_cache:
+        _night_cache.clear()   # one night / site at a time is enough
+        _night_cache[key] = compute_night_context(location, night)
+    vis = compute_visibility_fast(ra_deg, dec_deg, _night_cache[key])
+    return iso_utc(vis.window_start_utc), iso_utc(vis.window_end_utc), vis.max_altitude_deg
+
+
+def window_for(ra_deg: float, dec_deg: float, location: dict, night: date) -> tuple[Optional[str], Optional[str]]:
+    start, end, _max_alt = visibility_for(ra_deg, dec_deg, location, night)
+    return start, end
 
 
 def _hhmm(iso: Optional[str]) -> str:
@@ -103,13 +124,36 @@ class TonightPlan:
         webbrowser.open(f"{base}/plan-target?{urlencode(params)}")
 
     # ── actions ────────────────────────────────────────────────────────────
-    def choose(self, target: PlanTarget, location: dict, night: date) -> None:
+    async def choose_computed(self, target: PlanTarget, location: Optional[dict], night: Optional[date] = None) -> None:
+        """choose() for a page that doesn't compute visibility (Explore):
+        the window tonight at that site is computed first, in a worker
+        thread; said so when the target never gets high enough."""
+        if not location or location.get("lat") is None or location.get("lon") is None:
+            ui.notify(t("tonight_plan_no_location"), type="warning")
+            return
+        night = night or tonight()
+        note = ui.notification(t("tonight_plan_computing"), spinner=True, timeout=None)
+        try:
+            start, end, max_alt = await run.io_bound(visibility_for, target.ra_deg, target.dec_deg, location, night)
+        except Exception as e:
+            ui.notify(t("error_generic", error=str(e)), type="negative")
+            return
+        finally:
+            note.dismiss()
+        target.start_utc, target.end_utc = start, end
+        self.choose(target, location, night, max_alt=max_alt)
+
+    def choose(self, target: PlanTarget, location: dict, night: date, max_alt: Optional[float] = None) -> None:
         """The target button: plan it alone, or add it to the list."""
         site = {"name": location.get("name", ""), "lat": location.get("lat"), "lon": location.get("lon")}
         with ui.dialog() as dialog, ui.card().classes("min-w-[320px]"):
             ui.label(target.name).classes("text-lg font-semibold")
+            alt = f" (max {max_alt:.0f}°)" if max_alt is not None else ""
             if target.start_utc and target.end_utc:
-                ui.label(f"{t('tonight_plan_window')}: {_hhmm(target.start_utc)} – {_hhmm(target.end_utc)}").classes("text-sm text-gray-500")
+                ui.label(f"{t('tonight_plan_window')}: {_hhmm(target.start_utc)} – {_hhmm(target.end_utc)}{alt}"
+                         f" · {site['name']}").classes("text-sm text-gray-500")
+            else:
+                ui.label(t("tonight_plan_not_visible", alt=alt.strip(" ()"), site=site["name"])).classes("text-sm text-amber-600")
             with ui.column().classes("w-full gap-2 mt-2"):
                 ui.button(t("tonight_plan_this"), icon="send",
                           on_click=lambda: (dialog.close(), self._open([asdict(target)], site))).classes("w-full")

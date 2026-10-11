@@ -15,6 +15,10 @@
     tonight" or "Add to tonight's plan", a list of up to 5 targets with their windows, floating at the bottom of the
     window (remove one, clear, "Plan these targets": Astro Dwarf Session chains them over the night). When full,
     adding offers to replace one. Kept by the app for one night and site (survives a page change).
+    Explore: "Plan tonight" button once an object with coordinates is selected (mean of its sessions' RA/Dec, the
+    center of a mosaic): its window tonight at the default location is computed on the click (in the background,
+    the night cached per site and date, so later clicks are instant) and shown with its maximum altitude, or "not
+    above 25° tonight"; then plan it alone or add it to tonight's plan, shared with Recommended tonight.
 
 ## [V3.4.1] - 2026-10-08
 
