@@ -19,6 +19,9 @@
     center of a mosaic): its window tonight at the default location is computed on the click (in the background,
     the night cached per site and date, so later clicks are instant) and shown with its maximum altitude, or "not
     above 25° tonight"; then plan it alone or add it to tonight's plan, shared with Recommended tonight.
+    Settings: new "Session" card before the mosaic parameters - sessions per night (targets in tonight's plan at most,
+    1-10, default 5) and day change hour (before it, "tonight" is still the night in progress; default 08:00), used for
+    Recommended tonight's default date and tonight's plan (Recommended tonight, Explore).
 
 ## [V3.4.1] - 2026-10-08
 

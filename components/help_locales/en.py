@@ -544,6 +544,14 @@ view exceeds 5°. Both databases can be installed simultaneously.
 2. If ASTAP fails, Nova is used as an online fallback
 3. Results are stored in the database and displayed on the Sky Map
 
+## Session
+
+- **{t:settings_max_sessions}** — how many targets tonight's plan holds at most (1–10, default 5),
+  each one a session on the Dwarf
+- **{t:settings_day_change_hour}** — before this hour, "tonight" is still the night in progress
+  (default 08:00: at 2 am, last evening's night; at 10 am, the coming one). Used for the default
+  date of Recommended tonight and for tonight's plan (Recommended tonight, Explore)
+
 ## Mosaic Parameters
 
 Configure stitching parameters for mosaic sessions.

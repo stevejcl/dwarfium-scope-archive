@@ -17,7 +17,7 @@ from typing import Optional
 
 from nicegui import ui, run, background_tasks
 
-from components.tonight_plan import PlanTarget, TonightPlan, iso_utc
+from components.tonight_plan import PlanTarget, TonightPlan, iso_utc, tonight
 from components.i18n import t
 from components.menu import menu
 from components.db_page_mixin import DbPageMixin
@@ -652,7 +652,7 @@ class RecommendTonightApp(DbPageMixin):
     def __init__(self, database: str):
         self.database = database
         self.location: Optional[dict] = None
-        self.target_date: date = date.today()
+        self.target_date: date = tonight()   # by the day change hour (Settings)
         self.results: list[TargetRecommendation] = []
         self.results_location: Optional[dict] = None
         self.results_night: Optional[date] = None

@@ -314,6 +314,33 @@ class SettingsApp(DbPageMixin):
                             new_tab=True).classes("text-sm text-blue-600")
                         ui.label(t("ffmpeg_install_hint")).classes("text-sm text-gray-400")
 
+            # ── Session: tonight's plan (components/tonight_plan.py) ─────────────
+            with ui.card().classes("w-full"):
+                from components.tonight_plan import (
+                    DAY_CHANGE_HOUR_KEY, MAX_TARGETS_KEY, day_change_hour, max_targets,
+                )
+                ui.label(t("settings_session")).classes("text-xl font-bold")
+
+                def save_int(key, value, low, high):
+                    try:
+                        number = int(value)
+                    except (TypeError, ValueError):
+                        return
+                    set_setting_text(self.conn, key, str(min(high, max(low, number))))
+                    ui.notify(t("settings_saved"), type="positive")
+
+                with ui.row().classes("gap-6 items-start"):
+                    ui.number(
+                        t("settings_max_sessions"), value=max_targets(), min=1, max=10, step=1, format="%d",
+                        on_change=lambda e: save_int(MAX_TARGETS_KEY, e.value, 1, 10),
+                    ).classes("w-56").tooltip(t("settings_max_sessions_hint"))
+                    ui.select(
+                        {h: f"{h:02d}:00" for h in range(24)}, value=day_change_hour(),
+                        label=t("settings_day_change_hour"),
+                        on_change=lambda e: save_int(DAY_CHANGE_HOUR_KEY, e.value, 0, 23),
+                    ).classes("w-56").tooltip(t("settings_day_change_hour_hint"))
+                ui.label(t("settings_session_hint")).classes("text-sm text-gray-500")
+
             with ui.card().classes("w-full"):
                 ui.label(t("mosaic_params")).classes("text-xl font-bold")
                 StitchParamsEditor(self.conn)  # no on_change → Save button
