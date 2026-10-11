@@ -1092,6 +1092,8 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_best_time":            "Best time",
     "tonight_date":                 "Date",
     "tonight_view_aladin":          "View in Aladin",
+    "tonight_plan_on_dwarf":        "Plan on the Dwarf (Astro Dwarf Session)",
+    "tonight_ads_not_running":      "Astro Dwarf Session is not running (it says hello to this app every 30 s once started)",
     "tonight_combinable_with":      "combinable in one frame with",
     "tonight_ephemeris_unavailable": "Ephemeris data (de421.bsp) unavailable — connect to the internet once to download it, then it will be cached for offline use.",
     "tonight_show_images":          "Show images",

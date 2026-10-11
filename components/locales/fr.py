@@ -1094,6 +1094,8 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_best_time":             "Meilleur moment",
     "tonight_date":                 "Date",
     "tonight_view_aladin":          "Voir dans Aladin",
+    "tonight_plan_on_dwarf":        "Programmer sur le Dwarf (Astro Dwarf Session)",
+    "tonight_ads_not_running":      "Astro Dwarf Session n'est pas lancé (une fois démarré, il se signale à cette application toutes les 30 s)",
     "tonight_combinable_with":      "combinable en une seule prise avec",
     "tonight_ephemeris_unavailable": "Données d'éphémérides (de421.bsp) indisponibles — connectez-vous une fois à internet pour les télécharger, elles seront ensuite mises en cache pour un usage hors ligne.",
     "tonight_show_images":          "Afficher les images",

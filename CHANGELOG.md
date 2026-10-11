@@ -7,6 +7,10 @@
     this app knows its address (the request's IP and the port it gives) and whether it is running (heard from in the
     last 75 s), for actions done in Astro Dwarf Session. Answered at once, kept in memory only. /api/peer/status
     shows it.
+    Recommended tonight: plan a target on a Dwarf. A 📅 button on each target opens Astro Dwarf Session's "Plan a target"
+    page (external browser) with the target and its best slot tonight (the stretch above 25° around its best time, now
+    computed with its visibility): the Dwarf, a program or a native schedule and the settings are chosen there. Needs
+    Astro Dwarf Session 3.2.3 or later, running (else said so). Help updated.
 
 ## [V3.4.1] - 2026-10-08
 
