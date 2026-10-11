@@ -90,6 +90,14 @@ seule prise wide-field, une note apparaît sur celui avec le meilleur score.
 Le bouton 🔭 sur chaque carte ouvre la cible dans Aladin Lite (navigateur externe)
 pour visualiser le champ avant d'observer.
 
+## Programmer sur le Dwarf
+
+Le bouton 📅 ouvre la page de planification d'Astro Dwarf Session (navigateur externe)
+avec la cible et son créneau cette nuit (au-dessus de 25°) : on y choisit le Dwarf, un
+programme ou un planning natif, l'exposition et le filtre, puis on envoie. Astro Dwarf
+Session (3.2.3 et plus) doit être lancé, avec l'adresse de cette application dans ses
+Settings : il se signale toutes les 30 s, c'est ainsi que cette application le trouve.
+
 ## Rattachement des sessions
 
 Votre historique d'intégration est rattaché aux objets du catalogue via, dans l'ordre :

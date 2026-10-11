@@ -89,6 +89,14 @@ a note appears on the higher-scoring one.
 The 🔭 button on each card opens the target in Aladin Lite (external browser) to
 preview the field before observing.
 
+## Plan on the Dwarf
+
+The 📅 button opens Astro Dwarf Session's planning page (external browser) with the
+target and its window tonight (above 25°): pick the Dwarf, a program or a native
+schedule, the exposure and filter there, then send. Astro Dwarf Session (3.2.3 and
+later) must be running with this app's address in its Settings: it says hello every 30 s,
+which is how this app knows where it is.
+
 ## Session matching
 
 Your integration history is matched to catalog objects using, in order: an existing

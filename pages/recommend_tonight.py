@@ -10,13 +10,16 @@ NEW / INCOMPLETE / WELL_COVERED.
 from __future__ import annotations
 
 import os
+import webbrowser
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Optional
+from urllib.parse import urlencode
 
 from nicegui import ui, run, background_tasks
 
+from api.peer import peer_url
 from components.i18n import t
 from components.menu import menu
 from components.db_page_mixin import DbPageMixin
@@ -58,6 +61,10 @@ class VisibilityResult:
     best_time_utc: datetime
     moon_separation_deg: float
     moon_phase_pct: float
+    # Contiguous stretch around the best time above MIN_ALTITUDE_DEG (UTC),
+    # None when the target never gets that high in the dark window
+    window_start_utc: Optional[datetime] = None
+    window_end_utc: Optional[datetime] = None
 
 
 @dataclass
@@ -473,6 +480,15 @@ def compute_visibility_fast(ra_deg: float, dec_deg: float, night_ctx: dict) -> V
 
     minutes_above = float((alt_deg >= MIN_ALTITUDE_DEG).sum() * minutes_per_sample)
 
+    window_start = window_end = None
+    if alt_deg[idx_best] >= MIN_ALTITUDE_DEG:
+        i0 = i1 = idx_best
+        while i0 > 0 and alt_deg[i0 - 1] >= MIN_ALTITUDE_DEG:
+            i0 -= 1
+        while i1 < len(alt_deg) - 1 and alt_deg[i1 + 1] >= MIN_ALTITUDE_DEG:
+            i1 += 1
+        window_start, window_end = times[i0].utc_datetime(), times[i1].utc_datetime()
+
     sep_deg = astrometric.apparent()[idx_best].separation_from(moon_positions[idx_best]).degrees
 
     phase_angle = almanac.moon_phase(eph, times[idx_best]).degrees
@@ -484,6 +500,8 @@ def compute_visibility_fast(ra_deg: float, dec_deg: float, night_ctx: dict) -> V
         best_time_utc=best_time,
         moon_separation_deg=float(sep_deg),
         moon_phase_pct=float(moon_phase_pct),
+        window_start_utc=window_start,
+        window_end_utc=window_end,
     )
 
 
@@ -638,6 +656,7 @@ class RecommendTonightApp(DbPageMixin):
         self.location: Optional[dict] = None
         self.target_date: date = date.today()
         self.results: list[TargetRecommendation] = []
+        self.results_location: Optional[dict] = None
         self.build_ui()
 
     def build_ui(self):
@@ -736,6 +755,7 @@ class RecommendTonightApp(DbPageMixin):
             self.results = await run.io_bound(
                 _compute_recommendations, self.database, self.location, self.target_date
             )
+            self.results_location = dict(self.location)
         except Exception as e:
             ui.notify(t("error_generic", error=str(e)), type="negative")
             self.results = []
@@ -783,6 +803,25 @@ class RecommendTonightApp(DbPageMixin):
         from components.astro_object_associate import open_aladin_sky_map
         open_aladin_sky_map(r.ra_deg, r.dec_deg)
 
+    def _plan_on_dwarf(self, r: TargetRecommendation):
+        """Opens Astro Dwarf Session's /plan-target page with this target and
+        its window tonight (external browser, like Aladin): the Dwarf, a
+        program or a native schedule, and the settings are chosen there.
+        Astro Dwarf Session's address comes from its hellos (api/peer.py)."""
+        base = peer_url()
+        if not base:
+            ui.notify(t("tonight_ads_not_running"), type="warning")
+            return
+        vis, loc = r.visibility, self.results_location or self.location or {}
+        params = {"name": r.display_name, "id": r.catalog_id,
+                  "ra": f"{r.ra_deg / 15:.6f}", "dec": f"{r.dec_deg:.6f}"}
+        if vis.window_start_utc and vis.window_end_utc:
+            iso = lambda d: d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            params.update(start=iso(vis.window_start_utc), end=iso(vis.window_end_utc))
+        if loc.get("lat") is not None and loc.get("lon") is not None:
+            params.update(site=loc.get("name", ""), lat=loc["lat"], lon=loc["lon"])
+        webbrowser.open(f"{base}/plan-target?{urlencode(params)}")
+
     def _render_target_card(self, r: TargetRecommendation):
         with ui.card().classes("w-full mb-2"):
             # En-tête
@@ -795,6 +834,13 @@ class RecommendTonightApp(DbPageMixin):
                         on_click=lambda r=r: self._open_aladin(r)
                     ).props("flat dense round size=sm").tooltip(
                         t("tonight_view_aladin")
+                    )
+                    # Program / native schedule in Astro Dwarf Session (when it runs)
+                    ui.button(
+                        icon="event",
+                        on_click=lambda r=r: self._plan_on_dwarf(r)
+                    ).props("flat dense round size=sm").tooltip(
+                        t("tonight_plan_on_dwarf")
                     )
             # Infos Left / image right
             with ui.row().classes("w-full items-start gap-6"):
