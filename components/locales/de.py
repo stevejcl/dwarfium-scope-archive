@@ -745,6 +745,13 @@ TRANSLATIONS: dict[str, str] = {
     "no_mosaic_dir":                "Directory does not contain MOSAIC",  # TODO
     "primary_not_mosaic":           "⚠️ Primary does not contain MOSAIC.",  # TODO
     "mosaic_params":                "🔭 Mosaic & Stitch Parameters",  # TODO
+    "settings_session":           "🌙 Session", # TODO
+    "settings_max_sessions":      "Sessions per night (tonight's plan)", # TODO
+    "settings_max_sessions_hint": "Targets in tonight's plan at most (1-10), each one a session on the Dwarf", # TODO
+    "settings_day_change_hour":   "Day change hour", # TODO
+    "settings_day_change_hour_hint": "Before this hour, \"tonight\" is still the night in progress (e.g. 08:00: at 2 am, last evening's night; at 10 am, the coming one)", # TODO
+    "settings_session_hint":      "Used by Recommended tonight (default date) and tonight's plan (Recommended tonight, Explore).", # TODO
+    "settings_saved":             "Saved", # TODO
     "change_params":                "⚙️ Change Parameters",  # TODO
     "params_applied":               "✅ Parameters applied for this run",  # TODO
     "stitch_params_saved":          "✅ Stitch parameters saved",  # TODO

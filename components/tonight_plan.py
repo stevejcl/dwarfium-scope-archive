@@ -5,7 +5,8 @@ A page creates one TonightPlan, puts its panel() where the list should
 show, and calls choose(target) from a target's button: a small dialog
 offers "Plan this target tonight" (Astro Dwarf Session's /plan-target page
 with that target alone) or "Add to tonight's plan" - a list of up to
-MAX_TARGETS targets, each with its window tonight, sent together with
+max_targets() targets (Settings page, "Session" card), each with its
+window tonight, sent together with
 "Plan these targets" (the targets chained over the night there). When the
 list is full, adding offers to replace one of them.
 
@@ -23,7 +24,7 @@ from __future__ import annotations
 import json
 import webbrowser
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -32,7 +33,9 @@ from nicegui import app, run, ui
 from api.peer import peer_url
 from components.i18n import t
 
-MAX_TARGETS = 5
+# Settings page, "Session" card (Settings table)
+MAX_TARGETS_KEY, DAY_CHANGE_HOUR_KEY = "TONIGHT_MAX_SESSIONS", "DAY_CHANGE_HOUR"
+DEFAULT_MAX_TARGETS, DEFAULT_DAY_CHANGE_HOUR = 5, 8
 _STORE_KEY = "tonight_plan"
 
 
@@ -55,10 +58,36 @@ def iso_utc(d: Optional[datetime]) -> Optional[str]:
 _night_cache: dict = {}
 
 
+def _setting_int(key: str, default: int, low: int, high: int) -> int:
+    from api.dwarf_backup_db import DB_NAME, close_db, connect_db
+    from api.dwarf_backup_db_api import get_setting_text
+    conn = connect_db(DB_NAME)
+    try:
+        value = int(get_setting_text(conn, key) or default)
+    except (TypeError, ValueError):
+        value = default
+    finally:
+        close_db(conn)
+    return min(high, max(low, value))
+
+
+def max_targets() -> int:
+    """Sessions (targets) in tonight's plan at most."""
+    return _setting_int(MAX_TARGETS_KEY, DEFAULT_MAX_TARGETS, 1, 10)
+
+
+def day_change_hour() -> int:
+    """Hour (0-23) from which "tonight" is the next night: before it, the
+    night in progress (default 8: at 2 am, still last evening's night; at 10 am, the coming one)."""
+    return _setting_int(DAY_CHANGE_HOUR_KEY, DEFAULT_DAY_CHANGE_HOUR, 0, 23)
+
+
 def tonight() -> date:
-    """Tonight's date as Recommended tonight takes it by default (today):
-    the same list key from every page."""
-    return date.today()
+    """Tonight's date (the evening it starts), by the day change hour - the
+    same for every page (Recommended tonight's default date, Explore), so
+    they share one list."""
+    now = datetime.now()
+    return (now - timedelta(days=1)).date() if now.hour < day_change_hour() else now.date()
 
 
 def visibility_for(ra_deg: float, dec_deg: float, location: dict, night: date):
@@ -178,15 +207,16 @@ class TonightPlan:
         if any(tg["catalog_id"] == target.catalog_id for tg in data["targets"]):
             ui.notify(t("tonight_plan_already", name=target.name))
             return
-        if len(data["targets"]) < MAX_TARGETS:
+        limit = max_targets()
+        if len(data["targets"]) < limit:
             data["targets"].append(asdict(target))
             self._save(data)
-            if len(data["targets"]) == MAX_TARGETS:
-                ui.notify(t("tonight_plan_full_send", n=MAX_TARGETS), type="info")
+            if len(data["targets"]) == limit:
+                ui.notify(t("tonight_plan_full_send", n=limit), type="info")
             return
         # Full: replace one of them
         with ui.dialog() as dialog, ui.card().classes("min-w-[340px]"):
-            ui.label(t("tonight_plan_replace", n=MAX_TARGETS, name=target.name)).classes("font-medium")
+            ui.label(t("tonight_plan_replace", n=limit, name=target.name)).classes("font-medium")
             for i, tg in enumerate(data["targets"]):
                 def replace(i=i):
                     data["targets"][i] = asdict(target)
@@ -218,17 +248,18 @@ class TonightPlan:
         targets = data["targets"]
         if not targets:
             return
+        limit = max_targets()
         with ui.card().classes("fixed bottom-3 left-1/2 -translate-x-1/2 z-50 w-[min(94vw,760px)] p-3 shadow-xl "
                                "max-h-[45vh] overflow-auto"):
             with ui.row().classes("items-center justify-between w-full"):
-                ui.label(f"📅 {t('tonight_plan_title')} ({len(targets)}/{MAX_TARGETS})"
+                ui.label(f"📅 {t('tonight_plan_title')} ({len(targets)}/{limit})"
                          f" · {data['night'] or ''} · {data['site'].get('name', '')}").classes("font-semibold")
                 with ui.row().classes("gap-2"):
                     ui.button(t("tonight_plan_send"), icon="send",
                               on_click=lambda: self._open(self._load()["targets"], self._load()["site"])).props("dense")
                     ui.button(t("tonight_plan_clear"), icon="delete_sweep", on_click=self.clear).props("dense flat")
-            if len(targets) == MAX_TARGETS:
-                ui.label(t("tonight_plan_full_send", n=MAX_TARGETS)).classes("text-sm text-amber-600")
+            if len(targets) >= limit:
+                ui.label(t("tonight_plan_full_send", n=len(targets))).classes("text-sm text-amber-600")
             for tg in targets:
                 with ui.row().classes("items-center gap-3 w-full"):
                     ui.label(tg["name"]).classes("min-w-[140px]")

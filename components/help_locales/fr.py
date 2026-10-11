@@ -544,6 +544,15 @@ dépasse 5°. Les deux bases peuvent être installées simultanément.
 2. Si ASTAP échoue, Nova est utilisé en secours en ligne
 3. Les résultats sont stockés en base de données et affichés sur la Carte du Ciel
 
+## Session
+
+- **{t:settings_max_sessions}** — nombre maximum de cibles du plan de la nuit (1 à 10, 5 par
+  défaut), chacune une session sur le Dwarf
+- **{t:settings_day_change_hour}** — avant cette heure, « cette nuit » reste la nuit en cours
+  (08:00 par défaut : à 2 h du matin, la nuit commencée la veille ; à 10 h, la nuit à venir).
+  Sert à la date par défaut de Recommended tonight et au plan de la nuit (Recommended tonight,
+  Explore)
+
 ## Paramètres de mosaïque
 
 Configurez les paramètres d'assemblage pour les sessions mosaïque.
