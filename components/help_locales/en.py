@@ -292,6 +292,7 @@ Score thresholds: ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Good (≥ 6
 - **{t:open_folder_btn}** — open the session folder in Windows Explorer
 - **{t:show_fullscreen_btn}** — view the stacked image fullscreen
 - **{t:score_session_btn}** — score all sessions for the selected object
+- **{t:explore_plan_tonight}** — tonight's window of the selected object at the default location (computed on the click), then plan it on a Dwarf in Astro Dwarf Session or add it to tonight's plan (see the Recommended tonight help)
 - **{t:backup_session}** / **{t:restore_mode}** — copy sessions between Dwarf and backup drive
 - **{t:delete_session}** — permanently removes all session data from the backup drive
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry

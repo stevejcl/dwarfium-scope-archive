@@ -44,6 +44,7 @@ from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
 from components.db_page_mixin import DbPageMixin
+from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
@@ -402,6 +403,12 @@ class ExploreApp(DbPageMixin):
                                 on_click=self.prepare_siril_json
                             ).classes('h-16')
                             self.siril_json_icon.visible = False
+                            # Plan the selected object tonight on a Dwarf (Astro Dwarf Session),
+                            # alone or in tonight's plan (components/tonight_plan.py)
+                            self.plan_tonight_icon = ui.button(
+                                t("explore_plan_tonight"), icon="event", on_click=self._plan_tonight
+                            ).classes('h-16')
+                            self.plan_tonight_icon.visible = False
                             self.update_preview_icons()  # populate icons
 
                             #self.preview_icons['jpg'] = ui.image('image/image-jpg.png').classes('w-16 h-16 cursor-pointer hover:opacity-80').tooltip('JPG File')
@@ -437,6 +444,10 @@ class ExploreApp(DbPageMixin):
 
         # Persistent gallery dialog created once in the main page context
         self._build_persistent_dialog()
+
+        # Tonight's plan list, floating at the bottom when not empty
+        self.tonight_plan = TonightPlan()
+        self.tonight_plan.panel()
 
     async def show_fullscreen_image(self):
         if self.fullscreen_image.visible: 
@@ -1061,6 +1072,50 @@ class ExploreApp(DbPageMixin):
         self._session_labels = []
         if self.transfer_multi_btn:
             self.transfer_multi_btn.visible = False
+        if getattr(self, "plan_tonight_icon", None):
+            self.plan_tonight_icon.visible = False
+
+    def _selected_coords(self):
+        """(RA, Dec) in degrees of the selected object - the mean of its
+        sessions' (the center of a mosaic's panels) - or None: no object,
+        all sessions, or no coordinates."""
+        import math
+        if not self.selected_object or self.selected_object == ALL_SESSIONS:
+            return None
+        x = y = z = 0.0
+        n = 0
+        from api.dwarf_backup_fct import dms_to_degrees, hms_to_hours
+        for row in self.all_files_rows or []:
+            # shotsInfo.json values: decimal or "HHh MMm SSs" / "+DD° MM′ SS″"
+            ra_raw, dec_raw = (row[15], row[14]) if len(row) > 15 else (None, None)
+            if str(ra_raw).strip() in ("", "None", "N/A") or str(dec_raw).strip() in ("", "None", "N/A"):
+                continue
+            ra_h, dec_d = hms_to_hours(ra_raw), dms_to_degrees(dec_raw)
+            if ra_h == 0.0 and dec_d == 0.0:   # unreadable (both helpers answer 0.0)
+                continue
+            ra, dec = math.radians(ra_h * 15), math.radians(dec_d)
+            x += math.cos(dec) * math.cos(ra); y += math.cos(dec) * math.sin(ra); z += math.sin(dec)
+            n += 1
+        if not n:
+            return None
+        ra_deg = math.degrees(math.atan2(y, x)) % 360
+        dec_deg = math.degrees(math.atan2(z, math.hypot(x, y)))
+        return ra_deg, dec_deg
+
+    async def _plan_tonight(self):
+        """Tonight's window of the selected object at the default site
+        (computed now, cached per night), then plan it or add it to
+        tonight's plan."""
+        from api.dwarf_location_api import get_all_locations, get_default_location
+        coords = self._selected_coords()
+        if not coords:
+            return
+        location = get_default_location(self.conn) or next(iter(get_all_locations(self.conn)), None)
+        if location:
+            location = {"name": location.get("name", ""), "lat": location.get("latitude"), "lon": location.get("longitude")}
+        name = str(self.selected_object)
+        target = PlanTarget(name=name, catalog_id=name, ra_deg=coords[0], dec_deg=coords[1])
+        await self.tonight_plan.choose_computed(target, location)
 
     def _is_mobile(self):
         """Returns True if screen width <= 768px (evaluated client-side via JS)."""
@@ -1152,6 +1207,7 @@ class ExploreApp(DbPageMixin):
 
         # Store all rows globally so we can access them later
         self.all_files_rows = [list(row) for row in files]
+        self.plan_tonight_icon.visible = self._selected_coords() is not None
         self.selected_DeleteEntryInfo = None
         self.update_gallery_icon()
     

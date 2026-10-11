@@ -1109,6 +1109,10 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_plan_send":          "Plan these targets", # TODO
     "tonight_plan_clear":         "Clear", # TODO
     "tonight_plan_remove":        "Remove from the plan", # TODO
+    "explore_plan_tonight":       "Plan tonight", # TODO
+    "tonight_plan_no_location":   "No observation location: add one in the Locations settings first", # TODO
+    "tonight_plan_computing":     "Computing tonight's visibility…", # TODO
+    "tonight_plan_not_visible":   "Not above 25° in the dark window tonight ({alt}) · {site}", # TODO
     "tonight_combinable_with":      "combinable in one frame with", # TODO
     "tonight_ephemeris_unavailable": "Ephemeris data (de421.bsp) unavailable — connect to the internet once to download it, then it will be cached for offline use.", # TODO
     "tonight_show_images":          "Show images", # TODO

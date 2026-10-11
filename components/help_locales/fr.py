@@ -292,6 +292,7 @@ Seuils : ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Bon (≥ 65) · ⭐�
 - **{t:open_folder_btn}** — ouvrir le dossier de session dans l'Explorateur Windows
 - **{t:show_fullscreen_btn}** — afficher l'image stackée en plein écran
 - **{t:score_session_btn}** — scorer toutes les sessions de l'objet sélectionné
+- **{t:explore_plan_tonight}** — le créneau de l'objet sélectionné cette nuit au lieu par défaut (calculé au clic), puis le programmer sur un Dwarf dans Astro Dwarf Session ou l'ajouter au plan de la nuit (voir l'aide de Recommended tonight)
 - **{t:backup_session}** / **{t:restore_mode}** — copier des sessions entre le Dwarf et le disque de sauvegarde
 - **{t:delete_session}** — supprime définitivement toutes les données de session
 - **{t:view_linked_manual}** — accéder à toute session manuelle liée
