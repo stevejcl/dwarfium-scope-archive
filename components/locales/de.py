@@ -1097,6 +1097,18 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_view_aladin":          "View in Aladin", # TODO
     "tonight_plan_on_dwarf":        "Plan on the Dwarf (Astro Dwarf Session)", # TODO
     "tonight_ads_not_running":      "Astro Dwarf Session is not running (it says hello to this app every 30 s once started)", # TODO
+    "tonight_plan_window":        "Window tonight", # TODO
+    "tonight_plan_this":          "Plan this target tonight", # TODO
+    "tonight_plan_add":           "Add to tonight's plan", # TODO
+    "tonight_plan_other_night":   "Tonight's plan is for {night} at {site}. Start a new list with this target?", # TODO
+    "tonight_plan_new_list":      "New list", # TODO
+    "tonight_plan_already":       "{name} is already in tonight's plan", # TODO
+    "tonight_plan_full_send":     "{n} targets: plan these targets in Astro Dwarf Session", # TODO
+    "tonight_plan_replace":       "Tonight's plan is full ({n} targets). Replace one with {name}:", # TODO
+    "tonight_plan_title":         "Tonight's plan", # TODO
+    "tonight_plan_send":          "Plan these targets", # TODO
+    "tonight_plan_clear":         "Clear", # TODO
+    "tonight_plan_remove":        "Remove from the plan", # TODO
     "tonight_combinable_with":      "combinable in one frame with", # TODO
     "tonight_ephemeris_unavailable": "Ephemeris data (de421.bsp) unavailable — connect to the internet once to download it, then it will be cached for offline use.", # TODO
     "tonight_show_images":          "Show images", # TODO
