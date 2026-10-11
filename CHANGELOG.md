@@ -1,5 +1,13 @@
 # Changelog
 
+## [V3.4.2] - 2026-10-11
+
+### Add
+    Astro Dwarf Session presence: Astro Dwarf Session (3.2.3 and later) says hello every 30 s at /api/peer/hello, so
+    this app knows its address (the request's IP and the port it gives) and whether it is running (heard from in the
+    last 75 s), for actions done in Astro Dwarf Session. Answered at once, kept in memory only. /api/peer/status
+    shows it.
+
 ## [V3.4.1] - 2026-10-08
 
 ### Add
