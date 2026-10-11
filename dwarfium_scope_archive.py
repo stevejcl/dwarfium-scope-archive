@@ -176,6 +176,10 @@ logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 from api.open_in_app import register as register_open_in_app
 register_open_in_app(PORT)
 
+# Astro Dwarf Session says hello every 30 s: its address and presence
+from api.peer import register as register_peer
+register_peer()
+
 @app.get('/preview/{file_path:path}')
 def preview_image(file_path: str):
     return serve_preview(file_path)
