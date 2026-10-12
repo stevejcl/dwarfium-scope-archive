@@ -2121,8 +2121,9 @@ class ExploreApp(DbPageMixin):
         elif not os.path.isfile(self.preview_image_path):
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
-            # e.g. network drive or USB Dwarf not connected
-            self.no_image_label.text = t('explore_image_unreachable', path=self.preview_image_path)
+            # Drive / folder not available; on the Dwarf, most likely not connected
+            self.no_image_label.text = t('explore_image_unreachable_dwarf' if self.mode == "dwarf"
+                                         else 'explore_image_unreachable', path=self.preview_image_path)
             details_preview.append(f"Image File is not reachable - Preview is disable")
 
         elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.tiff')):
