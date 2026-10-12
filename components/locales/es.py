@@ -1117,6 +1117,7 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_plan_clear":         "Clear", # TODO
     "tonight_plan_remove":        "Remove from the plan", # TODO
     "explore_plan_tonight":       "Plan tonight", # TODO
+    "explore_plan_no_coords":     "No coordinates for this object (sessions, object or catalog)", # TODO
     "tonight_plan_no_location":   "No observation location: add one in the Locations settings first", # TODO
     "tonight_plan_computing":     "Computing tonight's visibility…", # TODO
     "tonight_plan_not_visible":   "Not above 25° in the dark window tonight ({alt}) · {site}", # TODO

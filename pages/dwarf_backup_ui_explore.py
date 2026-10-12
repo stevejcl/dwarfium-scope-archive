@@ -1076,31 +1076,61 @@ class ExploreApp(DbPageMixin):
             self.plan_tonight_icon.visible = False
 
     def _selected_coords(self):
-        """(RA, Dec) in degrees of the selected object - the mean of its
-        sessions' (the center of a mosaic's panels) - or None: no object,
-        all sessions, or no coordinates."""
+        """(RA, Dec) in degrees of the selected object, or None (no object,
+        all sessions, no coordinates anywhere). From, in order: the mean of
+        its sessions' (the center of a mosaic's panels), its AstroObject
+        record, the DSO catalog by name."""
         import math
+        from api.dwarf_backup_fct import dms_to_degrees, hms_to_hours
         if not self.selected_object or self.selected_object == ALL_SESSIONS:
             return None
-        x = y = z = 0.0
-        n = 0
-        from api.dwarf_backup_fct import dms_to_degrees, hms_to_hours
-        for row in self.all_files_rows or []:
+
+        def parse(ra_raw, dec_raw):
             # shotsInfo.json values: decimal or "HHh MMm SSs" / "+DD° MM′ SS″"
-            ra_raw, dec_raw = (row[15], row[14]) if len(row) > 15 else (None, None)
             if str(ra_raw).strip() in ("", "None", "N/A") or str(dec_raw).strip() in ("", "None", "N/A"):
-                continue
+                return None
             ra_h, dec_d = hms_to_hours(ra_raw), dms_to_degrees(dec_raw)
             if ra_h == 0.0 and dec_d == 0.0:   # unreadable (both helpers answer 0.0)
+                return None
+            return ra_h * 15, dec_d
+
+        x = y = z = 0.0
+        n = 0
+        for row in self.all_files_rows or []:
+            coords = parse(row[15], row[14]) if len(row) > 15 else None
+            if not coords:
                 continue
-            ra, dec = math.radians(ra_h * 15), math.radians(dec_d)
+            ra, dec = math.radians(coords[0]), math.radians(coords[1])
             x += math.cos(dec) * math.cos(ra); y += math.cos(dec) * math.sin(ra); z += math.sin(dec)
             n += 1
-        if not n:
-            return None
-        ra_deg = math.degrees(math.atan2(y, x)) % 360
-        dec_deg = math.degrees(math.atan2(z, math.hypot(x, y)))
-        return ra_deg, dec_deg
+        if n:
+            return math.degrees(math.atan2(y, x)) % 360, math.degrees(math.atan2(z, math.hypot(x, y)))
+
+        names = [str(self.selected_object)]
+        if self.selected_object_id is not None:
+            try:
+                row = self.conn.execute("SELECT name, ra, dec FROM AstroObject WHERE id = ?",
+                                        (self.selected_object_id,)).fetchone()
+            except Exception:
+                row = None
+            if row:
+                coords = parse(row[1], row[2])
+                if coords:
+                    return coords
+                names.insert(0, row[0] or "")
+        # "Andromeda Galaxy [M31]": the designation in brackets too
+        import re
+        names += re.findall(r"\[([^\]]+)\]", str(self.selected_object))
+        try:
+            from api.dso_matching import load_dso_catalog, normalize_name
+            wanted = {normalize_name(nm) for nm in names if nm}
+            for obj in load_dso_catalog():
+                keys = {normalize_name(obj.get(k) or "") for k in ("designation", "id", "displayName", "name")}
+                if wanted & keys and obj.get("ra_deg") is not None and obj.get("dec_deg") is not None:
+                    return float(obj["ra_deg"]), float(obj["dec_deg"])
+        except Exception as e:
+            print(f"[plan_tonight] catalog lookup failed: {e}")
+        return None
 
     async def _plan_tonight(self):
         """Tonight's window of the selected object at the default site
@@ -1109,6 +1139,7 @@ class ExploreApp(DbPageMixin):
         from api.dwarf_location_api import get_all_locations, get_default_location
         coords = self._selected_coords()
         if not coords:
+            ui.notify(t("explore_plan_no_coords"), type="warning")
             return
         location = get_default_location(self.conn) or next(iter(get_all_locations(self.conn)), None)
         if location:
@@ -1207,7 +1238,9 @@ class ExploreApp(DbPageMixin):
 
         # Store all rows globally so we can access them later
         self.all_files_rows = [list(row) for row in files]
-        self.plan_tonight_icon.visible = self._selected_coords() is not None
+        # Shown once an object is selected; usable when it has coordinates
+        self.plan_tonight_icon.visible = bool(self.selected_object) and self.selected_object != ALL_SESSIONS
+        self.plan_tonight_icon.set_enabled(self._selected_coords() is not None)
         self.selected_DeleteEntryInfo = None
         self.update_gallery_icon()
     
