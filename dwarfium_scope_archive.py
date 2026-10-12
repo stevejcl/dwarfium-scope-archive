@@ -250,6 +250,13 @@ ui.add_css('''
     .action-icon .q-icon { font-size: 30px; margin: 0; }
     .action-icon .q-btn__content > .block { font-size: 10.5px; line-height: 1.15; max-width: 84px;
         white-space: normal; text-align: center; }
+    /* With captions (small / touch screens): all the same size - the caption
+       takes 2 lines at most, room for 2 always kept (1 or 2 lines alike) */
+    @media not all and (min-width: 769px) and (hover: hover) {
+        .action-icon { width: 84px; height: 78px; min-width: 84px; padding: 4px; }
+        .action-icon .q-btn__content { height: 100%; justify-content: flex-start; flex-wrap: nowrap; }
+        .action-icon .q-btn__content > .block { height: 2.3em; overflow: hidden; margin-top: 3px; }
+    }
     @media (min-width: 769px) and (hover: hover) {
         /* not display:none - Quasar's .block (display:block !important) wins */
         .action-icon .q-btn__content > .block { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
