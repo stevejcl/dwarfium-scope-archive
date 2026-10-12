@@ -96,10 +96,11 @@ Le bouton 📅 de chaque carte propose deux choix :
 
 - **Programmer cette cible cette nuit** — ouvre la page de planification d'Astro Dwarf
   Session (navigateur externe) avec la cible et son créneau cette nuit (au-dessus de 25°).
-- **Ajouter au plan de la nuit** — l'ajoute à une liste de 5 cibles au plus, affichée en
+- **Ajouter au plan de la nuit** — l'ajoute à une liste de cibles (5 au plus par défaut, voir
+  Paramètres › Session), affichée en
   bas de la fenêtre avec le créneau de chacune : ✕ en retire une, **Vider** la vide, et
   **Programmer ces cibles** ouvre la page de planification avec toutes, enchaînées sur la
-  nuit. Quand la liste est pleine, ajouter une cible propose d'en remplacer une des cinq. Le
+  nuit. Quand la liste est pleine, ajouter une cible propose d'en remplacer une. Le
   bouton ⌄ replie la liste en une petite ligne (un clic la rouvre).
   La liste est liée à une nuit et un site, et reste quand on change de page.
 
