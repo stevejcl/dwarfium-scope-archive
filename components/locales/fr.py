@@ -1115,6 +1115,8 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_plan_send":          "Programmer ces cibles",
     "tonight_plan_clear":         "Vider",
     "tonight_plan_remove":        "Retirer du plan",
+    "tonight_plan_expand":          "Ouvrir le plan de la nuit",
+    "tonight_plan_collapse":        "Replier le plan de la nuit",
     "explore_plan_tonight":       "Programmer cette nuit",
     "explore_tab_infos":          "Infos",
     "explore_tab_image":          "Image",

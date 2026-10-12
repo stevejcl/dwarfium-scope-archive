@@ -1116,6 +1116,8 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_plan_send":          "Plan these targets", # TODO
     "tonight_plan_clear":         "Clear", # TODO
     "tonight_plan_remove":        "Remove from the plan", # TODO
+    "tonight_plan_expand":          "Open tonight's plan", # TODO
+    "tonight_plan_collapse":        "Fold tonight's plan", # TODO
     "explore_plan_tonight":       "Plan tonight", # TODO
     "explore_tab_infos":          "Infos", # TODO
     "explore_tab_image":          "Image", # TODO

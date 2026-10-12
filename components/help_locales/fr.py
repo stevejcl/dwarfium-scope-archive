@@ -99,7 +99,8 @@ Le bouton 📅 de chaque carte propose deux choix :
 - **Ajouter au plan de la nuit** — l'ajoute à une liste de 5 cibles au plus, affichée en
   bas de la fenêtre avec le créneau de chacune : ✕ en retire une, **Vider** la vide, et
   **Programmer ces cibles** ouvre la page de planification avec toutes, enchaînées sur la
-  nuit. Quand la liste est pleine, ajouter une cible propose d'en remplacer une des cinq.
+  nuit. Quand la liste est pleine, ajouter une cible propose d'en remplacer une des cinq. Le
+  bouton ⌄ replie la liste en une petite ligne (un clic la rouvre).
   La liste est liée à une nuit et un site, et reste quand on change de page.
 
 Sur la page de planification, choisissez le Dwarf, des programmes ou un planning natif,
