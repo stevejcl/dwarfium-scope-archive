@@ -293,7 +293,8 @@ class ManualExploreApp(DbPageMixin):
         ''')
 
         with ui.row().classes('w-full items-start'):
-            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid').style('height: calc(100vh - 100px)'):
+            # minmax(0, ...): never wider than the window (see dwarf_backup_ui_explore.py)
+            with ui.grid(columns='minmax(300px, 1fr) minmax(0, 2fr)').classes('w-full items-start mobile-explore-grid').style('height: calc(100vh - 100px)'):
 
                 # ---- LEFT COLUMN: filters + object list -------------------
                 with ui.column().classes('w-full min-w-[300px] h-full flex flex-col min-h-0 mobile-left-col') as self.mobile_left_col:
@@ -365,7 +366,7 @@ class ManualExploreApp(DbPageMixin):
                          .tooltip(t('top'))
 
                 # ---- RIGHT COLUMN: session selector + detail panel --------
-                with ui.column().classes('w-full mobile-right-col') as self.mobile_right_col:
+                with ui.column().classes('w-full min-w-0 mobile-right-col') as self.mobile_right_col:
 
                     # Fullscreen dialog (maximised image viewer)
                     with ui.dialog().props('maximized') as self.image_dialog, \
@@ -375,8 +376,8 @@ class ManualExploreApp(DbPageMixin):
                             .props('round flat') \
                             .classes('absolute top-2 right-2 z-10 bg-black text-white opacity-70')
 
-                    with ui.row().classes('w-full'):
-                        with ui.column().classes('w-full'):
+                    with ui.row().classes('w-full min-w-0'):
+                        with ui.column().classes('w-full min-w-0'):
                             with ui.row().classes('items-center gap-2'):
                                 ui.label(t("session_list"))
                                 self.fav_filter_btn = (
@@ -389,12 +390,13 @@ class ManualExploreApp(DbPageMixin):
                             self.file_list = (
                                 ui.select(options=[], on_change=self.on_file_selected)
                                 .props('outlined')
+                                .classes('w-full max-w-full')
                                 .style('overflow-x: auto;')
                             )
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
 
                         # Action buttons (shown/hidden depending on selection)
-                        with ui.row().classes('items-center gap-4') as self.icon_row:
+                        with ui.row().classes('w-full items-center gap-4 flex-wrap') as self.icon_row:
                             self.show_gallery_icon = ui.button(
                                 t("show_gallery"), on_click=lambda: self.show_gallery()
                             ).classes('h-16')
