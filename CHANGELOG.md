@@ -12,15 +12,16 @@
     computed with its visibility): the Dwarf, a program or a native schedule and the settings are chosen there. Needs
     Astro Dwarf Session 3.2.3 or later, running (else said so). Help updated.
     Tonight's plan (components/tonight_plan.py, reusable by other pages): the 📅 button now offers "Plan this target
-    tonight" or "Add to tonight's plan", a list of up to 5 targets with their windows, floating at the bottom of the
-    window (remove one, clear, "Plan these targets": Astro Dwarf Session chains them over the night). When full,
-    adding offers to replace one. Kept by the app for one night and site (survives a page change). The floating list
+    tonight" or "Add to tonight's plan", a list of targets (5 by default, see Settings) with their windows, floating
+    at the bottom of the window (remove one, clear, "Plan these targets": Astro Dwarf Session chains them over the
+    night). When full, adding offers to replace one. Kept by the app for one night and site (survives a page change). The floating list
     folds into one small line ("📅 Tonight's plan (n/5)", a click opens it), remembered on every page.
     Explore: "Plan tonight" button once an object is selected (with all sessions, once a session is chosen: its
-    object), usable when it has coordinates (mean of its sessions'
-    RA/Dec - the center of a mosaic -, else its object record, else the DSO catalog by name): its window tonight at the default location is computed on the click (in the background,
-    the night cached per site and date, so later clicks are instant) and shown with its maximum altitude, or "not
-    above 25° tonight"; then plan it alone or add it to tonight's plan, shared with Recommended tonight.
+    object), usable when it has coordinates (mean of its sessions' RA/Dec - the center of a mosaic -, else its object
+    record, else the DSO catalog by name): its window tonight at the default location is computed on the click (in
+    the background, the night cached per site and date, so later clicks are instant) and shown with its maximum
+    altitude, or "not above 25° tonight"; then plan it alone or add it to tonight's plan, shared with Recommended
+    tonight.
     Settings: new "Session" card before the mosaic parameters - sessions per night (targets in tonight's plan at most,
     1-10, default 5) and day change hour (before it, "tonight" is still the night in progress; default 08:00), used for
     Recommended tonight's default date and tonight's plan (Recommended tonight, Explore).
@@ -30,7 +31,8 @@
     (components/action_icon.py).
 
     Explore: the session's details and its image are two tabs (Infos / Image) sliding into each other - swipe on a
-    touch screen - instead of the image under the details.
+    touch screen - instead of the image under the details. Without an image, the Image tab says why: no session
+    chosen, the session has no image, or its path was not found (in the Dwarf mode: "Dwarf not connected?").
 
 ### BugFix#
     Explore / Manual sessions: with a long session label, the right column grew past the window and its buttons were

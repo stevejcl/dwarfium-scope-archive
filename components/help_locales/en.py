@@ -95,10 +95,11 @@ The 📅 button on each card offers two choices:
 
 - **Plan this target tonight** — opens Astro Dwarf Session's planning page (external
   browser) with the target and its window tonight (above 25°).
-- **Add to tonight's plan** — adds it to a list of up to 5 targets, shown at the bottom
+- **Add to tonight's plan** — adds it to a list of targets (5 at most by default, see
+  Settings › Session), shown at the bottom
   of the window with each target's window: ✕ removes one, **Clear** empties it, and
   **Plan these targets** opens the planning page with all of them, chained over the
-  night. When the list is full, adding a target offers to replace one of the five. The ⌄ button
+  night. When the list is full, adding a target offers to replace one of them. The ⌄ button
   folds the list into one small line (a click opens it again). The
   list belongs to one night and site, and is kept when you change page.
 
