@@ -289,6 +289,8 @@ Seuils : ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Bon (≥ 65) · ⭐�
 
 ## Actions
 
+Sous les actions, deux onglets : **{t:explore_tab_infos}** (le détail de la session) et **{t:explore_tab_image}** (son image empilée ; cliquez pour le plein écran). Ils glissent l'un vers l'autre ; sur téléphone ou tablette, balayez pour passer de l'un à l'autre.
+
 Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur téléphone ou tablette, le nom est sous l'icône).
 
 - **{t:open_folder_btn}** — ouvrir le dossier de session dans l'Explorateur Windows

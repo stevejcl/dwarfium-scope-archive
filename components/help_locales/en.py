@@ -289,6 +289,8 @@ Score thresholds: ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Good (≥ 6
 
 ## Actions
 
+Under the actions, two tabs: **{t:explore_tab_infos}** (the session's details) and **{t:explore_tab_image}** (its stacked image; click it for fullscreen). They slide into each other; on a phone or tablet, swipe to switch.
+
 The actions are shown as icons: hover one for its name (on a phone or tablet, the name is under the icon).
 
 - **{t:open_folder_btn}** — open the session folder in Windows Explorer

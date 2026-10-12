@@ -415,14 +415,26 @@ class ExploreApp(DbPageMixin):
                             #self.preview_icons['png'].on('click', lambda e: ui.notify(t("png_icon_clicked")))
                             #self.preview_icons['fits'].on('click', lambda e: ui.notify(t("fits_icon_clicked")))
 
-                    with ui.row().classes('w-full').style('scrollbar-width: thin; scrollbar-gutter: stable;'):
-                        with ui.card().tight().classes('w-full'):
-                            # List on the side
-                            self.details_files = ui.list().classes('w-full overflow-y-auto')
-                            self.details_preview = ui.list().classes('w-full overflow-y-auto')
-
-                    with ui.row().classes('w-full'):
-                        self.preview_image = ui.image().classes('w-full h-auto mb-4').props('fit=contain').on('click', self.show_fullscreen_image)
+                    # Infos / Image as two tabs sliding into each other (swipe on a
+                    # touch screen) instead of the image under a long info list
+                    # (user-requested Oct 2026)
+                    with ui.tabs().props('dense align=left inline-label active-color=primary indicator-color=primary') \
+                            .classes('w-full explore-view-tabs') as self.view_tabs:
+                        tab_infos = ui.tab('infos', label=t('explore_tab_infos'), icon='info')
+                        tab_image = ui.tab('image', label=t('explore_tab_image'), icon='image')
+                    with ui.tab_panels(self.view_tabs, value=tab_infos) \
+                            .props('animated swipeable transition-prev=slide-right transition-next=slide-left') \
+                            .classes('w-full bg-transparent'):
+                        with ui.tab_panel(tab_infos).classes('p-0'):
+                            with ui.row().classes('w-full').style('scrollbar-width: thin; scrollbar-gutter: stable;'):
+                                with ui.card().tight().classes('w-full'):
+                                    # List on the side
+                                    self.details_files = ui.list().classes('w-full overflow-y-auto')
+                                    self.details_preview = ui.list().classes('w-full overflow-y-auto')
+                        with ui.tab_panel(tab_image).classes('p-0'):
+                            self.preview_image = ui.image().classes('w-full h-auto mb-4').props('fit=contain').on('click', self.show_fullscreen_image)
+                            ui.label(t('explore_no_image')).classes('text-gray-500 p-4') \
+                                .bind_visibility_from(self.preview_image, 'visible', backward=lambda v: not v)
 
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
