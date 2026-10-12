@@ -24,6 +24,10 @@
     1-10, default 5) and day change hour (before it, "tonight" is still the night in progress; default 08:00), used for
     Recommended tonight's default date and tonight's plan (Recommended tonight, Explore).
 
+    Explore / Manual sessions: the action buttons are now large icons, grouped (view, process, plan, archive, then
+    delete apart in red), their name in a tooltip; on a phone or tablet the name is shown under the icon
+    (components/action_icon.py).
+
 ### BugFix#
     Explore / Manual sessions: with a long session label, the right column grew past the window and its buttons were
     cut off. The column now stays within the window: the label is shortened (…) and the buttons wrap.

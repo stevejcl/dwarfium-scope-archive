@@ -289,6 +289,8 @@ Score thresholds: ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Good (≥ 6
 
 ## Actions
 
+The actions are shown as icons: hover one for its name (on a phone or tablet, the name is under the icon).
+
 - **{t:open_folder_btn}** — open the session folder in Windows Explorer
 - **{t:show_fullscreen_btn}** — view the stacked image fullscreen
 - **{t:score_session_btn}** — score all sessions for the selected object

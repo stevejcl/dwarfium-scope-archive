@@ -244,6 +244,16 @@ ui.add_css('''
         * { font-size: 85% !important; }
         .q-btn { min-height: 36px !important; }
     }
+    /* Action icons (components/action_icon.py): icon only, text in the
+       tooltip; a short caption under the icon on small / touch screens */
+    .action-icon { min-width: 60px; min-height: 56px; padding: 4px 8px; }
+    .action-icon .q-icon { font-size: 30px; margin: 0; }
+    .action-icon .q-btn__content > .block { font-size: 10.5px; line-height: 1.15; max-width: 84px;
+        white-space: normal; text-align: center; }
+    @media (min-width: 769px) and (hover: hover) {
+        /* not display:none - Quasar's .block (display:block !important) wins */
+        .action-icon .q-btn__content > .block { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
+    }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {
         .mobile-nav-bar { display: none !important; }
