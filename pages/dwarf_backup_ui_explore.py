@@ -1082,8 +1082,13 @@ class ExploreApp(DbPageMixin):
         record, the DSO catalog by name."""
         import math
         from api.dwarf_backup_fct import dms_to_degrees, hms_to_hours
-        if not self.selected_object or self.selected_object == ALL_SESSIONS:
+        if not self.selected_object:
             return None
+        all_sessions = self.selected_object == ALL_SESSIONS
+        if all_sessions and not self.current_session_row:
+            return None   # all sessions: the session chosen in the list
+        rows = [self.current_session_row] if all_sessions else (self.all_files_rows or [])
+        object_id = self.current_session_row[17] if all_sessions else self.selected_object_id
 
         def parse(ra_raw, dec_raw):
             # shotsInfo.json values: decimal or "HHh MMm SSs" / "+DD° MM′ SS″"
@@ -1096,7 +1101,7 @@ class ExploreApp(DbPageMixin):
 
         x = y = z = 0.0
         n = 0
-        for row in self.all_files_rows or []:
+        for row in rows:
             coords = parse(row[15], row[14]) if len(row) > 15 else None
             if not coords:
                 continue
@@ -1106,11 +1111,13 @@ class ExploreApp(DbPageMixin):
         if n:
             return math.degrees(math.atan2(y, x)) % 360, math.degrees(math.atan2(z, math.hypot(x, y)))
 
-        names = [str(self.selected_object)]
-        if self.selected_object_id is not None:
+        names = [self._plan_name()]
+        if all_sessions:
+            names += [str(self.current_session_row[13] or "")]
+        if object_id is not None:
             try:
                 row = self.conn.execute("SELECT name, ra, dec FROM AstroObject WHERE id = ?",
-                                        (self.selected_object_id,)).fetchone()
+                                        (object_id,)).fetchone()
             except Exception:
                 row = None
             if row:
@@ -1120,7 +1127,7 @@ class ExploreApp(DbPageMixin):
                 names.insert(0, row[0] or "")
         # "Andromeda Galaxy [M31]": the designation in brackets too
         import re
-        names += re.findall(r"\[([^\]]+)\]", str(self.selected_object))
+        names += re.findall(r"\[([^\]]+)\]", self._plan_name())
         try:
             from api.dso_matching import load_dso_catalog, normalize_name
             wanted = {normalize_name(nm) for nm in names if nm}
@@ -1131,6 +1138,22 @@ class ExploreApp(DbPageMixin):
         except Exception as e:
             print(f"[plan_tonight] catalog lookup failed: {e}")
         return None
+
+    def _plan_name(self) -> str:
+        """The selected object's name, or with all sessions, the chosen
+        session's object."""
+        row = self.current_session_row
+        if self.selected_object == ALL_SESSIONS and row:
+            return str(row[19] or row[13] or "")
+        return str(self.selected_object or "")
+
+    def _update_plan_tonight_icon(self):
+        """Shown once an object is selected - with all sessions, once a
+        session is chosen - and usable when it has coordinates."""
+        all_sessions = self.selected_object == ALL_SESSIONS
+        self.plan_tonight_icon.visible = bool(self.selected_object) and (not all_sessions or bool(self.current_session_row))
+        if self.plan_tonight_icon.visible:
+            self.plan_tonight_icon.set_enabled(self._selected_coords() is not None)
 
     async def _plan_tonight(self):
         """Tonight's window of the selected object at the default site
@@ -1144,7 +1167,7 @@ class ExploreApp(DbPageMixin):
         location = get_default_location(self.conn) or next(iter(get_all_locations(self.conn)), None)
         if location:
             location = {"name": location.get("name", ""), "lat": location.get("latitude"), "lon": location.get("longitude")}
-        name = str(self.selected_object)
+        name = self._plan_name()
         target = PlanTarget(name=name, catalog_id=name, ra_deg=coords[0], dec_deg=coords[1])
         await self.tonight_plan.choose_computed(target, location)
 
@@ -1238,9 +1261,8 @@ class ExploreApp(DbPageMixin):
 
         # Store all rows globally so we can access them later
         self.all_files_rows = [list(row) for row in files]
-        # Shown once an object is selected; usable when it has coordinates
-        self.plan_tonight_icon.visible = bool(self.selected_object) and self.selected_object != ALL_SESSIONS
-        self.plan_tonight_icon.set_enabled(self._selected_coords() is not None)
+        self.current_session_row = None
+        self._update_plan_tonight_icon()
         self.selected_DeleteEntryInfo = None
         self.update_gallery_icon()
     
@@ -1674,6 +1696,7 @@ class ExploreApp(DbPageMixin):
 
     async def on_file_selected(self):
         self.current_session_row = None
+        self._update_plan_tonight_icon()
         selection_index = None
         selected_value = self.file_list.value
         details = []
@@ -1710,6 +1733,7 @@ class ExploreApp(DbPageMixin):
                 dwarf_data_id=row[0]
             )
             self.current_session_row = row
+            self._update_plan_tonight_icon()   # all sessions: the chosen session's object
             self.current_backup_location = row[6] if row[6] else ""
             # extract DB Values
             dwarf_data_id = row[0]
