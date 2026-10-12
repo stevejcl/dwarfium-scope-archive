@@ -14,7 +14,8 @@
     Tonight's plan (components/tonight_plan.py, reusable by other pages): the 📅 button now offers "Plan this target
     tonight" or "Add to tonight's plan", a list of up to 5 targets with their windows, floating at the bottom of the
     window (remove one, clear, "Plan these targets": Astro Dwarf Session chains them over the night). When full,
-    adding offers to replace one. Kept by the app for one night and site (survives a page change).
+    adding offers to replace one. Kept by the app for one night and site (survives a page change). The floating list
+    folds into one small line ("📅 Tonight's plan (n/5)", a click opens it), remembered on every page.
     Explore: "Plan tonight" button once an object is selected (with all sessions, once a session is chosen: its
     object), usable when it has coordinates (mean of its sessions'
     RA/Dec - the center of a mosaic -, else its object record, else the DSO catalog by name): its window tonight at the default location is computed on the click (in the background,

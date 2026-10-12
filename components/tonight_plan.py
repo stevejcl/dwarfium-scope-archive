@@ -37,6 +37,7 @@ from components.i18n import t
 MAX_TARGETS_KEY, DAY_CHANGE_HOUR_KEY = "TONIGHT_MAX_SESSIONS", "DAY_CHANGE_HOUR"
 DEFAULT_MAX_TARGETS, DEFAULT_DAY_CHANGE_HOUR = 5, 8
 _STORE_KEY = "tonight_plan"
+_COLLAPSED_KEY = "tonight_plan_collapsed"
 
 
 @dataclass
@@ -243,17 +244,32 @@ class TonightPlan:
         self._panel = ui.refreshable(self._render)
         self._panel()
 
+    def _set_collapsed(self, collapsed: bool) -> None:
+        """Fold / unfold the floating list (remembered, for every page)."""
+        app.storage.general[_COLLAPSED_KEY] = collapsed
+        if self._panel:
+            self._panel.refresh()
+
     def _render(self) -> None:
         data = self._load()
         targets = data["targets"]
         if not targets:
             return
         limit = max_targets()
+        title = f"📅 {t('tonight_plan_title')} ({len(targets)}/{limit})"
+        if app.storage.general.get(_COLLAPSED_KEY):
+            # Folded: one small line, opened with a click (doesn't hide the page)
+            ui.button(title, icon="expand_less", on_click=lambda: self._set_collapsed(False)) \
+                .props("rounded no-caps").classes("fixed bottom-3 left-1/2 -translate-x-1/2 z-50 shadow-xl") \
+                .tooltip(t("tonight_plan_expand"))
+            return
         with ui.card().classes("fixed bottom-3 left-1/2 -translate-x-1/2 z-50 w-[min(94vw,760px)] p-3 shadow-xl "
                                "max-h-[45vh] overflow-auto"):
             with ui.row().classes("items-center justify-between w-full"):
-                ui.label(f"📅 {t('tonight_plan_title')} ({len(targets)}/{limit})"
-                         f" · {data['night'] or ''} · {data['site'].get('name', '')}").classes("font-semibold")
+                with ui.row().classes("items-center gap-1 no-wrap"):
+                    ui.button(icon="expand_more", on_click=lambda: self._set_collapsed(True)) \
+                        .props("flat dense round size=sm").tooltip(t("tonight_plan_collapse"))
+                    ui.label(f"{title} · {data['night'] or ''} · {data['site'].get('name', '')}").classes("font-semibold")
                 with ui.row().classes("gap-2"):
                     ui.button(t("tonight_plan_send"), icon="send",
                               on_click=lambda: self._open(self._load()["targets"], self._load()["site"])).props("dense")

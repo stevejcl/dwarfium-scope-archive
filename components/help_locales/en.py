@@ -98,7 +98,8 @@ The 📅 button on each card offers two choices:
 - **Add to tonight's plan** — adds it to a list of up to 5 targets, shown at the bottom
   of the window with each target's window: ✕ removes one, **Clear** empties it, and
   **Plan these targets** opens the planning page with all of them, chained over the
-  night. When the list is full, adding a target offers to replace one of the five. The
+  night. When the list is full, adding a target offers to replace one of the five. The ⌄ button
+  folds the list into one small line (a click opens it again). The
   list belongs to one night and site, and is kept when you change page.
 
 On the planning page, pick the Dwarf, programs or a native schedule, the exposure and
