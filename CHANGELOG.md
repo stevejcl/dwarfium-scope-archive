@@ -28,6 +28,9 @@
     delete apart in red), their name in a tooltip; on a phone or tablet the name is shown under the icon
     (components/action_icon.py).
 
+    Explore: the session's details and its image are two tabs (Infos / Image) sliding into each other - swipe on a
+    touch screen - instead of the image under the details.
+
 ### BugFix#
     Explore / Manual sessions: with a long session label, the right column grew past the window and its buttons were
     cut off. The column now stays within the window: the label is shortened (…) and the buttons wrap.
