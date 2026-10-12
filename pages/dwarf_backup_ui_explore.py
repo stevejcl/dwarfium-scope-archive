@@ -240,7 +240,9 @@ class ExploreApp(DbPageMixin):
         ''')
 
         with ui.row().classes('w-full items-start'):
-            with ui.grid(columns='1fr 2fr').classes('w-full items-start mobile-explore-grid').style('height: calc(100vh - 100px)'):
+            # minmax(0, ...): a grid column otherwise grows to its content's width - a long
+            # session label pushed the right column (and its buttons) past the window
+            with ui.grid(columns='minmax(300px, 1fr) minmax(0, 2fr)').classes('w-full items-start mobile-explore-grid').style('height: calc(100vh - 100px)'):
                 with ui.column().classes('w-full min-w-[300px] h-full flex flex-col min-h-0 mobile-left-col') as self.mobile_left_col:
                     if self.mode == "backup":
                         with ui.grid(columns=12).classes('w-full items-end gap-2'):
@@ -353,7 +355,7 @@ class ExploreApp(DbPageMixin):
                          .classes('sticky bottom-2 left-full z-10 opacity-60 hover:opacity-100') \
                          .tooltip(t('top'))
 
-                with ui.column().classes('w-full mobile-right-col') as self.mobile_right_col:
+                with ui.column().classes('w-full min-w-0 mobile-right-col') as self.mobile_right_col:
                     # Create the dialog that simulates fullscreen
                     with ui.dialog().props('maximized') as self.image_dialog, ui.card().classes("w-full h-full no-padding"):
                         self.fullscreen_image = ui.image().classes('w-full h-auto object-contain')
@@ -361,8 +363,8 @@ class ExploreApp(DbPageMixin):
                             .props('round flat') \
                             .classes('absolute top-2 right-2 z-10 bg-black text-white opacity-70')
 
-                    with ui.row().classes('w-full'):
-                        with ui.column().classes('w-full'):
+                    with ui.row().classes('w-full min-w-0'):
+                        with ui.column().classes('w-full min-w-0'):
                             with ui.row().classes('items-center gap-2'):
                                 ui.label(t("session_list"))
                                 self.fav_filter_btn = (
@@ -372,10 +374,10 @@ class ExploreApp(DbPageMixin):
                                 )
                                 self.fav_filter_active = False
                                 self._update_fav_filter_icon()
-                            self.file_list = ui.select(options=[], on_change=self.on_file_selected).props('outlined').style('overflow-x: auto;')
+                            self.file_list = ui.select(options=[], on_change=self.on_file_selected).props('outlined').classes('w-full max-w-full').style('overflow-x: auto;')
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
 
-                        with ui.row().classes('items-center gap-4') as self.icon_row:
+                        with ui.row().classes('w-full items-center gap-4 flex-wrap') as self.icon_row:
                             self.show_gallery_icon = ui.button(t("show_gallery"), on_click=lambda: self.show_gallery()).classes('h-16')
                             self.show_gallery_icon.visible = False
                             self.open_folder_icon = ui.button(t("open_folder_icon"), on_click=lambda: self.open_folder()).classes('h-16')

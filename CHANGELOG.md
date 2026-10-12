@@ -24,6 +24,10 @@
     1-10, default 5) and day change hour (before it, "tonight" is still the night in progress; default 08:00), used for
     Recommended tonight's default date and tonight's plan (Recommended tonight, Explore).
 
+### BugFix#
+    Explore / Manual sessions: with a long session label, the right column grew past the window and its buttons were
+    cut off. The column now stays within the window: the label is shortened (…) and the buttons wrap.
+
 ## [V3.4.1] - 2026-10-08
 
 ### Add
