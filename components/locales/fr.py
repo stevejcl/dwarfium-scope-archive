@@ -1116,6 +1116,7 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_plan_clear":         "Vider",
     "tonight_plan_remove":        "Retirer du plan",
     "explore_plan_tonight":       "Programmer cette nuit",
+    "explore_plan_no_coords":     "Pas de coordonnées pour cet objet (sessions, objet ou catalogue)",
     "tonight_plan_no_location":   "Aucun lieu d'observation : ajoutez-en un d'abord dans les réglages des lieux",
     "tonight_plan_computing":     "Calcul de la visibilité cette nuit…",
     "tonight_plan_not_visible":   "Ne dépasse pas 25° pendant la nuit noire ({alt}) · {site}",
