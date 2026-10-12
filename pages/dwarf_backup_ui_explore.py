@@ -433,7 +433,8 @@ class ExploreApp(DbPageMixin):
                                     self.details_preview = ui.list().classes('w-full overflow-y-auto')
                         with ui.tab_panel(tab_image).classes('p-0'):
                             self.preview_image = ui.image().classes('w-full h-auto mb-4').props('fit=contain').on('click', self.show_fullscreen_image)
-                            ui.label(t('explore_no_image')).classes('text-gray-500 p-4') \
+                            # Why there is no image: no session chosen, or its image can't be read
+                            self.no_image_label = ui.label(t('explore_no_image')).classes('text-gray-500 p-4') \
                                 .bind_visibility_from(self.preview_image, 'visible', backward=lambda v: not v)
 
         self.fullscreen_image.visible = False
@@ -1069,6 +1070,8 @@ class ExploreApp(DbPageMixin):
     def clear_selected_object(self):
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
+        if getattr(self, 'no_image_label', None):
+            self.no_image_label.text = t('explore_no_image')
 
         self.details_files.clear()
         self.details_preview.clear()
@@ -2112,11 +2115,14 @@ class ExploreApp(DbPageMixin):
         if not self.preview_image_path:
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
+            self.no_image_label.text = t('explore_image_missing')
             details_preview.append(f"Image File Path is empty - Preview is disable")
 
         elif not os.path.isfile(self.preview_image_path):
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
+            # e.g. network drive or USB Dwarf not connected
+            self.no_image_label.text = t('explore_image_unreachable', path=self.preview_image_path)
             details_preview.append(f"Image File is not reachable - Preview is disable")
 
         elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.tiff')):
@@ -2130,6 +2136,7 @@ class ExploreApp(DbPageMixin):
 
         else:
             self.preview_image.visible = False
+            self.no_image_label.text = t('explore_image_missing')
 
         with self.details_preview:
             if not self.mode == "backup" and is_path_local_dwarf_dir(preview_image_path):

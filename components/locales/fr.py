@@ -1121,6 +1121,8 @@ TRANSLATIONS: dict[str, str] = {
     "explore_tab_infos":          "Infos",
     "explore_tab_image":          "Image",
     "explore_no_image":           "Choisissez une session pour voir son image",
+    "explore_image_missing":        "Cette session n'a pas d'image à afficher",
+    "explore_image_unreachable":    "Image inaccessible (lecteur réseau ou Dwarf non connecté ?) : {path}",
     "explore_plan_no_coords":     "Pas de coordonnées pour cet objet (sessions, objet ou catalogue)",
     "tonight_plan_no_location":   "Aucun lieu d'observation : ajoutez-en un d'abord dans les réglages des lieux",
     "tonight_plan_computing":     "Calcul de la visibilité cette nuit…",
