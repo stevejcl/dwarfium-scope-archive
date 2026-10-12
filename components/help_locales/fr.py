@@ -289,6 +289,8 @@ Seuils : ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Bon (≥ 65) · ⭐�
 
 ## Actions
 
+Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur téléphone ou tablette, le nom est sous l'icône).
+
 - **{t:open_folder_btn}** — ouvrir le dossier de session dans l'Explorateur Windows
 - **{t:show_fullscreen_btn}** — afficher l'image stackée en plein écran
 - **{t:score_session_btn}** — scorer toutes les sessions de l'objet sélectionné

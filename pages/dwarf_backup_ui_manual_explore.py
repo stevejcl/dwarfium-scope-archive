@@ -32,6 +32,7 @@ from components.i18n import t
 from components.session_notes import session_notes_widget
 from api.dwarf_backup_db import DB_NAME, connect_db
 from components.db_page_mixin import DbPageMixin
+from components.action_icon import ActionIcon
 from api.dwarf_backup_db_api import (
     get_dwarf_Names,
     get_backupDrive_Names,
@@ -396,46 +397,24 @@ class ManualExploreApp(DbPageMixin):
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
 
                         # Action buttons (shown/hidden depending on selection)
-                        with ui.row().classes('w-full items-center gap-4 flex-wrap') as self.icon_row:
-                            self.show_gallery_icon = ui.button(
-                                t("show_gallery"), on_click=lambda: self.show_gallery()
-                            ).classes('h-16')
+                        # Large icons, text in a tooltip (components/action_icon.py)
+                        with ui.row().classes('w-full items-center gap-2 flex-wrap') as self.icon_row:
+                            self.show_gallery_icon = ActionIcon(t("show_gallery"), "collections", lambda: self.show_gallery())
                             self.show_gallery_icon.visible = False
-
-                            self.open_folder_icon = ui.button(
-                                t("open_folder_btn"), on_click=self.open_folder
-                            ).classes('h-16')
+                            self.open_folder_icon = ActionIcon(t("open_folder_btn"), "folder_open", self.open_folder)
                             self.open_folder_icon.visible = False
-
-                            self.fullscreen_icon = ui.button(
-                                t("show_fullscreen_btn"), on_click=self.show_fullscreen_image
-                            ).classes('h-16')
+                            self.fullscreen_icon = ActionIcon(t("show_fullscreen_btn"), "fullscreen", self.show_fullscreen_image)
                             self.fullscreen_icon.visible = False
-
-                            # Navigates to /Explore/ to view the linked BackupEntry session
-                            self.linked_session_icon = ui.button(
-                                t("view_linked_dwarf"),
-                                on_click=self.navigate_to_linked_session,
-                            ).classes('h-16')
-                            self.linked_session_icon.visible = False
-
-                            # Edit session — open AddManualSession in update mode
-                            self.edit_session_icon = ui.button(
-                                t("edit_session"),
-                                on_click=self.navigate_to_edit_session,
-                            ).classes('h-16')
-                            self.edit_session_icon.visible = False
-
-                            self.delete_session_icon = ui.button(
-                                t("delete_session_btn"), on_click=self.delete_directory
-                            ).classes('h-16')
-                            self.delete_session_icon.visible = False
-
-                            self.siril_json_icon = ui.button(
-                                t("prepare_siril"),
-                                on_click=self.prepare_siril_json
-                            ).classes('h-16')
+                            self.siril_json_icon = ActionIcon(t("prepare_siril"), "layers", self.prepare_siril_json)
                             self.siril_json_icon.visible = False
+                            # Navigates to /Explore/ to view the linked BackupEntry session
+                            self.linked_session_icon = ActionIcon(t("view_linked_dwarf"), "link", self.navigate_to_linked_session)
+                            self.linked_session_icon.visible = False
+                            # Edit session — open AddManualSession in update mode
+                            self.edit_session_icon = ActionIcon(t("edit_session"), "edit", self.navigate_to_edit_session)
+                            self.edit_session_icon.visible = False
+                            self.delete_session_icon = ActionIcon(t("delete_session_btn"), "delete", self.delete_directory, danger=True).classes('ml-4')
+                            self.delete_session_icon.visible = False
 
                     with ui.row().classes('w-full'):
                         with ui.card().tight().classes('w-full flex flex-col overflow-hidden flex-1'):
