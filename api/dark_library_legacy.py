@@ -115,6 +115,7 @@ def parse_when(value) -> datetime | None:
     return None
 
 
+TEMP_MARGIN_C = 2       # around the session's range: still a match (user-requested Oct 2026)
 TEMP_SLACK_C = 2        # temperatures this close to the best one count as equal
 
 
@@ -124,8 +125,9 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
     and camera (each: temp_c - None when unknown -, when - a datetime or
     None -, legacy - DWARF_DARK raw frames or a CALI_FRAME master):
 
-    1. the temperature in the session's range, else the closest known one
-       (within TEMP_SLACK_C), else the sets of unknown temperature;
+    1. the temperature in the session's range widened by TEMP_MARGIN_C,
+       else the closest known one (within TEMP_SLACK_C), else the sets of
+       unknown temperature;
     2. among those, the date closest to the session's, before or after (the
        most recent when the session's date is unknown; undated sets last);
     3. on a tie, the current firmware's CALI_FRAME master.
@@ -137,7 +139,8 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
     temp_ok = False
     pool = sets
     if min_temp is not None and max_temp is not None and known:
-        in_range = [s for s in known if min_temp <= s["temp_c"] <= max_temp]
+        in_range = [s for s in known
+                    if min_temp - TEMP_MARGIN_C <= s["temp_c"] <= max_temp + TEMP_MARGIN_C]
         if in_range:
             pool, temp_ok = in_range, True
         else:
