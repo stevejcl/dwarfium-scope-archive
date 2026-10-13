@@ -454,11 +454,20 @@ Où : `exp` = temps de pose en secondes, `gain` = valeur du gain,
 Lit le répertoire `CALI_FRAME/dark/` et affiche un inventaire regroupé
 par caméra (cam_0 = Télé, cam_1 = Grand angle) et par exposition/gain/binning.
 
+Les darks d'un ancien firmware, dans `DWARF_DARK` (à côté de `CALI_FRAME`), sont
+listés aussi : un dossier par réglage (`tele_exp_15_gain_60_bin_1`, parfois daté),
+avec ses darks bruts et leur température quand les fichiers la portent.
+Ils servent pour une session quand aucun master de `CALI_FRAME` ne lui correspond
+(Siril construit alors le master à partir des bruts) ; le badge 🎯 l'indique.
+
 ## Télécharger les darks
 
 Ouvre la page **{t:transfer}** avec :
 - La source pré-définie sur le dossier `CALI_FRAME` du Dwarf
 - La destination commençant à la racine du disque de sauvegarde
+
+Si le Dwarf a aussi un dossier `DWARF_DARK` (ancien firmware), il est copié en même
+temps, à côté de `CALI_FRAME`.
 
 Naviguez vers votre dossier `CALI_FRAME` de destination et démarrez le transfert.
 La structure de répertoires `CALI_FRAME` (`dark/`, `bias/`, `flat/`) est

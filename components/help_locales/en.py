@@ -454,6 +454,12 @@ Where: `exp` = exposure in seconds, `gain` = gain value,
 Reads the `CALI_FRAME/dark/` directory and shows an inventory grouped
 by camera (cam_0 = Tele, cam_1 = Wide) and by exposure/gain/binning.
 
+An older firmware's darks, in `DWARF_DARK` (next to `CALI_FRAME`), are listed
+too: one folder per setting (`tele_exp_15_gain_60_bin_1`, sometimes dated), with
+its raw darks and their temperature when the files carry it. They are used for
+a session when no `CALI_FRAME` master matches it (Siril then builds the master
+from the raw frames); the 🎯 badge says so.
+
 ## Download Darks
 
 Opens the **{t:transfer}** page with:
@@ -463,6 +469,9 @@ Opens the **{t:transfer}** page with:
 Navigate to your destination `CALI_FRAME` folder and start the transfer.
 The `CALI_FRAME` directory structure (`dark/`, `bias/`, `flat/`) is
 created automatically.
+
+When the Dwarf also has a `DWARF_DARK` folder (older firmware), it is copied at
+the same time, next to `CALI_FRAME`.
 
 ## Tips
 

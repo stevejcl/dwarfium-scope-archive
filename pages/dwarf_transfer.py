@@ -429,19 +429,34 @@ class TransferApp:
             return
 
         if self.mode == "Archive":
-            # Dark download mode: force source to CALI_FRAME on the Dwarf
+            # Dark download mode: force source to CALI_FRAME on the Dwarf, and
+            # an older firmware's DWARF_DARK too when the Dwarf has one (user-
+            # requested Oct 2026) - both then copied side by side (multi-source)
             if self.dest_override:
                 if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
                     base_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
                     if base_dir:
                         cali_ftp = "/".join([base_dir.rstrip("/"), "CALI_FRAME"])
+                        legacy_ftp = "/".join([base_dir.rstrip("/"), "DWARF_DARK"])
+                        sources = [cali_ftp]
+                        if ftp_path_exists(self.dwarf_ip_sta_mode, legacy_ftp):
+                            sources.append(legacy_ftp)
                         self.ftp_dwarf_dir = cali_ftp
-                        self.input_src_dir.set_options([cali_ftp], value=cali_ftp)
-                        self.src_main_dir = cali_ftp
+                        self.input_src_dir.set_options(sources, value=cali_ftp)
+                        # The Astronomy root with two sources: each copied as its own folder
+                        self.src_main_dir = base_dir if len(sources) > 1 else cali_ftp
+                        if len(sources) > 1:
+                            self.SourceDirectory.set_text(f"{t('source_cali_ftp')} + DWARF_DARK")
                 else:
                     cali_usb = os.path.join(self.dwarf_astroDir, "CALI_FRAME")
-                    self.input_src_dir.set_options([cali_usb], value=cali_usb)
-                    self.src_main_dir = cali_usb
+                    legacy_usb = os.path.join(self.dwarf_astroDir, "DWARF_DARK")
+                    sources = [cali_usb]
+                    if os.path.isdir(legacy_usb):
+                        sources.append(legacy_usb)
+                    self.input_src_dir.set_options(sources, value=cali_usb)
+                    self.src_main_dir = self.dwarf_astroDir if len(sources) > 1 else cali_usb
+                    if len(sources) > 1:
+                        self.SourceDirectory.set_text(f"{t('source_cali')} + DWARF_DARK")
                 return
 
             if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:
@@ -925,7 +940,8 @@ class TransferApp:
                 result_backup = False
                 break
 
-        if result_backup:
+        # Dark download mode: just a file copy (CALI_FRAME, DWARF_DARK) - no session scan
+        if result_backup and not self.dest_override:
             local_Main_Dwarf_dir = create_local_dwarf_dir(self.conn)
             if not local_Main_Dwarf_dir:
                 self._safe_ui(lambda: ui.notify(t("no_error_access"), type="negative"))
