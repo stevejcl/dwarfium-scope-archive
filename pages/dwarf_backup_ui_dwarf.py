@@ -33,6 +33,7 @@ from components.win_log import WinLog
 from components.menu import menu, setStyle
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
+from components.action_icon import ActionIcon
 
 
 @ui.page('/Dwarf')
@@ -141,16 +142,17 @@ class ConfigApp(DbPageMixin):
                     # Which physical Dwarf: the end of its MAC address (on its
                     # label), also the end of its Bluetooth name - Dwarfium-Hub
                     # links it to the same Dwarf of Dwarfium Lite with it
-                    with ui.row().classes('items-center gap-4'):
+                    # Compact: icons with a small caption, on the field's line;
+                    # the field takes the rest of the line on a phone
+                    with ui.row().classes('w-full items-center gap-2 no-wrap'):
                         self.dwarf_ble_id = ui.input(
                             t("dwarf_ble_id"), placeholder="A1B2C3",
                             validation={t("dwarf_ble_id_invalid"): lambda v: not (v or "").strip() or bool(normalize_ble_id(v))},
-                        ).classes('w-55').tooltip(t("dwarf_ble_id_hint"))
+                        ).classes('w-55 grow min-w-0 md:grow-0').tooltip(t("dwarf_ble_id_hint"))
                         self.dwarf_ble_id.on('blur', self.tidy_ble_id)
-                        ui.button(t("dwarf_ble_id_read"), icon="wifi_find", on_click=self.read_ble_id) \
-                            .classes(sizeBTN).tooltip(t("dwarf_ble_id_read_hint"))
-                        self.identify_button = ui.button(t("dwarf_identify"), icon="flare", on_click=self.identify_dwarf) \
-                            .classes(sizeBTN).tooltip(t("dwarf_identify_hint"))
+                        ActionIcon(t("dwarf_ble_id_read"), "wifi_find", self.read_ble_id).classes("with-caption")
+                        self.identify_button = ActionIcon(t("dwarf_identify"), "flare", self.identify_dwarf) \
+                            .classes("with-caption")
 
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')
