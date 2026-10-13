@@ -1007,6 +1007,14 @@ def migrate_v16(conn):
         # address (printed on it), also the end of its Bluetooth name
         # (= Dwarfium Lite's DWARF_UID) - see api/dwarf_identity.py
         add_column_if_not_exists(conn, "Dwarf", "ble_id", "TEXT")
+        # A Bluetooth name noted by hand as the description: its identifier
+        from api.dwarf_identity import ble_id_from_bluetooth_name
+        for dwarf_id, description in conn.execute(
+                "SELECT id, description FROM Dwarf WHERE ble_id IS NULL OR ble_id = ''").fetchall():
+            ble_id = ble_id_from_bluetooth_name(description)
+            if ble_id:
+                conn.execute("UPDATE Dwarf SET ble_id = ? WHERE id = ?", (ble_id, dwarf_id))
+                print(f"  Dwarf {dwarf_id}: identifier {ble_id} (from its description)")
         conn.commit()
         print("Migration v16 applied.")
     except Exception as e:

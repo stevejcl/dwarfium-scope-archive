@@ -9,7 +9,10 @@
     (the whole address can be pasted), which also end its Bluetooth name (DWARF3_A1B2C3). "Read from the Dwarf" asks
     the Dwarf at its IP (POST :8082/deviceInfo: only its name and model are kept, the passwords in that answer are
     never kept nor logged) and warns when it isn't the Dwarf the identifier said, or of another type. Stored in
-    Dwarf.ble_id (database V16). Dwarfium-Hub uses it to link a Dwarf for sure to the same Dwarf of Dwarfium Lite.
+    Dwarf.ble_id (database V16); a Dwarf whose description is its Bluetooth name (DWARF3_3C2E2A, DWARF_mini_19A608)
+    gets its identifier from it at the migration. Only exact forms are taken (6 hex digits after the name's last "_",
+    the 6 digits, or a whole MAC address), nothing is guessed. Dwarfium-Hub uses it to link a Dwarf for sure to the
+    same Dwarf of Dwarfium Lite.
     Help updated.
 
 ## [V3.4.2] - 2026-10-11

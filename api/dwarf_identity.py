@@ -21,16 +21,35 @@ import requests
 
 DEVICE_INFO_PORT = 8082
 
-_HEX6_AT_END = re.compile(r"([0-9A-Fa-f]{6})$")
+_HEX6 = re.compile(r"[0-9A-Fa-f]{6}")
+_HEX12 = re.compile(r"[0-9A-Fa-f]{12}")
 
 
 def normalize_ble_id(text: str | None) -> str:
-    """The 6 hex digits (upper case) from a MAC address ("AA:BB:CC:DD:EE:FF",
-    "AA-BB-..", "AABBCCDDEEFF"), its end ("DDEEFF", "DD:EE:FF") or a
-    Bluetooth name ("DWARF3_DDEEFF"); "" when there are none."""
-    compact = re.sub(r"[\s:.\-]", "", (text or "").strip())
-    m = _HEX6_AT_END.search(compact)
-    return m.group(1).upper() if m else ""
+    """The 6 hex digits (upper case), "" when the text doesn't give them:
+    - a Bluetooth name (DWARF3_3C2E2A, DWARF_mini_19A608): what follows
+      its last "_", exactly 6 hex digits;
+    - the 6 digits themselves ("DDEEFF", "DD:EE:FF");
+    - a whole MAC address ("AA:BB:CC:DD:EE:FF", "AA-BB-..", "AABBCCDDEEFF").
+    Nothing is guessed from anything else (a 5-digit end stays "")."""
+    text = (text or "").strip()
+    if "_" in text:
+        tail = text.rsplit("_", 1)[1]
+        return tail.upper() if _HEX6.fullmatch(tail) else ""
+    compact = re.sub(r"[\s:.\-]", "", text)
+    if _HEX6.fullmatch(compact):
+        return compact.upper()
+    if _HEX12.fullmatch(compact):
+        return compact[-6:].upper()
+    return ""
+
+
+def ble_id_from_bluetooth_name(text: str | None) -> str:
+    """The identifier when the whole text is a Dwarf Bluetooth name
+    (DWARF..._XXXXXX), else "" - for the descriptions where the name was
+    noted by hand."""
+    text = (text or "").strip()
+    return normalize_ble_id(text) if re.fullmatch(r"DWARF\w*_[0-9A-Fa-f]{6}", text, flags=re.IGNORECASE) else ""
 
 
 def read_device_identity(ip: str, timeout: float = 4) -> dict | None:
