@@ -8,8 +8,10 @@ Lite are the same device.
 
 Typed from the label (MAC address or its end), or read from the Dwarf
 itself when it is on the network: POST http://<ip>:8082/deviceInfo gives
-its name (deviceName, the Bluetooth name) and model (deviceId + 1 = the
-Dwarf type id). That answer also holds the Dwarf's and the Wi-Fi's
+its name (deviceName, the Bluetooth name) and model (deviceId: the Dwarf
+type id itself, 1 = Dwarf II / 2 = Dwarf 3 / 4 = Mini - no offset, confirmed
+on a real Dwarf 3 and Mini, see dwarf_python_api's
+DEVICE_INFO_HTTP_MODEL_MAP). That answer also holds the Dwarf's and the Wi-Fi's
 passwords in clear text: only the name and the model are kept, and the
 answer is never logged.
 """
@@ -70,5 +72,5 @@ def read_device_identity(ip: str, timeout: float = 4) -> dict | None:
     return {
         "name": name,
         "ble_id": normalize_ble_id(name),
-        "type": int(device_id) + 1 if isinstance(device_id, int) or str(device_id).isdigit() else None,
+        "type": int(device_id) if str(device_id).isdigit() else None,     # = Dwarf.type, no offset
     }
