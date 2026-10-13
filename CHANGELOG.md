@@ -1,5 +1,11 @@
 # Changelog
 
+## [V3.4.3] - 2026-10-13
+
+### Add
+    App info: GET /api/app-info answers {"app": "dwarfium_scope_archive", "name", "version"}: Dwarfium-Hub tells this
+    app from another program on the same port, and learns the version of an installation it didn't install.
+
 ## [V3.4.2] - 2026-10-11
 
 ### Add
