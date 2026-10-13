@@ -144,15 +144,15 @@ class ConfigApp(DbPageMixin):
                     # links it to the same Dwarf of Dwarfium Lite with it
                     # Compact: icons with a small caption, on the field's line;
                     # the field takes the rest of the line on a phone
-                    with ui.row().classes('w-full items-center gap-2 no-wrap'):
+                    with ui.row().classes('w-full items-center gap-4 no-wrap'):   # gap-4: as the rows below
                         self.dwarf_ble_id = ui.input(
                             t("dwarf_ble_id"), placeholder="A1B2C3",
                             validation={t("dwarf_ble_id_invalid"): lambda v: not (v or "").strip() or bool(normalize_ble_id(v))},
                         ).classes('w-55 grow min-w-0 md:grow-0').tooltip(t("dwarf_ble_id_hint"))
                         self.dwarf_ble_id.on('blur', self.tidy_ble_id)
-                        ActionIcon(t("dwarf_ble_id_read"), "wifi_find", self.read_ble_id).classes("with-caption")
+                        ActionIcon(t("dwarf_ble_id_read"), "wifi_find", self.read_ble_id).classes("with-caption fill")
                         self.identify_button = ActionIcon(t("dwarf_identify"), "flare", self.identify_dwarf) \
-                            .classes("with-caption")
+                            .classes("with-caption fill")
 
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')

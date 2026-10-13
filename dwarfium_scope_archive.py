@@ -263,6 +263,9 @@ ui.add_css('''
     .action-icon.with-caption .q-btn__content { height: 100%; justify-content: flex-start; flex-wrap: nowrap; }
     .action-icon.with-caption .q-btn__content > .block { font-size: 10.5px; line-height: 1.15; height: 2.3em;
         overflow: hidden; margin-top: 2px; }
+    /* .fill: the buttons share the rest of the line */
+    .action-icon.with-caption.fill { width: auto; flex: 1 1 0; }
+    .action-icon.with-caption.fill .q-btn__content > .block { max-width: none; }
     @media (min-width: 769px) and (hover: hover) {
         /* not display:none - Quasar's .block (display:block !important) wins */
         .action-icon:not(.with-caption) .q-btn__content > .block { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
