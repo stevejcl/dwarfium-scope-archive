@@ -23,6 +23,7 @@ DEBUG_FORCE_MISMATCH = False
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from api.dwarf_backup_db_api import get_dwarf_ble_id, set_dwarf_ble_id
 from api.dwarf_identity import normalize_ble_id, read_device_identity
+from api.dwarf_identity_check import check_ip_identity, list_ftp_sessions, list_usb_sessions, sessions_owner
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
 from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entries_and_dwarf_data, del_dwarf
 from api.dwarf_backup_db_api import get_dwarf_sessions_error
@@ -655,6 +656,40 @@ class ConfigApp(DbPageMixin):
         if self.dwarf_id:
             ui.notify(t("dwarf_ble_id_save"), type="info")
 
+    async def identity_warnings(self, ftp, dwarf_location) -> list[str]:
+        """What says the connected Dwarf isn't the chosen one (see
+        api/dwarf_identity_check.py); never blocks a scan by itself."""
+        out = []
+        name = self.dwarf_name.value
+        try:
+            if self.dwarf_status == "FTP":
+                ip = self.ftp_ip or self.dwarf_ip_sta_mode.value
+                found = await run.io_bound(check_ip_identity, get_dwarf_ble_id(self.conn, self.dwarf_id), ip)
+                if found:
+                    out.append(t("dwarf_identity_ip_mismatch", name=name, expected=found["expected"], found=found["found"]))
+                sessions = await run.io_bound(list_ftp_sessions, ftp, dwarf_location)
+            else:
+                sessions = await run.io_bound(list_usb_sessions, dwarf_location)
+            owner = await run.io_bound(sessions_owner, self.conn, self.dwarf_id, sessions)
+            if owner:
+                out.append(t("dwarf_identity_sessions_other", name=name, other=owner["other_name"],
+                             count=owner["count"], total=owner["total"]))
+        except Exception as e:
+            print(f"[identity check] {e}")
+        return out
+
+    async def confirm_despite(self, warnings: list[str]) -> bool:
+        for warning in warnings:
+            ui.notify(warning, type="warning", timeout=8000, close_button=True, multi_line=True)
+        with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: 95vw'):
+            for warning in warnings:
+                ui.label(warning).classes('text-orange-800')
+            ui.label(t('dwarf_identity_continue'))
+            with ui.row():
+                ui.button(t("yes_continue"), on_click=lambda: dialog.submit('Yes'))
+                ui.button(t("no"), on_click=lambda: dialog.submit('No'))
+        return await dialog == 'Yes'
+
     async def analyze_usb_drive(self):
         """Analyze the Dwarf drive and scan files."""
         if not self.dwarf_id:
@@ -738,6 +773,18 @@ class ConfigApp(DbPageMixin):
                 except Exception:
                     pass
             raise
+
+        # The chosen Dwarf itself, not only its model: its identifier at its
+        # IP, and the sessions on the drive already archived under a Dwarf
+        if not DEBUG_FORCE_MISMATCH:
+            warnings = await self.identity_warnings(ftp, dwarf_location)
+            if warnings and not await self.confirm_despite(warnings):
+                if ftp:
+                    try:
+                        ftp.quit()
+                    except Exception:
+                        pass
+                return
 
         # Dialog to block interaction and show progress
         with ui.dialog().props('persistent')  as dialog, ui.card().classes("w-full p-4").style("max-width: 1200px; height: 800px; margin: auto"):

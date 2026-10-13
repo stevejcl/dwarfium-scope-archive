@@ -161,6 +161,14 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
 Scans the Dwarf's USB directory and indexes all sessions into the database.
 Run this after connecting the Dwarf by USB.
 
+Before the scan, Scope Archive checks that the Dwarf connected is the one chosen:
+- its model, from its images;
+- over FTP, its identifier: the Dwarf answering at the IP must have the **{t:dwarf_ble_id}** saved;
+- its sessions: when those on the drive are already archived under another Dwarf and none under the
+  chosen one, it is the other Dwarf's drive - even between two Dwarfs of the same model.
+
+A warning then offers to choose the right Dwarf, or to continue anyway.
+
 ## Show Dwarf Data
 
 Opens the **{t:page_explore}** page to view data stored on your Dwarf.

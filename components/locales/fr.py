@@ -1082,8 +1082,11 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_type_mismatch":         '⚠️ {name} : configuré comme {configured} mais sessions détectées comme {detected}. Veuillez sélectionner le bon Dwarf avant de scanner.',
     "dwarf_type_mismatch_scan":    '⚠️ {name} : configuré comme {configured} mais sessions détectées comme {detected} — vérifiez le type de Dwarf dans les paramètres.',
     "dwarf_type_mismatch_calc":    '⚠️ {name} : configuré comme {configured} mais sessions détectées comme {detected}. Corrigez le type de Dwarf avant de calculer.',
-    "mismatch_ignore_warning":      'The warning above may be incorrect. Do you want to continue anyway?',
-    "yes_continue":                 'Yes, continue anyway',
+    "mismatch_ignore_warning":      "L'avertissement ci-dessus peut être erroné. Voulez-vous continuer quand même ?",
+    "dwarf_identity_ip_mismatch":   "⚠️ {name} : le Dwarf à cette IP est {found}, pas le Dwarf {expected} choisi. L'IP est peut-être passée à un autre Dwarf.",
+    "dwarf_identity_sessions_other":"⚠️ {name} : {count} des {total} sessions de ce lecteur sont déjà archivées sous {other}, aucune sous {name}. Ce lecteur semble être celui de {other}.",
+    "dwarf_identity_continue":      "Choisissez le bon Dwarf avant d'analyser, ou continuez si vous êtes sûr. Continuer quand même ?",
+    "yes_continue":                 "Oui, continuer quand même",
 
     # Recommend Tonight Page
     "page_recommend_tonight":       "Que shooter ce soir",
