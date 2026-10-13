@@ -257,9 +257,15 @@ ui.add_css('''
         .action-icon .q-btn__content { height: 100%; justify-content: flex-start; flex-wrap: nowrap; }
         .action-icon .q-btn__content > .block { height: 2.3em; overflow: hidden; margin-top: 2px; }
     }
+    /* .with-caption: the caption shown at every size (Dwarf page's identifier
+       buttons) - same box as the small-screen one */
+    .action-icon.with-caption { width: 84px; height: 66px; min-width: 84px; padding: 4px; flex: none; }
+    .action-icon.with-caption .q-btn__content { height: 100%; justify-content: flex-start; flex-wrap: nowrap; }
+    .action-icon.with-caption .q-btn__content > .block { font-size: 10.5px; line-height: 1.15; height: 2.3em;
+        overflow: hidden; margin-top: 2px; }
     @media (min-width: 769px) and (hover: hover) {
         /* not display:none - Quasar's .block (display:block !important) wins */
-        .action-icon .q-btn__content > .block { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
+        .action-icon:not(.with-caption) .q-btn__content > .block { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
     }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {
