@@ -185,6 +185,17 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_ble_id_changed":         "Not the same Dwarf as before: {old} → {new}. Check the IP.",  # TODO
     "dwarf_ble_id_type_mismatch":   "The Dwarf at this IP is a {model}: check the type",  # TODO
     "dwarf_ble_id_save":            "Save to keep it",  # TODO
+    "dwarf_identify":               "Identify",  # TODO
+    "dwarf_identify_hint":          "The Dwarf's ring light flashes, to see which one it is - through Dwarfium Lite (running, 3.2.4 or later)",  # TODO
+    "dwarf_identify_no_lite":       "Identify goes through Dwarfium Lite (Astro Dwarf Session): start it, then try again",  # TODO
+    "dwarf_identify_running":       "Identifying the Dwarf: watch its ring light…",  # TODO
+    "dwarf_identify_ok":            "The Dwarf at {ip} flashed its ring light 3 times",  # TODO
+    "dwarf_identify_busy":          "The Dwarf at {ip} is busy (capture, goto, program…): not identified, the light would spoil the frames",  # TODO
+    "dwarf_identify_no_answer":     "No Dwarf answered at {ip}: is it on and on the network?",  # TODO
+    "dwarf_identify_occupied":      "The Dwarf at {ip} is held by another app (DwarfLab…): close it there first",  # TODO
+    "dwarf_identify_failed":        "The Dwarf at {ip} didn't accept the light command",  # TODO
+    "dwarf_identify_lite_old":      "This Dwarfium Lite can't identify a Dwarf yet: update it (3.2.4 or later)",  # TODO
+    "dwarf_identify_lite_unreachable":"Dwarfium Lite didn't answer: is it still running?",  # TODO
     "link_ip_title":                "Dwarf IP from Astro Dwarf Session",  # TODO
     "link_ip_text":                 "Astro Dwarf Session reaches this Dwarf at {ip}.\nFTP IP set here: {configured}.",  # TODO
     "link_ip_save":                 "Save as FTP IP",  # TODO

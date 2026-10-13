@@ -155,6 +155,8 @@ son adresse IP (pour le transfert FTP/WiFi) et son type (Dwarf2, Dwarf3, Dwarf M
    Dwarf (l'adresse entière peut être collée), qui terminent aussi son nom Bluetooth (`DWARF3_A1B2C3`).
    Dwarf allumé sur le réseau : **{t:dwarf_ble_id_read}** le demande au Dwarf à son IP.
    Dwarfium-Hub s'en sert pour lier ce Dwarf au même Dwarf dans Dwarfium Lite.
+   Plusieurs Dwarfs allumés : **{t:dwarf_identify}** fait clignoter l'anneau lumineux du Dwarf à cette IP
+   (via Dwarfium Lite, lancée ; jamais pendant une capture).
 7. Cliquez sur **{t:save_update_dwarf}**
 
 ## Analyser le lecteur Dwarf

@@ -54,6 +54,23 @@ def ble_id_from_bluetooth_name(text: str | None) -> str:
     return normalize_ble_id(text) if re.fullmatch(r"DWARF\w*_[0-9A-Fa-f]{6}", text, flags=re.IGNORECASE) else ""
 
 
+def identify_through_lite(lite_url: str, ip: str, timeout: float = 40) -> str:
+    """Blocking. Asks Dwarfium Lite (Astro Dwarf Session 3.2.4+, at
+    lite_url) to flash the ring light of the Dwarf at ip - only it talks to
+    a Dwarf's controls. Its answer (ok, busy, no_answer, occupied,
+    failed), or "lite_old" when that version can't, "lite_unreachable"."""
+    try:
+        response = requests.get(f"{lite_url.rstrip('/')}/api/identify", params={"ip": ip}, timeout=timeout)
+    except requests.RequestException:
+        return "lite_unreachable"
+    if response.status_code == 404:
+        return "lite_old"
+    try:
+        return str(response.json().get("result") or "failed")
+    except (ValueError, AttributeError):
+        return "failed"
+
+
 def read_device_identity(ip: str, timeout: float = 4) -> dict | None:
     """Blocking. {"name": Bluetooth name, "ble_id": 6 hex digits,
     "type": Dwarf type id or None} of the Dwarf answering at ip, or None

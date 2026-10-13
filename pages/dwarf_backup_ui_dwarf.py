@@ -22,7 +22,8 @@ from api.dwarf_backup_mtp_handler import MTPManager
 DEBUG_FORCE_MISMATCH = False
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from api.dwarf_backup_db_api import get_dwarf_ble_id, set_dwarf_ble_id
-from api.dwarf_identity import normalize_ble_id, read_device_identity
+from api.dwarf_identity import identify_through_lite, normalize_ble_id, read_device_identity
+from api.peer import peer_url
 from api.dwarf_identity_check import check_ip_identity, list_ftp_sessions, list_usb_sessions, sessions_owner
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
 from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entries_and_dwarf_data, del_dwarf
@@ -148,6 +149,8 @@ class ConfigApp(DbPageMixin):
                         self.dwarf_ble_id.on('blur', self.tidy_ble_id)
                         ui.button(t("dwarf_ble_id_read"), icon="wifi_find", on_click=self.read_ble_id) \
                             .classes(sizeBTN).tooltip(t("dwarf_ble_id_read_hint"))
+                        self.identify_button = ui.button(t("dwarf_identify"), icon="flare", on_click=self.identify_dwarf) \
+                            .classes(sizeBTN).tooltip(t("dwarf_identify_hint"))
 
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')
@@ -622,6 +625,31 @@ class ConfigApp(DbPageMixin):
             set_dwarf_ble_id(self.conn, self.dwarf_id, ble_id)
 
         self.refresh_dwarf_list()
+
+    def _dwarf_ips(self) -> list[str]:
+        ips = [ip for ip in ((self.dwarf_ip_sta_mode.value or "").strip(), (self.dwarf_session_ip.value or "").strip(),
+                             (self.ftp_ip or "").strip()) if ip and self.is_valid_ip(ip)]
+        return list(dict.fromkeys(ips))
+
+    async def identify_dwarf(self):
+        """The ring light of the Dwarf at its IP flashes - asked to Dwarfium
+        Lite, the app that talks to a Dwarf's controls."""
+        ips = self._dwarf_ips()
+        if not ips:
+            ui.notify(t("dwarf_ble_id_no_ip"), type="warning")
+            return
+        lite = peer_url()
+        if not lite:
+            ui.notify(t("dwarf_identify_no_lite"), type="warning", multi_line=True)
+            return
+        ui.notify(t("dwarf_identify_running"), type="info")
+        self.identify_button.props("loading")
+        try:
+            result = await run.io_bound(identify_through_lite, lite, ips[0])
+        finally:
+            self.identify_button.props(remove="loading")
+        ui.notify(t(f"dwarf_identify_{result}", ip=ips[0]),
+                  type="positive" if result == "ok" else "warning", multi_line=True)
 
     def tidy_ble_id(self):
         """A MAC address or a Bluetooth name typed in: its last 6 hex digits."""
