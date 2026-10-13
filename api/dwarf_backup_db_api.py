@@ -198,6 +198,24 @@ def add_dwarf_detail(conn: sqlite3.Connection, name, desc, usb_astronomy_dir, dt
         print(f"[DB ERROR] Failed to add dwarf detail: {e}")
         return None
 
+def get_dwarf_ble_id(conn: sqlite3.Connection, dwarf_id=None) -> str:
+    """The Dwarf's identifier (6 hex digits, see api/dwarf_identity.py), "" if unknown."""
+    try:
+        row = conn.execute("SELECT ble_id FROM Dwarf WHERE id = ?", (dwarf_id,)).fetchone() if dwarf_id else None
+        return (row[0] or "") if row else ""
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch dwarf ble_id: {e}")
+        return ""
+
+def set_dwarf_ble_id(conn: sqlite3.Connection, dwarf_id, ble_id: str) -> bool:
+    try:
+        conn.execute("UPDATE Dwarf SET ble_id = ? WHERE id = ?", (ble_id or None, dwarf_id))
+        commit_db(conn)
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to update dwarf ble_id: {e}")
+        return False
+
 def set_dwarf_scan_date(conn: sqlite3.Connection, dwarf_id=None):
     try:
         if dwarf_id:

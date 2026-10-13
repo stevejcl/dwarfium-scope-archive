@@ -59,6 +59,7 @@ def create_Dwarf_sql():
             last_scan_date DATETIME,
             ip_sta_mode TEXT,
             mtp_id INTEGER,
+            ble_id TEXT,
             FOREIGN KEY (mtp_id) REFERENCES MtpDevices(id)
         )
         """
@@ -418,7 +419,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 15
+CURRENT_DB_VERSION = 16
 
 def init_db(conn):
     try:
@@ -999,6 +1000,26 @@ def migrate_v15(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v15: {e}")
 
+def migrate_v16(conn):
+    try:
+        print("Migrating Database to V16...")
+        # The Dwarf's own identifier: the last 6 hex digits of its MAC
+        # address (printed on it), also the end of its Bluetooth name
+        # (= Dwarfium Lite's DWARF_UID) - see api/dwarf_identity.py
+        add_column_if_not_exists(conn, "Dwarf", "ble_id", "TEXT")
+        # A Bluetooth name noted by hand as the description: its identifier
+        from api.dwarf_identity import ble_id_from_bluetooth_name
+        for dwarf_id, description in conn.execute(
+                "SELECT id, description FROM Dwarf WHERE ble_id IS NULL OR ble_id = ''").fetchall():
+            ble_id = ble_id_from_bluetooth_name(description)
+            if ble_id:
+                conn.execute("UPDATE Dwarf SET ble_id = ? WHERE id = ?", (ble_id, dwarf_id))
+                print(f"  Dwarf {dwarf_id}: identifier {ble_id} (from its description)")
+        conn.commit()
+        print("Migration v16 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v16: {e}")
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -1015,6 +1036,7 @@ MIGRATIONS = {
     13: migrate_v13,
     14: migrate_v14,
     15: migrate_v15,
+    16: migrate_v16,
     # Add more later...
 }
 
