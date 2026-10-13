@@ -150,9 +150,12 @@ class ConfigApp(DbPageMixin):
                             validation={t("dwarf_ble_id_invalid"): lambda v: not (v or "").strip() or bool(normalize_ble_id(v))},
                         ).classes('w-55 grow min-w-0 md:grow-0').tooltip(t("dwarf_ble_id_hint"))
                         self.dwarf_ble_id.on('blur', self.tidy_ble_id)
-                        ActionIcon(t("dwarf_ble_id_read"), "wifi_find", self.read_ble_id).classes("with-caption fill")
-                        self.identify_button = ActionIcon(t("dwarf_identify"), "flare", self.identify_dwarf) \
-                            .classes("with-caption fill")
+                        # Together as wide as the other buttons (sizeBTN), shrinking
+                        # on a phone down to two icons side by side
+                        with ui.row().classes(f'{sizeBTN} gap-2 no-wrap').style('min-width: 176px'):
+                            ActionIcon(t("dwarf_ble_id_read"), "wifi_find", self.read_ble_id).classes("with-caption fill")
+                            self.identify_button = ActionIcon(t("dwarf_identify"), "flare", self.identify_dwarf) \
+                                .classes("with-caption fill")
 
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')
