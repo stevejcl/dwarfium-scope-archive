@@ -6,10 +6,12 @@
     Older firmware darks: the Dark Library also reads DWARF_DARK (next to CALI_FRAME), one folder of raw darks per
     setting - tele/wide_exp_<s>_gain_<g>_bin_<b>, dated or not; their temperature read from the frames' names when
     they carry it. "Scan the library" lists them per camera (exposure, gain, binning, frames, temperature or ?, date).
-    For a session with no CALI_FRAME master matching (the current firmware's masters stay first), the raw frames of
-    the matching DWARF_DARK folder are used - same gain / binning / exposure within 2%, the session's camera, its
-    temperature range, else the closest, else the most recent - in Explore's 🎯 badge ("older firmware") and in the
-    session sent to Siril, which builds the master. "Download the darks" copies the Dwarf's DWARF_DARK too, next to
+    A session's darks are chosen among the CALI_FRAME masters and the DWARF_DARK folders alike - same gain / binning
+    / exposure within 2% and the session's camera (now also for the CALI_FRAME masters), then the temperature in the
+    session's range, else the closest, then the date closest to the session's, before or after (the folder's date,
+    the master's file date; the most recent when the session has none), the current firmware's master on a tie -
+    one master or one folder, in Explore's 🎯 badge ("older firmware") and in the session sent to Siril, which builds
+    the master from DWARF_DARK raw frames. "Download the darks" copies the Dwarf's DWARF_DARK too, next to
     CALI_FRAME, when it has one. Help updated.
 
 ### BugFix#

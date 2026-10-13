@@ -1880,6 +1880,7 @@ class ExploreApp(DbPageMixin):
                             min_temp = int(minTemp) if minTemp is not None else None,
                             max_temp = int(maxTemp) if maxTemp is not None else None,
                             cam_name = "cam_1" if "_WIDE_" in str(session_dir or "").upper() else "cam_0",
+                            session_date = session_date,
                         )
                         # DWARF_DARK: an older firmware's raw darks
                         _legacy = f" {t('darks_legacy')}" if _dark.get("legacy") else ""

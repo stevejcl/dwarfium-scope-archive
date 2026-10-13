@@ -457,8 +457,14 @@ par caméra (cam_0 = Télé, cam_1 = Grand angle) et par exposition/gain/binning
 Les darks d'un ancien firmware, dans `DWARF_DARK` (à côté de `CALI_FRAME`), sont
 listés aussi : un dossier par réglage (`tele_exp_15_gain_60_bin_1`, parfois daté),
 avec ses darks bruts et leur température quand les fichiers la portent.
-Ils servent pour une session quand aucun master de `CALI_FRAME` ne lui correspond
-(Siril construit alors le master à partir des bruts) ; le badge 🎯 l'indique.
+
+Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et les
+dossiers de `DWARF_DARK` sans distinction : mêmes gain, binning, exposition et
+caméra ; puis la température dans la plage de la session (sinon la plus proche) ;
+puis la date la plus proche de celle de la session, avant ou après (date du
+dossier, date du fichier du master) ; le master du firmware actuel en cas
+d'égalité. Avec les bruts de `DWARF_DARK`, Siril construit le master ; le
+badge 🎯 l'indique.
 
 ## Télécharger les darks
 
