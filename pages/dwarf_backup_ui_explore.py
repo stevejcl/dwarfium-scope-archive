@@ -1879,11 +1879,14 @@ class ExploreApp(DbPageMixin):
                             binning  = binning,
                             min_temp = int(minTemp) if minTemp is not None else None,
                             max_temp = int(maxTemp) if maxTemp is not None else None,
+                            cam_name = "cam_1" if "_WIDE_" in str(session_dir or "").upper() else "cam_0",
                         )
+                        # DWARF_DARK: an older firmware's raw darks
+                        _legacy = f" {t('darks_legacy')}" if _dark.get("legacy") else ""
                         if _dark["status"] == "matched":
-                            ui.item(f"🎯 {_dark['count']} {t('darks_matched_range')}").classes('text-green-600')
+                            ui.item(f"🎯 {_dark['count']} {t('darks_matched_range')}{_legacy}").classes('text-green-600')
                         elif _dark["status"] == "partial":
-                            ui.item(f"🎯 {_dark['count']} {t('darks_matched_closest')}").classes('text-orange-500')
+                            ui.item(f"🎯 {_dark['count']} {t('darks_matched_closest')}{_legacy}").classes('text-orange-500')
                         else:
                             ui.item(t("no_darks_found")).classes('text-red-500')
                     except Exception as _e:

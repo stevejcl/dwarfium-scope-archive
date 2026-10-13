@@ -2772,12 +2772,16 @@ def delete_DarkLibrary(conn, library_id):
         return False
 
 
-def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp):
+def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp, cam_name=None):
     """
     Search all DarkLibrary locations for the given dwarf_id.
     Matching: exact gain+binning, exposure within 2%, best temp.
+    The current firmware's CALI_FRAME masters first; without one, the raw
+    darks of an older firmware's DWARF_DARK (api/dark_library_legacy.py,
+    same camera when cam_name - "cam_0" tele / "cam_1" wide - is given).
     Returns: {"status": "matched"|"partial"|"none", "files": [...],
-              "count": int, "library": str|None, "temp_match": bool}
+              "count": int, "library": str|None, "temp_match": bool,
+              "legacy": bool (DWARF_DARK raw frames)}
     """
     import re as _re
     from pathlib import Path
@@ -2807,7 +2811,7 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
             files.extend(p.glob(ext))
         return sorted(set(files))
 
-    empty = {"status": "none", "files": [], "count": 0, "library": None, "temp_match": False}
+    empty = {"status": "none", "files": [], "count": 0, "library": None, "temp_match": False, "legacy": False}
 
     try:
         cursor = conn.cursor()
@@ -2846,7 +2850,18 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
                 candidates.append((str(f), meta, lib_loc))
 
     if not candidates:
-        return empty
+        # No CALI_FRAME master: an older firmware's DWARF_DARK raw frames
+        from api.dark_library_legacy import best_legacy_set
+        try:
+            legacy, temp_ok = best_legacy_set(libs, exp_s, gain, binning, cam_name, min_temp, max_temp)
+        except OSError as e:
+            print(f"[dark match] DWARF_DARK: {e}")
+            legacy, temp_ok = None, False
+        if legacy is None:
+            return empty
+        return {"status": "matched" if (temp_ok or min_temp is None) else "partial",
+                "files": legacy["files"], "count": legacy["count"],
+                "library": str(Path(legacy["folder"]).parent.parent), "temp_match": temp_ok, "legacy": True}
 
     temp_match = False
     if min_temp is not None and max_temp is not None:
@@ -2868,7 +2883,7 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
     status = "matched" if (temp_match or min_temp is None) else "partial"
     return {"status": status, "files": files, "count": len(files),
             "library": candidates[0][2] if candidates else None,
-            "temp_match": temp_match}
+            "temp_match": temp_match, "legacy": False}
 
 
 def _resolve_cali_frame_root(location):
@@ -3114,6 +3129,7 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
         binning,
         int(min_temp) if min_temp is not None else None,
         int(max_temp) if max_temp is not None else None,
+        cam_name=cam_name,
     )
 
     bias_dir = flat_dir = bias_file = flat_file = cali_frame_dir = None
@@ -3158,7 +3174,7 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
         "lights": lights,
         "darks": {"status": dark_result["status"], "files": dark_result["files"],
                   "count": dark_result["count"], "temp_match": dark_result["temp_match"],
-                  "library": dark_result["library"]},
+                  "library": dark_result["library"], "legacy": dark_result.get("legacy", False)},
         "bias_file": bias_file, "flat_file": flat_file,
         "bias_dir":  bias_dir,  "flat_dir":  flat_dir,
         "cali_frame_dir": cali_frame_dir,
@@ -3335,6 +3351,9 @@ async def generate_siril_megastack_json(conn, rows, backup_location, stack_mode=
                 binning,
                 int(min_temp) if min_temp is not None else None,
                 int(max_temp) if max_temp is not None else None,
+                # tele / wide, for an older firmware's DWARF_DARK (the
+                # CALI_FRAME masters don't need it)
+                cam_name="cam_1" if "_WIDE_" in str(session_dir or "").upper() else "cam_0",
             )
 
         is_pre_stacked = (
@@ -3368,6 +3387,7 @@ async def generate_siril_megastack_json(conn, rows, backup_location, stack_mode=
                 "count":      dark_result["count"],
                 "temp_match": dark_result["temp_match"],
                 "library":    dark_result["library"],
+                "legacy":     dark_result.get("legacy", False),
             },
         })
 
