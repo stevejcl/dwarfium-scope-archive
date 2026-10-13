@@ -4,8 +4,8 @@
 
 ### BugFix#
     Dwarf page, identifier: "Read from the Dwarf" and "Identify" are compact icons with a small caption (shown at every
-    size), on the field's line, together as wide as the buttons of the other lines and aligned with them; on a phone
-    they shrink to two icons and the field takes the rest of the line. They took a line of their own before, "Identify" easy to miss.
+    size), on the field's line, together as wide as the buttons of the other lines and aligned with them; on a phone,
+    like the other lines, the field and the buttons each take a full line. They took a line of their own before, "Identify" easy to miss.
 
 ## [V3.4.3] - 2026-10-13
 

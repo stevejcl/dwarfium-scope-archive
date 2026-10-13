@@ -142,17 +142,17 @@ class ConfigApp(DbPageMixin):
                     # Which physical Dwarf: the end of its MAC address (on its
                     # label), also the end of its Bluetooth name - Dwarfium-Hub
                     # links it to the same Dwarf of Dwarfium Lite with it
-                    # Compact: icons with a small caption, on the field's line;
-                    # the field takes the rest of the line on a phone
-                    with ui.row().classes('w-full items-center gap-4 no-wrap'):   # gap-4: as the rows below
+                    # Compact: icons with a small caption, on the field's line -
+                    # like the rows below (gap-4, wrapping): on a phone the field
+                    # and the buttons each take a full line (w-55 / w-56 at 100%)
+                    with ui.row().classes('w-full items-center gap-4'):
                         self.dwarf_ble_id = ui.input(
                             t("dwarf_ble_id"), placeholder="A1B2C3",
                             validation={t("dwarf_ble_id_invalid"): lambda v: not (v or "").strip() or bool(normalize_ble_id(v))},
-                        ).classes('w-55 grow min-w-0 md:grow-0').tooltip(t("dwarf_ble_id_hint"))
+                        ).classes('w-55').tooltip(t("dwarf_ble_id_hint"))
                         self.dwarf_ble_id.on('blur', self.tidy_ble_id)
-                        # Together as wide as the other buttons (sizeBTN), shrinking
-                        # on a phone down to two icons side by side
-                        with ui.row().classes(f'{sizeBTN} gap-2 no-wrap').style('min-width: 176px'):
+                        # Together as wide as the other buttons (sizeBTN)
+                        with ui.row().classes(f'{sizeBTN} gap-2 no-wrap'):
                             ActionIcon(t("dwarf_ble_id_read"), "wifi_find", self.read_ble_id).classes("with-caption fill")
                             self.identify_button = ActionIcon(t("dwarf_identify"), "flare", self.identify_dwarf) \
                                 .classes("with-caption fill")
