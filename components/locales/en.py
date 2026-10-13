@@ -1081,6 +1081,9 @@ TRANSLATIONS: dict[str, str] = {
     "dwarf_type_mismatch_scan":    '⚠️ {name}: configured as {configured} but sessions detected as {detected} — please check Dwarf type in settings.',
     "dwarf_type_mismatch_calc":    '⚠️ {name}: configured as {configured} but sessions detected as {detected}. Please correct the Dwarf type before calculating.',
     "mismatch_ignore_warning":      'The warning above may be incorrect. Do you want to continue anyway?',
+    "dwarf_identity_ip_mismatch":   "⚠️ {name}: the Dwarf at this IP is {found}, not the Dwarf {expected} chosen. The IP may now belong to another Dwarf.",
+    "dwarf_identity_sessions_other":"⚠️ {name}: {count} of the {total} sessions on this drive are already archived under {other}, none under {name}. This looks like {other}'s drive.",
+    "dwarf_identity_continue":      "Select the right Dwarf before scanning, or continue if you are sure. Continue anyway?",
     "yes_continue":                 'Yes, continue anyway',
 
     # Recommend Tonight Page

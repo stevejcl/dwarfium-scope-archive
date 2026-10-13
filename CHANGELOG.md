@@ -14,6 +14,11 @@
     the 6 digits, or a whole MAC address), nothing is guessed. Dwarfium-Hub uses it to link a Dwarf for sure to the
     same Dwarf of Dwarfium Lite.
     Help updated.
+    The Dwarf connected is the one chosen: before "Analyze the Dwarf drive", next to the type check (which can't tell
+    two Dwarfs of the same model apart), over FTP the Dwarf answering at the IP must have the chosen Dwarf's
+    identifier, and on any drive the sessions found must not be archived under another Dwarf only (a session folder
+    name is unique to a device: 2 of them under another Dwarf and none under the chosen one is that other Dwarf's
+    drive). A warning lists what doesn't match and offers to continue anyway. Help updated.
 
 ## [V3.4.2] - 2026-10-11
 

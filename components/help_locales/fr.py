@@ -162,6 +162,14 @@ son adresse IP (pour le transfert FTP/WiFi) et son type (Dwarf2, Dwarf3, Dwarf M
 Scanne le répertoire USB du Dwarf et indexe toutes les sessions dans la base de données.
 À exécuter après avoir connecté le Dwarf en USB.
 
+Avant l'analyse, Scope Archive vérifie que le Dwarf branché est bien celui choisi :
+- son modèle, d'après ses images ;
+- en FTP, son identifiant : le Dwarf qui répond à l'IP doit avoir l'**{t:dwarf_ble_id}** enregistré ;
+- ses sessions : si celles du lecteur sont déjà archivées sous un autre Dwarf et aucune sous celui
+  choisi, c'est le lecteur de l'autre Dwarf - même entre deux Dwarfs du même modèle.
+
+Un avertissement propose alors de choisir le bon Dwarf, ou de continuer quand même.
+
 ## Afficher les données Dwarf
 
 Ouvre la page **{t:page_explore}**r pour visualiser les données stockées sur votre Dwarf.
