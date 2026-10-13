@@ -67,3 +67,11 @@ def register() -> None:
     @app.get("/api/peer/status")
     def peer_status():
         return {"astroDwarfSession": {"url": peer_url(), "version": peer_version()}}
+
+    @app.get("/api/app-info")
+    def app_info():
+        """Which app answers on this port, and its version (Dwarfium-Hub:
+        tells this app from another program on the port, and learns the
+        version of an installation it didn't make)."""
+        from pages.astro_settings import _get_app_version
+        return {"app": "dwarfium_scope_archive", "name": "Dwarfium Scope Archive", "version": _get_app_version()}
