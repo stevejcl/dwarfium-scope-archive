@@ -154,6 +154,8 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
    Dwarf (the whole address can be pasted), which also end its Bluetooth name (`DWARF3_A1B2C3`).
    Dwarf on and on the network: **{t:dwarf_ble_id_read}** asks the Dwarf at its IP.
    Dwarfium-Hub uses it to link this Dwarf to the same Dwarf in Dwarfium Lite.
+   Several Dwarfs on: **{t:dwarf_identify}** flashes the ring light of the Dwarf at this IP
+   (through Dwarfium Lite, running; never during a capture).
 7. Click **{t:save_update_dwarf}**
 
 ## Analyze Dwarf Drive

@@ -19,6 +19,10 @@
     identifier, and on any drive the sessions found must not be archived under another Dwarf only (a session folder
     name is unique to a device: 2 of them under another Dwarf and none under the chosen one is that other Dwarf's
     drive). A warning lists what doesn't match and offers to continue anyway. Help updated.
+    Identify a Dwarf: "Identify" on the Dwarf page flashes the ring light of the Dwarf at its IP, to see which one it is
+    when several are on - asked to Dwarfium Lite (Astro Dwarf Session 3.2.4+, running: its address is the one it says
+    hello with), which refuses during a capture. Each case said (not running, older version, busy, no answer, held by
+    another app). Help updated.
 
 ## [V3.4.2] - 2026-10-11
 
