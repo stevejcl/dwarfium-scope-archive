@@ -174,6 +174,17 @@ TRANSLATIONS: dict[str, str] = {
     "ip_sta_mode":                  "IP Address STA Mode",  # TODO
     "session_ip":                   "Session IP",  # TODO
     "session_ip_hint":              "Second FTP IP of this Dwarf, kept on this PC only (not in the database) - e.g. its IP on a remote site reached through Tailscale. The FTP pages use whichever of the two IPs answers.",  # TODO
+    "dwarf_ble_id":                 "Dwarf ID (end of its MAC)",  # TODO
+    "dwarf_ble_id_hint":            "The last 6 characters of the MAC address printed on the Dwarf - also the end of its Bluetooth name (DWARF3_A1B2C3). You can paste the whole MAC address. Dwarfium-Hub uses it to link this Dwarf to the same one in Dwarfium Lite.",  # TODO
+    "dwarf_ble_id_invalid":         "6 hexadecimal characters (0-9, A-F), or the whole MAC address",  # TODO
+    "dwarf_ble_id_read":            "Read from the Dwarf",  # TODO
+    "dwarf_ble_id_read_hint":       "Asks the Dwarf at its IP (Wi-Fi on) for its name",  # TODO
+    "dwarf_ble_id_no_ip":           "No IP for this Dwarf: type the end of the MAC address printed on it instead",  # TODO
+    "dwarf_ble_id_no_answer":       "The Dwarf didn't answer at {ip}: is it on and on the network? Otherwise type the end of the MAC address printed on it.",  # TODO
+    "dwarf_ble_id_read_ok":         "Dwarf {name}",  # TODO
+    "dwarf_ble_id_changed":         "Not the same Dwarf as before: {old} → {new}. Check the IP.",  # TODO
+    "dwarf_ble_id_type_mismatch":   "The Dwarf at this IP is a {model}: check the type",  # TODO
+    "dwarf_ble_id_save":            "Save to keep it",  # TODO
     "link_ip_title":                "Dwarf IP from Astro Dwarf Session",  # TODO
     "link_ip_text":                 "Astro Dwarf Session reaches this Dwarf at {ip}.\nFTP IP set here: {configured}.",  # TODO
     "link_ip_save":                 "Save as FTP IP",  # TODO

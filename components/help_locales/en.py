@@ -150,7 +150,11 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
       5. You can then register your Dwarf, but the scan function will not be available
       6. To transfer a session, you must use the MTP Page
 5. Set the **{t:ip_sta_mode}** if you want WiFi/FTP transfer
-6. Click **{t:save_update_dwarf}**
+6. Fill in the **{t:dwarf_ble_id}**: the last 6 characters of the MAC address printed on the
+   Dwarf (the whole address can be pasted), which also end its Bluetooth name (`DWARF3_A1B2C3`).
+   Dwarf on and on the network: **{t:dwarf_ble_id_read}** asks the Dwarf at its IP.
+   Dwarfium-Hub uses it to link this Dwarf to the same Dwarf in Dwarfium Lite.
+7. Click **{t:save_update_dwarf}**
 
 ## Analyze Dwarf Drive
 

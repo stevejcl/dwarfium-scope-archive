@@ -21,6 +21,8 @@ from api.dwarf_backup_mtp_handler import MTPManager
 # before committing.
 DEBUG_FORCE_MISMATCH = False
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
+from api.dwarf_backup_db_api import get_dwarf_ble_id, set_dwarf_ble_id
+from api.dwarf_identity import normalize_ble_id, read_device_identity
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
 from api.dwarf_backup_db_api import has_related_dwarf_entries, delete_dwarf_entries_and_dwarf_data, del_dwarf
 from api.dwarf_backup_db_api import get_dwarf_sessions_error
@@ -133,6 +135,18 @@ class ConfigApp(DbPageMixin):
                         label=t("type_label"),
                         on_change=self.modif_dwarf_type
                     ).props('stack-label').props('outlined').classes('w-60')
+
+                    # Which physical Dwarf: the end of its MAC address (on its
+                    # label), also the end of its Bluetooth name - Dwarfium-Hub
+                    # links it to the same Dwarf of Dwarfium Lite with it
+                    with ui.row().classes('items-center gap-4'):
+                        self.dwarf_ble_id = ui.input(
+                            t("dwarf_ble_id"), placeholder="A1B2C3",
+                            validation={t("dwarf_ble_id_invalid"): lambda v: not (v or "").strip() or bool(normalize_ble_id(v))},
+                        ).classes('w-55').tooltip(t("dwarf_ble_id_hint"))
+                        self.dwarf_ble_id.on('blur', self.tidy_ble_id)
+                        ui.button(t("dwarf_ble_id_read"), icon="wifi_find", on_click=self.read_ble_id) \
+                            .classes(sizeBTN).tooltip(t("dwarf_ble_id_read_hint"))
 
                     with ui.row().classes('items-center gap-4'):
                         self.dwarf_astroDir = ui.input(t("astronomy_dir")).classes('w-55')
@@ -322,6 +336,7 @@ class ConfigApp(DbPageMixin):
             self.dwarf_ip_sta_mode.value = row[5]
             self.dwarf_session_ip.value = get_session_ip(self.dwarf_id)
             self.dwarf_mtp_id = row[6]
+            self.dwarf_ble_id.value = get_dwarf_ble_id(self.conn, self.dwarf_id)
             self.modif_dwarf_type()
             self.refresh_error_sessions_btn()
             await self.show_local_data()
@@ -533,6 +548,7 @@ class ConfigApp(DbPageMixin):
         self.dwarf_type_var.value = self.dwarf_type_map[2]  # Default to Dwarf3
         self.dwarf_ip_sta_mode.value = ""
         self.dwarf_session_ip.value = ""
+        self.dwarf_ble_id.value = ""
         self.ftp_ip = ""
         self.dwarf_scan_date.text = ""
         self.dwarf_status = None
@@ -590,6 +606,10 @@ class ConfigApp(DbPageMixin):
         if not name:
             ui.notify(t("name_required"), type="negative")
             return
+        ble_id = normalize_ble_id(self.dwarf_ble_id.value)
+        if (self.dwarf_ble_id.value or "").strip() and not ble_id:
+            ui.notify(t("dwarf_ble_id_invalid"), type="negative")
+            return
 
         if self.dwarf_id:  # Update
             set_dwarf_detail(self.conn, name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id, self.dwarf_id)
@@ -597,8 +617,43 @@ class ConfigApp(DbPageMixin):
         else:  # Insert
             self.dwarf_id = add_dwarf_detail(self.conn, name, desc, usb_astronomy_dir, dtype, ip_sta_mode, mtp_id)
             ui.notify(t("dwarf_created", name=name, id=self.dwarf_id), type="positive")
+        if self.dwarf_id:
+            set_dwarf_ble_id(self.conn, self.dwarf_id, ble_id)
 
         self.refresh_dwarf_list()
+
+    def tidy_ble_id(self):
+        """A MAC address or a Bluetooth name typed in: its last 6 hex digits."""
+        ble_id = normalize_ble_id(self.dwarf_ble_id.value)
+        if ble_id and ble_id != self.dwarf_ble_id.value:
+            self.dwarf_ble_id.value = ble_id
+
+    async def read_ble_id(self):
+        """The identifier read from the Dwarf itself, when it is on the network."""
+        ips = [ip for ip in ((self.dwarf_ip_sta_mode.value or "").strip(), (self.dwarf_session_ip.value or "").strip(),
+                             (self.ftp_ip or "").strip()) if ip and self.is_valid_ip(ip)]
+        if not ips:
+            ui.notify(t("dwarf_ble_id_no_ip"), type="warning")
+            return
+        info = None
+        for ip in dict.fromkeys(ips):
+            info = await run.io_bound(read_device_identity, ip)
+            if info and info["ble_id"]:
+                break
+        if not info or not info["ble_id"]:
+            ui.notify(t("dwarf_ble_id_no_answer", ip=", ".join(dict.fromkeys(ips))), type="warning", multi_line=True)
+            return
+        previous = normalize_ble_id(self.dwarf_ble_id.value)
+        self.dwarf_ble_id.value = info["ble_id"]
+        ui.notify(t("dwarf_ble_id_read_ok", name=info["name"]), type="positive")
+        if previous and previous != info["ble_id"]:
+            ui.notify(t("dwarf_ble_id_changed", old=previous, new=info["ble_id"]), type="warning", multi_line=True)
+        selected = self.dwarf_type_name_to_id.get(self.dwarf_type_var.value)
+        if info["type"] and selected and info["type"] != selected:
+            ui.notify(t("dwarf_ble_id_type_mismatch", model=self.dwarf_type_map.get(info["type"], info["type"])),
+                      type="warning", multi_line=True)
+        if self.dwarf_id:
+            ui.notify(t("dwarf_ble_id_save"), type="info")
 
     async def analyze_usb_drive(self):
         """Analyze the Dwarf drive and scan files."""
