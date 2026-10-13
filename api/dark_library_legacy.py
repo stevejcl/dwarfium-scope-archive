@@ -13,14 +13,15 @@ temperature (_22C); the older ones carry none (temperature unknown).
 
 Scope Archive finds DWARF_DARK where the Dark Library's CALI_FRAME is (copied
 side by side by the Transfer page), lists it on the Dark Library page, and
-uses its raw frames for a session when no CALI_FRAME master matches - the
-current firmware's masters first (find_matching_darks): Siril builds the
-master from the raw frames.
+uses its raw frames for a session like the CALI_FRAME masters - closest
+temperature, then closest date to the session, the current firmware's
+master on a tie (pick_dark_set): Siril builds the master from the raw frames.
 """
 from __future__ import annotations
 
 import re
 import statistics
+from datetime import datetime
 from pathlib import Path
 
 LEGACY_DIR_NAME = "DWARF_DARK"
@@ -90,40 +91,70 @@ def scan_legacy_darks(location) -> dict:
                 continue
             temps = [int(m.group("temp")) for m in (_TEMP_RE.search(f.name) for f in files) if m]
             result["sets"].append({
-                **meta, "folder": str(folder), "files": [str(f) for f in files], "count": len(files),
+                **meta, "when": parse_when(meta["date"]), "legacy": True, "folder": str(folder), "files": [str(f) for f in files], "count": len(files),
                 "temp_c": round(statistics.median(temps)) if temps else None,
             })
             result["total"] += len(files)
     return result
 
 
-def best_legacy_set(locations, exp_s: float, gain: int, binning: int, cam: str | None,
-                    min_temp: int | None, max_temp: int | None) -> tuple[dict | None, bool]:
-    """The DWARF_DARK set matching a session - same gain and binning,
-    exposure within 2% (as for CALI_FRAME), same camera when given - with
-    its temperature in the session's range when known, else the closest
-    known temperature, else the most recent. (set, temperature matched)."""
-    exp_tol = max(0.05, exp_s * 0.02)
-    matches = []
-    for location in locations:
-        for s in scan_legacy_darks(location)["sets"]:
-            if s["gain"] != gain or s["binning"] != binning or abs(s["exp_s"] - exp_s) > exp_tol:
-                continue
-            if cam and s["cam"] != cam:
-                continue
-            matches.append(s)
-    if not matches:
+def parse_when(value) -> datetime | None:
+    """A date as a datetime: a datetime, a session date ("2025-11-18
+    06:40:05.123456"), or a DWARF_DARK folder date ("2025-11-18-06-40-05")."""
+    if isinstance(value, datetime):
+        return value
+    if not value:
+        return None
+    text = str(value).strip()
+    for fmt, size in (("%Y-%m-%d %H:%M:%S", 19), ("%Y-%m-%dT%H:%M:%S", 19),
+                      ("%Y-%m-%d-%H-%M-%S", 19), ("%Y-%m-%d", 10)):
+        try:
+            return datetime.strptime(text[:size], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+TEMP_SLACK_C = 2        # temperatures this close to the best one count as equal
+
+
+def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
+                  session_date=None) -> tuple[dict | None, bool]:
+    """The dark set for a session among sets already matching its settings
+    and camera (each: temp_c - None when unknown -, when - a datetime or
+    None -, legacy - DWARF_DARK raw frames or a CALI_FRAME master):
+
+    1. the temperature in the session's range, else the closest known one
+       (within TEMP_SLACK_C), else the sets of unknown temperature;
+    2. among those, the date closest to the session's, before or after (the
+       most recent when the session's date is unknown; undated sets last);
+    3. on a tie, the current firmware's CALI_FRAME master.
+
+    (set, temperature matched)."""
+    if not sets:
         return None, False
-
-    def recent(s):                      # undated (oldest firmware) last
-        return s["date"] or ""
-
-    if min_temp is not None and max_temp is not None:
-        in_range = [s for s in matches if s["temp_c"] is not None and min_temp <= s["temp_c"] <= max_temp]
+    known = [s for s in sets if s["temp_c"] is not None]
+    temp_ok = False
+    pool = sets
+    if min_temp is not None and max_temp is not None and known:
+        in_range = [s for s in known if min_temp <= s["temp_c"] <= max_temp]
         if in_range:
-            return max(in_range, key=recent), True
-        known = sorted((s for s in matches if s["temp_c"] is not None), key=recent, reverse=True)
-        if known:                       # closest temperature; the most recent of equals (min keeps the first)
+            pool, temp_ok = in_range, True
+        else:
             middle = (min_temp + max_temp) / 2.0
-            return min(known, key=lambda s: abs(s["temp_c"] - middle)), False
-    return max(matches, key=recent), False
+            best = min(abs(s["temp_c"] - middle) for s in known)
+            pool = [s for s in known if abs(s["temp_c"] - middle) <= best + TEMP_SLACK_C]
+    elif known:
+        pool = known
+
+    session_dt = parse_when(session_date)
+
+    def distance(s):
+        when = s.get("when")
+        if when is None:
+            return float("inf")
+        if session_dt is None:
+            return -when.timestamp()            # the most recent
+        return abs((when - session_dt).total_seconds())
+
+    return min(pool, key=lambda s: (distance(s), s.get("legacy", False))), temp_ok

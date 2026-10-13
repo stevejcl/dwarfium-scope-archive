@@ -456,9 +456,14 @@ by camera (cam_0 = Tele, cam_1 = Wide) and by exposure/gain/binning.
 
 An older firmware's darks, in `DWARF_DARK` (next to `CALI_FRAME`), are listed
 too: one folder per setting (`tele_exp_15_gain_60_bin_1`, sometimes dated), with
-its raw darks and their temperature when the files carry it. They are used for
-a session when no `CALI_FRAME` master matches it (Siril then builds the master
-from the raw frames); the 🎯 badge says so.
+its raw darks and their temperature when the files carry it.
+
+For a session, the darks are chosen among the `CALI_FRAME` masters and the
+`DWARF_DARK` folders alike: same gain, binning, exposure and camera; then the
+temperature in the session's range (else the closest); then the date closest to
+the session's, before or after (the folder's date, the master's file date); the
+current firmware's master on a tie. With `DWARF_DARK` raw frames, Siril builds
+the master from them; the 🎯 badge says so.
 
 ## Download Darks
 
