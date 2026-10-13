@@ -8,7 +8,7 @@
     they carry it. "Scan the library" lists them per camera (exposure, gain, binning, frames, temperature or ?, date).
     A session's darks are chosen among the CALI_FRAME masters and the DWARF_DARK folders alike - same gain / binning
     / exposure within 2% and the session's camera (now also for the CALI_FRAME masters), then the temperature in the
-    session's range, else the closest, then the date closest to the session's, before or after (the folder's date,
+    session's range ±2 °C, else the closest, then the date closest to the session's, before or after (the folder's date,
     the master's file date; the most recent when the session has none), the current firmware's master on a tie -
     one master or one folder, in Explore's 🎯 badge ("older firmware") and in the session sent to Siril, which builds
     the master from DWARF_DARK raw frames. "Download the darks" copies the Dwarf's DWARF_DARK too, next to

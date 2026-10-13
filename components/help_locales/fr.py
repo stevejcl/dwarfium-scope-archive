@@ -460,7 +460,7 @@ avec ses darks bruts et leur température quand les fichiers la portent.
 
 Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et les
 dossiers de `DWARF_DARK` sans distinction : mêmes gain, binning, exposition et
-caméra ; puis la température dans la plage de la session (sinon la plus proche) ;
+caméra ; puis la température dans la plage de la session, à ±2 °C (sinon la plus proche) ;
 puis la date la plus proche de celle de la session, avant ou après (date du
 dossier, date du fichier du master) ; le master du firmware actuel en cas
 d'égalité. Avec les bruts de `DWARF_DARK`, Siril construit le master ; le

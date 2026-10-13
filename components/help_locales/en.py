@@ -460,7 +460,7 @@ its raw darks and their temperature when the files carry it.
 
 For a session, the darks are chosen among the `CALI_FRAME` masters and the
 `DWARF_DARK` folders alike: same gain, binning, exposure and camera; then the
-temperature in the session's range (else the closest); then the date closest to
+temperature in the session's range, ±2 °C (else the closest); then the date closest to
 the session's, before or after (the folder's date, the master's file date); the
 current firmware's master on a tie. With `DWARF_DARK` raw frames, Siril builds
 the master from them; the 🎯 badge says so.
