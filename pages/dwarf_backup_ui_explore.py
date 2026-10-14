@@ -2165,11 +2165,12 @@ class ExploreApp(DbPageMixin):
 
             with ui.column().classes('gap-1').bind_visibility_from(toggle, 'value'):
 
-                with ui.row().classes("justify-center items-baseline flex-nowrap mx-auto"):
+                # wraps on a phone: flex-nowrap squeezed the labels and buttons letter by letter
+                with ui.row().classes("w-full justify-center items-center flex-wrap gap-x-4 gap-y-2 my-2"):
                     if "_MOSAIC_" in file_path:
                         panels = get_mosaic_panels(os.path.dirname(self.preview_image_path))
                         if len(panels) > 1:
-                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-base mt-4 mb-4 ml-4 mr-2')
+                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-base whitespace-nowrap')
 
                             # --- Mosaic layout / scale info (from shotsInfo.json) ---
                             mosaic_dir = os.path.dirname(self.preview_image_path)
@@ -2188,14 +2189,14 @@ class ExploreApp(DbPageMixin):
                                     layout_txt = f'🧩 {view_cols} × {view_rows}'
                                     if view_scale_x is not None and view_scale_y is not None:
                                         layout_txt += f'  —  {t("mosaic_scale")}: {view_scale_x} × {view_scale_y}'
-                                    ui.label(layout_txt).classes('text-sm mt-4 mb-4 ml-0')
+                                    ui.label(layout_txt).classes('text-sm whitespace-nowrap')
 
-                            ui.button(t("show_mosaic_gallery"), on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels)).classes("m-4")
+                            ui.button(t("show_mosaic_gallery"), on_click=lambda: self.open_gallery_dialog(os.path.dirname(self.preview_image_path),panels))
 
                         panels_png = get_mosaic_panels(os.path.dirname(self.preview_image_path), img_type="png")
                         panels_fits = get_mosaic_panels(os.path.dirname(self.preview_image_path), img_type="fits")
                         if len(panels_png) > 1:
-                            ui.button(t("create_mosaic"), on_click=lambda: self.create_and_show_panorama(os.path.dirname(self.preview_image_path),panels, panels_png, panels_fits)).classes("m-4")
+                            ui.button(t("create_mosaic"), on_click=lambda: self.create_and_show_panorama(os.path.dirname(self.preview_image_path),panels, panels_png, panels_fits))
 
                 for data_detail in details_preview:
                     ui.item(data_detail).classes('text-sm py-0 min-h-0 leading-tight')

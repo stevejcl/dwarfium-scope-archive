@@ -7,6 +7,9 @@
     files found, file name with its size), tighter lines; on a phone, a line that wraps ("Identify target", the
     temperatures, "Score") no longer leaves a large gap, and the empty "classified as" line takes no room. Manual
     Explore gets the Infos / Image tabs of Explore.
+    Explore, a mosaic's line (panels found, layout and scale, "Show mosaic gallery", "Create mosaic"): on a phone it
+    wraps instead of squeezing its labels and buttons letter by letter. Manual Explore's gallery line (images found,
+    "Show gallery") alike.
     Manual Explore: a session whose image can't be found raised "'List' object has no attribute 'append'"; it now
     says so in the details and in the Image tab, without trying to show the image.
 
