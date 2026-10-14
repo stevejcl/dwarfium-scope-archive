@@ -29,6 +29,8 @@
     blank, its spinner turning - the images' downloads filled the threads the page's own computation needed. They now
     load on their own threads, and those of a page left are dropped; no more "The client this element belongs to has
     been deleted" in the log either.
+    What to shoot tonight: no more "'NoneType' object has no attribute 'execute'" when the page is left, reloaded or
+    briefly disconnected during the targets' computation (its database connection is closed then).
 
 ## [V3.4.4] - 2026-10-13
 

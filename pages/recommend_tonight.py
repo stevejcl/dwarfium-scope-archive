@@ -748,7 +748,7 @@ class RecommendTonightApp(DbPageMixin):
         ui.timer(0.1, self.refresh_results, once=True)
 
     def _on_location_change(self, e):
-        locs = get_all_locations_simple(self.conn)
+        locs = get_all_locations_simple(self.ensure_conn())
         self.location = next((l for l in locs if l["name"] == e.value), None)
 
     def _on_date_change(self, e):
@@ -774,6 +774,9 @@ class RecommendTonightApp(DbPageMixin):
             ui.notify(t("error_generic", error=str(e)), type="negative")
             self.results = []
         finally:
+            # left or reloaded during the computation: nothing to show
+            if self.results_container.is_deleted:
+                return
             self.loading_spinner.set_visibility(False)
             self.refresh_btn.enable()
 
@@ -884,7 +887,8 @@ class RecommendTonightApp(DbPageMixin):
         DsoImageCache after first fetch (opt-in via the 'show images' toggle
         — needs network the first time per target)."""
         catalog_id = r.catalog_id or r.display_name
-        cached = get_cached_image(self.conn, catalog_id)
+        # ensure_conn: a disconnect during the computation closed self.conn
+        cached = get_cached_image(self.ensure_conn(), catalog_id)
 
         image_holder = ui.column().classes("w-full gap-0 my-1")
 
