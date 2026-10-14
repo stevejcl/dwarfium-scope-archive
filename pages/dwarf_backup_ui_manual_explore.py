@@ -430,7 +430,7 @@ class ManualExploreApp(DbPageMixin):
                             with ui.row().classes('w-full').style('scrollbar-width: thin; scrollbar-gutter: stable;'):
                                 with ui.card().tight().classes('w-full'):
                                     # List on the side
-                                    self.details_files = ui.list().classes('w-full overflow-y-auto')
+                                    self.details_files = ui.list().classes('w-full overflow-y-auto session-details')
                                     self.details_preview = ui.list().classes('w-full overflow-y-auto')
                         with ui.tab_panel(tab_image).classes('p-0'):
                             self.preview_image = ui.image().classes('w-full h-auto mb-4').props('fit=contain').on('click', self.show_fullscreen_image)

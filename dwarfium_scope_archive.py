@@ -270,6 +270,10 @@ ui.add_css('''
         /* not display:none - Quasar's .block (display:block !important) wins */
         .action-icon:not(.with-caption) .q-btn__content > .block { font-size: 0; line-height: 0; height: 0; overflow: hidden; }
     }
+    /* Explore / Manual Explore: the session's info lines, a small line
+       spacing (a q-item is 48px high by default) - still airier than the
+       file details under them */
+    .session-details .q-item { min-height: 0; padding-top: 6px; padding-bottom: 6px; }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {
         .mobile-nav-bar { display: none !important; }
