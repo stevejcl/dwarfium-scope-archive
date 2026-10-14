@@ -8,7 +8,8 @@
     temperatures, "Score") no longer leaves a large gap, and the empty "classified as" line takes no room. Manual
     Explore gets the Infos / Image tabs of Explore.
     Explore, a mosaic's line (panels found, layout and scale, "Show mosaic gallery", "Create mosaic"): on a phone it
-    wraps instead of squeezing its labels and buttons letter by letter.
+    wraps instead of squeezing its labels and buttons letter by letter. Manual Explore's gallery line (images found,
+    "Show gallery") alike.
 
 ## [V3.4.4] - 2026-10-13
 

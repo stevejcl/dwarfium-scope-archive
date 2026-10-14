@@ -1212,8 +1212,10 @@ class ManualExploreApp(DbPageMixin):
 
             # --- Gallery: scan the whole current object for images (not just this session) ---
             if len(self.gallery_image_data) > 1:
-                ui.label(f'📦 {len(self.gallery_image_data)} {t("images_found")}').classes('text-lg m-4')
-                ui.button(t("show_gallery"), on_click=self.show_session_gallery).classes("m-4")
+                # like Explore's mosaic line: wraps on a phone
+                with ui.row().classes('w-full justify-center items-center flex-wrap gap-x-4 gap-y-2 my-2'):
+                    ui.label(f'📦 {len(self.gallery_image_data)} {t("images_found")}').classes('text-base whitespace-nowrap')
+                    ui.button(t("show_gallery"), on_click=self.show_session_gallery)
 
             ui.item(f"🔭 {t('dwarf_label')}: {dwarf_name}").classes('text-gray-600')
             ui.item(f"💾 {t('drive_label')}: {backup_drive_name}").classes('text-gray-600')
