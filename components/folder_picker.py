@@ -61,7 +61,9 @@ async def _page_folder(start_dir: str | None, root: str | None) -> str | None:
         current = os.path.abspath(root) if root else os.path.expanduser("~")
     state = {"path": current}
 
-    with ui.dialog() as dialog, ui.card().classes("w-[min(92vw,640px)]"):
+    # Wide enough for the Dwarf's long session folder names (a dialog's card
+    # is 560px at most otherwise); a name too long wraps beside its icon
+    with ui.dialog() as dialog, ui.card().classes("w-[min(95vw,1000px)]").style("max-width: none"):
         ui.label(t("folder_picker_title")).classes("text-base font-medium")
         path_label = ui.label("").classes("text-sm break-all")
         listing = ui.column().classes("w-full gap-0").style("max-height: 50vh; overflow-y: auto")
@@ -79,14 +81,14 @@ async def _page_folder(start_dir: str | None, root: str | None) -> str | None:
             if parent != path and _inside(parent, root):
                 ui.button("..", icon="arrow_upward", on_click=lambda p=parent: show(p)).props(
                     "flat dense no-caps align=left"
-                ).classes("w-full")
+                ).classes("w-full folder-picker-item")
             if not names:
                 ui.label(t("folder_picker_empty")).classes("text-sm text-gray-500 p-2")
             for name in names:
                 child = os.path.join(path, name)
                 ui.button(name, icon="folder", on_click=lambda p=child: show(p)).props(
                     "flat dense no-caps align=left"
-                ).classes("w-full")
+                ).classes("w-full folder-picker-item")
 
     await show(current)
     return await dialog

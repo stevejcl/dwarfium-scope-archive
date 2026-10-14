@@ -23,6 +23,8 @@
     being squeezed to a letter per line next to it.
     Add Manual Session and Mosaic pages: no more browser error "Cannot read properties of null (reading
     'startsWith')" on opening - their thumbnails were created with no image (None) before a session is chosen.
+    Folder picker (in a browser - Transfer, Dark Library...): wider (up to 1000px), a long folder name wraps beside
+    its icon - the Dwarf's session folders overlapped one another.
 
 ## [V3.4.4] - 2026-10-13
 
