@@ -21,6 +21,8 @@
     Catalog page, on a phone: its buttons each take a full line.
     Dwarf page, on a phone: the local data / archive / free space card goes under "Empty local archive" instead of
     being squeezed to a letter per line next to it.
+    Add Manual Session and Mosaic pages: no more browser error "Cannot read properties of null (reading
+    'startsWith')" on opening - their thumbnails were created with no image (None) before a session is chosen.
 
 ## [V3.4.4] - 2026-10-13
 

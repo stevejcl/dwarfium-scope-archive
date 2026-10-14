@@ -192,7 +192,7 @@ class MosaicApp(DbPageMixin):
 
                 # RIGHT COLUMN
                 with ui.column().classes('w-1/4'):
-                    self.thumbnail_primary = ui.image(self.session_select_thumbnail_primary) \
+                    self.thumbnail_primary = ui.image(self.session_select_thumbnail_primary or "") \
                                      .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
                                      .on('click', lambda: self._show_full_image(self.session_select_image_primary))
         # ── Secondary session card ───────────────────────────────────────
@@ -225,7 +225,7 @@ class MosaicApp(DbPageMixin):
 
                 # RIGHT COLUMN
                 with ui.column().classes('w-1/4'):
-                    self.thumbnail_secondary = ui.image(self.session_select_thumbnail_secondary) \
+                    self.thumbnail_secondary = ui.image(self.session_select_thumbnail_secondary or "") \
                                      .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
                                      .on('click', lambda: self._show_full_image(self.session_select_image_secondary))
 
