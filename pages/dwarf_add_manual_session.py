@@ -517,7 +517,8 @@ class AddManualSession(DbPageMixin):
 
                     # RIGHT COLUMN
                     with ui.column().classes('w-1/4'):
-                        self.thumbnail = ui.image(self.session_select_thumbnail) \
+                        # no thumbnail yet: "" - NiceGUI's image fails on a None source (JS "startsWith")
+                        self.thumbnail = ui.image(self.session_select_thumbnail or "") \
 	                                     .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
                                          .on('click', self.show_full_image)
 
@@ -659,7 +660,7 @@ class AddManualSession(DbPageMixin):
 
     def show_full_image(self, e):
         with ui.dialog() as dialog, ui.card().classes("w-full h-auto max-w-screen-xl"):
-            ui.image(self.session_select_image).classes('w-full h-auto object-contain rounded-xl')
+            ui.image(self.session_select_image or "").classes('w-full h-auto object-contain rounded-xl')
             ui.button(t("close"), on_click=dialog.close)
 
         dialog.open()
