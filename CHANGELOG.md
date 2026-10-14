@@ -1,5 +1,13 @@
 # Changelog
 
+## [V3.4.5] - 2026-10-14
+
+### BugFix#
+    Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the
+    files found, file name with its size), tighter lines; on a phone, a line that wraps ("Identify target", the
+    temperatures, "Score") no longer leaves a large gap, and the empty "classified as" line takes no room. Manual
+    Explore gets the Infos / Image tabs of Explore.
+
 ## [V3.4.4] - 2026-10-13
 
 ### Add

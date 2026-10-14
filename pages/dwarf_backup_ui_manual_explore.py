@@ -416,18 +416,27 @@ class ManualExploreApp(DbPageMixin):
                             self.delete_session_icon = ActionIcon(t("delete_session_btn"), "delete", self.delete_directory, danger=True).classes('ml-4')
                             self.delete_session_icon.visible = False
 
-                    with ui.row().classes('w-full'):
-                        with ui.card().tight().classes('w-full flex flex-col overflow-hidden flex-1'):
-                            self.details_files   = ui.list().classes('w-full overflow-y-auto')
-                            self.details_preview = ui.list().classes('w-full overflow-y-auto')
-
-                    with ui.row().classes('w-full'):
-                        self.preview_image = (
-                            ui.image()
-                            .classes('w-full h-auto mb-4')
-                            .props('fit=contain')
-                            .on('click', self.show_fullscreen_image)
-                        )
+                    # Infos / Image as two tabs sliding into each other (swipe on a
+                    # touch screen) instead of the image under a long info list
+                    # (user-requested Oct 2026)
+                    with ui.tabs().props('dense align=left inline-label active-color=primary indicator-color=primary') \
+                            .classes('w-full explore-view-tabs') as self.view_tabs:
+                        tab_infos = ui.tab('infos', label=t('explore_tab_infos'), icon='info')
+                        tab_image = ui.tab('image', label=t('explore_tab_image'), icon='image')
+                    with ui.tab_panels(self.view_tabs, value=tab_infos) \
+                            .props('animated swipeable transition-prev=slide-right transition-next=slide-left') \
+                            .classes('w-full bg-transparent'):
+                        with ui.tab_panel(tab_infos).classes('p-0'):
+                            with ui.row().classes('w-full').style('scrollbar-width: thin; scrollbar-gutter: stable;'):
+                                with ui.card().tight().classes('w-full'):
+                                    # List on the side
+                                    self.details_files = ui.list().classes('w-full overflow-y-auto')
+                                    self.details_preview = ui.list().classes('w-full overflow-y-auto')
+                        with ui.tab_panel(tab_image).classes('p-0'):
+                            self.preview_image = ui.image().classes('w-full h-auto mb-4').props('fit=contain').on('click', self.show_fullscreen_image)
+                            # Why there is no image: no session chosen, or its image can't be read
+                            self.no_image_label = ui.label(t('explore_no_image')).classes('text-gray-500 p-4') \
+                                .bind_visibility_from(self.preview_image, 'visible', backward=lambda v: not v)
 
         self.fullscreen_image.visible = False
         self.preview_image.visible    = False
@@ -845,6 +854,9 @@ class ManualExploreApp(DbPageMixin):
     def clear_selected_object(self):
         self.fullscreen_image.visible = False
         self.preview_image.visible    = False
+        if getattr(self, 'no_image_label', None):
+            self.no_image_label.text = t('explore_no_image')
+
         self.details_files.clear()
         self.details_preview.clear()
         self._hide_action_buttons()
@@ -1147,7 +1159,7 @@ class ManualExploreApp(DbPageMixin):
             description, _ = get_name_object(description_db)
             tag_display = f"  [{session_tag}]" if session_tag else ""
             ui.item(f"{t('session_label')}: {session_name}{tag_display}").classes('text-blue-650')
-            with ui.row().classes('w-full gap-8 items-start'):
+            with ui.row().classes('w-full gap-x-8 gap-y-0 items-center'):
                 ui.item(f"{t('target_label')}: {description}").classes('text-green-600')
                 if self.dso_catalog and astro_object_id:
                     dwarf_data_obj = DwarfData(
@@ -1163,9 +1175,9 @@ class ManualExploreApp(DbPageMixin):
                             lambda: None,
                             solve_entry=("manual", entry_id) if entry_id else None,
                         ),
-                    )
+                    ).props('dense').classes('px-2 mx-4')
 
-            self.classified_label = ui.label("").classes('text-gray-500 m-4')
+            self.classified_label = ui.label("").classes('text-gray-500 px-4')
             if astro_object_id:
                 descdb = get_astro_object_description(self.conn, astro_object_id)
                 if descdb and descdb != description_db:
@@ -1247,11 +1259,13 @@ class ManualExploreApp(DbPageMixin):
         if not full_path:
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
+            self.no_image_label.text = t('explore_image_missing')
             self.details_preview.append(f"Image File Path is empty - Preview is disable")
 
         elif not os.path.isfile(full_path):
             self.fullscreen_image.visible = False
             self.preview_image.visible = False
+            self.no_image_label.text = t('explore_image_unreachable', path=full_path)
             self.details_preview.append(f"Image File is not reachable - Preview is disable")
 
         try:

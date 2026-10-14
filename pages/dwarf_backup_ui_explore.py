@@ -1824,14 +1824,14 @@ class ExploreApp(DbPageMixin):
 
                 # Add colored details
                 ui.item(f"Session: {session_dir}").classes('text-blue-800')
-                with ui.row().classes('w-full gap-8 items-start'):
+                with ui.row().classes('w-full gap-x-8 gap-y-0 items-center'):
                     ui.item(f"🛰️ {t('dwarf_target')}: {init_target}").classes('text-green-600')
                     if self.dso_catalog:
                         ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(
                             DwarfData.from_row(row), descriptiondb,
-                            row[22] if self.mode == "backup" and len(row) > 22 else None))
+                            row[22] if self.mode == "backup" and len(row) > 22 else None)).props('dense').classes('px-2 mx-4')
 
-                self.classified_label = ui.label().classes('text-gray-500').classes("m-4")
+                self.classified_label = ui.label().classes('text-gray-500 px-4')
                 self.update_classified_label(astro_object_id, init_target, descriptiondb)
 
                 ui.item(f"RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}").classes('text-purple-600')
@@ -1840,7 +1840,7 @@ class ExploreApp(DbPageMixin):
                 exp = f"{exp_time}s" if exp_time is not None else "N/A"
                 exp_value = parse_exposure(exp) if exp != "N/A" else 0
                 gain = gainDB if gainDB is not None else "N/A"
-                with ui.row().classes('w-full gap-8 items-start'):
+                with ui.row().classes('w-full gap-x-8 gap-y-0 items-center'):
                     ui.item(f"⚙️ {t('lens_label')}: {lens} | {t('exposure_label')}: {exp} | {t('gain_label')}: {gain} | {t('filter_label')}: {IR_filter}").classes('text-yellow-700')
 
                     if minTemp and maxTemp:
@@ -1863,10 +1863,10 @@ class ExploreApp(DbPageMixin):
                 # --- Session Notes + score button (need backup_entry_id) ---
                 _be_id = get_backup_entry_id_by_dwarf_data(self.conn, dwarf_data_id)
                 _quality_str = f" - {t('image_quality')} {_qdot} {_qstr2}" if self.mode != "dwarf" else ""
-                with ui.row().classes('w-full gap-8 items-start'):
+                with ui.row().classes('w-full gap-x-8 gap-y-0 items-center'):
                     ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time}{_quality_str}").classes(color)
                     if not _qscore and _be_id and self.mode != "dwarf":
-                        ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object())
+                        ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object()).props('dense').classes('px-2 mx-4')
 
                 # --- Dark match badge ---
                 if dwarf_id and exp_time and gainDB:
@@ -2085,34 +2085,48 @@ class ExploreApp(DbPageMixin):
             size_kb = None
             size_mb = None
 
+        details_fits_files = ""
+        details_failed_fits_files = ""
+        details_tiff_files = ""
+        details_failed_tiff_files = ""
+        details_directory_size = ""
+        details_size_file = ""
+
         if self.nb_fits_files is not None and self.nb_fits_files == 1:
-            details_preview.append(t("found_one_fits"))
+            details_fits_files = f" - {t('found_one_fits')}"
         if self.nb_fits_files is not None and self.nb_fits_files > 1:
-            details_preview.append(f"{self.nb_fits_files} {t('found_fits_images')}")
+            details_fits_files = f" - {self.nb_fits_files} {t('found_fits_images')}"
         if self.nb_failed_fits_files is not None and self.nb_failed_fits_files == 1:
-            details_preview.append(f"Found one failed image on the disk")
+            details_failed_fits_files = f" - Found one failed image on the disk"
         if self.nb_failed_fits_files is not None and self.nb_failed_fits_files > 1:
-            details_preview.append(f"{self.nb_failed_fits_files} {t('found_failed_images')}")
+            details_failed_fits_files = f" - {self.nb_failed_fits_files} {t('found_failed_images')}"
 
         if self.nb_tiff_files is not None and self.nb_tiff_files == 1:
-            details_preview.append(f"Found one tiff image on the disk")
+            details_tiff_files = f" - Found one tiff image on the disk"
         if self.nb_tiff_files is not None and self.nb_tiff_files > 1:
-            details_preview.append(f"Found {self.nb_tiff_files} tiff images on the disk")
+            details_tiff_files = f" - Found {self.nb_tiff_files} tiff images on the disk"
         if self.nb_failed_tiff_files is not None and self.nb_failed_tiff_files == 1:
-            details_preview.append(f"Found one failed image on the disk")
+            details_failed_tiff_files = f" - Found one failed image on the disk"
         if self.nb_failed_tiff_files is not None and self.nb_failed_tiff_files > 1:
-            details_preview.append(f"Found {self.nb_failed_tiff_files} failed images on the disk")
+            details_failed_tiff_files = f" - Found {self.nb_failed_tiff_files} failed images on the disk"
 
         if size_dir_kb is not None and size_dir_mb < 2:
-            details_preview.append(f"{t('directory_size')}: {size_dir_kb:.2f} KB")
+            details_directory_size = f"{t('directory_size')}: {size_dir_kb:.2f} KB"
         if size_dir_kb is not None and size_dir_mb >= 2:
-            details_preview.append(f"{t('directory_size')}: {size_dir_mb:.2f} MB")
-        details_preview.append(f"{t('filename')}: {self.preview_image_path}")
-        if size_kb is not None and size_mb < 2:
-            details_preview.append(f"{t('size_label')}: {size_kb:.2f} KB")
-        if size_kb is not None and size_mb >= 2:
-            details_preview.append(f"{t('size_label')}: {size_mb:.2f} MB")
+            details_directory_size = f"{t('directory_size')}: {size_dir_mb:.2f} MB"
 
+        _dir_line = f"{details_directory_size}{details_fits_files}{details_failed_fits_files}{details_tiff_files}{details_failed_tiff_files}"
+        if _dir_line:
+            details_preview.append(_dir_line.removeprefix(" - "))
+
+        if size_kb is not None and size_mb < 2:
+            details_size_file = f"{t('size_label')}: {size_kb:.2f} KB"
+        if size_kb is not None and size_mb >= 2:
+            details_size_file = f"{t('size_label')}: {size_mb:.2f} MB"
+        if size_kb is not None:
+            details_preview.append(f"{t('filename')}: {self.preview_image_path} [{details_size_file}]")
+        else:
+            details_preview.append(f"{t('filename')}: {self.preview_image_path}")
         print(self.preview_image_path)
 
         # Check if the file is an image
@@ -2184,7 +2198,7 @@ class ExploreApp(DbPageMixin):
                             ui.button(t("create_mosaic"), on_click=lambda: self.create_and_show_panorama(os.path.dirname(self.preview_image_path),panels, panels_png, panels_fits)).classes("m-4")
 
                 for data_detail in details_preview:
-                    ui.item(data_detail).classes('text-sm')
+                    ui.item(data_detail).classes('text-sm py-0 min-h-0 leading-tight')
 
             if not restacked_session and (self.nb_fits_files is None or self.nb_fits_files == 0):
                 ui.item_label(t("no_fits_on_disk")).classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
