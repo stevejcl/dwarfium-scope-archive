@@ -208,11 +208,13 @@ class ConfigApp(DbPageMixin):
 
             ui.separator()
 
-            with ui.row().classes('w-full gap-8 items-center') as self.local_info: 
+            # wraps on a phone: the sizes card under the button (squeezed to a
+            # letter per line next to it otherwise)
+            with ui.row().classes('w-full gap-x-8 gap-y-4 items-center flex-wrap') as self.local_info:
                 with ui.column().classes('justify-center'):
                     ui.button(t("empty_archive"), on_click=self.confirm_and_delete_dwarf_archive).props("color=red").classes(sizeBTN)
 
-                with ui.column().classes('flex-1'):
+                with ui.column().classes('flex-1 min-w-64'):
                     with ui.card().tight().classes('w-full'):
                         ui.colors(brand='#A1A0A1')
                         with ui.grid(columns=3).classes('w-full text-center gap-y-1'):

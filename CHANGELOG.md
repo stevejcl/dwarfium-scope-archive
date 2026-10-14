@@ -16,6 +16,8 @@
     listed under it (all sessions of an object, or several sessions): normal spacing up to 12, condensed beyond.
     Manual Explore: a session whose image can't be found raised "'List' object has no attribute 'append'"; it now
     says so in the details and in the Image tab, without trying to show the image.
+    Dwarf page, on a phone: the local data / archive / free space card goes under "Empty local archive" instead of
+    being squeezed to a letter per line next to it.
 
 ## [V3.4.4] - 2026-10-13
 
