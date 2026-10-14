@@ -274,6 +274,10 @@ ui.add_css('''
        spacing (a q-item is 48px high by default) - still airier than the
        file details under them */
     .session-details .q-item { min-height: 0; padding-top: 6px; padding-bottom: 6px; }
+    /* the sessions listed there (all sessions / several sessions): normal
+       spacing, condensed beyond 12 (.dense-sessions, DENSE_LIST_MIN) */
+    .session-details .q-item.session-row { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
+    .session-details.dense-sessions .q-item.session-row { min-height: 0; padding-top: 4px; padding-bottom: 4px; }
     /* their buttons (Identify target, Score): a little room around them on
        the line; on a phone, under the line they wrapped from, room after them */
     .session-details .session-btn { margin-top: 4px; margin-bottom: 8px; }

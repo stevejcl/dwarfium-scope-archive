@@ -1012,6 +1012,12 @@ class ManualExploreApp(DbPageMixin):
             if self.siril_json_icon:
                 self.siril_json_icon.visible = True
 
+            # Many sessions: their list condensed (like the objects list)
+            if len(files) > DENSE_LIST_MIN:
+                self.details_files.classes(add='dense-sessions')
+            else:
+                self.details_files.classes(remove='dense-sessions')
+
             with self.details_files:
                 ui.item_label(f"{len(files)} {t('manual_sessions_found')}").props('header').classes('text-bold')
                 ui.separator()
@@ -1019,7 +1025,7 @@ class ManualExploreApp(DbPageMixin):
                     ui.item(
                         data_detail,
                         on_click=lambda i=data_detail: self.file_list.set_value(i),
-                    ).props('clickable').classes('cursor-pointer')
+                    ).props('clickable').classes('cursor-pointer session-row')
 
     @staticmethod
     def _dense_when_many(select):
