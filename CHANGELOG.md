@@ -10,10 +10,10 @@
     Explore, a mosaic's line (panels found, layout and scale, "Show mosaic gallery", "Create mosaic"): on a phone it
     wraps instead of squeezing its labels and buttons letter by letter. Manual Explore's gallery line (images found,
     "Show gallery") alike.
-    Explore and Manual Explore, the objects list condensed when it holds more than 12 objects (what fits on a 16/9
-    screen): about 30px per object instead of 48 - nearly twice as many in view.
-    The sessions list (its dropdown) likewise, beyond 12 sessions: 32px per session instead of 48; and the sessions
-    listed under it (all sessions of an object, or several sessions): normal spacing up to 12, condensed beyond.
+    Explore and Manual Explore, the objects list condensed when it holds more than 10 objects: about 30px per object
+    instead of 48 - nearly twice as many in view. The sessions list (its dropdown) likewise, beyond 14 sessions: 32px
+    per session instead of 48; and the sessions listed under it (all sessions of an object, or several sessions):
+    normal spacing up to 14, condensed beyond.
     Manual Explore: a session whose image can't be found raised "'List' object has no attribute 'append'"; it now
     says so in the details and in the Image tab, without trying to show the image.
     Dwarf page, on a phone: the local data / archive / free space card goes under "Empty local archive" instead of

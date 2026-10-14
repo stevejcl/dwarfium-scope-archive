@@ -55,8 +55,10 @@ ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
 ALL_DWARFS = "(All Dwarfs)"
 ALL_SESSIONS = "[ALL SESSIONS]"
 
-# Objects list: condensed beyond this many objects (12 fit on a 16/9 screen)
-DENSE_LIST_MIN = 12
+# Lists condensed beyond this many entries: the objects list, and the
+# sessions lists (the dropdown and the one under it)
+DENSE_LIST_MIN = 10
+DENSE_LIST_SESSION_MIN = 14
 
 @dataclass
 class BackupEntryData:
@@ -1403,7 +1405,7 @@ class ExploreApp(DbPageMixin):
             self._session_labels = details
 
             # Many sessions: their list condensed (like the objects list)
-            many = len(details) > DENSE_LIST_MIN
+            many = len(details) > DENSE_LIST_SESSION_MIN
             if many:
                 self.details_files.classes(add='dense-sessions')
             else:
@@ -1730,12 +1732,12 @@ class ExploreApp(DbPageMixin):
     @staticmethod
     def _dense_when_many(select):
         """The sessions list (a ui.select) condensed in its dropdown when it
-        holds more than DENSE_LIST_MIN sessions, like the objects list."""
+        holds more than DENSE_LIST_SESSION_MIN sessions."""
         set_options = select.set_options
 
         def _set_options(options, *args, **kwargs):
             set_options(options, *args, **kwargs)
-            if len(options) > DENSE_LIST_MIN:
+            if len(options) > DENSE_LIST_SESSION_MIN:
                 select.props('options-dense')
             else:
                 select.props(remove='options-dense')
