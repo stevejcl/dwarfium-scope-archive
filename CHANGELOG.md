@@ -16,6 +16,7 @@
     normal spacing up to 14, condensed beyond.
     Manual Explore: a session whose image can't be found raised "'List' object has no attribute 'append'"; it now
     says so in the details and in the Image tab, without trying to show the image.
+    Catalog page, on a phone: its buttons each take a full line.
     Dwarf page, on a phone: the local data / archive / free space card goes under "Empty local archive" instead of
     being squeezed to a letter per line next to it.
 
