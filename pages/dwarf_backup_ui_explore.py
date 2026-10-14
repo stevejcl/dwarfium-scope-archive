@@ -1402,6 +1402,13 @@ class ExploreApp(DbPageMixin):
             # Keep the same label presentation available for the Siril multi-session picker dialog
             self._session_labels = details
 
+            # Many sessions: their list condensed (like the objects list)
+            many = len(details) > DENSE_LIST_MIN
+            if many:
+                self.details_files.classes(add='dense-sessions')
+            else:
+                self.details_files.classes(remove='dense-sessions')
+
             with self.details_files:
                 ui.item_label(f"{len(files)} {t('sessions_found') if len(files)>1 else t('session_found')} {stackeds} {t('stacks_exp') if stackeds > 1 else t('stack_exp')} {format_seconds_hms(total_time_exp)}.").props('header').classes('text-bold')
                 ui.separator()
@@ -1492,6 +1499,8 @@ class ExploreApp(DbPageMixin):
 
                         with ui.row().classes('items-center gap-2 flex-nowrap'):
                             cb = ui.checkbox(on_change=on_check_change).classes('shrink-0')
+                            if many:
+                                cb.props('dense')
                             checkboxes.append(cb)
                             # clickable label still selects single session for detail view
                             ui.label(data_detail).on('click', lambda e, i=data_detail: self.select_single_session(i, checkboxes)).props('clickable').classes('cursor-pointer break-all')
@@ -1503,7 +1512,7 @@ class ExploreApp(DbPageMixin):
                         return re.sub(r"[⭐☆❗]", "", text).strip()
 
                     for data_detail in details:
-                        ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer')
+                        ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer session-row')
 
     def open_folder(self, directory = None):
         if not self.selected_path and not directory:
