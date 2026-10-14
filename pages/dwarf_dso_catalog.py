@@ -65,7 +65,8 @@ class CatalogApp(DbPageMixin):
         # UI Components
         with ui.column().classes('w-full p-4'):
             ui.label(t("dso_astro_assoc")).classes('text-2xl')
-            with ui.row().classes('gap-4'):
+            # .mobile-full-btns: each button on its own full line on a phone
+            with ui.row().classes('gap-4 w-full mobile-full-btns'):
                 ui.button(t("export_csv"), on_click=self.on_export_click)
                 ui.button(t("delete_unused"), on_click=self.on_delete_click)
                 ui.button(t("dso_wizard_open"), icon="link", on_click=self.on_wizard_click)

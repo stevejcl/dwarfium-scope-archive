@@ -275,7 +275,7 @@ ui.add_css('''
        file details under them */
     .session-details .q-item { min-height: 0; padding-top: 6px; padding-bottom: 6px; }
     /* the sessions listed there (all sessions / several sessions): normal
-       spacing, condensed beyond 12 (.dense-sessions, DENSE_LIST_MIN) */
+       spacing, condensed beyond 14 (.dense-sessions, DENSE_LIST_SESSION_MIN) */
     .session-details .q-item.session-row { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
     .session-details.dense-sessions .q-item.session-row { min-height: 0; padding-top: 4px; padding-bottom: 4px; }
     /* their buttons (Identify target, Score): a little room around them on
@@ -293,6 +293,8 @@ ui.add_css('''
         .mobile-stack { grid-template-columns: minmax(0, 1fr) !important; }
         .mobile-full { width: 100% !important; min-width: 0 !important; }
     }
+    /* .mobile-full-btns: a row of buttons, each on its own full line on a phone */
+    @media (max-width: 768px) { .mobile-full-btns > .q-btn { width: 100%; } }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {
         .mobile-nav-bar { display: none !important; }

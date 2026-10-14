@@ -74,8 +74,10 @@ ALL_SESSIONS = "[ALL SESSIONS]"
 # ---------------------------------------------------------------------------
 # Small helper dataclass – stores the row keys needed for delete / favorite
 # ---------------------------------------------------------------------------
-# Objects list: condensed beyond this many objects (12 fit on a 16/9 screen)
-DENSE_LIST_MIN = 12
+# Lists condensed beyond this many entries: the objects list, and the
+# sessions lists (the dropdown and the one under it)
+DENSE_LIST_MIN = 10
+DENSE_LIST_SESSION_MIN = 14
 
 @dataclass
 class ManualEntryData:
@@ -1013,7 +1015,7 @@ class ManualExploreApp(DbPageMixin):
                 self.siril_json_icon.visible = True
 
             # Many sessions: their list condensed (like the objects list)
-            if len(files) > DENSE_LIST_MIN:
+            if len(files) > DENSE_LIST_SESSION_MIN:
                 self.details_files.classes(add='dense-sessions')
             else:
                 self.details_files.classes(remove='dense-sessions')
@@ -1030,12 +1032,12 @@ class ManualExploreApp(DbPageMixin):
     @staticmethod
     def _dense_when_many(select):
         """The sessions list (a ui.select) condensed in its dropdown when it
-        holds more than DENSE_LIST_MIN sessions, like the objects list."""
+        holds more than DENSE_LIST_SESSION_MIN sessions."""
         set_options = select.set_options
 
         def _set_options(options, *args, **kwargs):
             set_options(options, *args, **kwargs)
-            if len(options) > DENSE_LIST_MIN:
+            if len(options) > DENSE_LIST_SESSION_MIN:
                 select.props('options-dense')
             else:
                 select.props(remove='options-dense')
