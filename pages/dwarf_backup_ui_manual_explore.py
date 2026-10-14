@@ -1248,25 +1248,23 @@ class ManualExploreApp(DbPageMixin):
         self.preview_image.visible    = False
         self.fullscreen_image.visible = False
 
+        def say(text):
+            # details_preview is a ui.list, not a Python list
+            with self.details_preview:
+                ui.item(text).classes('text-sm py-0 min-h-0 leading-tight')
+
         if not image_path:
-            self.details_preview.append("No preview image available for this session.")
+            self.no_image_label.text = t('explore_image_missing')
+            say("No preview image available for this session.")
             return
 
         full_path = os.path.join(self.selected_path, os.path.basename(image_path))
         print(f"full image_path : {full_path}")
 
-        # Check if the file is an image
-        if not full_path:
-            self.fullscreen_image.visible = False
-            self.preview_image.visible = False
-            self.no_image_label.text = t('explore_image_missing')
-            self.details_preview.append(f"Image File Path is empty - Preview is disable")
-
-        elif not os.path.isfile(full_path):
-            self.fullscreen_image.visible = False
-            self.preview_image.visible = False
+        if not os.path.isfile(full_path):
             self.no_image_label.text = t('explore_image_unreachable', path=full_path)
-            self.details_preview.append(f"Image File is not reachable - Preview is disable")
+            say("Image File is not reachable - Preview is disable")
+            return
 
         try:
             # ser parent name of session_dir/session_tag for preview
