@@ -1175,7 +1175,7 @@ class ManualExploreApp(DbPageMixin):
                             lambda: None,
                             solve_entry=("manual", entry_id) if entry_id else None,
                         ),
-                    ).props('dense').classes('px-2 mx-4')
+                    ).props('dense').classes('px-2 mx-4 session-btn')
 
             self.classified_label = ui.label("").classes('text-gray-500 px-4')
             if astro_object_id:

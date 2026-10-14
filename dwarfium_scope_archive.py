@@ -274,6 +274,9 @@ ui.add_css('''
        spacing (a q-item is 48px high by default) - still airier than the
        file details under them */
     .session-details .q-item { min-height: 0; padding-top: 6px; padding-bottom: 6px; }
+    /* their buttons (Identify target, Score): on a phone, under the line they
+       wrapped from - a little room after them */
+    @media (max-width: 768px) { .session-details .session-btn { margin-bottom: 8px; } }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {
         .mobile-nav-bar { display: none !important; }

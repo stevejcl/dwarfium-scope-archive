@@ -1829,7 +1829,7 @@ class ExploreApp(DbPageMixin):
                     if self.dso_catalog:
                         ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(
                             DwarfData.from_row(row), descriptiondb,
-                            row[22] if self.mode == "backup" and len(row) > 22 else None)).props('dense').classes('px-2 mx-4')
+                            row[22] if self.mode == "backup" and len(row) > 22 else None)).props('dense').classes('px-2 mx-4 session-btn')
 
                 self.classified_label = ui.label().classes('text-gray-500 px-4')
                 self.update_classified_label(astro_object_id, init_target, descriptiondb)
@@ -1866,7 +1866,7 @@ class ExploreApp(DbPageMixin):
                 with ui.row().classes('w-full gap-x-8 gap-y-0 items-center'):
                     ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time}{_quality_str}").classes(color)
                     if not _qscore and _be_id and self.mode != "dwarf":
-                        ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object()).props('dense').classes('px-2 mx-4')
+                        ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object()).props('dense').classes('px-2 mx-4 session-btn')
 
                 # --- Dark match badge ---
                 if dwarf_id and exp_time and gainDB:
