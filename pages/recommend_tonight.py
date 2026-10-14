@@ -9,7 +9,9 @@ NEW / INCOMPLETE / WELL_COVERED.
 
 from __future__ import annotations
 
+import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
@@ -23,6 +25,13 @@ from components.menu import menu
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.wiki_images import get_cached_image, fetch_and_cache_image
+
+# The targets' Wikimedia images load on their own small pool, not NiceGUI's
+# shared run.io_bound one: they are throttled (api/wiki_images.py) and each
+# may wait on the network, so with many targets they filled the shared pool
+# and a reloaded page's own computation waited behind them, its spinner
+# turning (user-reported Oct 2026)
+_IMAGE_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tonight-img")
 
 from api.dso_matching import (
     load_dso_catalog,
@@ -904,13 +913,18 @@ class RecommendTonightApp(DbPageMixin):
             ui.spinner(size="sm")
 
         async def _load():
-            # Each card fetches on its own thread (run.io_bound), so use a
+            # Each card fetches on its own thread (_IMAGE_POOL), so use a
             # dedicated short-lived connection here rather than sharing
             # self.conn across threads — sqlite3 connections aren't safe
             # for concurrent use even with check_same_thread=False.
-            info = await run.io_bound(
-                self._fetch_image_isolated, catalog_id, r.display_name
+            info = await asyncio.get_running_loop().run_in_executor(
+                _IMAGE_POOL, self._fetch_image_isolated, catalog_id, r.display_name,
+                lambda: image_holder.is_deleted,
             )
+            # The page left (or reloaded) during the download: nothing to
+            # show it in - the image is cached for next time anyway
+            if image_holder.is_deleted or credit_holder.is_deleted:
+                return
             if info:
                 render_found(info)
             else:
@@ -918,7 +932,10 @@ class RecommendTonightApp(DbPageMixin):
 
         background_tasks.create(_load())
 
-    def _fetch_image_isolated(self, catalog_id: str, display_name: str):
+    def _fetch_image_isolated(self, catalog_id: str, display_name: str, gone=lambda: False):
+        # Still queued when its page was left or reloaded: not fetched
+        if gone():
+            return None
         conn = connect_db(self.database)
         try:
             return fetch_and_cache_image(conn, catalog_id, display_name)

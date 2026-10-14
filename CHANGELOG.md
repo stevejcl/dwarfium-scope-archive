@@ -25,6 +25,10 @@
     'startsWith')" on opening - their thumbnails were created with no image (None) before a session is chosen.
     Folder picker (in a browser - Transfer, Dark Library...): wider (up to 1000px), a long folder name wraps beside
     its icon - the Dwarf's session folders overlapped one another.
+    What to shoot tonight: reloaded (or left and reopened) while its target images were still loading, the page stayed
+    blank, its spinner turning - the images' downloads filled the threads the page's own computation needed. They now
+    load on their own threads, and those of a page left are dropped; no more "The client this element belongs to has
+    been deleted" in the log either.
 
 ## [V3.4.4] - 2026-10-13
 
