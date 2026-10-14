@@ -398,6 +398,7 @@ class ManualExploreApp(DbPageMixin):
                                 .style('overflow-x: auto;')
                             )
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
+                            self._dense_when_many(self.file_list)
 
                         # Action buttons (shown/hidden depending on selection)
                         # Large icons, text in a tooltip (components/action_icon.py)
@@ -1019,6 +1020,20 @@ class ManualExploreApp(DbPageMixin):
                         data_detail,
                         on_click=lambda i=data_detail: self.file_list.set_value(i),
                     ).props('clickable').classes('cursor-pointer')
+
+    @staticmethod
+    def _dense_when_many(select):
+        """The sessions list (a ui.select) condensed in its dropdown when it
+        holds more than DENSE_LIST_MIN sessions, like the objects list."""
+        set_options = select.set_options
+
+        def _set_options(options, *args, **kwargs):
+            set_options(options, *args, **kwargs)
+            if len(options) > DENSE_LIST_MIN:
+                select.props('options-dense')
+            else:
+                select.props(remove='options-dense')
+        select.set_options = _set_options
 
     def on_file_selected(self, event):
         """Triggered when the user picks a session in the dropdown."""
