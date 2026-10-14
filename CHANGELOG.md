@@ -16,6 +16,7 @@
     listed under it (all sessions of an object, or several sessions): normal spacing up to 12, condensed beyond.
     Manual Explore: a session whose image can't be found raised "'List' object has no attribute 'append'"; it now
     says so in the details and in the Image tab, without trying to show the image.
+    Catalog page, on a phone: its buttons each take a full line.
 
 ## [V3.4.4] - 2026-10-13
 
