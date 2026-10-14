@@ -665,6 +665,9 @@ class RecommendTonightApp(DbPageMixin):
         self.results: list[TargetRecommendation] = []
         self.results_location: Optional[dict] = None
         self.results_night: Optional[date] = None
+        # Each section's open state, kept across re-renders (images on, a
+        # filter changed...) - they all reopened before (user-reported)
+        self._section_open: dict[Category, bool] = {}
         self.tonight_plan = TonightPlan()
         self.build_ui()
 
@@ -712,7 +715,7 @@ class RecommendTonightApp(DbPageMixin):
                 ).classes("w-40")
                 self.hide_well_covered = ui.checkbox(
                     t("tonight_hide_covered"), value=True,
-                    on_change=lambda: self.render_results.refresh(),
+                    on_change=self._on_hide_covered_change,
                 )
                 self.show_images = ui.checkbox(
                     t("tonight_show_images"), value=False,
@@ -808,12 +811,36 @@ class RecommendTonightApp(DbPageMixin):
             if not items:
                 continue
             any_shown = True
-            with ui.expansion(f"{label} ({len(items)})", value=expanded_default).classes("w-full"):
-                for r in items:
-                    self._render_target_card(r)
+            is_open = self._section_open.get(cat, expanded_default)
+            section = ui.expansion(f"{label} ({len(items)})", value=is_open).classes("w-full")
+            # Cards built on the section's first opening: a closed section
+            # loads none of its images
+            filled = [False]
+
+            def fill(section=section, items=items, filled=filled):
+                if filled[0]:
+                    return
+                filled[0] = True
+                with section:
+                    for r in items:
+                        self._render_target_card(r)
+
+            def on_toggle(e, cat=cat, fill=fill):
+                self._section_open[cat] = e.value
+                if e.value:
+                    fill()
+
+            if is_open:
+                fill()
+            section.on_value_change(on_toggle)
 
         if not any_shown:
             ui.label(t("tonight_no_results_filtered")).classes("text-gray-500")
+
+    def _on_hide_covered_change(self, e):
+        # the checkbox still opens / closes the well covered targets
+        self._section_open[Category.WELL_COVERED] = not e.value
+        self.render_results.refresh()
 
     def _open_aladin(self, r: TargetRecommendation):
         """Open the target in Aladin Lite (external browser)."""
