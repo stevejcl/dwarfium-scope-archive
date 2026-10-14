@@ -380,6 +380,7 @@ class ExploreApp(DbPageMixin):
                                 self._update_fav_filter_icon()
                             self.file_list = ui.select(options=[], on_change=self.on_file_selected).props('outlined').classes('w-full max-w-full').style('overflow-x: auto;')
                             self.file_list.style('overflow: hidden; text-overflow: ellipsis;')
+                            self._dense_when_many(self.file_list)
 
                         # Large icons, text in a tooltip (components/action_icon.py), grouped:
                         # view · process · plan · archive · delete (apart, red)
@@ -1716,6 +1717,20 @@ class ExploreApp(DbPageMixin):
                                         ui.label(f"Panel {3-int(i) + 4}").classes("text-sm")
 
         dialog.open()
+
+    @staticmethod
+    def _dense_when_many(select):
+        """The sessions list (a ui.select) condensed in its dropdown when it
+        holds more than DENSE_LIST_MIN sessions, like the objects list."""
+        set_options = select.set_options
+
+        def _set_options(options, *args, **kwargs):
+            set_options(options, *args, **kwargs)
+            if len(options) > DENSE_LIST_MIN:
+                select.props('options-dense')
+            else:
+                select.props(remove='options-dense')
+        select.set_options = _set_options
 
     async def on_file_selected(self):
         self.current_session_row = None
