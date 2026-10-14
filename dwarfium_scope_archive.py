@@ -295,6 +295,10 @@ ui.add_css('''
     }
     /* .mobile-full-btns: a row of buttons, each on its own full line on a phone */
     @media (max-width: 768px) { .mobile-full-btns > .q-btn { width: 100%; } }
+    /* Folder picker (components/folder_picker.py): a long folder name wraps
+       beside its icon instead of under it, over the next one */
+    .folder-picker-item .q-btn__content { flex-wrap: nowrap; }
+    .folder-picker-item .q-btn__content > .block { white-space: normal; word-break: break-all; text-align: left; line-height: 1.3; }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {
         .mobile-nav-bar { display: none !important; }
