@@ -470,15 +470,17 @@ class AddManualSession(DbPageMixin):
                         ).style('width: 160px').classes('mb-2')
 
 
-            with ui.grid(columns=2):
-                with ui.row().classes('items-start gap-20'):
+            # On a phone (.mobile-stack / .mobile-full, dwarfium_scope_archive.py):
+            # the grids in one column, the fixed-width fields full width
+            with ui.grid(columns=2).classes('w-full mobile-stack'):
+                with ui.row().classes('items-start gap-x-20 gap-y-2 flex-wrap'):
                     with ui.column().classes('gap-1'):
                         self.mode_toggle = ui.toggle([self.mode_stellar, self.mode_manual], value=self.mode_stellar, on_change=self.switch_mode)
                     with ui.column().classes('gap-1'):
                         ui.label(t("select_dwarf")).classes("text-lg font-semibold")
                         self.dwarf_filter = ui.select(options=[], on_change=self.on_dwarf_filter_change).props('outlined')
 
-                with ui.row().classes('items-start gap-4'):
+                with ui.row().classes('items-start gap-4 flex-wrap'):
                     with ui.column().classes('gap-1'):
                         ui.label(t("backup_drive")).classes("text-lg font-semibold")
                         self.backup_filter = ui.select(options=[], on_change=self.on_backup_filter_change).props('outlined')
@@ -491,14 +493,14 @@ class AddManualSession(DbPageMixin):
                 # --- SESSION SELECTION ---
                 with ui.row().classes("items-center mb-4"):
                     ui.label(t("select_backup_session"))
-                    self.session_dropdown = ui.select(options=[], on_change=self.on_session_select).classes("w-auto min-w-[250px]")
+                    self.session_dropdown = ui.select(options=[], on_change=self.on_session_select).classes("w-auto min-w-[250px] mobile-full")
                     ui.label(t("session_name"))
-                    self.session_dirname = ui.input(self.session_select_status_label, value="", placeholder="Enter new session name", on_change=self.on_check_session_dirname).classes("min-w-[550px] w-auto overflow-x-auto whitespace-nowrap")
+                    self.session_dirname = ui.input(self.session_select_status_label, value="", placeholder="Enter new session name", on_change=self.on_check_session_dirname).classes("min-w-[550px] w-auto overflow-x-auto whitespace-nowrap mobile-full")
                     ui.label(t("tag")).tooltip("Tag is Optional. The files will be saved in a sub-folder: session_name / tag")
                     self.session_tag = (
                         ui.input(self.session_select_tag_label, value="", placeholder="optional — e.g. v2, Siril",
                                  on_change=self.on_check_session_tag)
-                        .classes("min-w-[160px] w-auto overflow-x-auto whitespace-nowrap")
+                        .classes("min-w-[160px] w-auto overflow-x-auto whitespace-nowrap mobile-full")
                     )
                     with ui.row().classes("items-center"):
                         ui.label("Help: " \
@@ -520,7 +522,7 @@ class AddManualSession(DbPageMixin):
                                          .on('click', self.show_full_image)
 
                 # --- LOCAL FILES SELECTION ---
-                with ui.grid(columns=3).classes("w-full"):
+                with ui.grid(columns=3).classes("w-full mobile-stack"):
                     with ui.column().classes("items-center justify-center text-center w-full"):
                         ui.label(t("select_local_jpg")).classes("mt-2 font-medium")
                         self.file_picker_jpg = ui.upload(
@@ -616,7 +618,7 @@ class AddManualSession(DbPageMixin):
 
                 self.DestinationDirectory = ui.label(t("backup_destination")).classes("mt-2 font-medium")
                 with ui.row().classes("w-full items-center gap-2"):
-                    self.input_dest_dir = ui.input(t("destination_dir"), value = self.dest_dir).classes("w-[80%] overflow-x-auto whitespace-nowrap")
+                    self.input_dest_dir = ui.input(t("destination_dir"), value = self.dest_dir).classes("w-[80%] overflow-x-auto whitespace-nowrap mobile-full")
                     ui.button(t("select_destination"), on_click=lambda : self.select_destination_folder())
 
             # --- ACTION BUTTONS ---

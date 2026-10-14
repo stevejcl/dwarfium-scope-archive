@@ -286,6 +286,13 @@ ui.add_css('''
        objects (48px per object by default - long to scroll; DENSE_LIST_MIN) */
     .object-list-scroll.dense-list > .q-item { min-height: 0; padding-top: 4px; padding-bottom: 4px; }
     .object-list-scroll.dense-list .q-tree__node-header { padding-top: 2px; padding-bottom: 2px; }
+    /* On a phone: .mobile-stack - a ui.grid in one column (its column count
+       is an inline style, hence !important); .mobile-full - a fixed-width
+       field full width */
+    @media (max-width: 768px) {
+        .mobile-stack { grid-template-columns: minmax(0, 1fr) !important; }
+        .mobile-full { width: 100% !important; min-width: 0 !important; }
+    }
     /* .mobile-full-btns: a row of buttons, each on its own full line on a phone */
     @media (max-width: 768px) { .mobile-full-btns > .q-btn { width: 100%; } }
     /* Desktop: always show both columns, hide mobile nav bar */
