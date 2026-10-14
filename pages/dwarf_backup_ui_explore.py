@@ -55,6 +55,9 @@ ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
 ALL_DWARFS = "(All Dwarfs)"
 ALL_SESSIONS = "[ALL SESSIONS]"
 
+# Objects list: condensed beyond this many objects (12 fit on a 16/9 screen)
+DENSE_LIST_MIN = 12
+
 @dataclass
 class BackupEntryData:
     backup_drive_id: int
@@ -980,6 +983,16 @@ class ExploreApp(DbPageMixin):
                         "children": children,
                     }
                 })
+
+        # Many objects (more than fit on a 16/9 screen): the list condensed
+        # (.dense-list, dwarfium_scope_archive.py)
+        def _count(nodes):
+            return sum(1 + _count(n.get("children") or []) for n in nodes)
+        _n_objects = sum(1 if e["type"] == "item" else _count([e["node"]]) for e in display_items)
+        if _n_objects > DENSE_LIST_MIN:
+            self.object_list.classes(add='dense-list')
+        else:
+            self.object_list.classes(remove='dense-list')
 
         # Step 3: Render UI
         with self.object_list:
