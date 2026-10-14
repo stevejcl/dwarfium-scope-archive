@@ -911,6 +911,10 @@ class RecommendTonightApp(DbPageMixin):
             info = await run.io_bound(
                 self._fetch_image_isolated, catalog_id, r.display_name
             )
+            # The page left (or reloaded) during the download: nothing to
+            # show it in - the image is cached for next time anyway
+            if image_holder.is_deleted or credit_holder.is_deleted:
+                return
             if info:
                 render_found(info)
             else:
