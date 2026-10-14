@@ -276,7 +276,7 @@ ui.add_css('''
     .session-details .q-item { min-height: 0; padding-top: 6px; padding-bottom: 6px; }
     /* their buttons (Identify target, Score): a little room around them on
        the line; on a phone, under the line they wrapped from, room after them */
-    .session-details .session-btn { margin-top: 4px; margin-bottom: 4px; }
+    .session-details .session-btn { margin-top: 4px; margin-bottom: 8px; }
     @media (max-width: 768px) { .session-details .session-btn { margin-top: 0; margin-bottom: 8px; } }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {

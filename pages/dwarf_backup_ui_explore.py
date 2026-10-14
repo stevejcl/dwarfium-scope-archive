@@ -2169,7 +2169,7 @@ class ExploreApp(DbPageMixin):
                     if "_MOSAIC_" in file_path:
                         panels = get_mosaic_panels(os.path.dirname(self.preview_image_path))
                         if len(panels) > 1:
-                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-lg mt-4 mb-4 ml-4 mr-2')
+                            ui.label(f'📦 {len(panels)} {t("panels_found")}').classes('text-base mt-4 mb-4 ml-4 mr-2')
 
                             # --- Mosaic layout / scale info (from shotsInfo.json) ---
                             mosaic_dir = os.path.dirname(self.preview_image_path)

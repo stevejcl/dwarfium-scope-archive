@@ -1193,7 +1193,7 @@ class ManualExploreApp(DbPageMixin):
             date_str = show_short_date_session(session_date)
             ui.item(f"📅 {t('date_label')}: {date_str}").classes('text-indigo-600')
             ui.item(f"📁 {t('type_label')}: {session_type}").classes('text-yellow-700')
-            ui.item(f"⚙️  {t('exposure_label')}: {format_seconds_hms(exp_time) or 'N/A'}  |  {t('filter_label')}: {ircut_filter or t('no_filter')}").classes('text-yellow-700')
+            ui.item(f"⚙️  {t('exposure_label').split(' (')[0]}: {format_seconds_hms(exp_time) or 'N/A'}  |  {t('filter_label')}: {ircut_filter or t('no_filter')}").classes('text-yellow-700')
 
             if max_temp is not None:
                 temp_str = f"🌡 {t('temp_label')}: {min_temp}°C – {max_temp}°C" if min_temp is not None else f"🌡 {t('temp_label')}: {max_temp}°C"
