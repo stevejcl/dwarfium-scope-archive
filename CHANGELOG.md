@@ -7,6 +7,8 @@
     files found, file name with its size), tighter lines; on a phone, a line that wraps ("Identify target", the
     temperatures, "Score") no longer leaves a large gap, and the empty "classified as" line takes no room. Manual
     Explore gets the Infos / Image tabs of Explore.
+    Manual Explore: a session whose image can't be found raised "'List' object has no attribute 'append'"; it now
+    says so in the details and in the Image tab, without trying to show the image.
 
 ## [V3.4.4] - 2026-10-13
 
