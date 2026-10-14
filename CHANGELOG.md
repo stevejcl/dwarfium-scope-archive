@@ -31,6 +31,8 @@
     been deleted" in the log either.
     What to shoot tonight: no more "'NoneType' object has no attribute 'execute'" when the page is left, reloaded or
     briefly disconnected during the targets' computation (its database connection is closed then).
+    What to shoot tonight: a section closed (new, incomplete, well covered targets) stays closed when the images are
+    turned on or a filter changes, and loads no images until it is opened - they all reopened and loaded everything.
 
 ## [V3.4.4] - 2026-10-13
 
