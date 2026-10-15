@@ -24,19 +24,102 @@ Dwarfium Scope Archive helps you back up, organise and explore your Dwarf telesc
 - **{t:menu_manual_sessions}** — import custom stacked FITS/PNG/JPG files from any tool
 - **{t:page_darks}** — manage calibration frames (darks) for Siril processing
 - **{t:transfer}** — copy sessions between the Dwarf and a backup drive
+- **{t:menu_report}** — view session sizes and disk usage by drive
+
+## Home slideshow
+
+The home page displays a slideshow of your favourite sessions.
+The first image appears immediately; the remaining favourites load in the background.
+Use ⭐ to remove a session from your favourites.
 
 ## Typical workflow
 
 1. Configure your Dwarf on the **{t:dwarf_label}** page
 2. Use **{t:analyze_dwarf_drive}** to index the sessions on your Dwarf
-2. Configure your backup drive on the **{t:menu_backup}** page
-3. Use **{t:analyze_drive}** on the **{t:page_backup}** page to index the sessions
-4. Use the **{t:transfer}** page to copy sessions from the Dwarf to your backup
-5. Browse everything on the **{t:page_explore}** page
-6. The **{t:page_explore}** page allows also to Backup directly a selected session
+3. Configure your backup drive on the **{t:menu_backup}** page
+4. Use **{t:analyze_drive}** on the **{t:page_backup}** page to index the sessions
+5. Use the **{t:transfer}** page to copy sessions from the Dwarf to your backup
+6. Browse everything on the **{t:page_explore}** page
+7. Use **{t:menu_report}** to identify large sessions and free up space
 ''',
     },
+    '/RecommendTonight': {  # TODO
+        'title': "Tonight's Targets",
+        'content': '''
+## Purpose
 
+This page suggests deep-sky targets worth shooting tonight, based on your observation
+location, the selected date, and your session history.
+
+## Location and date
+
+- **{t:tonight_location}** — pick from your saved observation locations
+- **{t:tonight_date}** — the night to analyze (calendar icon)
+- **{t:tonight_refresh}** — recompute recommendations for the selected location/date
+
+## Categories
+
+- ✨ **{t:tonight_new_targets}** — objects you've never captured before
+- 🔧 **{t:tonight_incomplete_targets}** — objects with some sessions, but not enough
+  total integration time (or, for mosaics, at least one panel still under-exposed)
+- ✅ **{t:tonight_well_covered_targets}** — objects already well covered, hidden by default
+
+## Filters
+
+- **{t:tonight_max_magnitude}** — hides objects too faint for your equipment
+- **{t:tonight_type}** — narrows the list to nebulae, galaxies, or clusters
+- **{t:tonight_hide_covered}** — keeps the list focused on targets that still need work
+
+## How targets are ranked
+
+Targets are scored by how long and how high they stay above the horizon tonight, with
+a bonus for new or incomplete targets. A penalty applies when a target sits close to a
+bright Moon — stronger for faint nebulae, which are more affected by sky glow than
+galaxies or clusters.
+
+## Combinable targets
+
+When two catalog objects are close enough on sky to fit in a single wide-field frame,
+a note appears on the higher-scoring one.
+
+## Aladin link
+
+The 🔭 button on each card opens the target in Aladin Lite (external browser) to
+preview the field before observing.
+
+## Plan on the Dwarf
+
+The 📅 button on each card offers two choices:
+
+- **Plan this target tonight** — opens Astro Dwarf Session's planning page (external
+  browser) with the target and its window tonight (above 25°).
+- **Add to tonight's plan** — adds it to a list of targets (5 at most by default, see
+  Settings › Session), shown at the bottom
+  of the window with each target's window: ✕ removes one, **Clear** empties it, and
+  **Plan these targets** opens the planning page with all of them, chained over the
+  night. When the list is full, adding a target offers to replace one of them. The ⌄ button
+  folds the list into one small line (a click opens it again). The
+  list belongs to one night and site, and is kept when you change page.
+
+On the planning page, pick the Dwarf, programs or a native schedule, the exposure and
+filter (and adjust the slots), then send. Astro Dwarf Session (3.2.3 and later) must be
+running with this app's address in its Settings: it says hello every 30 s, which is how
+this app knows where it is.
+
+## Session matching
+
+Your integration history is matched to catalog objects using, in order: an existing
+manual link, a name match, or the nearest catalog object by coordinates. Sessions that
+don't match anything (too far from any catalog object, or missing coordinates) aren't
+counted here.
+
+## Tips
+
+- The first computation after changing location/date can take a few seconds
+  (astronomical calculation per catalog object)
+- The reference catalog can be expanded if recurring targets aren't in it yet
+''',
+    },
     '/Dwarf': {  # TODO
         'title': 'Dwarf Configuration',
         'content': '''
@@ -65,12 +148,26 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
       5. You can then register your Dwarf, but the scan function will not be available
       6. To transfer a session, you must use the MTP Page
 5. Set the **{t:ip_sta_mode}** if you want WiFi/FTP transfer
-6. Click **{t:save_update_dwarf}**
+6. Fill in the **{t:dwarf_ble_id}**: the last 6 characters of the MAC address printed on the
+   Dwarf (the whole address can be pasted), which also end its Bluetooth name (`DWARF3_A1B2C3`).
+   Dwarf on and on the network: **{t:dwarf_ble_id_read}** asks the Dwarf at its IP.
+   Dwarfium-Hub uses it to link this Dwarf to the same Dwarf in Dwarfium Lite.
+   Several Dwarfs on: **{t:dwarf_identify}** flashes the ring light of the Dwarf at this IP
+   (through Dwarfium Lite, running; never during a capture).
+7. Click **{t:save_update_dwarf}**
 
 ## Analyze Dwarf Drive
 
 Scans the Dwarf's USB directory and indexes all sessions into the database.
 Run this after connecting the Dwarf by USB.
+
+Before the scan, Scope Archive checks that the Dwarf connected is the one chosen:
+- its model, from its images;
+- over FTP, its identifier: the Dwarf answering at the IP must have the **{t:dwarf_ble_id}** saved;
+- its sessions: when those on the drive are already archived under another Dwarf and none under the
+  chosen one, it is the other Dwarf's drive - even between two Dwarfs of the same model.
+
+A warning then offers to choose the right Dwarf, or to continue anyway.
 
 ## Show Dwarf Data
 
@@ -120,12 +217,23 @@ Each backup drive is linked to one Dwarf.
 5. Select the **{t:dwarf_label}** this drive belongs to
 6. Click **{t:save_update_drive}**
 
+## Disk Space
+
+When a backup drive is selected, a disk space indicator shows free / total space
+with a colour-coded bar (green → yellow → orange → red as free space decreases).
+The last-known values are cached in `db/diskinfo.json` and displayed even when
+the drive is offline.
+
 ## Analyze Current Drive
 
 Scans the backup drive and indexes all sessions into the database.
 Run this after copying new sessions from the Dwarf.
+A progress bar shows the current folder being scanned and the overall count.
 
-Show the History of Session Transfer with date, session and status.
+## Transfer History
+
+Shows the history of session transfers with date, session name and status.
+
 ## Check Session Integrity
 
 Compare the number of FITS files present to those registered in the session.
@@ -134,9 +242,7 @@ The counts may differ if bad frames were removed on the Dwarf.
 ## Show All Current Backup Data
 
 Opens the **{t:page_explore}** page to view data stored on your drive.
-You can then restore them to your dwarf.
-Enable **{t:only_backed_not_dwarf}** 
-to list deleted sessions and display the Restore button..
+Enable **{t:only_backed_not_dwarf}** to list deleted sessions and show the Restore button.
 
 ## Delete Backup Entries
 
@@ -144,16 +250,11 @@ Removes all indexed session data for this drive from the database.
 The files on disk are **not** deleted. After deleting, run
 **{t:analyze_drive}** to re-index.
 
-## Delete Manual Entries
-
-Removes ManualSessionEntry links for this drive.
-The ManualSession metadata is kept so sessions can be re-linked
-automatically from `shotsInfo.json` files when you re-analyze.
-
 ## Tips
 
 - You can have multiple backup drives per Dwarf
 - The backup drive does not need to be connected to save its configuration
+- Use **{t:menu_report}** to see session sizes and identify large sessions
 ''',
     },
 
@@ -164,13 +265,22 @@ automatically from `shotsInfo.json` files when you re-analyze.
 
 Browse and search all sessions indexed from your backup drives.
 To view sessions currently stored on your Dwarf, go to the **{t:page_dwarf}** page
- and click the "Show Dwarf Data" button.
+and click the "Show Dwarf Data" button.
 
 ## Filters
 
-- **{t:backup_drive}** — filter by backup drive (or show all)
+- **{t:backup_drive}** — filter by backup drive (or show all). A disk space indicator
+  shows free / total space for the selected drive, with cached values when offline.
 - **{t:dwarf_label}** — filter by Dwarf device
 - **{t:filter_objects}** — search by target name
+- **{t:quality_filter_label}** — filter sessions by image quality score
+- **{t:sky_search_title}** — find sessions within a sky radius around a DSO
+
+## Gallery
+
+When multiple sessions exist for an object, a **{t:show_gallery}** button appears.
+The gallery opens immediately with the first image and loads the rest in the background.
+Use Previous / Next to browse, or Select to jump directly to that session.
 
 ## Session detail
 
@@ -179,29 +289,38 @@ Click a target in the left panel, then select a session from the
 
 - Target, RA/Dec, classification
 - Exposure, gain, filter, temperature
-- Stacked shots and total exposure time
+- Stacked shots and total exposure time with **quality score** (⭐⭐⭐⭐ 78.2)
 - **🎯 Dark match** — how many calibration darks are available for this session
+
+## Image Quality Score
+
+Each session can be scored on a scale of 0–100 based on two passes:
+
+- **Pass A (metadata)** — stack rate, total exposure time, dark calibration, sensor type
+- **Pass B (image analysis)** — dynamic range, contrast and entropy of the stacked JPEG
+
+Score thresholds: ⭐⭐⭐⭐⭐ Excellent (≥ 80) · ⭐⭐⭐⭐ Good (≥ 65) · ⭐⭐⭐ Average (≥ 50) · ⭐⭐ Fair (≥ 35) · ⭐ Poor (< 35)
 
 ## Actions
 
+Under the actions, two tabs: **{t:explore_tab_infos}** (the session's details) and **{t:explore_tab_image}** (its stacked image; click it for fullscreen). They slide into each other; on a phone or tablet, swipe to switch.
+
+The actions are shown as icons: hover one for its name (on a phone or tablet, the name is under the icon).
+
 - **{t:open_folder_btn}** — open the session folder in Windows Explorer
 - **{t:show_fullscreen_btn}** — view the stacked image fullscreen
-- **Backup/Restore** — Allows you to perform actions on the selected session.
-- **Availability** — Depends on the selected checkboxes. See tips for more details.
-- **{t:delete_session}** — Permanently removes all session data from the backup drive.
-- **{t:delete_session}** — Available only if a backup exists.
-    Access it via the **{t:show_dwarf_data}** button in the Dwarf Settings page.
+- **{t:score_session_btn}** — score all sessions for the selected object
+- **{t:explore_plan_tonight}** — tonight's window of the selected object at the default location (computed on the click), then plan it on a Dwarf in Astro Dwarf Session or add it to tonight's plan (see the Recommended tonight help)
+- **{t:backup_session}** / **{t:restore_mode}** — copy sessions between Dwarf and backup drive
+- **{t:delete_session}** — permanently removes all session data from the backup drive
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
-- **Add/Remove Favorite** — Toggle the session title to show or hide it on the home page
-- **{t:show_details}** — toggle file stats and directory info
+- **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 
 ## Tips
 
-- Use the **Only Show Sessonon Dwarf** / **Only on Backup** checkboxes to find sessions
-  that exist in one place but not the other
-- Use the **Only on Dwarf** / **Only on Backup** checkboxes to find sessions
-  that exist in one place but not the other
-- The 🎯 badge shows dark match status — green = temp in range, orange = closest temp, red = no match
+- Use **{t:only_not_backed}** / **{t:only_already_backed}** checkboxes to find sessions in one place only
+- The 🎯 badge shows dark match status — green = temp in range, orange = closest, red = no match
+- Use **{t:menu_report}** to view session sizes and identify sessions to clean or delete
 ''',
     },
 
@@ -219,6 +338,13 @@ Siril, GraXpert or any other processing tool.
 - **{t:dwarf_label}** — filter by Dwarf device
 - **{t:session_list}** — select a specific session to view
 
+## Gallery
+
+When multiple sessions exist for an object, a **{t:show_gallery}** button appears
+in the action bar. The gallery shows one image per session and lets you browse
+and jump directly to any session. A separate **{t:show_gallery}** button inside
+the session detail shows all images found within that single session.
+
 ## Session detail
 
 Selecting a session shows:
@@ -233,13 +359,12 @@ Selecting a session shows:
 - **{t:open_folder_btn}** — open the session folder in Explorer
 - **{t:show_fullscreen_btn}** — view the stacked image fullscreen
 - **{t:view_linked_dwarf}** — jump to the original raw session in Explore
-- **Add Favorite / Remove Favorite** — mark for processing
+- **{t:favorite_add}** / **{t:favorite_remove}** — mark for processing
 - **{t:edit_session}** — update metadata or add more files
 - **{t:delete_session_btn}** — remove files and database entry
 
 ## Tips
 
-- To Backup a Dwarf session, selct the 
 - Sessions are grouped by target object in the left panel
 - The **manual** group contains sessions without a recognised DSO target
 - Use **{t:edit_session}** to add Starless or Denoise variants after processing
@@ -327,6 +452,17 @@ Where: `exp` = exposure in seconds, `gain` = gain value,
 Reads the `CALI_FRAME/dark/` directory and shows an inventory grouped
 by camera (cam_0 = Tele, cam_1 = Wide) and by exposure/gain/binning.
 
+An older firmware's darks, in `DWARF_DARK` (next to `CALI_FRAME`), are listed
+too: one folder per setting (`tele_exp_15_gain_60_bin_1`, sometimes dated), with
+its raw darks and their temperature when the files carry it.
+
+For a session, the darks are chosen among the `CALI_FRAME` masters and the
+`DWARF_DARK` folders alike: same gain, binning, exposure and camera; then the
+temperature in the session's range, ±2 °C (else the closest); then the date closest to
+the session's, before or after (the folder's date, the master's file date); the
+current firmware's master on a tie. With `DWARF_DARK` raw frames, Siril builds
+the master from them; the 🎯 badge says so.
+
 ## Download Darks
 
 Opens the **{t:transfer}** page with:
@@ -336,6 +472,9 @@ Opens the **{t:transfer}** page with:
 Navigate to your destination `CALI_FRAME` folder and start the transfer.
 The `CALI_FRAME` directory structure (`dark/`, `bias/`, `flat/`) is
 created automatically.
+
+When the Dwarf also has a `DWARF_DARK` folder (older firmware), it is copied at
+the same time, next to `CALI_FRAME`.
 
 ## Tips
 
@@ -389,18 +528,66 @@ Copy sessions between the Dwarf and a backup drive.
         'content': '''
 ## Purpose
 
-Configure global application settings.
+Configure global application settings including language, local storage path,
+astrometry solvers, and mosaic parameters.
 
-## Options
+## Language
 
-- **Theme** — switch between light and dark mode
-- **Storage paths** — configure where local session data is cached
-- **API Keys** — set astrometry.net key for automatic target resolution
+Switch between English and French. The UI reloads immediately.
 
-## Tips
+## Local Storage Path
 
-- Dark mode and light mode can also be toggled quickly from the menu
-- Settings are saved per user in browser storage
+The folder where processed session data (FITS, PNG, JPG) is cached locally.
+Choose a drive with enough free space — this can exceed 10 GB with many sessions.
+
+## Nova API Key (online solver)
+
+[Astrometry.net](https://nova.astrometry.net) is a free online plate solver.
+Create an account, generate an API key, and paste it here.
+Nova is used as a fallback when ASTAP fails.
+
+## ASTAP (local solver)
+
+ASTAP is a fast, offline astrometry solver that runs locally on your machine.
+It is strongly recommended for Windows users — no internet required.
+
+**Download:** [https://www.hnsky.org/astap.htm](https://www.hnsky.org/astap.htm)
+
+### Star databases
+
+ASTAP requires a star database installed alongside the executable:
+
+| Database | Size | Best for |
+|----------|------|----------|
+| **D50** | ~5 GB | General use — recommended default |
+| **D20** | ~2 GB | Faster, slightly less accurate |
+| **D80** | ~8 GB | Long focal length, narrow fields (<1°) |
+| **G05** | ~1 GB | Wide fields >5° (Dwarf in WIDE mode) |
+
+- **Narrow FOV** (< 5°) — use D50 or D20
+- **Wide FOV** (> 5°, e.g. 24 mm lens) — use G05
+
+The application automatically switches to G05 when the estimated field of
+view exceeds 5°. Both databases can be installed simultaneously.
+
+### Solving workflow
+
+1. ASTAP attempts to solve the image locally (fast, ~1–5 s)
+2. If ASTAP fails, Nova is used as an online fallback
+3. Results are stored in the database and displayed on the Sky Map
+
+## Session
+
+- **{t:settings_max_sessions}** — how many targets tonight's plan holds at most (1–10, default 5),
+  each one a session on the Dwarf
+- **{t:settings_day_change_hour}** — before this hour, "tonight" is still the night in progress
+  (default 08:00: at 2 am, last evening's night; at 10 am, the coming one). Used for the default
+  date of Recommended tonight and for tonight's plan (Recommended tonight, Explore)
+
+## Mosaic Parameters
+
+Configure stitching parameters for mosaic sessions.
+See the **Mosaic** page help for details.
 ''',
     },
 
@@ -422,8 +609,8 @@ fields that are stitched together into a single wide-field image.
 
 ## Actions
 
-- **Show Panel** — preview an individual mosaic panel
-- **Generate Panorama** — stitch selected panels into a wide-field image
+- **{t:show_panel}** — preview an individual mosaic panel
+- **{t:generate_panorama}** — stitch selected panels into a wide-field image
 - **{t:repair_transfer}** — fix a mosaic that was partially transferred
 - **{t:merge_transfer}** — merge panels from multiple sessions
 
@@ -529,6 +716,103 @@ group. Nothing is changed.
   the scan, so each can be linked to its own DSO.
 - Run the groups check from time to time after adding sessions to
   sub-folders.
+''',
+    },
+
+    '/Report': {  # TODO
+        'title': 'Storage Report',
+        'content': '''
+## Purpose
+
+The Storage Report helps you identify which sessions take the most space
+and decide what to clean or delete — especially useful when a Dwarf disk
+or backup drive is nearly full.
+
+## Drive selector
+
+Choose between **Backup** and **Dwarf** mode, then select a specific drive.
+A disk space indicator shows free / total space with a colour-coded bar.
+Values are cached in `db/diskinfo.json` and displayed even when the drive is offline.
+
+## Session table
+
+Each row shows:
+
+- **Date** — session date
+- **Object** — target name (hover the session dir for the full path)
+- **Backup size** — total size of the session on the backup drive
+- **Dwarf total** — total size on the local Dwarf copy (if present)
+- **Dwarf -FITS** — size after removing raw FITS files (what Clean Fits would free)
+- **Quality** — image quality score (colour-coded)
+- **Explore** — opens the session directly in the Explore page
+
+## Sorting and filtering
+
+- **{t:report_biggest}** — sort by backup size, largest first
+- **{t:report_latest}** — sort by date, most recent first
+- **{t:report_show}** — limit to 20 / 50 / 100 sessions, or **{t:report_all}**
+
+## Calculating sizes
+
+- **{t:report_calc_sizes}** — measures folder sizes for backup sessions not yet calculated.
+- **{t:report_calc_dwarf_sizes}** — measures sizes for sessions present on the local Dwarf copy,
+  computing both the total size and the size after a Clean Fits operation.
+
+## Tips
+
+- Sessions showing `—` for size have not been measured yet — click **{t:report_calc_sizes}**
+- **Dwarf -FITS** = size that would remain after **Clean Fits** — compare to **Dwarf total**
+  to see how much space you would reclaim without losing the stacked result
+- Click **Explore** to open the session and run Clean Fits or delete it directly
+- The back button in Explore returns to this report with the same filters active
+''',
+    },
+
+    '/SkyMap': {  # TODO
+        'title': 'Sky Map',
+        'content': '''
+## Purpose
+
+The Sky Map displays all your astrometry-resolved sessions on an interactive
+celestial map powered by Aladin Lite. Each coloured rectangle represents one
+observation session, colour-coded by quality score.
+
+## Quality colours
+
+- 🟢 **Green** — score ≥ 80 (excellent)
+- 🟡 **Orange** — score 65–79 (good)
+- 🔴 **Red** — score < 65 (low)
+- ⬜ **Grey** — no score
+
+## Scanning sessions
+
+Each Dwarf has its own row in the table showing:
+- **Total** — all sessions in the database
+- **Solved** — sessions with astrometry resolved
+- **Pending** — unsolved sessions above the quality threshold
+- **No score** — sessions without a quality score
+
+Use the **Min quality** slider to adjust which sessions are eligible for scanning.
+Click **{t:sky_map_btn_scan}** to launch the astrometry solver for that Dwarf.
+
+## Opening the map
+
+Click **{t:sky_map_open_browser}** to open the interactive Aladin Lite map in
+your browser.
+
+## Navigating the map
+
+- **Click** a footprint to see session details and a preview image
+- **Rotate** the preview with the ↻ button
+- **Zoom** the preview with + / −
+- Each Dwarf has its own **layer** in Aladin — toggle visibility from the
+  layer control panel (top-left of the map)
+- If several sessions overlap, a list lets you choose which one to open
+
+## Mosaic sessions
+
+Mosaic sessions show a bounding box covering all resolved panels.
+If the mosaic was re-stitched, the global WCS is used instead of individual panels.
 ''',
     },
 
