@@ -36,6 +36,9 @@
     German and Spanish help (components/help_locales/de.py, es.py): the translation templates brought up to date
     with the English help - the 8 pages changed since and the 3 missing (What to shoot tonight, Report, Sky map);
     each page still marked # TODO until translated.
+    German and Spanish interface texts (components/locales/de.py, es.py): already complete; 3 outdated values
+    aligned with English (the local plate solving label, "solve-field is available" that said "not available", a
+    stray "}" in "destination already exists").
 
 ## [V3.4.4] - 2026-10-13
 
