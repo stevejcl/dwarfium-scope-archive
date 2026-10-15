@@ -33,6 +33,9 @@
     briefly disconnected during the targets' computation (its database connection is closed then).
     What to shoot tonight: a section closed (new, incomplete, well covered targets) stays closed when the images are
     turned on or a filter changes, and loads no images until it is opened - they all reopened and loaded everything.
+    German help (components/help_locales/de.py): the translation template brought up to date with the English help -
+    the 8 pages changed since and the 3 missing (What to shoot tonight, Report, Sky map); each page still marked
+    # TODO until translated.
 
 ## [V3.4.4] - 2026-10-13
 
