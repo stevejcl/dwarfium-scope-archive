@@ -247,7 +247,7 @@ TRANSLATIONS: dict[str, str] = {
     "path_saved":                   "Path saved successfully!",  # TODO
     "nova_config":                  "🔭 Configuration of NOVA Astrometry",  # TODO
     "nova_online":                  "🌐 Online mode (Astrometry.net)",  # TODO
-    "nova_local":                   "💻 Local Mode (solve-field)",  # TODO
+    "nova_local":                   "💻 Local Mode (ASTAP / Solve-Field)",  # TODO
     "nova_local_astap":             "💻 Local Mode (ASTAP)",  # TODO
     "nova_create_key":              "Create an API key on Astrometry.net",  # TODO
     "nova_install":                 "Install solve-field localy",  # TODO
@@ -255,7 +255,7 @@ TRANSLATIONS: dict[str, str] = {
     "nova_go_settings":             "Go to Settings to register a NOVA_ASTRO_API key.",  # TODO
     "solve_not_found":              "❌ solve-field not found.",  # TODO
     "solve_field_no_terminal":      "No terminal found. Run this command in a terminal: {cmd}",  # TODO
-    "solve_available":              "✅ solve-field is not available on this system.",  # TODO
+    "solve_available":              "✅ solve-field is available on this system.",  # TODO
     "install_not_supported":        "Automatic installation not supported for this system.",  # TODO
     "dwarf_config":                 "🔭 Configuration of Dwarf Local Parent directory",  # TODO
     "first_local_config_message1":  "Before using Dwarfium Scope Archive, you need to select a folder to store your local session index.\n",  # TODO
@@ -348,7 +348,7 @@ TRANSLATIONS: dict[str, str] = {
     "backup_info_updated":          "BackupDrive info updated",  # TODO
     "no_backup_drive_sel":          "No backup drive selected.",  # TODO
     "dest_already_exists":          "The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?",  # TODO
-    "notify_dest_already_exists":   "The destination: '{dest_path}' already exists!}",  # TODO
+    "notify_dest_already_exists":   "The destination: '{dest_path}' already exists!",  # TODO
     "please_backup_dir":            "Please choose the main backup directory for your Dwarf astrophotography images or dark files.",  # TODO
     "please_astro_dir":             "Please select the Astronomy directory within the mapped USB drive.",  # TODO
     "select_astro_info":            "You can select a specific subfolder where your astrophotography session images are stored.",  # TODO
