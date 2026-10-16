@@ -45,6 +45,9 @@
     German and Spanish interface texts (components/locales/de.py, es.py): already complete; 3 outdated values
     aligned with English (the local plate solving label, "solve-field is available" that said "not available", a
     stray "}" in "destination already exists").
+    Dwarf Configuration help: the Session IP (a second FTP IP kept on this PC, for a Dwarf on a remote site reached
+    through Tailscale - the FTP functions use the IP that answers) and the path detected / not detected line with
+    its refresh button, which it didn't mention.
 
 ## [V3.4.4] - 2026-10-13
 

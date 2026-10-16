@@ -136,6 +136,8 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
 2. Enter a name (e.g. `Dwarf Mini New`)
 3. Set the **{t:astronomy_dir}** — the full path to the `Astronomy` folder on
    the Dwarf's Disk when connected by USB (e.g. `I:\\Astronomy`)
+   Under it, ✅ / ❌ says whether that folder is there now (the Dwarf
+   connected by USB); ⟳ checks again once it is plugged in.
 4. If you are using the Dwarf 2, a direct USB connection is not available.
    You should use one of the following methods:
    1. FTP Connection: Setup the Dwarf in STA Mode with the DwarfLab Mobile App
@@ -150,6 +152,10 @@ IP address (for FTP/WiFi transfer), and type (Dwarf2, Dwarf3, Dwarf Mini).
       5. You can then register your Dwarf, but the scan function will not be available
       6. To transfer a session, you must use the MTP Page
 5. Set the **{t:ip_sta_mode}** if you want WiFi/FTP transfer
+   **{t:session_ip}** (optional): a second FTP IP for this Dwarf, kept on this PC only (not in the
+   database) - e.g. its IP on a remote site reached through Tailscale (a subnet route on the computer
+   there). The FTP functions (this page, **{t:transfer}**, Import Session) use whichever of the two IPs
+   answers. A link from Dwarfium Lite giving the Dwarf's IP fills it in.
 6. Fill in the **{t:dwarf_ble_id}**: the last 6 characters of the MAC address printed on the
    Dwarf (the whole address can be pasted), which also end its Bluetooth name (`DWARF3_A1B2C3`).
    Dwarf on and on the network: **{t:dwarf_ble_id_read}** asks the Dwarf at its IP.
