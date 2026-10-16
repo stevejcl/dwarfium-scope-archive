@@ -934,6 +934,17 @@ TRANSLATIONS: dict[str, str] = {
     "fits_read_error":              'Error reading FITS: {error}',  # TODO
     "scanning_location":            '🔍 Scanning: {location}',  # TODO
     "analysis_complete":            '✅ Analysis Complete: {total} new sessions found, {deleted} sessions deleted.',  # TODO
+    "page_analyze_all":              "Analyze everything",  # TODO
+    "menu_analyze_all":              "Analyze everything",  # TODO
+    "analyze_all_intro":             "Analyzes the local copy of every Dwarf (the Dwarf needs not be connected) and every backup drive of the database, one after the other: the database then matches the files again - after another Scope Archive installation sharing these folders imported, transferred or deleted sessions, or a folder moved by hand. Untick what you don't want analyzed.",  # TODO
+    "analyze_all_dwarfs":            "DWARFS - LOCAL COPY",  # TODO
+    "analyze_all_backups":           "BACKUP DRIVES",  # TODO
+    "analyze_all_unreachable":       "not reachable",  # TODO
+    "analyze_all_last":              "last analysis: {date}",  # TODO
+    "analyze_all_start":             "Analyze the ticked folders",  # TODO
+    "analyze_all_none":              "Nothing ticked (or reachable) to analyze.",  # TODO
+    "analyze_all_progress":          "Analyzing {i}/{n}: {name}…",  # TODO
+    "analyze_all_done":              "✅ {n} folder(s) analyzed: {total} new session(s), {deleted} removed.",  # TODO
     "analysis_complete_backup":     '✅ Analysis Complete: {total} new sessions found on backup.',  # TODO
     "analysis_complete_dwarf":      '✅ Analysis Complete: {total} new sessions found on dwarf.',  # TODO
     "analysis_errors_found":        '✅ Analysis Complete: {count} sessions with errors found.',  # TODO
