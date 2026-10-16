@@ -22,6 +22,7 @@ from nicegui import ui, run, background_tasks
 from components.tonight_plan import PlanTarget, TonightPlan, iso_utc, tonight
 from components.i18n import t
 from components.menu import menu
+from components.app_logo import LOGO_SVG
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.wiki_images import get_cached_image, fetch_and_cache_image
@@ -652,7 +653,7 @@ def _compute_recommendations(database: str, location: dict, target_date: date) -
 
 @ui.page('/RecommendTonight')
 async def recommend_tonight_page():
-    menu(f"🔭 {t('page_recommend_tonight')}")
+    menu(t('page_recommend_tonight'), logo_svg=LOGO_SVG)
     await ui.context.client.connected(timeout=10.0)
     RecommendTonightApp(DB_NAME)
 

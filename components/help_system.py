@@ -2,6 +2,10 @@ from components.i18n import t
 from nicegui import ui, app, context
 
 from components.help_content import get_help, help_content
+from components.app_logo import LOGO_SVG
+
+# Pages whose help shows the application's logo next to its title
+_LOGO_PAGES = {'/RecommendTonight'}
 
 help_drawer = None
 timer_drawer = None
@@ -46,7 +50,12 @@ def build_help():
 
     help_drawer.clear()
     with help_drawer:
-        ui.label(data['title']).classes('text-subtitle1 font-bold')
+        if path.rstrip('/') in _LOGO_PAGES:
+            with ui.row().classes('items-center gap-2 no-wrap'):
+                ui.html(LOGO_SVG, sanitize=False).classes('w-8 h-8 shrink-0')   # our own constant
+                ui.label(data['title']).classes('text-subtitle1 font-bold')
+        else:
+            ui.label(data['title']).classes('text-subtitle1 font-bold')
         ui.separator()
         ui.markdown(data['content']).style('font-size: 1.5rem; line-height: 1.5;').classes('help-content')
 
