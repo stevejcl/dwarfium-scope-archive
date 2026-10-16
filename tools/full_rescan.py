@@ -117,10 +117,23 @@ def _prune_logs():
 
 
 def open_path(path: str) -> None:
-    """The log file (or its folder) in the system's own application."""
+    """The log file in the system's own application."""
     if platform.system() == "Windows":
         os.startfile(path)
     elif platform.system() == "Darwin":
         subprocess.Popen(["open", path])
     else:
         subprocess.Popen(["xdg-open", path])
+
+
+def show_in_folder(path: str) -> None:
+    """The file's folder, the file selected - through explorer as the other
+    pages open a folder (os.startfile on a folder didn't open it from the
+    application's window, user-reported)."""
+    path = os.path.normpath(path)
+    if platform.system() == "Windows":
+        subprocess.Popen(["explorer", "/select,", path])
+    elif platform.system() == "Darwin":
+        subprocess.Popen(["open", "-R", path])
+    else:
+        subprocess.Popen(["xdg-open", os.path.dirname(path)])
