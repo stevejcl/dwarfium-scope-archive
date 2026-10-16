@@ -84,12 +84,12 @@ a note appears on the higher-scoring one.
 
 ## Aladin link
 
-The 🔭 button on each card opens the target in Aladin Lite (external browser) to
+The <i class="q-icon material-icons text-primary" style="font-size:1.2em;vertical-align:-0.2em">travel_explore</i> button on each card opens the target in Aladin Lite (external browser) to
 preview the field before observing.
 
 ## Plan on the Dwarf
 
-The 📅 button on each card offers two choices:
+The <i class="q-icon material-icons text-primary" style="font-size:1.2em;vertical-align:-0.2em">event</i> button on each card offers two choices:
 
 - **Plan this target tonight** — opens Astro Dwarf Session's planning page (external
   browser) with the target and its window tonight (above 25°).

@@ -1107,7 +1107,7 @@ TRANSLATIONS: dict[str, str] = {
 
     # Recommend Tonight Page
     "page_recommend_tonight":       "What to shoot tonight", # TODO
-    "tonight_menu":                 "🔭 Tonight's Targets", # TODO
+    "tonight_menu":                 "Tonight's Targets", # TODO
     "tonight_title":                "What to shoot tonight!", # TODO
     "tonight_location":             "Location", # TODO
     "tonight_refresh":              "Refresh", # TODO
