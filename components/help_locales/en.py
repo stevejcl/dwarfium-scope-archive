@@ -177,6 +177,15 @@ Before the scan, Scope Archive checks that the Dwarf connected is the one chosen
 
 A warning then offers to choose the right Dwarf, or to continue anyway.
 
+## Several installations sharing this Dwarf_Local
+
+Two Scope Archive installations (e.g. the executable and a source run), each with its own database, can
+share the same Dwarf_Local and backup drives. An import, a transfer or a delete done by one changes the
+files, but only its own database. Each shared folder keeps a small `.scope_archive_changes.json` (when
+each installation last changed files there): when another installation changed them since this one's
+last full analysis, an orange banner says so - **{t:shared_analyze_local}** (or the full analysis when the
+Dwarf is connected) brings this database up to date, and the banner goes away.
+
 ## Show Dwarf Data
 
 Opens the **{t:page_explore}** page to view data stored on your Dwarf.
@@ -237,6 +246,12 @@ the drive is offline.
 Scans the backup drive and indexes all sessions into the database.
 Run this after copying new sessions from the Dwarf.
 A progress bar shows the current folder being scanned and the overall count.
+
+## Several installations sharing this drive
+
+When another Scope Archive installation (with its own database) changed the files of this drive since
+this one's last analysis - a transfer, a delete, a session moved - an orange banner says so:
+**{t:analyze_drive}** brings this database up to date (see the same section of the Dwarf page's help).
 
 ## Transfer History
 

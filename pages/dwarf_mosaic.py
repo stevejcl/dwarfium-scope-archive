@@ -1049,6 +1049,9 @@ class MosaicApp(DbPageMixin):
                         except Exception as e:
                             print_log(f"⚠️ Could not copy {os.path.basename(src)} to Session_Error: {e}", self.log_ui)
                     print_log(f"✅ {copied}/{len(files_to_copy)} file(s) copied to repaired session: {secondary_name_repair}", self.log_ui)
+                    if copied:
+                        from api import shared_changes
+                        shared_changes.mark_changed(self.conn, secondary)     # the other installations sharing it
                     if (copied > 0 and copied == len(files_to_copy)) :
                         done_transfer_dwarf = True
                     # Update DwarfSessionsError status to REPAIRED

@@ -19,6 +19,8 @@ from tools.quality_scan import get_sessions_to_score, score_entry_ids
 from components.win_log import WinLog
 from components.menu import menu, setStyle
 from components.disk_space_widget import disk_space_widget
+from components import shared_changes_banner
+from api import shared_changes as SC
 
 @ui.page('/Backup')
 async def backup_settings(BackupId:int = None):
@@ -54,6 +56,9 @@ class ConfigApp(DbPageMixin):
         sizeBTN2='w-58'
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
+            # Files changed by another installation sharing this drive
+            self.shared_banner = ui.column().classes("w-full")
+            self.shared_banner.set_visibility(False)
             with ui.row().classes("w-full mt-2 mb-2 justify-between gap-8"):
                 ui.button(t("show_backup_data"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
                 self.history_log = ui.button(t("transfer_history_log"), on_click=self._toggle_history).classes(sizeBTN)
@@ -268,6 +273,7 @@ class ConfigApp(DbPageMixin):
             # Load transfer history from journal file
             backup_path = os.path.join(row[2], row[3]) if row[3] else row[2]
             self._load_transfer_history(backup_path)
+            shared_changes_banner.refresh(self.shared_banner, backup_path, t("analyze_drive"), self.analyze_drive)
             # Refresh disk space info
             if self._disk_widget:
                 await self._disk_widget.refresh(
@@ -476,11 +482,13 @@ class ConfigApp(DbPageMixin):
             except Exception:
                 pass
 
+        started = SC.now()      # another installation's changes before it: in this database after it
         try:
             backup_drive_id, dwarf_id = insert_or_get_backup_drive(self.conn, location)
 
             ui.notify(t("scanning_location", location=f"{location}-{astroDir}"))
             total, deleted, rebuild_result = await run.io_bound(scan_backup_folder, DB_NAME, location, astroDir, dwarf_id, backup_drive_id, None, log, _on_scan_progress)
+            SC.mark_analyzed(os.path.join(location, astroDir) if astroDir else location, started)
             scan_progress_bar.set_value(1)
             scan_progress_label.set_text(t("analysis_complete", total=total, deleted=deleted))
             ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")

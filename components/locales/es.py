@@ -811,6 +811,9 @@ TRANSLATIONS: dict[str, str] = {
     "secondary_session_dir":        "Secondary Session Directory:",  # TODO
     "path_detected":                "✅ Path detected.",  # TODO
     "path_not_detected":            "❌ Path not detected.",  # TODO
+    "shared_changed_title":          "Files changed by another installation",  # TODO
+    "shared_changed_text":           "{names} changed these files ({at}): this database doesn't know it yet - analyze to bring it up to date.",  # TODO
+    "shared_analyze_local":          "Analyze the local copy",  # TODO
     "primary_session_repair":       "📂 Primary Session (reference — correct mosaic)",  # TODO
     "secondary_session_repair":     "📂 Secondary Session (session to repair)",  # TODO
     "confirm_continue":             "Confirm and continue",  # TODO

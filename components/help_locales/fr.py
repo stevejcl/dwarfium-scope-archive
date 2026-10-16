@@ -178,6 +178,16 @@ Avant l'analyse, Scope Archive vérifie que le Dwarf branché est bien celui cho
 
 Un avertissement propose alors de choisir le bon Dwarf, ou de continuer quand même.
 
+## Plusieurs installations partageant ce Dwarf_Local
+
+Deux installations de Scope Archive (par exemple l'exécutable et une version source), chacune avec sa
+base, peuvent partager le même Dwarf_Local et les mêmes disques de sauvegarde. Un import, un transfert ou
+une suppression faits par l'une changent les fichiers, mais seulement sa propre base. Chaque dossier
+partagé garde un petit `.scope_archive_changes.json` (quand chaque installation y a modifié des fichiers
+pour la dernière fois) : quand une autre installation les a modifiés depuis la dernière analyse complète
+de celle-ci, un bandeau orange le signale - **{t:shared_analyze_local}** (ou l'analyse complète quand le
+Dwarf est connecté) met cette base à jour, et le bandeau disparaît.
+
 ## Afficher les données Dwarf
 
 Ouvre la page **{t:page_explore}**r pour visualiser les données stockées sur votre Dwarf.
@@ -238,6 +248,13 @@ même si le disque est déconnecté.
 Scanne le disque de sauvegarde et indexe toutes les sessions dans la base de données.
 À exécuter après avoir copié de nouvelles sessions depuis le Dwarf.
 Une barre de progression indique le dossier en cours et l'avancement global.
+
+## Plusieurs installations partageant ce disque
+
+Quand une autre installation de Scope Archive (avec sa propre base) a modifié les fichiers de ce disque
+depuis la dernière analyse de celle-ci - un transfert, une suppression, une session déplacée - un bandeau
+orange le signale : **{t:analyze_drive}** met cette base à jour (voir la même section dans l'aide de la
+page Dwarf).
 
 ## Historique des transferts
 

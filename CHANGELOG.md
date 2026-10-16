@@ -9,6 +9,13 @@
     its help, and before "Tonight's Targets" in the menu. Its help shows the cards' own Aladin and plan buttons
     (it still showed the former 🔭 and 📅).
     And before the "AstroObject to DSO Association" title of the Catalog page (instead of 🔭).
+    Several installations sharing the same Dwarf_Local / backup drives (e.g. the executable and a source run, each
+    with its own database): each shared folder keeps a .scope_archive_changes.json - one line per installation,
+    when it last changed files there (import, transfer, delete, session moved, local archive emptied; a Dwarf
+    sync only when it copied or moved sessions). The Dwarf and Backup pages show an orange banner when another
+    installation changed them since this one's last full analysis, with the button to analyze (the local copy
+    when the Dwarf isn't connected); the analysis itself never writes the marker. The installation's identifier
+    is kept in the application's folder (.nicegui storage), not in the database.
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the

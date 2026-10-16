@@ -1783,6 +1783,10 @@ class AddManualSession(DbPageMixin):
                 result = True
                 ui.notify(f"⚠️ Backup partially completed ({verified_files}/{total_files} files copied).", type="warning")
 
+            if verified_files > 0:      # the other installations sharing that drive should know
+                from api import shared_changes
+                shared_changes.mark_changed(self.conn, dest_path)
+
             # --- Register in database (as long as at least one file was copied) ---
             if not self.cancel_backup and verified_files > 0:
                 try:

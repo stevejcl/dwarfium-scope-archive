@@ -376,6 +376,17 @@ def move_backup_session(db_name: str, backup_entry_id: int, dst_drive_id: int,
         result["error"] = "move_err_io"
         return result
 
+    # Both shared folders changed: the other installations sharing them should know
+    try:
+        from api import shared_changes
+        _mc = connect_db(db_name)
+        try:
+            shared_changes.mark_changed(_mc, src["session_path"], dst_path)
+        finally:
+            close_db(_mc)
+    except Exception as e:
+        print(f"[SessionMove] marker: {e}")
+
     # 2 — scan the moved session only, as after a transfer
     scan_backup_folder(db_name, dst_location, dst_astronomy_dir, src["dwarf_id"],
                        dst_drive_id, dst_path, log)

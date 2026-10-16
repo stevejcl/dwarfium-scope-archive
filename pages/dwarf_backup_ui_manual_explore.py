@@ -45,6 +45,7 @@ from api.dwarf_backup_db_api import (
     toggle_favorite_manual,
     delete_manual_session_entry,
 )
+from api import shared_changes as SC
 from api.dwarf_backup_fct import (
     show_short_date_session,
     preprocess_dso_catalog_json,
@@ -1771,6 +1772,7 @@ class ManualExploreApp(DbPageMixin):
             if folder:
                 try:
                     shutil.rmtree(folder)
+                    SC.mark_changed(self.conn, folder)     # the other installations sharing it
                     ui.notify(t("folder_deleted", path=folder), color="positive")
                 except Exception as e:
                     ui.notify(t("file_delete_error", name=folder, error=e), color="negative")

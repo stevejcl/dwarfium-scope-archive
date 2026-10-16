@@ -29,6 +29,7 @@ from api.dwarf_backup_db_api import (
     find_matching_darks, generate_siril_session_json, get_backupDrive_id_from_backupEntry, 
     get_dwarf_session_error_by_dir, get_sky_filter_entry_ids, get_folder_size_bytes, insert_session_quality_folder_data
 )
+from api import shared_changes as SC
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
     get_directory_size, count_fits_files, count_failed_fits_files, count_tiff_files, count_failed_tiff_files, get_png_name_from_zip, get_fits_name_from_zip,
@@ -1551,6 +1552,7 @@ class ExploreApp(DbPageMixin):
             try:
                 self.ensure_conn()
                 shutil.rmtree(folder_path)
+                SC.mark_changed(self.conn, folder_path)     # the other installations sharing it
                 ui.notify(t("folder_deleted", path=folder_path), color="positive")
                 # delete data
                 if self.selected_DeleteEntryInfo:
@@ -1595,6 +1597,8 @@ class ExploreApp(DbPageMixin):
                 self.ensure_conn()
                 ui.notify(t("fits_cleanup_running", path=folder_path), color="positive")
                 deleted_count = await run.io_bound(cleanup_fits_files, folder_path)
+                if deleted_count:
+                    SC.mark_changed(self.conn, folder_path)     # the other installations sharing it
                 if deleted_count > 1:
                     ui.notify(t("fits_deleted_count", count=deleted_count), color="positive")
                 elif deleted_count == 1:
@@ -1653,6 +1657,8 @@ class ExploreApp(DbPageMixin):
             try:
                 self.ensure_conn()
                 restored_count, skipped_count, total_fits_files = await run.io_bound(restore_fits_files, self.path_result_on_backupDrive, dwarf_folder_path, self, None)
+                if restored_count:
+                    SC.mark_changed(self.conn, dwarf_folder_path)     # the other installations sharing it
                 if self.cancel_restore:
                     ui.notify(t("restore_cancelled", restored=restored_count, total=total_fits_files, skipped=skipped_count), color="warning")
                 else:

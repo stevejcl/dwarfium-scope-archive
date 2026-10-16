@@ -30,6 +30,7 @@ from nicegui import run, ui
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_detail
+from api import shared_changes as SC
 from api.dwarf_backup_fct import (
     create_local_dwarf_dir,
     get_local_dwarf_dir,
@@ -113,6 +114,7 @@ def _import_session(dwarf_id: int, session: str, log, progress_cb, dwarf_ip: str
         if not local_main_dir:
             return False, "import_session_local_dir_error"
 
+        before = SC.snapshot(get_local_dwarf_dir(conn, dwarf_id))
         usb_dir = (usb_dir or "").strip()
         if usb_dir and os.path.isdir(usb_dir):
             log.push(f"🔌 USB: {usb_dir}")
@@ -128,6 +130,7 @@ def _import_session(dwarf_id: int, session: str, log, progress_cb, dwarf_ip: str
             return False, "import_session_not_connected"
 
         local_dwarf_dir = get_local_dwarf_dir(conn, dwarf_id)
+        SC.mark_if_changed(conn, local_dwarf_dir, before)     # the other installations sharing it
         session_dir = _local_session_dir(local_dwarf_dir, session)
         if not session_dir:
             return False, "import_session_not_found"

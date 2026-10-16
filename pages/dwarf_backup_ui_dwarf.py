@@ -31,6 +31,8 @@ from api.dwarf_backup_db_api import get_dwarf_sessions_error
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+from components import shared_changes_banner
+from api import shared_changes as SC
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
 from components.action_icon import ActionIcon
@@ -92,6 +94,9 @@ class ConfigApp(DbPageMixin):
         self.dwarf_type_name_to_id = {v: k for k, v in self.dwarf_type_map.items()}
 
         with ui.card().classes("w-full max-w-3xl mx-auto"):
+            # Files changed by another installation sharing this Dwarf_Local
+            self.shared_banner = ui.column().classes("w-full")
+            self.shared_banner.set_visibility(False)
             #with ui.grid(columns=2).classes("w-full"):
             with ui.row().classes("w-full justify-between"):
                 ui.button(t("show_dwarf_data"), on_click=lambda: ui.navigate.to(self.get_explore_url())).classes(sizeBTN)
@@ -352,7 +357,41 @@ class ConfigApp(DbPageMixin):
             self.refresh_error_sessions_btn()
             await self.show_local_data()
             await self.check_status_dwarf()
+            self.refresh_shared_banner()
             await self.ask_link_ip()
+
+    def refresh_shared_banner(self):
+        root = get_local_dwarf_dir(self.conn, self.dwarf_id) if self.dwarf_id else None
+        shared_changes_banner.refresh(self.shared_banner, root, t("shared_analyze_local"), self.analyze_shared)
+
+    async def analyze_shared(self):
+        """The banner's button: the full analysis when the Dwarf is there,
+        else the local copy only (what the other installation changed)."""
+        if self.dwarf_status:
+            await self.analyze_usb_drive()
+        else:
+            await self.analyze_local_copy()
+
+    async def analyze_local_copy(self):
+        if not self.dwarf_id:
+            return
+        local_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
+        started = SC.now()
+        with ui.dialog().props('persistent') as dialog, ui.card().style('width: 800px; max-width: none'):
+            ui.label(t("starting_analysis"))
+            spinner = ui.spinner(size="lg")
+            log = ui.log(max_lines=20).classes('w-full').style('height: 300px; overflow: hidden;')
+        dialog.open()
+        try:
+            total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_dir, None, self.dwarf_id, None, None, log)
+            SC.mark_analyzed(local_dir, started)
+            ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
+        except Exception as e:
+            ui.notify(f"❌ Error: {e}", type="negative")
+        finally:
+            spinner.set_visibility(False)
+            dialog.close()
+        await self.load_selected_dwarf(None)
 
     async def save_session_ip(self):
         """The session IP field, kept on leaving it (when valid)."""
@@ -897,10 +936,15 @@ class ConfigApp(DbPageMixin):
                             pass
                     return _cb
 
+                local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
+                started = SC.now()
+                before = await run.io_bound(SC.snapshot, local_Dwarf_dir)
                 if self.dwarf_status == "USB":
                     await run.io_bound(sync_dwarf_sessions, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log, _make_progress_cb("🔄 "))
                 if self.dwarf_status == "FTP":
                     await run.io_bound(ftp_sync_dwarf_sessions, ftp, self.dwarf_id, dwarf_location, local_Main_Dwarf_dir, None, log, _make_progress_cb("🔄 "))
+                # The sync copied or moved sessions: the other installations' turn to know
+                await run.io_bound(SC.mark_if_changed, self.conn, local_Dwarf_dir, before or frozenset())
 
                 # Advance offset to sync_total before scan phase
                 progress_state["offset"] = sync_total
@@ -910,6 +954,7 @@ class ConfigApp(DbPageMixin):
                 ui.notify(t("starting_analysis"))
 
                 total, deleted, _ = await run.io_bound(scan_backup_folder, DB_NAME, local_Dwarf_dir, None, self.dwarf_id, None, None, log, _make_progress_cb("🔍 "))
+                SC.mark_analyzed(local_Dwarf_dir, started)
                 scan_progress_bar.set_value(1)
                 scan_progress_label.set_text(t("analysis_complete", total=total, deleted=deleted))
                 ui.notify(t("analysis_complete", total=total, deleted=deleted), type="positive")
@@ -1059,5 +1104,6 @@ class ConfigApp(DbPageMixin):
         # Delete the Archive
         local_Dwarf_dir = get_local_dwarf_dir(self.conn, self.dwarf_id)
         await run.io_bound(empty_local_archive_dwarf_dir, local_Dwarf_dir)
+        SC.mark_changed(self.conn, local_Dwarf_dir)
         await self.show_local_data()
         ui.notify(t("notify_archive_cleaned"), type="positive")

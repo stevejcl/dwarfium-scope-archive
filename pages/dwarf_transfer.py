@@ -12,6 +12,7 @@ from pathlib import Path
 from components.menu import menu
 from components.folder_picker import choose_folder
 from api.dwarf_session_ip import pick_ftp_ip
+from api import shared_changes as SC
 from api.dwarf_backup_fct_ftp import dwarf_ip_param, ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
 from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
@@ -1035,6 +1036,8 @@ class TransferApp:
             print("[Transfer] Shielded copy from cancellation — waiting for completion...")
             result = await _copy_task  # wait for the already-running task
 
+        # Files copied (all or part): the other installations sharing it should know
+        await run.io_bound(SC.mark_changed, self.conn, dest_path)
         if result:
             self._safe_ui(lambda: self.progress_label.set_text(t("end_of_backup")))
             self._safe_ui(lambda: ui.notify(t("backup_verified")))
@@ -1092,6 +1095,18 @@ class TransferApp:
                 pass
 
     async def execute_sync_dwarf_sessions(self, src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner):
+        """The Dwarf's sessions synced to its local copy: marked for the
+        other installations sharing it when sessions were copied or moved."""
+        local_dir = get_local_dwarf_dir(self.conn, self.DwarfId) if self.DwarfId else None
+        before = await run.io_bound(SC.snapshot, local_dir) if local_dir else frozenset()
+        try:
+            return await self._execute_sync_dwarf_sessions(src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup,
+                                                           label, log, spinner)
+        finally:
+            if local_dir:
+                await run.io_bound(SC.mark_if_changed, self.conn, local_dir, before or frozenset())
+
+    async def _execute_sync_dwarf_sessions(self, src_dir, dest_path, local_Main_Dwarf_dir, isFullBackup, label, log, spinner):
 
         def _ui(fn):
             """Call UI function only if label/spinner exist (page may be gone)."""
