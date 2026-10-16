@@ -945,6 +945,7 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_open_log":         "Open the log",
     "analyze_all_open_folder":      "Its folder",
     "analyze_all_lines_skipped":    "… {n} more line(s) - in the log file",
+    "log_lines_skipped":            "… {n} more line(s)",
     "analysis_complete_backup":     '✅ Analysis Complete: {total} new sessions found on backup.',
     "analysis_complete_dwarf":      '✅ Analysis Complete: {total} new sessions found on dwarf.',
     "analysis_errors_found":        '✅ Analysis Complete: {count} sessions with errors found.',

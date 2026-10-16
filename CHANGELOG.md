@@ -23,6 +23,8 @@
     Its log reaches the screen in batches, twice a second (at most 50 lines each, all of them in the file): each line
     sent from the analysis thread meant thousands of messages a minute to every browser open, and a phone open at the
     same time kept losing its connection.
+    The same for the Dwarf page's analysis and the Backup page's analysis and integrity check
+    (components/batched_log.py).
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the
