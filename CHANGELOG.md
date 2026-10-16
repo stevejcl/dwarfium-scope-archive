@@ -5,8 +5,9 @@
 ### Add
     A new icon: a Dwarf pointing at the sky and archived pictures, on the green disc - the same family as Dwarfium
     Lite's and Dwarfium-Hub's icons (the name no longer written in it, unreadable at small sizes).
-    The logo also shows on the "What to shoot tonight" page, before its title (instead of 🔭), and next to the title
-    of its help.
+    The logo also shows on the "What to shoot tonight" page, before its title (instead of 🔭), next to the title of
+    its help, and before "Tonight's Targets" in the menu. Its help shows the cards' own Aladin and plan buttons
+    (it still showed the former 🔭 and 📅).
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the

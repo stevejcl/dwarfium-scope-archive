@@ -87,12 +87,12 @@ seule prise wide-field, une note apparaît sur celui avec le meilleur score.
 
 ## Lien Aladin
 
-Le bouton 🔭 sur chaque carte ouvre la cible dans Aladin Lite (navigateur externe)
+Le bouton <i class="q-icon material-icons text-primary" style="font-size:1.2em;vertical-align:-0.2em">travel_explore</i> sur chaque carte ouvre la cible dans Aladin Lite (navigateur externe)
 pour visualiser le champ avant d'observer.
 
 ## Programmer sur le Dwarf
 
-Le bouton 📅 de chaque carte propose deux choix :
+Le bouton <i class="q-icon material-icons text-primary" style="font-size:1.2em;vertical-align:-0.2em">event</i> de chaque carte propose deux choix :
 
 - **Programmer cette cible cette nuit** — ouvre la page de planification d'Astro Dwarf
   Session (navigateur externe) avec la cible et son créneau cette nuit (au-dessus de 25°).

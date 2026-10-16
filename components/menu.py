@@ -2,6 +2,7 @@ from components.i18n import t
 # components/menu.py
 from nicegui import ui, app
 from components.help_system import register_drawer, open_help
+from components.app_logo import LOGO_SVG
 
 
 
@@ -89,7 +90,10 @@ def menu(title, logo_svg: str = ""):
             with ui.menu().classes('max-h-none'):
                 ui.menu_item(t("menu_home"), on_click=lambda: ui.navigate.to('/'))
                 ui.separator()
-                ui.menu_item(t('tonight_menu'), on_click=lambda: ui.navigate.to('/RecommendTonight')).classes('whitespace-nowrap')
+                with ui.menu_item(on_click=lambda: ui.navigate.to('/RecommendTonight')).classes('whitespace-nowrap'):
+                    with ui.row().classes('items-center gap-2 no-wrap'):
+                        ui.html(LOGO_SVG, sanitize=False).classes('w-6 h-6 shrink-0')   # our own constant
+                        ui.label(t('tonight_menu'))
                 ui.separator()
                 ui.menu_item(t("menu_dwarf_settings"), on_click=lambda: ui.navigate.to('/Dwarf')).classes('whitespace-nowrap')
                 ui.menu_item(t("menu_backup_settings"), on_click=lambda: ui.navigate.to('/Backup')).classes('whitespace-nowrap')
