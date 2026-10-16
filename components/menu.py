@@ -11,7 +11,8 @@ def setStyle(color_primary = '#00ae83'):
         primary=color_primary
     )
 
-def menu(title):
+def menu(title, logo_svg: str = ""):
+    """logo_svg: an SVG shown before the title (the page's own logo)."""
 
     # Thin window scrollbar — applied globally on all pages
     ui.add_head_html("""
@@ -39,6 +40,8 @@ def menu(title):
     register_drawer()
 
     with ui.row().classes('relative w-full items-center'):
+        if logo_svg:
+            ui.html(logo_svg, sanitize=False).classes("w-10 h-10 shrink-0")   # our own constant
         ui.label(title).classes("text-2xl font-bold my-2")
 
         # Transfer progress badge — shown on any page when a transfer is running
