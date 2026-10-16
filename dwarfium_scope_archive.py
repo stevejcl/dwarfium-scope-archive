@@ -148,6 +148,7 @@ import pages.dwarf_backup_ui_dark_library
 import pages.page_sky_map
 import pages.report
 import pages.recommend_tonight
+import pages.analyze_all
 
 from api.image_preview import serve_preview
 from api.db_backup import shutdown_backup_db

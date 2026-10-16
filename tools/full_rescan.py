@@ -1,0 +1,69 @@
+"""Analyze everything (user-requested Oct 2026): every Dwarf's local copy
+and every backup drive of the database, one after the other - what the
+Dwarf and Backup pages' analyses do, for all of them.
+
+The database then matches the files again after anything that changed
+them outside this installation: another Scope Archive installation (an
+executable and a source run sharing the same Dwarf_Local and drives,
+each with its own database), a session folder moved by hand.
+
+For a Dwarf it is its local copy (Dwarf_Local/DWARF_<id>) that counts:
+nothing is read from the Dwarf itself, which needs not be connected.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+from api.dwarf_backup_db_api import get_backupDrive_list, get_dwarf_Names
+from api.dwarf_backup_fct import get_local_dwarf_dir, scan_backup_folder
+
+DWARF, BACKUP = "dwarf", "backup"
+
+
+@dataclass
+class Target:
+    kind: str               # DWARF or BACKUP
+    id: int
+    name: str
+    path: str               # the folder analyzed
+    last_scan: str = ""
+    dwarf_id: int | None = None
+    location: str = ""      # BACKUP: the drive's location and astronomy dir
+    astro_dir: str = ""
+
+    @property
+    def key(self) -> str:
+        return f"{self.kind}:{self.id}"
+
+    @property
+    def reachable(self) -> bool:
+        return bool(self.path) and os.path.isdir(self.path)
+
+
+def list_targets(conn) -> list[Target]:
+    """The Dwarfs' local copies, then the backup drives."""
+    targets = []
+    cur = conn.cursor()
+    for dwarf_id, name in get_dwarf_Names(conn):
+        row = cur.execute("SELECT last_scan_date FROM Dwarf WHERE id = ?", (dwarf_id,)).fetchone()
+        targets.append(Target(DWARF, dwarf_id, name, get_local_dwarf_dir(conn, dwarf_id),
+                              str((row or [""])[0] or ""), dwarf_id=dwarf_id))
+    for drive_id, name, _desc, location, astro_dir, dwarf_id, last_scan in get_backupDrive_list(conn):
+        path = os.path.join(location, astro_dir) if location and astro_dir else (location or "")
+        targets.append(Target(BACKUP, drive_id, name, path, str(last_scan or ""), dwarf_id=dwarf_id,
+                              location=location or "", astro_dir=astro_dir or ""))
+    return targets
+
+
+def analyze(db_name: str, target: Target, log=None, progress_callback=None) -> tuple[int, int]:
+    """Blocking. (sessions found, entries removed) - as the Dwarf / Backup
+    pages' analyses."""
+    if target.kind == DWARF:
+        result = scan_backup_folder(db_name, target.path, None, target.dwarf_id, None, None,
+                                    log, progress_callback)
+    else:
+        result = scan_backup_folder(db_name, target.location, target.astro_dir, target.dwarf_id, target.id,
+                                    None, log, progress_callback)
+    total, deleted = (list(result) + [0, 0])[:2] if result else (0, 0)
+    return int(total or 0), int(deleted or 0)

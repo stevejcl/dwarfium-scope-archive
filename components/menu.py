@@ -98,6 +98,7 @@ def menu(title, logo_svg: str = ""):
                 ui.menu_item(t("menu_dwarf_settings"), on_click=lambda: ui.navigate.to('/Dwarf')).classes('whitespace-nowrap')
                 ui.menu_item(t("menu_backup_settings"), on_click=lambda: ui.navigate.to('/Backup')).classes('whitespace-nowrap')
                 ui.menu_item(t("menu_darks"), on_click=lambda: ui.navigate.to('/DarkLibrary')).classes('whitespace-nowrap')
+                ui.menu_item(t("menu_analyze_all"), on_click=lambda: ui.navigate.to('/AnalyzeAll')).classes('whitespace-nowrap')
                 ui.separator()
                 ui.menu_item(t("menu_explore"), on_click=lambda: ui.navigate.to('/Explore'))
                 ui.menu_item(t("menu_manual_sessions"), on_click=lambda: ui.navigate.to('/ManualExplore')).classes('whitespace-nowrap')

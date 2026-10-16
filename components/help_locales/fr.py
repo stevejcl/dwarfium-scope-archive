@@ -45,6 +45,31 @@ Utilisez ⭐ pour retirer une session de vos favoris.
 7. Utiliser **{t:menu_report}** pour identifier les sessions volumineuses et libérer de l'espace
 ''',
     },
+    '/AnalyzeAll': {
+        'title': 'Tout analyser',
+        'content': '''
+## Objectif
+
+Analyse, l'un après l'autre, la copie locale de chaque Dwarf et chaque disque de sauvegarde de la base -
+ce que font **{t:analyze_dwarf_drive}** et **{t:analyze_drive}**, pour tous. La base correspond alors de
+nouveau aux fichiers.
+
+## Quand
+
+- Une autre installation de Scope Archive (par exemple l'exécutable et une version source, chacune avec
+  sa base) partage le même Dwarf_Local et les mêmes disques de sauvegarde, et y a importé, transféré ou
+  supprimé des sessions.
+- Un dossier de session a été déplacé ou supprimé à la main.
+
+## Comment
+
+- **Pour un Dwarf**, c'est sa copie locale (`Dwarf_Local/DWARF_<id>`) qui est analysée : le Dwarf
+  lui-même n'a pas besoin d'être connecté, rien n'est lu dessus.
+- Un dossier injoignable (disque débranché) ne peut pas être coché.
+- Décochez ce que vous ne voulez pas analyser, puis **{t:analyze_all_start}** : chaque ligne affiche son
+  résultat (+ nouvelles sessions, - entrées supprimées) et le journal suit les analyses.
+''',
+    },
     '/RecommendTonight': {
         'title': 'Que shooter ce soir',
         'content': '''

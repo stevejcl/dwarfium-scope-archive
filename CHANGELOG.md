@@ -9,6 +9,11 @@
     its help, and before "Tonight's Targets" in the menu. Its help shows the cards' own Aladin and plan buttons
     (it still showed the former 🔭 and 📅).
     And before the "AstroObject to DSO Association" title of the Catalog page (instead of 🔭).
+    Analyze everything (menu, tools/full_rescan.py): the local copy of every Dwarf (the Dwarf needs not be
+    connected) and every backup drive of the database analyzed one after the other, the ticked ones only (a folder
+    not reachable can't be ticked) - a line per folder with its result (+ new sessions, - removed) and the log. The
+    database matches the files again after another installation sharing the same folders changed them, or a
+    folder moved by hand.
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the

@@ -43,6 +43,31 @@ Use ⭐ to remove a session from your favourites.
 7. Use **{t:menu_report}** to identify large sessions and free up space
 ''',
     },
+    '/AnalyzeAll': {  # TODO
+        'title': 'Analyze everything',
+        'content': '''
+## Purpose
+
+Analyzes, one after the other, the local copy of every Dwarf and every backup drive of the database -
+what **{t:analyze_dwarf_drive}** and **{t:analyze_drive}** do, for all of them. The database then
+matches the files again.
+
+## When
+
+- Another Scope Archive installation (e.g. the executable and a source run, each with its own
+  database) shares the same Dwarf_Local and backup drives, and imported, transferred or deleted
+  sessions there.
+- A session folder was moved or removed by hand.
+
+## How
+
+- **For a Dwarf**, its local copy (`Dwarf_Local/DWARF_<id>`) is analyzed: the Dwarf itself needs not
+  be connected, nothing is read from it.
+- A folder not reachable (drive unplugged) can't be ticked.
+- Untick what you don't want analyzed, then **{t:analyze_all_start}**: each line shows its result
+  (+ new sessions, - entries removed) and the log follows the analyses.
+''',
+    },
     '/RecommendTonight': {  # TODO
         'title': "Tonight's Targets",
         'content': '''
