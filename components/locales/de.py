@@ -947,6 +947,7 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_done":              "✅ {n} folder(s) analyzed: {total} new session(s), {deleted} removed.",  # TODO
     "analyze_all_open_log":         "Open the log",  # TODO
     "analyze_all_open_folder":      "Its folder",  # TODO
+    "analyze_all_lines_skipped":    "… {n} more line(s) - in the log file",  # TODO
     "analysis_complete_backup":     '✅ Analysis Complete: {total} new sessions found on backup.',  # TODO
     "analysis_complete_dwarf":      '✅ Analysis Complete: {total} new sessions found on dwarf.',  # TODO
     "analysis_errors_found":        '✅ Analysis Complete: {count} sessions with errors found.',  # TODO
