@@ -60,6 +60,9 @@
     Analysis log: "add astro object" also printed when an existing astro object was reused (now "use astro object"),
     and in the sessions grouped under their parent folder it named the parent folder instead of the object actually
     created or reused.
+    Last analysis date (Dwarf, Backup and Analyze everything pages): set by every full analysis, also when it finds
+    nothing new - it only moved when sessions were added or removed, so a database checked yesterday could show a
+    date months old. A single session imported still sets it only when something changed.
 
 ## [V3.4.4] - 2026-10-13
 

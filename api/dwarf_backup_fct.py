@@ -2189,18 +2189,16 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                 print_log(f"📂 Deleted 1 entry in DB not more present",log)
             elif deleted and deleted > 1:
                 print_log(f"📂 deleted {deleted} entries in DB not more present",log)
-            # update scan date if modifications presents
-            if deleted or total_added:
-                set_dwarf_scan_date(conn, dwarf_id)
+            # a full analysis: its date, even when it found nothing new
+            set_dwarf_scan_date(conn, dwarf_id)
         else:
             deleted = delete_notpresent_backup_entries_and_dwarf_data(conn, backup_drive_id, valid_ids)
             if deleted == 1:
                 print_log(f"📂 Deleted 1 entry in DB not more present",log)
             elif deleted and deleted > 1:
                 print_log(f"📂 deleted {deleted} entries in DB not more present",log)
-            # update scan date if modifications presents
-            if deleted or total_added:
-                set_backup_scan_date(conn, backup_drive_id)
+            # a full analysis: its date, even when it found nothing new
+            set_backup_scan_date(conn, backup_drive_id)
 
     # --- Rebuild any orphaned ManualSessionEntry rows ---
     # Must run after BackupEntry rows are up to date and before the
