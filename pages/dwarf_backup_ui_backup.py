@@ -18,6 +18,7 @@ from tools.quality_scan import get_sessions_to_score, score_entry_ids
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+from components.batched_log import BatchedLog
 from components.disk_space_widget import disk_space_widget
 
 @ui.page('/Backup')
@@ -464,6 +465,7 @@ class ConfigApp(DbPageMixin):
             scan_progress_bar   = ui.linear_progress(value=0, show_value=False).classes("w-full")
             scan_progress_label = ui.label("").classes("text-sm text-gray-500")
             log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
+            log = BatchedLog(log)     # fed in batches (components/batched_log.py)
 
         dialog.open()  # show the dialog
         spinner.set_visibility(True)
@@ -543,6 +545,7 @@ class ConfigApp(DbPageMixin):
             ui.label(t("scanning_backup_location", location=location))
             spinner = ui.spinner(size="lg")
             log = ui.log(max_lines=100).classes('w-full').style('height: 786px; overflow: hidden;')
+            log = BatchedLog(log)     # fed in batches (components/batched_log.py)
 
         dialog.open()  # show the dialog
         spinner.set_visibility(True)

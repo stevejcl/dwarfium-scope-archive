@@ -31,6 +31,7 @@ from api.dwarf_backup_db_api import get_dwarf_sessions_error
 
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+from components.batched_log import BatchedLog
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
 from components.action_icon import ActionIcon
@@ -831,6 +832,7 @@ class ConfigApp(DbPageMixin):
             scan_progress_bar   = ui.linear_progress(value=0, show_value=False).classes("w-full")
             scan_progress_label = ui.label("").classes("text-sm text-gray-500")
             log = ui.log(max_lines=100).classes('w-full').style('height: 560px; overflow: hidden;')
+            log = BatchedLog(log)     # fed in batches (components/batched_log.py)
 
         dialog.open()  # show the dialog
         spinner.set_visibility(True)
