@@ -57,6 +57,9 @@
     Dwarf Configuration help: the Session IP (a second FTP IP kept on this PC, for a Dwarf on a remote site reached
     through Tailscale - the FTP functions use the IP that answers) and the path detected / not detected line with
     its refresh button, which it didn't mention.
+    Analysis log: "add astro object" also printed when an existing astro object was reused (now "use astro object"),
+    and in the sessions grouped under their parent folder it named the parent folder instead of the object actually
+    created or reused.
 
 ## [V3.4.4] - 2026-10-13
 

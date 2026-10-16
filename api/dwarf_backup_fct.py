@@ -2130,12 +2130,13 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                                 if not astro_object_id:
                                     safe_print(f"not astro_object_id")
                                     break
+                                # the object created or reused is check_target, not the parent folder
                                 if new:
-                                    safe_print(f"add astro object : {astro_name}")
-                                    print_log(f"add astro object : {astro_name}",log)
+                                    safe_print(f"add astro object : {check_target}")
+                                    print_log(f"add astro object : {check_target}",log)
                                 else:
-                                    safe_print(f"use astro object : {astro_name}")
-                                    print_log(f"use astro object : {astro_name}",log)
+                                    safe_print(f"use astro object : {check_target}")
+                                    print_log(f"use astro object : {check_target}",log)
                                 # case parent directory is a simple dir
                                 # so it will be a astro_group except for RESTACKED dir
                                 # add astro group
