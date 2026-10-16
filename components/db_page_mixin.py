@@ -10,7 +10,7 @@ Usage:
             self.register_conn_close()  # call after self.conn is set
 """
 from nicegui import ui
-from api.dwarf_backup_db import close_db
+from api.dwarf_backup_db import close_db, connect_db
 
 
 class DbPageMixin:

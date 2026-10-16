@@ -3,9 +3,11 @@ every backup drive of the database, ticked ones only, one after the
 other - a line per folder with its result, and the analyses' log."""
 from __future__ import annotations
 
+import traceback
+
 from nicegui import run, ui
 
-from api.dwarf_backup_db import DB_NAME, connect_db
+from api.dwarf_backup_db import DB_NAME, close_db, connect_db
 from components.db_page_mixin import DbPageMixin
 from components.i18n import t
 from components.menu import menu
@@ -118,13 +120,28 @@ class AnalyzeAllApp(DbPageMixin):
             log.push(t("analyze_all_done", n=len(chosen), total=found, deleted=removed))
         finally:
             log.close()
-        self.running = False
-        self.start_btn.enable()
-        # The new scan dates
-        self.ensure_conn()
-        dates = {x.key: x.last_scan for x in R.list_targets(self.conn)}
-        for x in self.targets:
-            x.last_scan = dates.get(x.key, x.last_scan)
+            # The page always back to its idle state - a failure reading the
+            # new dates left the spinner and "Analyzing 9/9" (user-reported)
+            self.running = False
+            self.start_btn.enable()
+            if self.results.get(chosen[-1].key) == "running":
+                self.results.pop(chosen[-1].key)
         self.summary.set_text(t("analyze_all_done", n=len(chosen), total=found, deleted=removed))
+        try:
+            dates = await run.io_bound(self._read_dates)     # the new scan dates
+            for x in self.targets:
+                x.last_scan = dates.get(x.key, x.last_scan)
+        except Exception as e:
+            traceback.print_exc()
+            ui.notify(t("error_generic", error=e), type="warning", multi_line=True)
         self.list_view.refresh()
         ui.notify(t("analyze_all_done", n=len(chosen), total=found, deleted=removed), type="positive")
+
+    def _read_dates(self) -> dict[str, str]:
+        """Blocking, on its own connection (the page's may have been closed
+        by a disconnect during a long analysis)."""
+        conn = connect_db(self.database)
+        try:
+            return {x.key: x.last_scan for x in R.list_targets(conn)}
+        finally:
+            close_db(conn)
