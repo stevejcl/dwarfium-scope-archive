@@ -180,7 +180,7 @@ class ConfigApp(DbPageMixin):
                         self.dwarf_ip_sta_mode = ui.input(
                             t("ip_sta_mode"),
                             validation={'Invalid IP address': lambda value: self.is_valid_ip(value)}
-                        ).classes('w-55')
+                        ).classes('w-55').props('hide-bottom-space')   # no empty error line under it
                         with ui.row().classes("gap-4 mt-4"):
                             self.ftp_spinner = ui.spinner(size="1em")
                             self.ftp_status_label = ui.label("").classes('pt-4 whitespace-pre-line')
@@ -188,7 +188,7 @@ class ConfigApp(DbPageMixin):
                         self.dwarf_session_ip = ui.input(
                             t("session_ip"),
                             validation={'Invalid IP address': lambda value: self.is_valid_ip(value)}
-                        ).classes('w-55').tooltip(t("session_ip_hint"))
+                        ).classes('w-55').props('hide-bottom-space').tooltip(t("session_ip_hint"))
                         self.dwarf_session_ip.on('blur', self.save_session_ip)
 
                     with ui.grid(columns=2):

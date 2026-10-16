@@ -63,6 +63,8 @@
     Last analysis date (Dwarf, Backup and Analyze everything pages): set by every full analysis, also when it finds
     nothing new - it only moved when sessions were added or removed, so a database checked yesterday could show a
     date months old. A single session imported still sets it only when something changed.
+    Dwarf page: no empty line under the STA mode IP and the Session IP (the space kept for a validation message) -
+    the message still shows when an IP is invalid.
 
 ## [V3.4.4] - 2026-10-13
 
