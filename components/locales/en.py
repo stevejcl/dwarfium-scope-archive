@@ -599,7 +599,7 @@ TRANSLATIONS: dict[str, str] = {
     "custom_description":           "Edit or enter custom description",
     "select_dso":                   "Select DSO",
     "search_dso":                   "Search (designation, name, constellation, type)",
-    "dso_astro_assoc":              "🔭 AstroObject to DSO Association",
+    "dso_astro_assoc":              "AstroObject to DSO Association",
     "error_astro_purge":            "Error occurs during AstroObject purge!",
     "dso_wizard_open":              "Link objects without DSO",
     "dso_wizard_title":             "🔗 Link objects without DSO",

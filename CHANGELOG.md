@@ -8,6 +8,7 @@
     The logo also shows on the "What to shoot tonight" page, before its title (instead of 🔭), next to the title of
     its help, and before "Tonight's Targets" in the menu. Its help shows the cards' own Aladin and plan buttons
     (it still showed the former 🔭 and 📅).
+    And before the "AstroObject to DSO Association" title of the Catalog page (instead of 🔭).
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the
