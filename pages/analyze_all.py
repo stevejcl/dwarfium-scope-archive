@@ -3,8 +3,6 @@ every backup drive of the database, ticked ones only, one after the
 other - a line per folder with its result, and the analyses' log."""
 from __future__ import annotations
 
-import os
-
 from nicegui import run, ui
 
 from api.dwarf_backup_db import DB_NAME, connect_db
@@ -49,7 +47,7 @@ class AnalyzeAllApp(DbPageMixin):
                 ui.button(t("analyze_all_open_log"), icon="open_in_new",
                           on_click=lambda: R.open_path(self.log_path.text)).props("flat dense no-caps size=sm")
                 ui.button(t("analyze_all_open_folder"), icon="folder",
-                          on_click=lambda: R.open_path(os.path.dirname(self.log_path.text))) \
+                          on_click=lambda: R.show_in_folder(self.log_path.text)) \
                     .props("flat dense no-caps size=sm")
             self.log_row.set_visibility(False)
 
