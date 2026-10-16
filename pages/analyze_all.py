@@ -35,7 +35,7 @@ class AnalyzeAllApp(DbPageMixin):
         self.register_conn_close()
         self.targets = R.list_targets(self.conn)
         self.selected = {x.key: x.reachable for x in self.targets}
-        with ui.card().classes("w-full max-w-3xl mx-auto gap-3"):
+        with ui.card().classes("w-full max-w-5xl mx-auto gap-3"):
             ui.label(t("analyze_all_intro")).classes("text-sm text-gray-600")
             self.list_view()
             with ui.row().classes("items-center gap-3"):
@@ -61,12 +61,13 @@ class AnalyzeAllApp(DbPageMixin):
                 continue
             ui.label(title).classes("text-xs font-semibold text-gray-500 mt-2")
             for x in items:
-                with ui.row().classes("w-full items-center gap-2 no-wrap border-b py-1"):
+                # on a phone the date and the result go under the path
+                with ui.row().classes("w-full items-center gap-x-6 gap-y-1 flex-wrap sm:flex-nowrap border-b py-1"):
                     box = ui.checkbox(value=self.selected.get(x.key, False),
                                       on_change=lambda e, k=x.key: self.selected.__setitem__(k, e.value)) \
                         .props("dense")
                     box.set_enabled(x.reachable and not self.running)
-                    with ui.column().classes("gap-0 flex-1 min-w-0"):
+                    with ui.column().classes("gap-0 flex-1").style("min-width: 200px"):
                         ui.label(x.name).classes("text-sm font-medium truncate")
                         ui.label(x.path or "—").classes("text-xs text-gray-500 font-mono break-all")
                     if not x.reachable:
