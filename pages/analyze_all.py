@@ -3,6 +3,8 @@ every backup drive of the database, ticked ones only, one after the
 other - a line per folder with its result, and the analyses' log."""
 from __future__ import annotations
 
+import os
+
 from nicegui import run, ui
 
 from api.dwarf_backup_db import DB_NAME, connect_db
@@ -41,6 +43,15 @@ class AnalyzeAllApp(DbPageMixin):
                                            on_click=self.start).props("no-caps")
                 self.summary = ui.label("").classes("text-sm")
             self.log = ui.log(max_lines=200).classes("w-full").style("height: 300px")
+            with ui.row().classes("items-center gap-2 text-xs text-gray-500") as self.log_row:
+                ui.icon("description", size="xs")
+                self.log_path = ui.label("").classes("font-mono break-all")
+                ui.button(t("analyze_all_open_log"), icon="open_in_new",
+                          on_click=lambda: R.open_path(self.log_path.text)).props("flat dense no-caps size=sm")
+                ui.button(t("analyze_all_open_folder"), icon="folder",
+                          on_click=lambda: R.open_path(os.path.dirname(self.log_path.text))) \
+                    .props("flat dense no-caps size=sm")
+            self.log_row.set_visibility(False)
 
     @ui.refreshable_method
     def list_view(self):
@@ -83,19 +94,31 @@ class AnalyzeAllApp(DbPageMixin):
         self.start_btn.disable()
         self.results = {}
         found = removed = 0
-        for i, x in enumerate(chosen, 1):
-            self.results[x.key] = "running"
-            self.summary.set_text(t("analyze_all_progress", i=i, n=len(chosen), name=x.name))
-            self.list_view.refresh()
-            self.log.push(f"── {x.name} ({x.path})")
-            try:
-                total, deleted = await run.io_bound(R.analyze, self.database, x, self.log)
-                self.results[x.key] = f"+{total} -{deleted}"
-                found += total
-                removed += deleted
-            except Exception as e:
-                self.results[x.key] = f"error: {e}"
-                self.log.push(f"❌ {e}")
+        log = R.TeeLog(self.log)        # the screen's log, also in a file
+        self.log_path.set_text(log.path)
+        self.log_row.set_visibility(True)
+        log.push(f"Scope Archive - {t('page_analyze_all')} - {len(chosen)} folder(s)")
+        for x in self.targets:
+            log.push(f"  [{'x' if x in chosen else ' '}] {x.kind} {x.name}: {x.path}"
+                     + ("" if x.reachable else " (not reachable)"))
+        try:
+            for i, x in enumerate(chosen, 1):
+                self.results[x.key] = "running"
+                self.summary.set_text(t("analyze_all_progress", i=i, n=len(chosen), name=x.name))
+                self.list_view.refresh()
+                log.push(f"── {x.name} ({x.path})")
+                try:
+                    total, deleted = await run.io_bound(R.analyze, self.database, x, log)
+                    self.results[x.key] = f"+{total} -{deleted}"
+                    log.push(f"   => {x.name}: +{total} new, -{deleted} removed")
+                    found += total
+                    removed += deleted
+                except Exception as e:
+                    self.results[x.key] = f"error: {e}"
+                    log.push(f"❌ {x.name}: {e}")
+            log.push(t("analyze_all_done", n=len(chosen), total=found, deleted=removed))
+        finally:
+            log.close()
         self.running = False
         self.start_btn.enable()
         # The new scan dates

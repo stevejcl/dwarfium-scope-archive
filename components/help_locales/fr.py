@@ -68,6 +68,9 @@ nouveau aux fichiers.
 - Un dossier injoignable (disque débranché) ne peut pas être coché.
 - Décochez ce que vous ne voulez pas analyser, puis **{t:analyze_all_start}** : chaque ligne affiche son
   résultat (+ nouvelles sessions, - entrées supprimées) et le journal suit les analyses.
+- Le journal est aussi écrit dans un fichier, `logs/analyze_all_<date>.log` dans le dossier de
+  l'application (les 20 derniers gardés), avec l'heure de chaque ligne : **{t:analyze_all_open_log}**
+  l'ouvre, pour une analyse fine.
 ''',
     },
     '/RecommendTonight': {

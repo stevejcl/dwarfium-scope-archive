@@ -37,3 +37,4 @@ version.py
 *.bak
 /video
 /DwarfiumScopeArchive-Windows
+logs/
