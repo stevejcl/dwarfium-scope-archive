@@ -13,7 +13,10 @@ nothing is read from the Dwarf itself, which needs not be connected.
 from __future__ import annotations
 
 import os
+import platform
+import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 
 from api.dwarf_backup_db_api import get_backupDrive_list, get_dwarf_Names
 from api.dwarf_backup_fct import get_local_dwarf_dir, scan_backup_folder
@@ -67,3 +70,57 @@ def analyze(db_name: str, target: Target, log=None, progress_callback=None) -> t
                                     None, log, progress_callback)
     total, deleted = (list(result) + [0, 0])[:2] if result else (0, 0)
     return int(total or 0), int(deleted or 0)
+
+
+# ── log file ──────────────────────────────────────────────────────────────
+LOG_DIR = "logs"
+_KEEP_LOGS = 20
+
+
+class TeeLog:
+    """What the analyses print: on the page's ui.log and, line by line with
+    the time, in logs/analyze_all_<date>.log (the last _KEEP_LOGS kept)."""
+
+    def __init__(self, ui_log=None):
+        self.ui_log = ui_log
+        os.makedirs(LOG_DIR, exist_ok=True)
+        self.path = os.path.abspath(os.path.join(LOG_DIR, f"analyze_all_{datetime.now():%Y%m%d-%H%M%S}.log"))
+        self._file = open(self.path, "a", encoding="utf-8")
+        _prune_logs()
+
+    def push(self, message, *args, **kwargs):
+        try:
+            self._file.write(f"{datetime.now():%H:%M:%S}  {message}\n")
+            self._file.flush()
+        except (OSError, ValueError):
+            pass
+        if self.ui_log is not None:
+            try:
+                self.ui_log.push(message, *args, **kwargs)
+            except Exception:
+                pass        # the page closed: the file goes on
+
+    def close(self):
+        try:
+            self._file.close()
+        except OSError:
+            pass
+
+
+def _prune_logs():
+    try:
+        logs = sorted(f for f in os.listdir(LOG_DIR) if f.startswith("analyze_all_") and f.endswith(".log"))
+        for old in logs[:-_KEEP_LOGS]:
+            os.remove(os.path.join(LOG_DIR, old))
+    except OSError:
+        pass
+
+
+def open_path(path: str) -> None:
+    """The log file (or its folder) in the system's own application."""
+    if platform.system() == "Windows":
+        os.startfile(path)
+    elif platform.system() == "Darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])

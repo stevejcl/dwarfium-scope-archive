@@ -66,6 +66,8 @@ matches the files again.
 - A folder not reachable (drive unplugged) can't be ticked.
 - Untick what you don't want analyzed, then **{t:analyze_all_start}**: each line shows its result
   (+ new sessions, - entries removed) and the log follows the analyses.
+- The log is also written to a file, `logs/analyze_all_<date>.log` in the application's folder (the
+  last 20 kept), each line with its time: **{t:analyze_all_open_log}** opens it, for a close look.
 ''',
     },
     '/RecommendTonight': {  # TODO

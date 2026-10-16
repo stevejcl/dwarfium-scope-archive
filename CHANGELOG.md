@@ -14,6 +14,8 @@
     not reachable can't be ticked) - a line per folder with its result (+ new sessions, - removed) and the log. The
     database matches the files again after another installation sharing the same folders changed them, or a
     folder moved by hand.
+    Its log also written to logs/analyze_all_<date>.log (the folders chosen, each line timed, each folder's result;
+    the last 20 kept), with buttons to open the file and its folder.
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the

@@ -945,6 +945,8 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_none":              "Nothing ticked (or reachable) to analyze.",  # TODO
     "analyze_all_progress":          "Analyzing {i}/{n}: {name}…",  # TODO
     "analyze_all_done":              "✅ {n} folder(s) analyzed: {total} new session(s), {deleted} removed.",  # TODO
+    "analyze_all_open_log":         "Open the log",  # TODO
+    "analyze_all_open_folder":      "Its folder",  # TODO
     "analysis_complete_backup":     '✅ Analysis Complete: {total} new sessions found on backup.',  # TODO
     "analysis_complete_dwarf":      '✅ Analysis Complete: {total} new sessions found on dwarf.',  # TODO
     "analysis_errors_found":        '✅ Analysis Complete: {count} sessions with errors found.',  # TODO
