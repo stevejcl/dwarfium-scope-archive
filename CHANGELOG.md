@@ -20,6 +20,9 @@
     "Analyzing 9/9" after the analyses were over); the dates read on their own connection, a failure shown.
     The cause: reopening a page's database connection closed by a disconnect during a long operation raised
     "name 'connect_db' is not defined" (components/db_page_mixin.py) - also for Explore and What to shoot tonight.
+    Its log reaches the screen in batches, twice a second (at most 50 lines each, all of them in the file): each line
+    sent from the analysis thread meant thousands of messages a minute to every browser open, and a phone open at the
+    same time kept losing its connection.
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the

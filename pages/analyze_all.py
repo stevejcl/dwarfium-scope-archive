@@ -28,6 +28,7 @@ class AnalyzeAllApp(DbPageMixin):
         self.selected: dict[str, bool] = {}
         self.results: dict[str, str] = {}      # key -> "running" / "+12 -3" / "error: ..."
         self.running = False
+        self.tee: R.TeeLog | None = None
         self.build_ui()
 
     def build_ui(self):
@@ -52,6 +53,17 @@ class AnalyzeAllApp(DbPageMixin):
                           on_click=lambda: R.show_in_folder(self.log_path.text)) \
                     .props("flat dense no-caps size=sm")
             self.log_row.set_visibility(False)
+        # The analyses' lines reach the screen in batches (see R.TeeLog)
+        ui.timer(0.5, self._drain_log)
+
+    def _drain_log(self):
+        if self.tee is None:
+            return
+        lines, skipped = self.tee.drain()
+        if skipped:
+            self.log.push(t("analyze_all_lines_skipped", n=skipped))
+        for line in lines:      # all sent together: one update for the browsers
+            self.log.push(line)
 
     @ui.refreshable_method
     def list_view(self):
@@ -95,7 +107,8 @@ class AnalyzeAllApp(DbPageMixin):
         self.start_btn.disable()
         self.results = {}
         found = removed = 0
-        log = R.TeeLog(self.log)        # the screen's log, also in a file
+        log = R.TeeLog()        # every line in a file, the screen fed by _drain_log
+        self.tee = log
         self.log_path.set_text(log.path)
         self.log_row.set_visibility(True)
         log.push(f"Scope Archive - {t('page_analyze_all')} - {len(chosen)} folder(s)")
@@ -120,6 +133,7 @@ class AnalyzeAllApp(DbPageMixin):
             log.push(t("analyze_all_done", n=len(chosen), total=found, deleted=removed))
         finally:
             log.close()
+            self._drain_log()       # the last lines
             # The page always back to its idle state - a failure reading the
             # new dates left the spinner and "Analyzing 9/9" (user-reported)
             self.running = False

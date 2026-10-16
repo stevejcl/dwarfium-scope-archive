@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import os
 import platform
+import threading
+from collections import deque
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -77,12 +79,24 @@ LOG_DIR = "logs"
 _KEEP_LOGS = 20
 
 
+_SCREEN_BATCH = 50      # lines kept for the screen between two drains (all in the file)
+
+
 class TeeLog:
-    """What the analyses print: on the page's ui.log and, line by line with
-    the time, in logs/analyze_all_<date>.log (the last _KEEP_LOGS kept)."""
+    """What the analyses print: every line, with the time, in
+    logs/analyze_all_<date>.log (the last _KEEP_LOGS kept); for the screen
+    only a queue the page drains a few times a second (drain()).
+
+    Pushing each line to the page from the analysis thread sent thousands of
+    messages a minute to every browser open - the server fell behind with
+    the browsers' pings and a phone kept losing its connection
+    (user-reported)."""
 
     def __init__(self, ui_log=None):
-        self.ui_log = ui_log
+        self.ui_log = ui_log        # kept for callers; the screen goes through drain()
+        self._screen: deque = deque(maxlen=_SCREEN_BATCH)
+        self._skipped = 0
+        self._lock = threading.Lock()
         os.makedirs(LOG_DIR, exist_ok=True)
         self.path = os.path.abspath(os.path.join(LOG_DIR, f"analyze_all_{datetime.now():%Y%m%d-%H%M%S}.log"))
         self._file = open(self.path, "a", encoding="utf-8")
@@ -94,11 +108,19 @@ class TeeLog:
             self._file.flush()
         except (OSError, ValueError):
             pass
-        if self.ui_log is not None:
-            try:
-                self.ui_log.push(message, *args, **kwargs)
-            except Exception:
-                pass        # the page closed: the file goes on
+        with self._lock:
+            if len(self._screen) == self._screen.maxlen:
+                self._skipped += 1      # in the file only
+            self._screen.append(str(message))
+
+    def drain(self) -> tuple[list[str], int]:
+        """(the lines for the screen since the last drain, the number left
+        out of it - too many at once, they are in the file)."""
+        with self._lock:
+            lines, skipped = list(self._screen), self._skipped
+            self._screen.clear()
+            self._skipped = 0
+        return lines, skipped
 
     def close(self):
         try:

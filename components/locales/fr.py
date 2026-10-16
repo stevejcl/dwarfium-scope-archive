@@ -946,6 +946,7 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_done":              "✅ {n} dossier(s) analysé(s) : {total} nouvelle(s) session(s), {deleted} supprimée(s).",
     "analyze_all_open_log":         "Ouvrir le journal",
     "analyze_all_open_folder":      "Son dossier",
+    "analyze_all_lines_skipped":    "… {n} ligne(s) de plus - dans le fichier journal",
     "analysis_complete_backup":     '✅ Analyse terminée : {total} nouvelles sessions trouvées sur le disque de sauvegarde.',
     "analysis_complete_dwarf":      '✅ Analyse terminée : {total} nouvelles sessions trouvées sur le Dwarf.',
     "analysis_errors_found":        '✅ Analyse terminée : {count} sessions avec erreurs trouvées.',
