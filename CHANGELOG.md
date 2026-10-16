@@ -18,6 +18,8 @@
     the last 20 kept), with buttons to open the file and its folder (the folder through explorer, the log selected).
     The page always back to its idle state at the end (a failure reading the new dates left the spinner and
     "Analyzing 9/9" after the analyses were over); the dates read on their own connection, a failure shown.
+    The cause: reopening a page's database connection closed by a disconnect during a long operation raised
+    "name 'connect_db' is not defined" (components/db_page_mixin.py) - also for Explore and What to shoot tonight.
 
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the
