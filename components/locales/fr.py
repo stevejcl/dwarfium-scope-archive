@@ -601,7 +601,7 @@ TRANSLATIONS: dict[str, str] = {
     "custom_description":           "Modifier ou saisir une description",
     "select_dso":                   "Sélectionner un DSO",
     "search_dso":                   "Rechercher (désignation, nom, constellation, type)",
-    "dso_astro_assoc":              "🔭 Association AstroObject vers DSO",
+    "dso_astro_assoc":              "Association AstroObject vers DSO",
     "error_astro_purge":            "Erreur lors de la suppression des AstroObjects !",
     "dso_wizard_open":              "Associer les objets sans DSO",
     "dso_wizard_title":             "🔗 Associer les objets sans DSO",

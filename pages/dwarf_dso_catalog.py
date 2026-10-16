@@ -7,6 +7,7 @@ from api.dwarf_backup_db import DB_NAME, connect_db, close_db, commit_db
 from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, count_unused_astro_objects, insert_default_groups, clear_astro_object, load_catalog_data
 
 from components.menu import menu
+from components.app_logo import LOGO_SVG
 from components.astro_object_associate import show_assign_dialog
 from components.dso_association_wizard import DsoAssociationWizard
 from components.dso_consistency_wizard import DsoConsistencyWizard
@@ -64,7 +65,9 @@ class CatalogApp(DbPageMixin):
        
         # UI Components
         with ui.column().classes('w-full p-4'):
-            ui.label(t("dso_astro_assoc")).classes('text-2xl')
+            with ui.row().classes('items-center gap-3 no-wrap'):
+                ui.html(LOGO_SVG, sanitize=False).classes('w-9 h-9 shrink-0')   # our own constant
+                ui.label(t("dso_astro_assoc")).classes('text-2xl')
             # .mobile-full-btns: each button on its own full line on a phone
             with ui.row().classes('gap-4 w-full mobile-full-btns'):
                 ui.button(t("export_csv"), on_click=self.on_export_click)

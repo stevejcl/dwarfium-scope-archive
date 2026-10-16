@@ -602,7 +602,7 @@ TRANSLATIONS: dict[str, str] = {
     "custom_description":           "Edit or enter custom description",  # TODO
     "select_dso":                   "Select DSO",  # TODO
     "search_dso":                   "Search (designation, name, constellation, type)",  # TODO
-    "dso_astro_assoc":              "🔭 AstroObject to DSO Association",  # TODO
+    "dso_astro_assoc":              "AstroObject to DSO Association",  # TODO
     "error_astro_purge":            "Error occurs during AstroObject purge!",  # TODO
     "dso_wizard_open":              "Link objects without DSO",  # TODO
     "dso_wizard_title":             "🔗 Link objects without DSO",  # TODO
