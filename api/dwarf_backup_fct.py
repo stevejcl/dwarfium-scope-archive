@@ -2114,8 +2114,8 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
                                     safe_print(f"add astro object : {check_target}")
                                     print_log(f"add astro object : {check_target}",log)
                                 else:
-                                    safe_print(f"add astro object : {check_target}")
-                                    print_log(f"add astro object : {check_target}",log)
+                                    safe_print(f"use astro object : {check_target}")
+                                    print_log(f"use astro object : {check_target}",log)
                                 #found_data = True
                             else: # use Main AstroDir Name as astro_group
                                 safe_print(f"astro_object_id {check_target}")
