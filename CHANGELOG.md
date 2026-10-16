@@ -2,6 +2,10 @@
 
 ## [V3.4.5] - 2026-10-14
 
+### Add
+    A new icon: a Dwarf pointing at the sky and archived pictures, on the green disc - the same family as Dwarfium
+    Lite's and Dwarfium-Hub's icons (the name no longer written in it, unreadable at small sizes).
+
 ### BugFix#
     Explore and Manual Explore, a shorter session panel: the image info on fewer lines (directory size with the
     files found, file name with its size), tighter lines; on a phone, a line that wraps ("Identify target", the
