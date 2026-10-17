@@ -60,8 +60,6 @@ ALL_SESSIONS = "[ALL SESSIONS]"
 DENSE_LIST_MIN = 10
 DENSE_LIST_SESSION_MIN = 14
 
-@dataclass
-
 def _session_eq_mode(session_dir):
     """The "eq" field of the session's shotsInfo.json (True: captured in EQ
     mode), None when the file or the field is missing - older firmwares
@@ -75,6 +73,8 @@ def _session_eq_mode(session_dir):
         return None
     return value if isinstance(value, bool) else None
 
+
+@dataclass
 class BackupEntryData:
     backup_drive_id: int
     dwarf_id: int
