@@ -1903,7 +1903,7 @@ class ExploreApp(DbPageMixin):
                     # recent firmwares only - nothing shown without it)
                     eq_mode = _session_eq_mode(self.current_session_full_dir)
                     if eq_mode is not None:
-                        ui.item(f"🧭 {t('eq_mode_label')}: {t('eq_mode_on') if eq_mode else t('eq_mode_off')}") \
+                        ui.item(f"{t('eq_mode_label')}: {t('eq_mode_on') if eq_mode else t('eq_mode_off')}") \
                             .classes('text-teal-700' if eq_mode else 'text-orange-700')
 
                 color = 'text-red-600' if stacks < 100 else 'text-indigo-600'
