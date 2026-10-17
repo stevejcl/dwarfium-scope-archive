@@ -747,7 +747,7 @@ TRANSLATIONS: dict[str, str] = {
     "darks_legacy":                 "(older firmware)",  # TODO
     "no_darks_found":               "❌ No matching darks found",  # TODO
     "min_temp":                     "MinTemp",  # TODO
-    "eq_mode_label":                "Modo EQ",  # TODO
+    "eq_mode_label":                "EQ",  # TODO
     "eq_mode_on":                   "s\u00ed",  # TODO
     "eq_mode_off":                  "no",  # TODO
     "max_temp":                     "MaxTemp",  # TODO
