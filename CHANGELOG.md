@@ -1,5 +1,11 @@
 # Changelog
 
+## [V3.4.6] - 2026-10-17
+
+### Add
+    Explore: the session's EQ mode (🧭 EQ mode: yes / no), from the "eq" field of its shotsInfo.json - written by
+    recent Dwarf firmwares only: nothing shown when the file or the field is missing.
+
 ## [V3.4.5] - 2026-10-14
 
 ### Add

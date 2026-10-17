@@ -61,6 +61,20 @@ DENSE_LIST_MIN = 10
 DENSE_LIST_SESSION_MIN = 14
 
 @dataclass
+
+def _session_eq_mode(session_dir):
+    """The "eq" field of the session's shotsInfo.json (True: captured in EQ
+    mode), None when the file or the field is missing - older firmwares
+    didn't write it (user-requested Oct 2026)."""
+    if not session_dir:
+        return None
+    try:
+        with open(os.path.join(session_dir, "shotsInfo.json"), encoding="utf-8") as f:
+            value = json.load(f).get("eq")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, bool) else None
+
 class BackupEntryData:
     backup_drive_id: int
     dwarf_id: int
@@ -1884,6 +1898,13 @@ class ExploreApp(DbPageMixin):
 
                     if minTemp and maxTemp:
                         ui.item(f"{t('min_temp')}: {minTemp} | {t('max_temp')}: {maxTemp}").classes('text-sky-700')
+
+                    # EQ mode of the capture (shotsInfo.json "eq", written by
+                    # recent firmwares only - nothing shown without it)
+                    eq_mode = _session_eq_mode(self.current_session_full_dir)
+                    if eq_mode is not None:
+                        ui.item(f"🧭 {t('eq_mode_label')}: {t('eq_mode_on') if eq_mode else t('eq_mode_off')}") \
+                            .classes('text-teal-700' if eq_mode else 'text-orange-700')
 
                 color = 'text-red-600' if stacks < 100 else 'text-indigo-600'
                 
