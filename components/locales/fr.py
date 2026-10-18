@@ -769,8 +769,6 @@ TRANSLATIONS: dict[str, str] = {
     "megastack_pick_none":           "Aucune session de cet objet ne peut être empilée sur le Dwarf.",
     "megastack_pick_skipped":        "{count} session(s) non proposée(s) : résultats de megastack, ou plus de FITS sur le Dwarf.",
     "megastack_pick_stacked":        "{count} empilées",
-    "megastack_pick_mosaic":         "mosaïque",
-    "megastack_pick_fits_unknown":   "FITS ?",
     "megastack_mixed":               "Des captures simples ou des mosaïques, sans les mélanger.",
     "megastack_start":               "Lancer",
     "megastack_started":             "Megastack lancé sur le Dwarf : {count} session(s) de {target} - suivi dans Dwarfium Lite.",

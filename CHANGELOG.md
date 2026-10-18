@@ -24,12 +24,12 @@
     Dwarfium Lite (3.2.6+), which runs and follows it (its device page: images stacked so far and the stack growing;
     then its Results tab). Its button opens a picker, like Dwarfium Lite's Explorer: the object's sessions that can
     be megastacked, grouped by target with their thumbnails (date, images stacked, exposure, filter - the Dwarf
-    refuses mixed filters) - not a megastack result, nor one whose FITS are gone
-    (read on the Dwarf plugged in USB, a mosaic's in its panels' subfolders, else the Storage Report's measure;
-    "FITS ?" when not known - Dwarfium Lite checks them again) - a click selects one (one target, single captures or
-    mosaics - not mixed), the images counted below, then Start: Dwarfium Lite must be running and the Dwarf
-    connected in it (found by its Dwarf ID, else its IP). The Dwarf checks the rest itself (filter, binning, dark
-    frames) - its refusal shown with the reason.
+    takes mixed filters, e.g. Duo-Band with Astro) - not a megastack result, nor one whose FITS are gone (read on
+    the Dwarf plugged in USB, a mosaic's in its panels' subfolders, else the Storage Report's measure; offered when
+    not known - Dwarfium Lite checks them again; its name, a mosaic's too, in the tile's tooltip) - a click selects
+    one (one target, single captures or mosaics - not mixed), the images counted below, then Start: Dwarfium Lite
+    must be running and the Dwarf connected in it (found by its Dwarf ID, else its IP). The Dwarf checks the rest
+    itself (binning, dark frames) - its refusal shown with the reason.
 
 ### BugFix
     Storage Report: confirming "Measure again all the sessions" of the Dwarf (⟳ next to Measure the Dwarf) did

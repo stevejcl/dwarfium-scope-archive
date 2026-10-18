@@ -8,8 +8,9 @@ Its picker (open_picker) offers the object's sessions that can be: not a
 megastack result, their FITS not known to be gone (cleaned by CleanFits) -
 read on the Dwarf by USB, else the Storage Report's measure; Dwarfium Lite
 checks them again over FTP. Then Dwarfium Lite must be running and know
-this Dwarf, connected. The Dwarf checks the rest itself (filter, binning,
-dark frames)."""
+this Dwarf, connected. The Dwarf checks the rest itself (binning, dark
+frames) - mixed filters it takes (user-checked Oct 2026: Duo-Band and
+Astro stacked together)."""
 from __future__ import annotations
 
 import os
@@ -94,7 +95,7 @@ def fits_state(conn, dwarf_id, row: list, session_path: str) -> bool | None:
     """Blocking. The session's raw FITS on the Dwarf: read in its folder when
     the Dwarf is plugged in USB (a mosaic's in its panels' subfolders), else
     the Storage Report's measure - the local copy (Dwarf_Local) has none.
-    None: not known (Dwarfium Lite checks them again over FTP)."""
+    None: not known - offered, Dwarfium Lite checks them again over FTP."""
     usb = os.path.normpath(str(row[_USB_DIR] or "")) if row[_USB_DIR] else ""
     if usb and session_path and os.path.normpath(session_path).startswith(usb) and os.path.isdir(session_path):
         return bool(count_fits_files(session_path))
@@ -172,17 +173,13 @@ async def open_picker(conn, dwarf_id, rows: list[list], paths: list[str]) -> Non
                             ui.icon("image_not_supported").classes("w-full text-5xl text-grey-5 text-center")
                         ui.label(cand["date"][:16]).classes("text-xs text-center w-full truncate")
                         # Its images, exposure and filter (user-requested Oct 2026:
-                        # "20 img" unclear; the Dwarf refuses mixed filters)
+                        # "20 img" unclear; filters can be mixed, worth seeing)
                         ui.label(t("megastack_pick_stacked", count=cand["shots"])).classes(
                             "text-xs text-center w-full truncate"
                         )
                         bits = [f"{cand['exp']}s"] if cand["exp"] else []
                         if cand["filter"]:
                             bits.append(cand["filter"])
-                        if cand["mosaic"]:
-                            bits.append(t("megastack_pick_mosaic"))
-                        if cand["fits"] is None:
-                            bits.append(t("megastack_pick_fits_unknown"))
                         ui.label(" · ".join(bits)).classes("text-xs text-center text-grey-6 w-full truncate")
                     tile.tooltip(cand["name"])
                     tiles[cand["name"]] = tile
