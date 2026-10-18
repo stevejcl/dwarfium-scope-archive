@@ -750,11 +750,13 @@ TRANSLATIONS: dict[str, str] = {
     "eq_mode_label":                "EQ",  # TODO
     "eq_mode_on":                   "s\u00ed",  # TODO
     "eq_mode_off":                  "no",  # TODO
+    "restore_fits_usb_needed":      "Restore FITS: plug the Dwarf in USB",  # TODO
+    "restore_fits_usb_hint":        "This is the Dwarf's local copy, not the Dwarf: to put the FITS back on the Dwarf (a megastack needs them), plug it in USB - its FTP is read-only (writing over the network: Dwarf 2 only, SFTP). Then select the session again: Restore FITS copies them from the backup drive.",  # TODO
     "megastack_title_short":         "Megastack on the Dwarf",  # TODO
     "megastack_title":               "Megastack on the Dwarf: {target}",  # TODO
     "megastack_need_two":            "Tick at least 2 sessions of the target.",  # TODO
     "megastack_one_target":          "The sessions must be of one target (here: {targets}).",  # TODO
-    "megastack_no_fits":             "No FITS left in: {sessions} (cleaned by CleanFits?) - the Dwarf needs them to stack.",  # TODO
+    "megastack_no_fits":             "No FITS left in: {sessions} (cleaned by CleanFits?) - the Dwarf needs them to stack: restore them with the Dwarf plugged in USB.",  # TODO
     "megastack_lite_not_running":    "Dwarfium Lite is not running: it is the one that talks to the Dwarf.",  # TODO
     "megastack_dwarf_unreachable":   "Dwarfium Lite doesn't answer.",  # TODO
     "megastack_dwarf_unknown":       "Dwarfium Lite doesn't know this Dwarf (Dwarf ID or IP).",  # TODO
