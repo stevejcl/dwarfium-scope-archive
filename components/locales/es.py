@@ -760,15 +760,18 @@ TRANSLATIONS: dict[str, str] = {
     "restore_fits_usb_needed":      "Restore FITS: plug the Dwarf in USB",  # TODO
     "restore_fits_usb_hint":        "This is the Dwarf's local copy, not the Dwarf: to put the FITS back on the Dwarf (a megastack needs them), plug it in USB - its FTP is read-only (writing over the network: Dwarf 2 only, SFTP). Then select the session again: Restore FITS copies them from the backup drive.",  # TODO
     "megastack_title_short":         "Megastack on the Dwarf",  # TODO
-    "megastack_title":               "Megastack on the Dwarf: {target}",  # TODO
-    "megastack_need_one":            "Tick at least one session of the target.",  # TODO
     "megastack_one_target":          "The sessions must be of one target (here: {targets}).",  # TODO
-    "megastack_no_fits":             "No FITS left in: {sessions} (cleaned by CleanFits?) - the Dwarf needs them to stack: restore them with the Dwarf plugged in USB.",  # TODO
     "megastack_lite_not_running":    "Dwarfium Lite is not running: it is the one that talks to the Dwarf.",  # TODO
     "megastack_dwarf_unreachable":   "Dwarfium Lite doesn't answer.",  # TODO
     "megastack_dwarf_unknown":       "Dwarfium Lite doesn't know this Dwarf (Dwarf ID or IP).",  # TODO
     "megastack_dwarf_offline":       "The Dwarf is not connected in Dwarfium Lite.",  # TODO
-    "megastack_confirm":             "{count} session(s) ({shots} images) stacked by the Dwarf ({dwarf}) into Astronomy/RESTACKED/.\nThe Dwarf is busy meanwhile (about 1 h for 600 images): follow it on its page in Dwarfium Lite.",  # TODO
+    "megastack_confirm":             "{count} session(s) of {target} ({shots} images) stacked by the Dwarf into Astronomy/RESTACKED/.\nThe Dwarf is busy meanwhile (about 1 h for 600 images): follow it on its page in Dwarfium Lite.",  # TODO
+    "megastack_pick_hint":           "Click the sessions of a target to stack together (only one: the Dwarf restacks it).",  # TODO
+    "megastack_pick_none":           "No session of this object can be stacked on the Dwarf.",  # TODO
+    "megastack_pick_skipped":        "{count} session(s) not offered: megastack results, or no FITS left on the Dwarf.",  # TODO
+    "megastack_pick_mosaic":         "mosaic",  # TODO
+    "megastack_pick_fits_unknown":   "FITS ?",  # TODO
+    "megastack_mixed":               "Single captures or mosaics, not mixed.",  # TODO
     "megastack_start":               "Start",  # TODO
     "megastack_started":             "Megastack started on the Dwarf: {count} session(s) of {target} - followed in Dwarfium Lite.",  # TODO
     "megastack_lite_old":            "This Dwarfium Lite version can't do it: update it (3.2.6+).",  # TODO
