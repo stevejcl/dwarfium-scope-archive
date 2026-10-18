@@ -1220,6 +1220,7 @@ TRANSLATIONS: dict[str, str] = {
     "import_session_unknown_dwarf": "Unknown Dwarf: check its DwarfId in Dwarf Configuration.",  # TODO
     "import_session_not_connected": "Dwarf not reachable: connect it by USB, or check its IP (FTP) in Dwarf Configuration.",  # TODO
     "import_session_not_found":     "Session not found on the Dwarf.",  # TODO
+    "import_session_usb_missing":   "⚠️ Not found on the USB drive (a folder the Dwarf made while plugged in shows only after replugging) - trying FTP.",  # TODO
     "import_session_local_dir_error": "Couldn't create the local Dwarf folder.",  # TODO
     "import_session_db_error":      "Couldn't open the database.",  # TODO
     "import_session_open_transfer": "Open the Transfer page anyway",  # TODO

@@ -32,6 +32,10 @@
 ### BugFix
     Storage Report: confirming "Measure again all the sessions" of the Dwarf (⟳ next to Measure the Dwarf) did
     nothing - "coroutine was never awaited" in the console.
+    Import of a session from Dwarfium Lite (Archive in Scope Archive): a session not on the Dwarf's USB drive is
+    now read by FTP - a megastack made while the Dwarf was plugged in by USB isn't shown on the drive until it is
+    plugged again ("Session not found on the Dwarf", user-seen); the Transfer page that follows then copies it by
+    FTP too.
 
 ## [V3.4.5] - 2026-10-14
 
