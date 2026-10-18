@@ -146,6 +146,7 @@ class ExploreApp(DbPageMixin):
         self.sky_filter_radius: float = 3.0
         self.sky_filter_entry_ids: list | None = None
         self.quality_filter: int | None = None  # None=all, 65=green, 40=yellow
+        self.fits_filter: str | None = None  # Dwarf mode: None=all, "with" / "without" raw FITS on the Dwarf
         self._current_files: list = []
         self.sky_badge = None  # ui element, set later
         self.DwarfId = DwarfId
@@ -331,6 +332,15 @@ class ExploreApp(DbPageMixin):
                                 self.only_on_dwarf = ui.checkbox(t("only_not_backed"), value=self.OnlyOnDwarf, on_change = self.on_change_only_on_dwarf)
                                 ui.label("")
                                 self.only_on_backup = ui.checkbox(t("only_already_backed"), value=self.OnlyAlreadyBacked, on_change = self.on_change_only_on_backup)
+                                # Raw FITS still on the Dwarf - the Storage Report's measure
+                                # (one query): a megastack needs them
+                                with ui.row().classes("items-center gap-1 px-2 pb-1"):
+                                    ui.label(t("fits_filter_label")).classes("text-xs text-gray-500")
+                                    ui.toggle(
+                                        {"all": t("fits_filter_all"), "with": t("fits_filter_with"), "without": t("fits_filter_without")},
+                                        value="all",
+                                        on_change=self._on_fits_filter_change,
+                                    ).props("dense no-caps size=sm").tooltip(t("fits_filter_tooltip"))
 
                     self.count_label = ui.label(t("total_sessions_zero"))
                     with ui.card().tight().classes('w-full flex-1 flex overflow-hidden'):
@@ -622,6 +632,12 @@ class ExploreApp(DbPageMixin):
 
         background_tasks.create(_run())
 
+    def _on_fits_filter_change(self, e):
+        val = e.value if hasattr(e, "value") else e
+        self.fits_filter = val if val in ("with", "without") else None
+        if not self._initializing:
+            ui.timer(0.05, self.load_objects, once=True)
+
     def _on_quality_filter_change(self, e):
         """Update quality filter and reload objects."""
         val = e.value if hasattr(e, "value") else e
@@ -716,8 +732,8 @@ class ExploreApp(DbPageMixin):
         else:
             show_only_dwarf = self.only_on_dwarf.value if self.only_on_dwarf else False
             show_only_backup = self.only_on_backup.value if self.only_on_backup else False
-            self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
-            count = get_countObjects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value)
+            self.objects = get_Objects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value, fits=self.fits_filter)
+            count = get_countObjects_dwarf(self.conn, dwarf_id, show_only_dwarf, show_only_backup, self.object_filter.value, fits=self.fits_filter)
 
         self.count_label.text = f"{t('total_matching')} {count}"
         print (f"Total matching sessions: {count}")
@@ -1303,6 +1319,7 @@ class ExploreApp(DbPageMixin):
                 self.object_filter.value, session_id,
                 entry_ids=self.sky_filter_entry_ids,
                 min_quality=self.quality_filter,
+                fits=self.fits_filter,
             )
             self._current_files = list(files)
 
@@ -1455,10 +1472,14 @@ class ExploreApp(DbPageMixin):
 
                 # Enable multi-selection in dwarf mode to allow multi-session transfer
                 checkboxes = []
+                # Dwarf mode: sessions not backed up yet (Backup Selected), or
+                # already backed up (Megastack on the Dwarf, components/dwarf_megastack.py)
+                dwarf_not_backed = bool(self.only_on_dwarf and self.only_on_dwarf.value)
+                dwarf_backed = bool(self.only_on_backup and self.only_on_backup.value)
                 use_checkboxes = (len(files) > 1) and (
                     (
                         self.mode != "backup"
-                        and bool(self.only_on_dwarf and self.only_on_dwarf.value)
+                        and (dwarf_not_backed or dwarf_backed)
                         and bool(self.get_selected_dwarf_id())
                     ) or (
                         self.mode == "backup"
@@ -1474,7 +1495,7 @@ class ExploreApp(DbPageMixin):
                         and (
                             (
                                 self.mode != "backup"
-                                and bool(self.only_on_dwarf and self.only_on_dwarf.value)
+                                and (dwarf_not_backed or dwarf_backed)
                                 and bool(self.get_selected_dwarf_id())
                             ) or (
                                 self.mode == "backup"
@@ -1484,9 +1505,11 @@ class ExploreApp(DbPageMixin):
                             )
                         )
                     )
+                    # Backup Selected: Dwarf mode, sessions not backed up yet only
+                    can_transfer = has_sel and (self.mode == "backup" or dwarf_not_backed)
                     if self.transfer_multi_btn:
-                        self.transfer_multi_btn.visible = has_sel
-                        if has_sel:
+                        self.transfer_multi_btn.visible = can_transfer
+                        if can_transfer:
                             self.transfer_multi_btn.set_text(
                                 t("restore_selected") if self.mode == "backup"
                                 else t("backup_selected")

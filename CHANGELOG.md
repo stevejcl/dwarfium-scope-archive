@@ -3,6 +3,11 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, Dwarf mode: a "FITS on the Dwarf" filter (All / With / Without) - the sessions whose raw FITS are still
+    on the Dwarf (a megastack needs them), from the Storage Report's measure (Measure the Dwarf): one query, no folder
+    read; a session never measured, or not backed up yet, is in neither. And the sessions can be ticked with "Show
+    only sessions already backed up" too (was: not backed up yet only) - Megastack on the Dwarf for backed-up
+    sessions; Backup Selected stays for the ones not backed up yet.
     Storage Report: a session listed on a connected drive but whose folder is no longer there (moved, or put back on
     another drive) reads "not found" in orange instead of "—" - its tooltip says to analyze the drive again, which
     removes the old entry. The Dwarf sizes (total / without FITS) are now written to every backup copy of the

@@ -726,7 +726,33 @@ def get_Objects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=None,
         print(f"[DB ERROR] Failed to fetch get_Objects_duplicate_backup: {e}")
         return []
 
-def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, filter_object=None, min_quality=None):
+def _fits_condition(conn: sqlite3.Connection, fits):
+    """Explore, Dwarf mode: a session's raw FITS still on the Dwarf, from
+    the Storage Report's measure (SessionQuality.dwarf_size_bytes /
+    dwarf_size_no_fits_bytes, stored on the session's backup copies) -
+    one query, no folder read. fits: "with" / "without" (None: no filter).
+    A session never measured (or never backed up) matches neither."""
+    if fits not in ("with", "without"):
+        return None
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(SessionQuality)").fetchall()}
+    for col in ("dwarf_size_bytes", "dwarf_size_no_fits_bytes"):
+        if cols and col not in cols:
+            conn.execute(f"ALTER TABLE SessionQuality ADD COLUMN {col} INTEGER")
+            conn.commit()
+    compare = ">" if fits == "with" else "<="
+    return f"""
+        EXISTS (
+            SELECT 1 FROM BackupEntry AS FitsCopy
+            JOIN SessionQuality AS FitsSize ON FitsSize.backup_entry_id = FitsCopy.id
+            WHERE FitsCopy.session_dir = DwarfEntry.session_dir
+              AND FitsCopy.dwarf_id = DwarfEntry.dwarf_id
+              AND FitsSize.dwarf_size_bytes IS NOT NULL
+              AND FitsSize.dwarf_size_bytes {compare} FitsSize.dwarf_size_no_fits_bytes
+        )
+    """
+
+
+def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, filter_object=None, min_quality=None, fits=None):
     try:
         cursor = conn.cursor()
 
@@ -771,6 +797,10 @@ def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=Non
                     )
                 """)
                 params.append(dwarf_id)
+
+        fits_sql = _fits_condition(conn, fits)
+        if fits_sql:
+            conditions.append(fits_sql)
 
         if filter_object:
             conditions.append("LOWER(display_name) LIKE ?")
@@ -929,7 +959,7 @@ def get_countObjects_duplicate_backup(conn: sqlite3.Connection, backup_drive_id=
         print(f"[DB ERROR] Failed to fetch get_countObjects_duplicate_backup: {e}")
         return []
 
-def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, filter_object=None, min_quality=None):
+def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, filter_object=None, min_quality=None, fits=None):
     try:
         cursor = conn.cursor()
 
@@ -964,6 +994,10 @@ def get_countObjects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwar
                     )
                 """)
                 params.append(dwarf_id)
+
+        fits_sql = _fits_condition(conn, fits)
+        if fits_sql:
+            conditions.append(fits_sql)
 
         if filter_object:
             conditions.append(f"(LOWER({display_name_expr}) LIKE ? OR LOWER({group_display_expr}) LIKE ?)")
@@ -1236,7 +1270,7 @@ def get_ObjectSelect_duplicate_backup(conn: sqlite3.Connection, object_id = None
         print(f"[DB ERROR] Failed to fetch get_ObjectSelect_duplicate_backup: {e}")
         return []
 
-def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, is_group = False, filter_object=None, session_id = None, entry_ids=None, min_quality=None):
+def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = None, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, is_group = False, filter_object=None, session_id = None, entry_ids=None, min_quality=None, fits=None):
     try:
         cursor = conn.cursor()
 
@@ -1319,6 +1353,10 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
                     )
                 """)
                 params.append(dwarf_id)
+
+        fits_sql = _fits_condition(conn, fits)
+        if fits_sql:
+            where_clauses.append(fits_sql)
 
         if filter_object:
             where_clauses.append(f"(LOWER(object_display_name) LIKE ? OR LOWER({group_display_expr}) LIKE ?)")
