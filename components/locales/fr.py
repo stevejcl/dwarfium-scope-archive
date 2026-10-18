@@ -1219,6 +1219,7 @@ TRANSLATIONS: dict[str, str] = {
     "import_session_unknown_dwarf": "Dwarf inconnu : vérifiez son DwarfId dans Configuration Dwarf.",
     "import_session_not_connected": "Dwarf injoignable : branchez-le en USB ou vérifiez son IP (FTP) dans Configuration Dwarf.",
     "import_session_not_found":     "Session introuvable sur le Dwarf.",
+    "import_session_usb_missing":   "⚠️ Absente du disque USB (un dossier créé par le Dwarf pendant qu'il est branché n'apparaît qu'après l'avoir rebranché) - essai par FTP.",
     "import_session_local_dir_error": "Impossible de créer le dossier local du Dwarf.",
     "import_session_db_error":      "Impossible d'ouvrir la base de données.",
     "import_session_open_transfer": "Ouvrir quand même la page Transfert",

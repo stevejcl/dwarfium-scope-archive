@@ -6,8 +6,8 @@ View / Check dialogs).
 
 Same two steps as the Setup Dwarfs page's analysis, for this session
 only: sync its stacked / shotsInfo files from the Dwarf (USB when its
-astronomy folder is reachable, else FTP) into the local Dwarf folder,
-then scan it into the database - the session is then registered. The
+astronomy folder is reachable, else - or not found there - FTP) into the
+local Dwarf folder, then scan it into the database - the session is then registered. The
 Transfer page opens next with it preselected (Archive mode); choosing
 the backup drive and starting the copy stay with the user there.
 
@@ -45,10 +45,12 @@ from components.menu import menu
 _DWARF2_TYPE = 1
 
 
-def _transfer_url(dwarf_id: int, session: str, dwarf_ip: str = "") -> str:
+def _transfer_url(dwarf_id: int, session: str, dwarf_ip: str = "", via_ftp: bool = False) -> str:
     query = {"DwarfId": dwarf_id, "session": session, "mode": "Archive"}
     if dwarf_ip:
         query["DwarfIp"] = dwarf_ip
+    if via_ftp:  # not on the USB drive: the copy by FTP too
+        query["via"] = "FTP"
     return "/Transfer?" + urllib.parse.urlencode(query)
 
 
@@ -97,42 +99,51 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
     return out
 
 
-def _import_session(dwarf_id: int, session: str, log, progress_cb, dwarf_ip: str = "") -> tuple[bool, str]:
-    """Blocking: sync + scan of one session. (ok, message key). FTP goes
-    to the first answering of dwarf_ip (the link's), the configured IP and
+def _import_session(dwarf_id: int, session: str, log, progress_cb, dwarf_ip: str = "") -> tuple[bool, str, bool]:
+    """Blocking: sync + scan of one session. (ok, message key, read by FTP
+    from a USB-plugged Dwarf - the Transfer page copies by FTP too). FTP
+    goes to the first answering of dwarf_ip (the link's), the configured IP and
     the Dwarf's session IP."""
     conn = connect_db(DB_NAME)
     if not conn:
-        return False, "import_session_db_error"
+        return False, "import_session_db_error", False
     try:
         row = get_dwarf_detail(conn, dwarf_id)
         if not row:
-            return False, "import_session_unknown_dwarf"
+            return False, "import_session_unknown_dwarf", False
         _name, _desc, usb_dir, dwarf_type, _scan_date, ip, _mtp = row
         local_main_dir = create_local_dwarf_dir(conn)
         if not local_main_dir:
-            return False, "import_session_local_dir_error"
-
-        usb_dir = (usb_dir or "").strip()
-        if usb_dir and os.path.isdir(usb_dir):
-            log.push(f"🔌 USB: {usb_dir}")
-            sync_dwarf_sessions(dwarf_id, usb_dir, local_main_dir, session, log, progress_cb)
-        elif ip := pick_ftp_ip(dwarf_id, ip, dwarf_ip):
-            ftp_root = DWARF2_FTP_PATH if dwarf_type == _DWARF2_TYPE else DWARF3_FTP_PATH
-            log.push(f"🌐 FTP: {ip}{ftp_root}")
-            with ftp_conn(ip) as ftp:
-                if not ftp:
-                    return False, "import_session_not_connected"
-                ftp_sync_dwarf_sessions(ftp, dwarf_id, ftp_root, local_main_dir, session, log, progress_cb)
-        else:
-            return False, "import_session_not_connected"
+            return False, "import_session_local_dir_error", False
 
         local_dwarf_dir = get_local_dwarf_dir(conn, dwarf_id)
-        session_dir = _local_session_dir(local_dwarf_dir, session)
+        usb_dir = (usb_dir or "").strip()
+        on_usb = bool(usb_dir) and os.path.isdir(usb_dir)
+        if on_usb:
+            log.push(f"🔌 USB: {usb_dir}")
+            sync_dwarf_sessions(dwarf_id, usb_dir, local_main_dir, session, log, progress_cb)
+        session_dir = _local_session_dir(local_dwarf_dir, session) if on_usb else None
+        via_ftp = session_dir is None
+        # Not on the USB drive: FTP too (user-seen Oct 2026: a megastack
+        # made while plugged in - Windows still shows the drive as it was
+        # when plugged, the new RESTACKED folder only after replugging,
+        # FTP has it)
+        if session_dir is None and (ftp_ip := pick_ftp_ip(dwarf_id, ip, dwarf_ip)):
+            ftp_root = DWARF2_FTP_PATH if dwarf_type == _DWARF2_TYPE else DWARF3_FTP_PATH
+            if on_usb:
+                log.push(t("import_session_usb_missing"))
+            log.push(f"🌐 FTP: {ftp_ip}{ftp_root}")
+            with ftp_conn(ftp_ip) as ftp:
+                if not ftp:
+                    return False, "import_session_not_found" if on_usb else "import_session_not_connected", False
+                ftp_sync_dwarf_sessions(ftp, dwarf_id, ftp_root, local_main_dir, session, log, progress_cb)
+            session_dir = _local_session_dir(local_dwarf_dir, session)
+        elif session_dir is None and not on_usb:
+            return False, "import_session_not_connected", False
         if not session_dir:
-            return False, "import_session_not_found"
+            return False, "import_session_not_found", False
         scan_backup_folder(DB_NAME, local_dwarf_dir, None, dwarf_id, None, session_dir, log, progress_cb)
-        return True, "import_session_done"
+        return True, "import_session_done", on_usb and via_ftp
     finally:
         close_db(conn)
 
@@ -179,9 +190,9 @@ async def import_session_page(DwarfId: int = None, session: str = None, DwarfIp:
         _show_progress(True)
         status_label.set_text(t("import_session_running"))
         try:
-            ok, key = await run.io_bound(_import_session, DwarfId, session, log, _progress, dwarf_ip)
+            ok, key, via_ftp = await run.io_bound(_import_session, DwarfId, session, log, _progress, dwarf_ip)
         except Exception as e:  # FTP drop, copy error...: shown, never a blank page
-            ok, key = False, ""
+            ok, key, via_ftp = False, "", False
             log.push(f"❌ {e}")
         spinner.set_visibility(False)
         progress_bar.set_value(1 if ok else 0)
@@ -189,7 +200,7 @@ async def import_session_page(DwarfId: int = None, session: str = None, DwarfIp:
             status_label.set_text(t(key))
             status_label.classes("text-positive")
             # The session is registered: on to the Transfer page, preselected
-            ui.navigate.to(_transfer_url(DwarfId, session, dwarf_ip))
+            ui.navigate.to(_transfer_url(DwarfId, session, dwarf_ip, via_ftp))
         else:
             status_label.set_text(t(key) if key else t("import_session_failed"))
             status_label.classes("text-negative")

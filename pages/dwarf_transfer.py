@@ -34,6 +34,7 @@ async def transfer_page(
     src_root: str = None,       # browsing constraint root (must be inside backup dir)
     dest_override: str = None,  # force destination to this path (e.g. CALI_FRAME dir)
     DwarfIp: str = None,        # this Dwarf's IP from Astro Dwarf Session (ImportSession page)
+    via: str = None,            # "FTP": preferred when available (ImportSession found it there only)
 ):
     menu(t("page_transfer"))
     await ui.context.client.connected(timeout=10.0)
@@ -50,11 +51,12 @@ async def transfer_page(
         SrcRoot=src_root,
         DestOverride=dest_override,
         DwarfIp=dwarf_ip_param(DwarfIp),
+        PreferFtp=(via or "").upper() == "FTP",
     )
     #ui.context.client.on_disconnect(lambda: logger.removeHandler(handler))
 
 class TransferApp:
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None, DestOverride=None, DwarfIp=""):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Archive", BackupId=None, BackUrl=None, SrcOverride=None, SrcRoot=None, DestOverride=None, DwarfIp="", PreferFtp=False):
         self.client = client
         self.mode = Mode  # "Archive" | "Restore" | "Repair" | "Merge"
         self.database = database
@@ -79,6 +81,10 @@ class TransferApp:
         # requested Oct 2026): tried first for FTP while this Dwarf is
         # selected, before the configured and the session IP, never saved
         self.dwarf_ip_override = DwarfIp or ""
+        # The session only found by FTP (ImportSession, user-seen Oct 2026:
+        # a megastack made while the Dwarf was plugged in by USB - not shown
+        # on the drive until replugged): FTP chosen once available
+        self.prefer_ftp = PreferFtp
 
         self.src_dir = ''
         self.dest_dir = ''
@@ -606,7 +612,7 @@ class TransferApp:
                 self.ftp_spinner.set_visibility(False)
                 self.ftp_status_label.text = status_text  # Show the result
                 # update only if the user doesn't already change it
-                if not self.usb_available or (not self.session and not self.manual_update_dir):
+                if self.prefer_ftp or not self.usb_available or (not self.session and not self.manual_update_dir):
                     self.update_transfert_mode()
                     print("update_transfert_mode")
 
@@ -623,7 +629,8 @@ class TransferApp:
             print(f"no available_modes")
 
         # Update the select options dynamically
-        self.transfert_mode_select.set_options(available_modes, value=available_modes[0])
+        value = "FTP" if self.prefer_ftp and "FTP" in available_modes else available_modes[0]
+        self.transfert_mode_select.set_options(available_modes, value=value)
         self.update_dwarf_directory()
 
     def change_transfert_mode(self):
