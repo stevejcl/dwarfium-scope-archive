@@ -29,6 +29,10 @@
     and the Dwarf connected in it (found by its Dwarf ID, else its IP); a confirmation shows the sessions and
     images. The Dwarf checks the rest itself (filter, binning, dark frames) - its refusal shown with the reason.
 
+### BugFix
+    Storage Report: confirming "Measure again all the sessions" of the Dwarf (⟳ next to Measure the Dwarf) did
+    nothing - "coroutine was never awaited" in the console.
+
 ## [V3.4.5] - 2026-10-14
 
 ### Add

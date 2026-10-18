@@ -625,7 +625,13 @@ class ReportApp(DbPageMixin):
             with ui.dialog() as dlg, ui.card():
                 ui.label(t("report_force_warning")).classes("text-sm")
                 with ui.row().classes("gap-2 mt-2"):
-                    ui.button(t("confirm"), on_click=lambda: (dlg.close(), self._start_dwarf_size_scan_force())).props("color=negative")
+                    async def confirmed():
+                        # awaited: _start_dwarf_size_scan_force is async (the lambda
+                        # returning it in a tuple never ran it)
+                        dlg.close()
+                        await self._start_dwarf_size_scan_force()
+
+                    ui.button(t("confirm"), on_click=confirmed).props("color=negative")
                     ui.button(t("cancel"),  on_click=dlg.close).props("flat")
             dlg.open()
         ui.timer(0, _do, once=True)
