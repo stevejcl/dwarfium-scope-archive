@@ -750,6 +750,11 @@ TRANSLATIONS: dict[str, str] = {
     "eq_mode_label":                "EQ",  # TODO
     "eq_mode_on":                   "ja",  # TODO
     "eq_mode_off":                  "nein",  # TODO
+    "fits_filter_label":            "FITS on the Dwarf",  # TODO
+    "fits_filter_all":              "All",  # TODO
+    "fits_filter_with":             "With",  # TODO
+    "fits_filter_without":          "Without",  # TODO
+    "fits_filter_tooltip":          "The sessions whose raw FITS are still on the Dwarf (a megastack needs them), or not - from the Storage Report's measure (Measure the Dwarf): a session never measured, or not backed up yet, is in neither.",  # TODO
     "report_backup_missing":        "not found",  # TODO
     "report_backup_missing_hint":   "The drive is connected but this session's folder isn't on it (moved, or put back on another drive): analyze the drive again to remove this old entry.",  # TODO
     "restore_fits_usb_needed":      "Restore FITS: plug the Dwarf in USB",  # TODO
