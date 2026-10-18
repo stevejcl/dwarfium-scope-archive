@@ -94,7 +94,7 @@ def fits_state(conn, dwarf_id, row: list, session_path: str) -> bool | None:
     """Blocking. The session's raw FITS on the Dwarf: read in its folder when
     the Dwarf is plugged in USB (a mosaic's in its panels' subfolders), else
     the Storage Report's measure - the local copy (Dwarf_Local) has none.
-    None: not known (Dwarfium Lite checks them again over FTP)."""
+    None: not known - offered, Dwarfium Lite checks them again over FTP."""
     usb = os.path.normpath(str(row[_USB_DIR] or "")) if row[_USB_DIR] else ""
     if usb and session_path and os.path.normpath(session_path).startswith(usb) and os.path.isdir(session_path):
         return bool(count_fits_files(session_path))
@@ -179,10 +179,6 @@ async def open_picker(conn, dwarf_id, rows: list[list], paths: list[str]) -> Non
                         bits = [f"{cand['exp']}s"] if cand["exp"] else []
                         if cand["filter"]:
                             bits.append(cand["filter"])
-                        if cand["mosaic"]:
-                            bits.append(t("megastack_pick_mosaic"))
-                        if cand["fits"] is None:
-                            bits.append(t("megastack_pick_fits_unknown"))
                         ui.label(" · ".join(bits)).classes("text-xs text-center text-grey-6 w-full truncate")
                     tile.tooltip(cand["name"])
                     tiles[cand["name"]] = tile
