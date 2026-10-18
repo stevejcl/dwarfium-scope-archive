@@ -8,8 +8,9 @@ Its picker (open_picker) offers the object's sessions that can be: not a
 megastack result, their FITS not known to be gone (cleaned by CleanFits) -
 read on the Dwarf by USB, else the Storage Report's measure; Dwarfium Lite
 checks them again over FTP. Then Dwarfium Lite must be running and know
-this Dwarf, connected. The Dwarf checks the rest itself (filter, binning,
-dark frames)."""
+this Dwarf, connected. The Dwarf checks the rest itself (binning, dark
+frames) - mixed filters it takes (user-checked Oct 2026: Duo-Band and
+Astro stacked together)."""
 from __future__ import annotations
 
 import os
@@ -172,7 +173,7 @@ async def open_picker(conn, dwarf_id, rows: list[list], paths: list[str]) -> Non
                             ui.icon("image_not_supported").classes("w-full text-5xl text-grey-5 text-center")
                         ui.label(cand["date"][:16]).classes("text-xs text-center w-full truncate")
                         # Its images, exposure and filter (user-requested Oct 2026:
-                        # "20 img" unclear; the Dwarf refuses mixed filters)
+                        # "20 img" unclear; filters can be mixed, worth seeing)
                         ui.label(t("megastack_pick_stacked", count=cand["shots"])).classes(
                             "text-xs text-center w-full truncate"
                         )
