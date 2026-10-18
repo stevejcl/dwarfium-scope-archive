@@ -124,8 +124,11 @@ def ensure_quality_table(conn: sqlite3.Connection):
         conn.commit()
         print("[DB] SessionQuality migrated — UNIQUE constraint added on backup_entry_id")
 
-    # Add folder_size columns if this is an older DB (safe no-op if already present)
-    for col, coltype in [("folder_size_bytes", "INTEGER"), ("folder_sized_at", "TEXT")]:
+    # Add folder_size columns if this is an older DB (safe no-op if already present);
+    # score_cleared: the score cleared by the user (api/sky_map_hidden.py) -
+    # not scored again automatically
+    for col, coltype in [("folder_size_bytes", "INTEGER"), ("folder_sized_at", "TEXT"),
+                         ("score_cleared", "INTEGER")]:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(SessionQuality)").fetchall()]
         if col not in cols:
             conn.execute(f"ALTER TABLE SessionQuality ADD COLUMN {col} {coltype}")
@@ -137,7 +140,10 @@ def get_sessions_to_score(conn: sqlite3.Connection,
                            date_to:   str | None,
                            force:     bool,
                            backup_drive_id: int | None) -> list[dict]:
-    """Return sessions that need scoring."""
+    """Return sessions that need scoring: no score yet - their row may
+    already exist, created by a size measure (Storage Report, Clean Fits,
+    the Dwarf's sizes written to every copy) - not one the user cleared."""
+    ensure_quality_table(conn)
     query = """
         SELECT
             BackupEntry.id,
@@ -166,7 +172,10 @@ def get_sessions_to_score(conn: sqlite3.Connection,
     params = []
 
     if not force:
-        query += " AND SessionQuality.backup_entry_id IS NULL"
+        # Not "no row": a size measured first creates it without a score,
+        # the session was then never scored (user-reported, Oct 2026)
+        query += (" AND (SessionQuality.backup_entry_id IS NULL"
+                  " OR (SessionQuality.quality_score IS NULL AND COALESCE(SessionQuality.score_cleared, 0) = 0))")
 
     if date_from:
         query += " AND BackupEntry.session_date >= ?"
@@ -561,7 +570,8 @@ def main():
                 total_exp_seconds = excluded.total_exp_seconds,
                 score_a           = excluded.score_a,
                 score_c           = excluded.score_c,
-                scored_at         = excluded.scored_at
+                scored_at         = excluded.scored_at,
+                score_cleared     = 0
         """, (session["id"], final_score, total_exp_s, score_a, score_c, scored_at))
         conn.commit()
 
@@ -638,7 +648,8 @@ def score_entry_ids(db_path: str, entry_ids: list, threshold: float = 40.0) -> i
                     total_exp_seconds=excluded.total_exp_seconds,
                     score_a=excluded.score_a,
                     score_c=excluded.score_c,
-                    scored_at=excluded.scored_at
+                    scored_at=excluded.scored_at,
+                    score_cleared=0
             """, (eid, final, total_exp_s, score_a, score_c, scored_at))
             conn.commit()
             scored += 1

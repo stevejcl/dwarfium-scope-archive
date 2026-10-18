@@ -8,10 +8,11 @@ doesn't solve it again; shown again by deleting the row. Its own table, not
 a SessionWCS column: a forced re-solve deletes and rewrites those rows.
 
 Cleared score: SessionQuality's quality_score / score_a / score_c set to
-NULL - its row is kept (it also holds the Storage Report's sizes). The
-session then reads "no score", isn't proposed to the astrometry scan
-(quality threshold), nor scored again by the quality scan (its row
-exists): only Explore's Score button scores it again.
+NULL and score_cleared to 1 - its row is kept (it also holds the Storage
+Report's sizes). The session then reads "no score", isn't proposed to the
+astrometry scan (quality threshold), nor scored again automatically after
+a backup drive's analysis (score_cleared): only Explore's Score button
+scores it again.
 """
 from __future__ import annotations
 
@@ -64,12 +65,18 @@ def is_solved(conn: sqlite3.Connection, entry_type: str, entry_id: int) -> bool:
 def clear_quality_score(conn: sqlite3.Connection, backup_entry_id: int) -> bool:
     """True when a score was cleared."""
     try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(SessionQuality)")}
+        if not cols:                     # no SessionQuality table yet
+            return False
+        if "score_cleared" not in cols:
+            conn.execute("ALTER TABLE SessionQuality ADD COLUMN score_cleared INTEGER")
         cur = conn.execute(
-            """UPDATE SessionQuality SET quality_score = NULL, score_a = NULL, score_c = NULL
+            """UPDATE SessionQuality SET quality_score = NULL, score_a = NULL, score_c = NULL,
+                                         score_cleared = 1
                WHERE backup_entry_id = ? AND quality_score IS NOT NULL""",
             (int(backup_entry_id),),
         )
-    except sqlite3.OperationalError:     # no SessionQuality table yet
+    except sqlite3.OperationalError:
         return False
     conn.commit()
     return cur.rowcount > 0
