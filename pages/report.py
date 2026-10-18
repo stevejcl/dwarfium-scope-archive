@@ -152,7 +152,7 @@ class ReportApp(DbPageMixin):
                     self._calc_btn = ui.button(
                         t("report_calc_sizes"),
                         on_click=self._start_size_scan,
-                    ).props("color=primary")
+                    ).props("color=primary").tooltip(t("report_calc_sizes_hint"))
                     self._calc_force_btn = ui.button(
                         icon="refresh",
                         on_click=self._confirm_size_scan_force,
@@ -162,7 +162,7 @@ class ReportApp(DbPageMixin):
                     self._calc_dwarf_btn = ui.button(
                         t("report_calc_dwarf_sizes"),
                         on_click=self._start_dwarf_size_scan,
-                    ).props("color=primary")
+                    ).props("color=primary").tooltip(t("report_calc_dwarf_sizes_hint"))
                     self._calc_dwarf_force_btn = ui.button(
                         icon="refresh",
                         on_click=self._confirm_dwarf_size_scan_force,
@@ -442,6 +442,9 @@ class ReportApp(DbPageMixin):
                 "object":              row.get("object_name").split(',', 1)[0] or "?",
                 "session":             row.get("session_dir", ""),
                 "size":                size_str,
+                "backup_missing":      bool(row.get("backup_missing")),
+                "missing_label":       t("report_backup_missing"),
+                "missing_hint":        t("report_backup_missing_hint"),
                 "size_bytes":          sz or 0,
                 "dwarf_size":          row.get("dwarf_size_str", "—"),
                 "dwarf_size_bytes":    row.get("dwarf_size_bytes") or 0,
@@ -470,7 +473,9 @@ class ReportApp(DbPageMixin):
                         <div class="text-xs opacity-50" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="props.row.session">{{ props.row.session }}</div>
                     </q-td>
                     <q-td key="size" :props="props">
-                        <span class="text-sm font-semibold"
+                        <span v-if="props.row.backup_missing" class="text-sm text-orange-600"
+                              :title="props.row.missing_hint">{{ props.row.missing_label }}</span>
+                        <span v-else class="text-sm font-semibold"
                               :class="{
                                 'text-orange-500': props.row.size_bytes > 5368709120,
                                 'text-yellow-600': props.row.size_bytes > 2147483648 && props.row.size_bytes <= 5368709120,

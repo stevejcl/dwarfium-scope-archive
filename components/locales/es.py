@@ -750,6 +750,8 @@ TRANSLATIONS: dict[str, str] = {
     "eq_mode_label":                "EQ",  # TODO
     "eq_mode_on":                   "s\u00ed",  # TODO
     "eq_mode_off":                  "no",  # TODO
+    "report_backup_missing":        "not found",  # TODO
+    "report_backup_missing_hint":   "The drive is connected but this session's folder isn't on it (moved, or put back on another drive): analyze the drive again to remove this old entry.",  # TODO
     "restore_fits_usb_needed":      "Restore FITS: plug the Dwarf in USB",  # TODO
     "restore_fits_usb_hint":        "This is the Dwarf's local copy, not the Dwarf: to put the FITS back on the Dwarf (a megastack needs them), plug it in USB - its FTP is read-only (writing over the network: Dwarf 2 only, SFTP). Then select the session again: Restore FITS copies them from the backup drive.",  # TODO
     "megastack_title_short":         "Megastack on the Dwarf",  # TODO
@@ -1115,17 +1117,19 @@ TRANSLATIONS: dict[str, str] = {
     "report_latest":               'Latest sessions', # TODO
     "report_session":              'Session', # TODO
     "report_date":                 'Date', # TODO
-    "report_size":                 'Size', # TODO
+    "report_size":                 "Backup",  # TODO
     "report_object":               'Object', # TODO
     "report_quality":              'Quality', # TODO
-    "report_dwarf_size":           'Dwarf total', # TODO
-    "report_dwarf_no_fits":        'Dwarf -FITS', # TODO
-    "report_calc_sizes":           'Calculate sizes', # TODO
-    "report_calc_sizes_force":     'Force recalculate all sessions', # TODO
+    "report_dwarf_size":           "On the Dwarf",  # TODO
+    "report_dwarf_no_fits":        "Dwarf without FITS",  # TODO
+    "report_calc_sizes":           "Measure the backup",  # TODO
+    "report_calc_sizes_force":     "Measure again all the sessions of this drive",  # TODO
     "report_force_warning":        '⚠️ This will recalculate sizes for ALL sessions on this drive. This may take a while. Continue?', # TODO
-    "report_calc_dwarf_sizes":     'Calculate Dwarf sizes', # TODO
+    "report_calc_dwarf_sizes":     "Measure the Dwarf",  # TODO
+    "report_calc_sizes_hint":       "Size of each session's folder on the backup drive (Backup column) - only the ones not measured yet.",  # TODO
+    "report_calc_dwarf_sizes_hint": "Size of each session's folder on the Dwarf - plugged in USB, else its local copy - with and without its raw FITS (Dwarf columns): no difference, no FITS left. Only the ones not measured yet.",  # TODO
     "report_calc_running":         'Calculating…', # TODO
-    "report_no_sizes":             'No sizes calculated yet — click Calculate sizes', # TODO
+    "report_no_sizes":             "No size measured yet — click Measure the backup",  # TODO
     "report_sized":                '{n} session(s) measured', # TODO
     "report_drive_info":           'Drive information', # TODO
     "report_show":                 'Show top', # TODO
