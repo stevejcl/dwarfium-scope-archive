@@ -39,6 +39,11 @@
     itself (binning, dark frames) - its refusal shown with the reason.
 
 ### BugFix
+    Sessions never scored automatically: after a backup drive's analysis only the sessions without any quality row
+    were scored, but a size measured first (Storage Report, Clean Fits, restored FITS, the Dwarf's sizes written to
+    every copy) creates that row without a score - the session then stayed "no score" (no colour on the Sky Map,
+    not proposed to its scan). Scored now when its score is empty, except one cleared on purpose (Explore's ⌫) -
+    database V17: SessionQuality.score_cleared and the SkyMapHidden table, nothing to do by hand.
     Explore: a message showed its key "no_backup_drive_sel2" instead of "No backup drive selected." (a typo in the
     key).
     Storage Report: confirming "Measure again all the sessions" of the Dwarf (⟳ next to Measure the Dwarf) did

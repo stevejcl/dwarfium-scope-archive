@@ -307,7 +307,19 @@ def create_quality_table_sql():
             folder_sized_at   TEXT,
             dwarf_size_bytes  INTEGER,
             dwarf_size_no_fits_bytes INTEGER,
-            dwarf_sized_at    TEXT
+            dwarf_sized_at    TEXT,
+            score_cleared     INTEGER
+        )
+        """
+
+
+def create_sky_map_hidden_table_sql():
+    # Sessions hidden from the Sky Map by the user (api/sky_map_hidden.py)
+    return """
+        CREATE TABLE IF NOT EXISTS SkyMapHidden (
+            entry_type TEXT NOT NULL,
+            entry_id   INTEGER NOT NULL,
+            PRIMARY KEY (entry_type, entry_id)
         )
         """
 
@@ -372,6 +384,7 @@ SCHEMAS = {
     "SessionQuality": create_quality_table_sql,
     "SessionWCS": create_session_wcs_table_sql,
     "DsoImageCache": create_dso_image_cache_table_sql,
+    "SkyMapHidden": create_sky_map_hidden_table_sql,
 }
 
 # Sanity check — catch wrong mappings at import time, not at runtime
@@ -1020,6 +1033,19 @@ def migrate_v16(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v16: {e}")
 
+def migrate_v17(conn):
+    try:
+        print("Migrating Database to V17...")
+        # A quality score cleared by the user (Explore's icon): not scored
+        # again automatically after a backup drive's analysis
+        add_column_if_not_exists(conn, "SessionQuality", "score_cleared", "INTEGER")
+        # Sessions hidden from the Sky Map by the user
+        conn.execute(create_sky_map_hidden_table_sql())
+        conn.commit()
+        print("Migration v17 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v17: {e}")
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -1037,6 +1063,7 @@ MIGRATIONS = {
     14: migrate_v14,
     15: migrate_v15,
     16: migrate_v16,
+    17: migrate_v17,
     # Add more later...
 }
 
