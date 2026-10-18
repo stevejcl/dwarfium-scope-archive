@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Storage Report: a session listed on a connected drive but whose folder is no longer there (moved, or put back on
+    another drive) reads "not found" in orange instead of "—" - its tooltip says to analyze the drive again, which
+    removes the old entry. The Dwarf sizes (total / without FITS) are now written to every backup copy of the
+    session: a copy kept an old measure from before its FITS were cleaned (user-seen).
     Explore, Dwarf mode, a session without its FITS shown from the Dwarf's local copy (Dwarf_Local - the Dwarf not
     plugged in USB): the Restore FITS icon now reads "plug the Dwarf in USB" (grey, a USB icon) and explains on a
     click - the FITS would only go back into the copy, not onto the Dwarf (a megastack needs them there), and the

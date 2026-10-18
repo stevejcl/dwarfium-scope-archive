@@ -747,6 +747,8 @@ TRANSLATIONS: dict[str, str] = {
     "eq_mode_label":                "EQ",
     "eq_mode_on":                   "yes",
     "eq_mode_off":                  "no",
+    "report_backup_missing":        "not found",
+    "report_backup_missing_hint":   "The drive is connected but this session's folder isn't on it (moved, or put back on another drive): analyze the drive again to remove this old entry.",
     "restore_fits_usb_needed":      "Restore FITS: plug the Dwarf in USB",
     "restore_fits_usb_hint":        "This is the Dwarf's local copy, not the Dwarf: to put the FITS back on the Dwarf (a megastack needs them), plug it in USB - its FTP is read-only (writing over the network: Dwarf 2 only, SFTP). Then select the session again: Restore FITS copies them from the backup drive.",
     "megastack_title_short":         "Megastack on the Dwarf",
