@@ -208,7 +208,7 @@ class ExploreApp(DbPageMixin):
         self.selected_sessions_multi = set()  # labels selected for multi-transfer
         self._session_labels = []  # label presentation list for current object's sessions (Siril picker)
         self.transfer_multi_btn = None  # button shown when multi-selection active
-        self.megastack_btn = None  # megastack on the Dwarf, 2+ sessions ticked (Dwarf mode)
+        self.megastack_btn = None  # megastack on the Dwarf, 1+ sessions ticked (Dwarf mode; one: restacked)
         self.image_dialog = {}
         self.selected_path = ""
         self.selected_DeleteEntryInfo = None
@@ -1519,7 +1519,7 @@ class ExploreApp(DbPageMixin):
                             self.transfer_multi_btn.disable()
                     if self.megastack_btn:
                         self.megastack_btn.visible = (
-                            has_sel and self.mode != "backup" and len(self.selected_sessions_multi) >= 2
+                            has_sel and self.mode != "backup" and len(self.selected_sessions_multi) >= 1
                         )
                     # Keep backup_session_icon mutually exclusive with transfer_multi_btn
                     if self.backup_session_icon:

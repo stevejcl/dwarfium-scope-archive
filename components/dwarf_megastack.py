@@ -1,5 +1,6 @@
-"""Megastack on the Dwarf (Explore, Dwarf mode, several sessions ticked): the
-Dwarf stacks its own sessions of a target together into Astronomy/RESTACKED/,
+"""Megastack on the Dwarf (Explore, Dwarf mode, sessions ticked): the Dwarf
+stacks its own sessions of a target together - or restacks a single one -
+into Astronomy/RESTACKED/,
 like the official app's megastack - asked to Dwarfium Lite (Astro Dwarf
 Session 3.2.6+, POST /api/megastack), which talks to the Dwarf, runs it as a
 program and follows it (its device page, then its Results tab).
@@ -65,8 +66,9 @@ def post_megastack(lite: str, dwarf_uid: str, sessions: list[str], target: str) 
 async def start(conn, dwarf_id, rows: list[list], session_dirs: list[str]) -> None:
     """rows: the ticked sessions' Explore rows; session_dirs: their local
     folders (to see their FITS). Asks for confirmation, then for the megastack."""
-    if len(rows) < 2:
-        ui.notify(t("megastack_need_two"), type="warning")
+    # One session too: the Dwarf restacks it (user-reported Oct 2026)
+    if not rows:
+        ui.notify(t("megastack_need_one"), type="warning")
         return
     targets = {str(r[13] or "").strip() for r in rows}
     if len(targets) > 1:
