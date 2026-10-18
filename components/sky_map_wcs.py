@@ -14,6 +14,7 @@ from nicegui import ui, app
 from components.i18n import t
 from api.image_preview import build_preview_url, set_base_folder
 from api.dwarf_backup_fct import get_relative_file_path
+from api import sky_map_hidden
 
 _DWARF_FOV = {
     2.75: (3856, 2180),
@@ -160,6 +161,16 @@ def _get_server_url():
         return 'http://127.0.0.1:8000'
 
 
+def _html_text(text: str) -> str:
+    import html as _h
+    return _h.escape(text, quote=False)
+
+
+def _html_attr(text: str) -> str:
+    import html as _h
+    return _h.escape(text, quote=True)
+
+
 def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     target = str(round(float(ra_mean), 4)) + ' ' + str(round(float(dec_mean), 4))
     srv    = json.dumps(server_url)
@@ -192,9 +203,22 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     css += '.s-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}\n'
     css += '.s-name{font-weight:bold;color:#eee}\n'
     css += '.s-meta{color:#888;font-size:11px;margin-top:1px}\n'
+    css += '#toolbar label{color:#ddd;font-size:12px;white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:4px}\n'
 
     # ── JavaScript ────────────────────────────────────────────────────────────
+    texts = json.dumps({
+        'best': t('sky_map_best_only'), 'best_hint': t('sky_map_best_only_hint'),
+        'show_hidden': t('sky_map_show_hidden'),
+        'hide': t('sky_map_hide'), 'unhide': t('sky_map_unhide'),
+    }, ensure_ascii=False)
     js  = 'var SERVER=' + srv + ';\n'
+    js += 'var TX=' + texts + ';\n'
+    # All sessions, then the shown ones: not hidden (unless "show hidden"),
+    # the best score per object only when asked - kept in this browser
+    js += 'var ALL=[];\n'
+    js += 'var _gen=0;\n'
+    js += 'function _pref(k,d){try{var v=localStorage.getItem("skymap_"+k);return v===null?d:v==="1";}catch(e){return d;}}\n'
+    js += 'function _setPref(k,v){try{localStorage.setItem("skymap_"+k,v?"1":"0");}catch(e){}}\n'
     js += 'var SD={};\n'
     js += 'var AL=null;\n'
     js += 'var _globalOv=null;\n'
@@ -303,6 +327,9 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     js += '      +"padding:6px;background:"+f.color+";color:#fff;border:none;"\n'
     js += '      +"border-radius:6px;cursor:pointer;font-size:13px\\">Show image</button>"\n'
     js += '    : "<p style=\\"color:#888;font-size:12px;margin-top:8px\\">No image</p>";\n'
+    js += '  var hideBtn="<button onclick=\\"toggleHidden("+i+")\\" style=\\"margin-top:8px;width:100%;"\n'
+    js += '    +"padding:5px;background:transparent;color:#ccc;border:1px solid #555;"\n'
+    js += '    +"border-radius:6px;cursor:pointer;font-size:12px\\">"+(f.hidden?TX.unhide:TX.hide)+"</button>";\n'
     js += '  pop.innerHTML=\n'
     js += '    "<div style=\'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);"\n'
     js += '    +"background:#1a1a2e;color:#e0e0e0;border:2px solid "+f.color+";"\n'
@@ -319,7 +346,7 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     js += '    +"<tr><td style=\'color:#aaa;padding:2px 8px 2px 0\'>Solver</td><td style=\'color:#fff\'>"+f.solver+"</td></tr>"\n'
     js += '    +"<tr><td style=\'color:#aaa;padding:2px 8px 2px 0\'>Solved</td><td style=\'color:#fff\'>"+f.solved_at+"</td></tr>"\n'
     js += '    +"<tr><td style=\'color:#aaa;padding:2px 8px 2px 0\'>Quality</td><td style=\'color:#fff\'>"+(f.score||"N/A")+"</td></tr>"\n'
-    js += '    +"</table>"+btn+"</div>";\n'
+    js += '    +"</table>"+btn+hideBtn+"</div>";\n'
     js += '  pop.style.display="block";\n'
     js += '}\n'
 
@@ -371,9 +398,9 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
 
     js += 'function _findAllAt(ra,dec){\n'
     js += '  var hits=[];\n'
-    js += '  for(var i=0;i<SD.length;i++){\n'
-    js += '    if(SD[i]&&_pointInPolygon(ra,dec,SD[i].corners))hits.push(i);\n'
-    js += '  }\n'
+    js += '  Object.keys(SD).forEach(function(k){\n'
+    js += '    var i=parseInt(k);if(SD[i]&&_pointInPolygon(ra,dec,SD[i].corners))hits.push(i);\n'
+    js += '  });\n'
     js += '  return hits;\n'
     js += '}\n'
 
@@ -402,7 +429,8 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
 
     js += 'function _addFootprint(fp,idx,al){\n'
     js += '  SD[idx]=fp;\n'
-    js += '  _globalOv.add(A.polygon(fp.corners,{color:fp.color,fillColor:fp.color,fillOpacity:0.15,lineWidth:2}));\n'
+    js += '  var col=fp.hidden?"#777777":fp.color;\n'
+    js += '  _globalOv.add(A.polygon(fp.corners,{color:col,fillColor:col,fillOpacity:fp.hidden?0.05:0.15,lineWidth:fp.hidden?1:2}));\n'
     js += '  (function(i){\n'
     js += '    try{\n'
     js += '      var cat=_getOrCreateCat(fp.dwarf_name||"Unknown");\n'
@@ -413,10 +441,48 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     js += '  _updateProgress();\n'
     js += '}\n'
 
-    js += 'function _loadBatch(fps,start,al){\n'
-    js += '  var end=Math.min(start+40,fps.length);\n'
-    js += '  for(var i=start;i<end;i++){_addFootprint(fps[i],i,al);}\n'
-    js += '  if(end<fps.length){setTimeout(function(){_loadBatch(fps,end,al);},50);}\n'
+    js += 'function _loadBatch(idxs,start,al,gen){\n'
+    js += '  if(gen!==_gen)return;\n'
+    js += '  var end=Math.min(start+40,idxs.length);\n'
+    js += '  for(var k=start;k<end;k++){_addFootprint(ALL[idxs[k]],idxs[k],al);}\n'
+    js += '  if(end<idxs.length){setTimeout(function(){_loadBatch(idxs,end,al,gen);},50);}\n'
+    js += '}\n'
+
+    # The shown sessions: hidden ones left out (or greyed with "show hidden"),
+    # the best score per object only when asked (the newest on a tie)
+    js += 'function _shownIdx(){\n'
+    js += '  var showHidden=document.getElementById("cb-hidden").checked;\n'
+    js += '  var best=document.getElementById("cb-best").checked;\n'
+    js += '  var idxs=[];\n'
+    js += '  for(var i=0;i<ALL.length;i++){if(!ALL[i].hidden||showHidden)idxs.push(i);}\n'
+    js += '  if(!best)return idxs;\n'
+    js += '  var top={};\n'
+    js += '  idxs.forEach(function(i){\n'
+    js += '    var f=ALL[i];if(f.hidden)return;\n'
+    js += '    var k=f.obj_key||("#"+i),b=top[k];\n'
+    js += '    if(b===undefined||f.score>ALL[b].score||(f.score===ALL[b].score&&f.solved_at>ALL[b].solved_at))top[k]=i;\n'
+    js += '  });\n'
+    js += '  return idxs.filter(function(i){return ALL[i].hidden||top[ALL[i].obj_key||("#"+i)]===i;});\n'
+    js += '}\n'
+
+    js += 'function _render(){\n'
+    js += '  if(!AL)return;\n'
+    js += '  _gen++;\n'
+    js += '  closePopup();\n'
+    js += '  try{_globalOv.removeAll();}catch(e){}\n'
+    js += '  for(var n in _dwarfCats){try{_dwarfCats[n].removeAll();}catch(e){}}\n'
+    js += '  SD={};_loaded=0;\n'
+    js += '  var idxs=_shownIdx();\n'
+    js += '  _total=idxs.length;_updateProgress();\n'
+    js += '  _loadBatch(idxs,0,AL,_gen);\n'
+    js += '}\n'
+
+    js += 'function toggleHidden(i){\n'
+    js += '  var f=SD[i];if(!f)return;\n'
+    js += '  var url=SERVER+"/skymap_hide?entry_type="+encodeURIComponent(f.entry_type)+"&entry_id="+f.entry_id+"&hidden="+(f.hidden?0:1);\n'
+    js += '  fetch(url).then(function(r){return r.json();}).then(function(res){\n'
+    js += '    if(res&&res.ok){f.hidden=!f.hidden;_render();}\n'
+    js += '  });\n'
     js += '}\n'
 
     js += 'function initAL(){\n'
@@ -438,8 +504,8 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     js += '    document.getElementById("info").textContent="Loading...";\n'
     js += '    fetch(SERVER+"/skymap_data").then(function(r){return r.json();})\n'
     js += '    .then(function(fps){\n'
-    js += '      _total=fps.length;\n'
-    js += '      _loadBatch(fps,0,al);\n'
+    js += '      ALL=fps;\n'
+    js += '      _render();\n'
     js += '    }).catch(function(e){\n'
     js += '      document.getElementById("info").textContent="Error: "+e;\n'
     js += '    });\n'
@@ -450,6 +516,11 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     js += '}\n'
 
     js += 'function _bindButtons(){\n'
+    js += '  ["best","hidden"].forEach(function(k){\n'
+    js += '    var cb=document.getElementById("cb-"+k);\n'
+    js += '    cb.checked=_pref(k,false);\n'
+    js += '    cb.addEventListener("change",function(){_setPref(k,cb.checked);_render();});\n'
+    js += '  });\n'
     js += '  document.getElementById("btn-sessions").addEventListener("click",showVisibleSessions);\n'
     js += '  document.getElementById("btn-close-list").addEventListener("click",function(){\n'
     js += '    document.getElementById("session-list").style.display="none";\n'
@@ -480,6 +551,9 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     html += '  <button id="btn-search">&#128269;</button>\n'
     html += '  <button id="btn-sessions">&#9776; Sessions in view</button>\n'
     html += '  <button id="btn-close-list">&#x2715;</button>\n'
+    # Best session per object only / hidden sessions shown (greyed)
+    html += '  <label title="' + _html_attr(t('sky_map_best_only_hint')) + '"><input id="cb-best" type="checkbox"/> ' + _html_text(t('sky_map_best_only')) + '</label>\n'
+    html += '  <label><input id="cb-hidden" type="checkbox"/> ' + _html_text(t('sky_map_show_hidden')) + '</label>\n'
     html += '</div>\n'
     html += '<div id="session-list"></div>\n'
     html += '<div id="dw-popup" style="display:none"></div>\n'
@@ -496,7 +570,7 @@ def _register_skymap_route(footprints, ra_mean, dec_mean, server_url):
     html  = _build_aladin_html(footprints, ra_mean, dec_mean, server_url)
     app.routes[:] = [r for r in app.routes
                       if getattr(r, 'path', '') not in
-                      ('/skymap_view', '/skymap_setbase', '/skymap_data')]
+                      ('/skymap_view', '/skymap_setbase', '/skymap_data', '/skymap_hide')]
     _html = html
     _fps  = footprints
 
@@ -511,6 +585,22 @@ def _register_skymap_route(footprints, ra_mean, dec_mean, server_url):
     @app.get('/skymap_data', include_in_schema=False)
     async def skymap_data():
         return JSONResponse(content=_fps)
+
+    @app.get('/skymap_hide', include_in_schema=False)
+    async def skymap_hide(entry_type: str = Query(''), entry_id: int = Query(0), hidden: int = Query(1)):
+        """Hides a session from the map, or shows it again (its popup)."""
+        if entry_type not in ('backup', 'manual') or not entry_id:
+            return JSONResponse(content={'ok': False}, status_code=400)
+        from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+        c = connect_db(DB_NAME)
+        try:
+            sky_map_hidden.set_hidden(c, entry_type, entry_id, bool(hidden))
+        finally:
+            close_db(c)
+        for f in _fps:
+            if f.get('entry_type') == entry_type and f.get('entry_id') == entry_id:
+                f['hidden'] = bool(hidden)
+        return JSONResponse(content={'ok': True})
 
     @app.get('/skymap_setbase', include_in_schema=False)
     async def skymap_setbase(base: str = Query('')):
@@ -950,6 +1040,8 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
                 rows = _load_wcs_sessions(c)
                 if limit:
                     rows = rows[:limit]
+                # Hidden from the map by the user (api/sky_map_hidden.py)
+                hidden = sky_map_hidden.hidden_entries(c)
                 close_db(c)
             except Exception as e:
                 print(f'[sky_map] DB error: {e}\n{traceback.format_exc()}')
@@ -1040,6 +1132,11 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
                 naxis1, naxis2 = _image_size_from_plate_scale(ps)
 
                 fps.append({
+                    'entry_type': entry_type,
+                    'entry_id':   entry_id,
+                    # Hidden by the user; the object, for "best session per object"
+                    'hidden':     (entry_type, int(entry_id)) in hidden,
+                    'obj_key':    label.strip().casefold(),
                     'corners':    corners,
                     'ra':         ra_c,
                     'dec':        dec_c,

@@ -17,6 +17,7 @@ from glob import glob
 from nicegui import app, run, ui, background_tasks
 from api.dwarf_backup_db import DB_NAME, connect_db
 from components.session_notes import session_notes_widget
+from api import sky_map_hidden
 from api.dwarf_backup_db_api import get_backup_entry_id_by_dwarf_data, get_Objects_by_sky_position, count_sessions_by_sky_position
 from components.sky_search_dialog import open_sky_search_dialog
 from api.dwarf_backup_db_api import (
@@ -598,39 +599,61 @@ class ExploreApp(DbPageMixin):
             with client:
                 self.ensure_conn()
                 ui.notify(t("score_done", count=n), type="positive")
-                print(f"selected_object: {self.selected_object}")
-                if self.selected_object is not None:
-                    current_sid = (self.current_session_row[22]
-                                   if self.current_session_row is not None else None)
-                    
-                    if self.selected_object_id is None and self.selected_object == ALL_SESSIONS:
-                        self.loading_spinner.set_visibility(True)
-                        self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, current_sid)
-                        return
-                        
-                    # Match by oid first (reliable), fallback to normalised name
-                    match = next(
-                        ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
-                         if oid == self.selected_object_id),
-                        None
-                    )
-                    if match is None:
-                        # Fallback: strip extra spaces and compare
-                        sel_norm = " ".join(self.selected_object.split())
-                        match = next(
-                            ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
-                             if " ".join(name.split()) == sel_norm),
-                            None
-                        )
-                    if match:
-                        oid, dso_id, is_group = match
-                        self.loading_spinner.set_visibility(True)
-                        ui.timer(0.1, lambda o=oid, d=dso_id, g=is_group, sid=current_sid:
-                                 self._handle_object_click_work(o, d, g, session_id=sid), once=True)
-                    else:
-                        print(f"[Score] No match found for selected_object_id={self.selected_object_id} name='{self.selected_object}'")
+                self._reload_current_object()
 
         background_tasks.create(_run())
+
+    def _reload_current_object(self):
+        """The current object's sessions shown again (its scores changed),
+        the same session selected."""
+        print(f"selected_object: {self.selected_object}")
+        if self.selected_object is not None:
+            current_sid = (self.current_session_row[22]
+                           if self.current_session_row is not None else None)
+            
+            if self.selected_object_id is None and self.selected_object == ALL_SESSIONS:
+                self.loading_spinner.set_visibility(True)
+                self._handle_object_click(None, ALL_SESSIONS, ALL_SESSIONS, None, True, current_sid)
+                return
+                
+            # Match by oid first (reliable), fallback to normalised name
+            match = next(
+                ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
+                 if oid == self.selected_object_id),
+                None
+            )
+            if match is None:
+                # Fallback: strip extra spaces and compare
+                sel_norm = " ".join(self.selected_object.split())
+                match = next(
+                    ((oid, dso_id, ig) for oid, name, dso_id, ig in self.objects
+                     if " ".join(name.split()) == sel_norm),
+                    None
+                )
+            if match:
+                oid, dso_id, is_group = match
+                self.loading_spinner.set_visibility(True)
+                ui.timer(0.1, lambda o=oid, d=dso_id, g=is_group, sid=current_sid:
+                         self._handle_object_click_work(o, d, g, session_id=sid), once=True)
+            else:
+                print(f"[Score] No match found for selected_object_id={self.selected_object_id} name='{self.selected_object}'")
+
+    def _clear_score(self, backup_entry_id):
+        """The session's quality score cleared (api/sky_map_hidden.py): it
+        then reads "no score" - Score scores it again."""
+        self.ensure_conn()
+        if sky_map_hidden.clear_quality_score(self.conn, backup_entry_id):
+            ui.notify(t("score_cleared"), type="positive")
+        self._reload_current_object()
+
+    def _toggle_sky_map_hidden(self, backup_entry_id, button):
+        """Hidden from the Sky Map, or shown again (api/sky_map_hidden.py)."""
+        self.ensure_conn()
+        hidden = not sky_map_hidden.is_hidden(self.conn, "backup", backup_entry_id)
+        sky_map_hidden.set_hidden(self.conn, "backup", backup_entry_id, hidden)
+        button.props(f"icon={'visibility_off' if hidden else 'travel_explore'}")
+        button.tooltip(t("sky_map_unhide") if hidden else t("sky_map_hide"))
+        ui.notify(t("sky_map_hidden_done") if hidden else t("sky_map_shown_done"), type="info")
 
     def _on_fits_filter_change(self, e):
         val = e.value if hasattr(e, "value") else e
@@ -1968,6 +1991,17 @@ class ExploreApp(DbPageMixin):
                     ui.item(f"📊 {stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time}{_quality_str}").classes(color)
                     if not _qscore and _be_id and self.mode != "dwarf":
                         ui.button(t("score_session_btn"), on_click=lambda: self._score_current_object()).props('dense').classes('px-2 mx-4 session-btn')
+                    # Its score cleared; hidden from the Sky Map / shown again
+                    # (user-requested Oct 2026: only the best session on the map)
+                    if _qscore and _be_id and self.mode != "dwarf":
+                        ui.button(icon="backspace", on_click=lambda eid=_be_id: self._clear_score(eid)) \
+                            .props('flat round dense size=sm color=grey').tooltip(t("score_clear"))
+                    if _be_id and self.mode != "dwarf" and sky_map_hidden.is_solved(self.conn, "backup", _be_id):
+                        _hidden = sky_map_hidden.is_hidden(self.conn, "backup", _be_id)
+                        _sky_btn = ui.button(icon='visibility_off' if _hidden else 'travel_explore') \
+                            .props('flat round dense size=sm color=grey') \
+                            .tooltip(t("sky_map_unhide") if _hidden else t("sky_map_hide"))
+                        _sky_btn.on_click(lambda eid=_be_id, b=_sky_btn: self._toggle_sky_map_hidden(eid, b))
 
                 # --- Dark match badge ---
                 if dwarf_id and exp_time and gainDB:

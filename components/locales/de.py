@@ -1066,6 +1066,15 @@ TRANSLATIONS: dict[str, str] = {
     "sky_map_open_browser":         "Open the Sky Map web page", # TODO
     "sky_map_open_hint":            "Opens the interactive sky map in your web browser", # TODO
     "sky_map_min_quality":          "Min quality:", # TODO
+    "sky_map_best_only":             "Best session per object",  # TODO
+    "sky_map_best_only_hint":        "Only the best-scored session of each object (the newest on a tie) - hidden sessions left out",  # TODO
+    "sky_map_show_hidden":           "Show hidden",  # TODO
+    "sky_map_hide":                  "Hide from the Sky Map",  # TODO
+    "sky_map_unhide":                "Show on the Sky Map again",  # TODO
+    "sky_map_hidden_done":           "Hidden from the Sky Map (still solved: not solved again by the next scan)",  # TODO
+    "sky_map_shown_done":            "Shown on the Sky Map again",  # TODO
+    "score_clear":                   "Clear the quality score",  # TODO
+    "score_cleared":                 "Quality score cleared - “Score” scores it again",  # TODO
     "sky_map_sessions_ready":       "{n} sessions ready • ASTAP: {astap} • Nova: {nova}", # TODO
     "sky_map_col_dwarf":            "Dwarf", # TODO
     "sky_map_col_total":            "Total", # TODO

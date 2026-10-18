@@ -353,6 +353,8 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
 - **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 - **{t:megastack_title_short}** (Dwarf mode) — see below
+- Next to the quality score: ⌫ **{t:score_clear}** (it then reads "no score"; **{t:score_session_btn}**
+  scores it again), and for a solved session **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 
 ## Megastack on the Dwarf
 
@@ -871,6 +873,11 @@ your browser.
 - Each Dwarf has its own **layer** in Aladin — toggle visibility from the
   layer control panel (top-left of the map)
 - If several sessions overlap, a list lets you choose which one to open
+- **{t:sky_map_best_only}** (toolbar) — only the best-scored session of each object
+  (the newest on a tie): 10 sessions of the same nebula, one on the map
+- **{t:sky_map_hide}** (a session's popup) — the session leaves the map; it stays solved, so the next
+  scan doesn't solve it again. **{t:sky_map_show_hidden}** shows the hidden ones greyed, their popup
+  has **{t:sky_map_unhide}**. Both boxes are remembered by the browser.
 
 ## Mosaic sessions
 

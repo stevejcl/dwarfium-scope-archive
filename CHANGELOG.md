@@ -3,6 +3,13 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Sky Map (user-requested: "10 sessions of the Lion Nebula, only the best one on the map"): "Best session per
+    object" in its toolbar - only the best-scored session of each object, the newest on a tie; "Hide from the Sky
+    Map" in a session's popup - it stays solved, so the next scan doesn't solve it again; "Show hidden" shows them
+    greyed, to show one again. Both boxes remembered by the browser. Explore, next to a session's quality score: an
+    icon to clear it (then "no score", Score scores it again - the Storage Report's sizes are kept), and for a
+    solved session one to hide it from the Sky Map / show it again. Several sessions overlapping where the map is
+    clicked: the list to choose one shows again (it never did).
     Explore, Dwarf mode: a "FITS on the Dwarf" filter (All / With / Without) - the sessions whose raw FITS are still
     on the Dwarf (a megastack needs them), from the Storage Report's measure (Measure the Dwarf): one query, no folder
     read; a session never measured, or not backed up yet, is in neither.

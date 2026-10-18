@@ -354,6 +354,8 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:view_linked_manual}** — accéder à toute session manuelle liée
 - **{t:favorite_add}** / **{t:favorite_remove}** — afficher ou masquer la session sur la page d'accueil
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
+- À côté du score de qualité : ⌫ **{t:score_clear}** (elle passe alors « sans score » ;
+  **{t:score_session_btn}** la note à nouveau), et pour une session résolue **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 
 ## Megastack sur le Dwarf
 
@@ -876,6 +878,11 @@ dans votre navigateur.
 - Chaque Dwarf possède sa propre **couche** dans Aladin — activez/désactivez
   la visibilité depuis le panneau de contrôle des couches (en haut à gauche de la carte)
 - Si plusieurs sessions se chevauchent, une liste vous permet de choisir laquelle ouvrir
+- **{t:sky_map_best_only}** (barre d'outils) — seule la session au meilleur score de chaque objet
+  (la plus récente en cas d'égalité) : 10 sessions d'une même nébuleuse, une seule sur la carte
+- **{t:sky_map_hide}** (fenêtre d'une session) — la session quitte la carte ; elle reste résolue, le
+  prochain scan ne la résout donc pas à nouveau. **{t:sky_map_show_hidden}** les affiche en gris, leur
+  fenêtre propose **{t:sky_map_unhide}**. Les deux cases sont retenues par le navigateur.
 
 ## Sessions mosaïque
 
