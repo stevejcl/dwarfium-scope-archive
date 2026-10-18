@@ -5,9 +5,7 @@
 ### Add
     Explore, Dwarf mode: a "FITS on the Dwarf" filter (All / With / Without) - the sessions whose raw FITS are still
     on the Dwarf (a megastack needs them), from the Storage Report's measure (Measure the Dwarf): one query, no folder
-    read; a session never measured, or not backed up yet, is in neither. And the sessions can be ticked with "Show
-    only sessions already backed up" too (was: not backed up yet only) - Megastack on the Dwarf for backed-up
-    sessions; Backup Selected stays for the ones not backed up yet.
+    read; a session never measured, or not backed up yet, is in neither.
     Storage Report: a session listed on a connected drive but whose folder is no longer there (moved, or put back on
     another drive) reads "not found" in orange instead of "—" - its tooltip says to analyze the drive again, which
     removes the old entry. The Dwarf sizes (total / without FITS) are now written to every backup copy of the
@@ -18,16 +16,19 @@
     Explore, Dwarf mode, a session without its FITS shown from the Dwarf's local copy (Dwarf_Local - the Dwarf not
     plugged in USB): the Restore FITS icon now reads "plug the Dwarf in USB" (grey, a USB icon) and explains on a
     click - the FITS would only go back into the copy, not onto the Dwarf (a megastack needs them there), and the
-    Dwarf's FTP is read-only (writing over the network: Dwarf 2 only, SFTP). The megastack's "no FITS" message says
-    so too.
+    Dwarf's FTP is read-only (writing over the network: Dwarf 2 only, SFTP).
     Explore: the session's EQ mode (EQ: yes / no), from the "eq" field of its shotsInfo.json - written by
     recent Dwarf firmwares only: nothing shown when the file or the field is missing.
-    Explore, Dwarf mode, "Sessions on the Dwarf" with sessions ticked: Megastack on the Dwarf - the Dwarf stacks
-    them together (a single one: restacked) into Astronomy/RESTACKED/, like the official app's megastack, asked to Dwarfium Lite
-    (3.2.6+), which runs and follows it (its device page: images stacked so far and the stack growing; then its
-    Results tab). Checked first: one target, the FITS still there (not cleaned by CleanFits), Dwarfium Lite running
-    and the Dwarf connected in it (found by its Dwarf ID, else its IP); a confirmation shows the sessions and
-    images. The Dwarf checks the rest itself (filter, binning, dark frames) - its refusal shown with the reason.
+    Explore, Dwarf mode, a Dwarf and an object selected: Megastack on the Dwarf - the Dwarf stacks sessions of a
+    target together (a single one: restacked) into Astronomy/RESTACKED/, like the official app's megastack, asked to
+    Dwarfium Lite (3.2.6+), which runs and follows it (its device page: images stacked so far and the stack growing;
+    then its Results tab). Its button opens a picker, like Dwarfium Lite's Explorer: the object's sessions that can
+    be megastacked, grouped by target with their thumbnails - not a megastack result, nor one whose FITS are gone
+    (read on the Dwarf plugged in USB, a mosaic's in its panels' subfolders, else the Storage Report's measure;
+    "FITS ?" when not known - Dwarfium Lite checks them again) - a click selects one (one target, single captures or
+    mosaics - not mixed), the images counted below, then Start: Dwarfium Lite must be running and the Dwarf
+    connected in it (found by its Dwarf ID, else its IP). The Dwarf checks the rest itself (filter, binning, dark
+    frames) - its refusal shown with the reason.
 
 ### BugFix
     Storage Report: confirming "Measure again all the sessions" of the Dwarf (⟳ next to Measure the Dwarf) did
