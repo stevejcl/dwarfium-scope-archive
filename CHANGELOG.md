@@ -7,6 +7,9 @@
     another drive) reads "not found" in orange instead of "—" - its tooltip says to analyze the drive again, which
     removes the old entry. The Dwarf sizes (total / without FITS) are now written to every backup copy of the
     session: a copy kept an old measure from before its FITS were cleaned (user-seen).
+    Its labels say what is measured: the buttons Measure the backup / Measure the Dwarf (a tooltip each: which
+    folder, which columns, only the sessions not measured yet), the columns Backup / On the Dwarf / Dwarf without
+    FITS (were Size / Dwarf total / Dwarf -FITS, and "Calculate sizes" / "Calculate Dwarf sizes").
     Explore, Dwarf mode, a session without its FITS shown from the Dwarf's local copy (Dwarf_Local - the Dwarf not
     plugged in USB): the Restore FITS icon now reads "plug the Dwarf in USB" (grey, a USB icon) and explains on a
     click - the FITS would only go back into the copy, not onto the Dwarf (a megastack needs them there), and the

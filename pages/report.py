@@ -152,7 +152,7 @@ class ReportApp(DbPageMixin):
                     self._calc_btn = ui.button(
                         t("report_calc_sizes"),
                         on_click=self._start_size_scan,
-                    ).props("color=primary")
+                    ).props("color=primary").tooltip(t("report_calc_sizes_hint"))
                     self._calc_force_btn = ui.button(
                         icon="refresh",
                         on_click=self._confirm_size_scan_force,
@@ -162,7 +162,7 @@ class ReportApp(DbPageMixin):
                     self._calc_dwarf_btn = ui.button(
                         t("report_calc_dwarf_sizes"),
                         on_click=self._start_dwarf_size_scan,
-                    ).props("color=primary")
+                    ).props("color=primary").tooltip(t("report_calc_dwarf_sizes_hint"))
                     self._calc_dwarf_force_btn = ui.button(
                         icon="refresh",
                         on_click=self._confirm_dwarf_size_scan_force,
