@@ -66,7 +66,7 @@ def post_megastack(lite: str, dwarf_uid: str, sessions: list[str], target: str) 
 
 
 # Explore's Dwarf rows (get_ObjectSelect_dwarf): their columns used here
-_SHOTS, _USB_DIR, _DATE, _SESSION_DIR, _TARGET = 5, 6, 7, 8, 13
+_EXP, _FILTER, _SHOTS, _USB_DIR, _DATE, _SESSION_DIR, _TARGET = 2, 4, 5, 6, 7, 8, 13
 
 
 def is_mosaic(row: list) -> bool:
@@ -127,6 +127,7 @@ def _candidates(conn, dwarf_id, rows: list[list], paths: list[str]) -> tuple[lis
         out.append({
             "row": row, "name": session_dir, "target": str(row[_TARGET] or "").strip() or "?",
             "date": str(row[_DATE] or ""), "shots": int(row[_SHOTS] or 0), "fits": fits,
+            "exp": str(row[_EXP] or ""), "filter": str(row[_FILTER] or ""),
             "mosaic": is_mosaic(row), "thumbnail": _thumbnail(folder),
         })
     out.sort(key=lambda c: c["date"], reverse=True)
@@ -170,7 +171,14 @@ async def open_picker(conn, dwarf_id, rows: list[list], paths: list[str]) -> Non
                         else:
                             ui.icon("image_not_supported").classes("w-full text-5xl text-grey-5 text-center")
                         ui.label(cand["date"][:16]).classes("text-xs text-center w-full truncate")
-                        bits = [f"{cand['shots']} img"]
+                        # Its images, exposure and filter (user-requested Oct 2026:
+                        # "20 img" unclear; the Dwarf refuses mixed filters)
+                        ui.label(t("megastack_pick_stacked", count=cand["shots"])).classes(
+                            "text-xs text-center w-full truncate"
+                        )
+                        bits = [f"{cand['exp']}s"] if cand["exp"] else []
+                        if cand["filter"]:
+                            bits.append(cand["filter"])
                         if cand["mosaic"]:
                             bits.append(t("megastack_pick_mosaic"))
                         if cand["fits"] is None:

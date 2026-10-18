@@ -769,6 +769,7 @@ TRANSLATIONS: dict[str, str] = {
     "megastack_pick_hint":           "Click the sessions of a target to stack together (only one: the Dwarf restacks it).",  # TODO
     "megastack_pick_none":           "No session of this object can be stacked on the Dwarf.",  # TODO
     "megastack_pick_skipped":        "{count} session(s) not offered: megastack results, or no FITS left on the Dwarf.",  # TODO
+    "megastack_pick_stacked":        "{count} stacked",  # TODO
     "megastack_pick_mosaic":         "mosaic",  # TODO
     "megastack_pick_fits_unknown":   "FITS ?",  # TODO
     "megastack_mixed":               "Single captures or mosaics, not mixed.",  # TODO
