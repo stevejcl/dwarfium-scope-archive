@@ -32,6 +32,8 @@
     itself (binning, dark frames) - its refusal shown with the reason.
 
 ### BugFix
+    Explore: a message showed its key "no_backup_drive_sel2" instead of "No backup drive selected." (a typo in the
+    key).
     Storage Report: confirming "Measure again all the sessions" of the Dwarf (⟳ next to Measure the Dwarf) did
     nothing - "coroutine was never awaited" in the console.
     Import of a session from Dwarfium Lite (Archive in Scope Archive): a session not on the Dwarf's USB drive is

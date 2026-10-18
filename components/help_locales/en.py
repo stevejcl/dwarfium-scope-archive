@@ -310,6 +310,8 @@ and click the "Show Dwarf Data" button.
 - **{t:filter_objects}** — search by target name
 - **{t:quality_filter_label}** — filter sessions by image quality score
 - **{t:sky_search_title}** — find sessions within a sky radius around a DSO
+- **{t:fits_filter_label}** (Dwarf mode) — the sessions whose raw FITS are still on the Dwarf, or not,
+  from the Storage Report's measure (**{t:report_calc_dwarf_sizes}**); a session never measured is in neither
 
 ## Gallery
 
@@ -350,6 +352,27 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:delete_session}** — permanently removes all session data from the backup drive
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
 - **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
+- **{t:megastack_title_short}** (Dwarf mode) — see below
+
+## Megastack on the Dwarf
+
+The Dwarf stacks several of its own sessions of a target together - or restacks a single one - into
+`Astronomy/RESTACKED/`, like the official app's megastack. Dwarfium Lite (Astro Dwarf Session 3.2.6+)
+talks to the Dwarf and follows it.
+
+1. Dwarf mode, a Dwarf and an object selected: click **{t:megastack_title_short}**.
+2. The window shows the object's sessions that can be stacked, grouped by target, with their thumbnail,
+   date, images stacked, exposure and filter. Not offered: megastack results, and sessions whose raw FITS
+   are known to be gone (cleaned by Clean Fits) - read on the Dwarf plugged in USB, else from the Storage
+   Report's measure. Hover a thumbnail for the session's folder name.
+3. Click the sessions to stack: one target only, single captures or mosaics (not mixed). Filters can be
+   mixed (Duo-Band with Astro).
+4. **{t:megastack_start}**: Dwarfium Lite must be running and the Dwarf connected in it. It checks the FITS
+   again, then the Dwarf checks the rest itself (binning, dark frames) - a refusal is shown with its reason.
+
+Follow it on the Dwarf's page in Dwarfium Lite (images stacked so far, the stack growing in the Tele view);
+the Dwarf does nothing else meanwhile (about 1 h for 600 images). The result then appears in the Dwarf's
+sessions (`RESTACKED_…`), its total exposure read from its FITS.
 
 ## Tips
 
@@ -775,9 +798,12 @@ Each row shows:
 
 - **Date** — session date
 - **Object** — target name (hover the session dir for the full path)
-- **Backup size** — total size of the session on the backup drive
-- **Dwarf total** — total size on the local Dwarf copy (if present)
-- **Dwarf -FITS** — size after removing raw FITS files (what Clean Fits would free)
+- **{t:report_size}** — size of the session's folder on the backup drive; **{t:report_backup_missing}**
+  (orange) when the drive is connected but the folder isn't on it any more (moved, or put back on another
+  drive) - analyze the drive again
+- **{t:report_dwarf_size}** — its size on the Dwarf (plugged in USB, else its local copy)
+- **{t:report_dwarf_no_fits}** — the same without its raw FITS (what Clean Fits would leave); written to
+  every backup copy of the session
 - **Quality** — image quality score (colour-coded)
 - **Explore** — opens the session directly in the Explore page
 
@@ -789,15 +815,17 @@ Each row shows:
 
 ## Calculating sizes
 
-- **{t:report_calc_sizes}** — measures folder sizes for backup sessions not yet calculated.
-- **{t:report_calc_dwarf_sizes}** — measures sizes for sessions present on the local Dwarf copy,
-  computing both the total size and the size after a Clean Fits operation.
+- **{t:report_calc_sizes}** — measures the backup folders not measured yet (column **{t:report_size}**).
+- **{t:report_calc_dwarf_sizes}** — measures the sessions on the Dwarf not measured yet, with and without
+  their raw FITS (columns **{t:report_dwarf_size}** / **{t:report_dwarf_no_fits}**) - it also feeds
+  Explore's **{t:fits_filter_label}** filter and the megastack's window.
+- ⟳ next to each button — **{t:report_calc_sizes_force}** (after a Clean Fits, for instance).
 
 ## Tips
 
 - Sessions showing `—` for size have not been measured yet — click **{t:report_calc_sizes}**
-- **Dwarf -FITS** = size that would remain after **Clean Fits** — compare to **Dwarf total**
-  to see how much space you would reclaim without losing the stacked result
+- **{t:report_dwarf_no_fits}** = size that would remain after **Clean Fits** — compare to
+  **{t:report_dwarf_size}** to see how much space you would reclaim without losing the stacked result
 - Click **Explore** to open the session and run Clean Fits or delete it directly
 - The back button in Explore returns to this report with the same filters active
 ''',
