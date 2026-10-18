@@ -194,6 +194,9 @@ class ExploreApp(DbPageMixin):
         self.siril_json_icon = {}
         self.action_fits_files_icon = {}
         self.cleanup_fits_files_action  = True
+        # Restore FITS shown for the Dwarf's local copy (Dwarf_Local): the FITS
+        # must go onto the Dwarf itself, through USB - its FTP is read-only
+        self.restore_needs_usb = False
         self.nb_fits_files = None
         self.nb_failed_fits_files = None
         self.nb_tiff_files = None
@@ -1594,6 +1597,9 @@ class ExploreApp(DbPageMixin):
         )
 
     async def action_cleanup_restore_fits(self, directory=None):
+        if self.restore_needs_usb:
+            ui.notify(t("restore_fits_usb_hint"), type="warning", multi_line=True, timeout=10000)
+            return
         if self.cleanup_fits_files_action:
             await self.cleanup_fits(directory=None)
         else:
@@ -2531,6 +2537,8 @@ class ExploreApp(DbPageMixin):
                     print(f"Clean UP FITS files")
                     # FITS exist → allow cleanup
                     self.cleanup_fits_files_action = True
+                    self.restore_needs_usb = False
+                    self.action_fits_files_icon.props("color=primary")
                     self.action_fits_files_icon.text = "🧹 Cleanup FITS"
                     self.action_fits_files_icon.icon = "cleaning_services"
                     self.action_fits_files_icon.visible = True
@@ -2545,8 +2553,19 @@ class ExploreApp(DbPageMixin):
                     else:
                         print(f"Restore UP FITS files")
                         self.cleanup_fits_files_action = False
-                        self.action_fits_files_icon.text = "♻️ Restore FITS"
-                        self.action_fits_files_icon.icon = "restore_page"
+                        # The Dwarf's local copy, not the Dwarf: restoring there
+                        # doesn't put the FITS back on the Dwarf (a megastack needs
+                        # them there) - explained on a click instead (a disabled
+                        # button shows no tooltip)
+                        self.restore_needs_usb = is_path_local_dwarf_dir(self.selected_path)
+                        if self.restore_needs_usb:
+                            self.action_fits_files_icon.text = t("restore_fits_usb_needed")
+                            self.action_fits_files_icon.icon = "usb"
+                            self.action_fits_files_icon.props("color=grey")
+                        else:
+                            self.action_fits_files_icon.text = "♻️ Restore FITS"
+                            self.action_fits_files_icon.icon = "restore_page"
+                            self.action_fits_files_icon.props("color=primary")
                         self.action_fits_files_icon.visible = True
                         self.action_fits_files_icon.enable()
             else:

@@ -3,6 +3,11 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, Dwarf mode, a session without its FITS shown from the Dwarf's local copy (Dwarf_Local - the Dwarf not
+    plugged in USB): the Restore FITS icon now reads "plug the Dwarf in USB" (grey, a USB icon) and explains on a
+    click - the FITS would only go back into the copy, not onto the Dwarf (a megastack needs them there), and the
+    Dwarf's FTP is read-only (writing over the network: Dwarf 2 only, SFTP). The megastack's "no FITS" message says
+    so too.
     Explore: the session's EQ mode (EQ: yes / no), from the "eq" field of its shotsInfo.json - written by
     recent Dwarf firmwares only: nothing shown when the file or the field is missing.
     Explore, Dwarf mode, "Sessions on the Dwarf" with 2 sessions or more ticked: Megastack on the Dwarf - the Dwarf
