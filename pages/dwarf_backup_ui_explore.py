@@ -3503,7 +3503,7 @@ class ExploreApp(DbPageMixin):
 
         elif self.mode == "backup":
             if not self.BackupDriveId:
-                ui.notify(t("no_backup_drive_sel2"), color="warning")
+                ui.notify(t("no_backup_drive_sel"), color="warning")
 
             else:
                 dwarf_id = self.get_selected_dwarf_id()
