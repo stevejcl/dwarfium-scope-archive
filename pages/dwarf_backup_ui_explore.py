@@ -204,6 +204,7 @@ class ExploreApp(DbPageMixin):
         self.selected_sessions_multi = set()  # labels selected for multi-transfer
         self._session_labels = []  # label presentation list for current object's sessions (Siril picker)
         self.transfer_multi_btn = None  # button shown when multi-selection active
+        self.megastack_btn = None  # megastack on the Dwarf, 2+ sessions ticked (Dwarf mode)
         self.image_dialog = {}
         self.selected_path = ""
         self.selected_DeleteEntryInfo = None
@@ -419,6 +420,9 @@ class ExploreApp(DbPageMixin):
                             self.backup_session_icon.visible = False
                             self.transfer_multi_btn = ActionIcon(t("backup_selected"), "drive_file_move", lambda: ui.navigate.to(self.get_multi_transfer_url()))
                             self.transfer_multi_btn.visible = False
+                            # Megastack on the Dwarf (components/dwarf_megastack.py): 2+ sessions ticked, Dwarf mode
+                            self.megastack_btn = ActionIcon(t("megastack_title_short"), "auto_awesome_motion", self._megastack)
+                            self.megastack_btn.visible = False
                             # Link to the ManualSession that was imported alongside this BackupEntry
                             self.linked_manual_session_icon = ActionIcon(t("view_linked_manual"), "link", self.navigate_to_linked_manual_session)
                             self.linked_manual_session_icon.visible = False
@@ -1487,6 +1491,10 @@ class ExploreApp(DbPageMixin):
                             self.transfer_multi_btn.enable()
                         else:
                             self.transfer_multi_btn.disable()
+                    if self.megastack_btn:
+                        self.megastack_btn.visible = (
+                            has_sel and self.mode != "backup" and len(self.selected_sessions_multi) >= 2
+                        )
                     # Keep backup_session_icon mutually exclusive with transfer_multi_btn
                     if self.backup_session_icon:
                         if has_sel:
@@ -3467,6 +3475,27 @@ class ExploreApp(DbPageMixin):
 
         print(explore_url)
         return explore_url if explore_url else None
+
+    async def _megastack(self):
+        """Megastack of the ticked sessions on the Dwarf, through Dwarfium Lite
+        (components/dwarf_megastack.py)."""
+        from components import dwarf_megastack
+
+        dwarf_id = self.get_selected_dwarf_id()
+        if not dwarf_id or dwarf_id == t('all_dwarfs'):
+            ui.notify(t("please_select_dwarf"), color="warning")
+            return
+        self.ensure_conn()
+        rows, dirs = [], []
+        for label in self.selected_sessions_multi:
+            idx = self.label_to_index.get(label)
+            if idx is None or idx >= len(self.all_files_rows):
+                continue
+            row = self.all_files_rows[idx]
+            rows.append(row)
+            full_path = get_Backup_fullpath(self.conn, row[6], "", row[1], dwarf_id)
+            dirs.append(os.path.dirname(full_path) if full_path else "")
+        await dwarf_megastack.start(self.conn, dwarf_id, rows, dirs)
 
     def get_multi_transfer_url(self):
         """Build a Transfer URL with all selected sessions (multi-selection mode)."""

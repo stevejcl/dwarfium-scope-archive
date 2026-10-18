@@ -750,6 +750,20 @@ TRANSLATIONS: dict[str, str] = {
     "eq_mode_label":                "EQ",  # TODO
     "eq_mode_on":                   "s\u00ed",  # TODO
     "eq_mode_off":                  "no",  # TODO
+    "megastack_title_short":         "Megastack on the Dwarf",  # TODO
+    "megastack_title":               "Megastack on the Dwarf: {target}",  # TODO
+    "megastack_need_two":            "Tick at least 2 sessions of the target.",  # TODO
+    "megastack_one_target":          "The sessions must be of one target (here: {targets}).",  # TODO
+    "megastack_no_fits":             "No FITS left in: {sessions} (cleaned by CleanFits?) - the Dwarf needs them to stack.",  # TODO
+    "megastack_lite_not_running":    "Dwarfium Lite is not running: it is the one that talks to the Dwarf.",  # TODO
+    "megastack_dwarf_unreachable":   "Dwarfium Lite doesn't answer.",  # TODO
+    "megastack_dwarf_unknown":       "Dwarfium Lite doesn't know this Dwarf (Dwarf ID or IP).",  # TODO
+    "megastack_dwarf_offline":       "The Dwarf is not connected in Dwarfium Lite.",  # TODO
+    "megastack_confirm":             "{count} sessions ({shots} images) stacked together by the Dwarf ({dwarf}) into Astronomy/RESTACKED/.\nThe Dwarf is busy meanwhile (about 1 h for 600 images): follow it on its page in Dwarfium Lite.",  # TODO
+    "megastack_start":               "Start",  # TODO
+    "megastack_started":             "Megastack started on the Dwarf: {count} sessions of {target} - followed in Dwarfium Lite.",  # TODO
+    "megastack_lite_old":            "This Dwarfium Lite version can't do it: update it (3.2.6+).",  # TODO
+    "megastack_refused":             "Megastack not started: {error}",  # TODO
     "max_temp":                     "MaxTemp",  # TODO
     "found_one_fits":               "Found one fits image on the disk",  # TODO
     "found_fits_images":            "fits images on the disk",  # TODO
