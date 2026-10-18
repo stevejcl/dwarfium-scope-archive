@@ -22,8 +22,8 @@
     so too.
     Explore: the session's EQ mode (EQ: yes / no), from the "eq" field of its shotsInfo.json - written by
     recent Dwarf firmwares only: nothing shown when the file or the field is missing.
-    Explore, Dwarf mode, "Sessions on the Dwarf" with 2 sessions or more ticked: Megastack on the Dwarf - the Dwarf
-    stacks them together into Astronomy/RESTACKED/, like the official app's megastack, asked to Dwarfium Lite
+    Explore, Dwarf mode, "Sessions on the Dwarf" with sessions ticked: Megastack on the Dwarf - the Dwarf stacks
+    them together (a single one: restacked) into Astronomy/RESTACKED/, like the official app's megastack, asked to Dwarfium Lite
     (3.2.6+), which runs and follows it (its device page: images stacked so far and the stack growing; then its
     Results tab). Checked first: one target, the FITS still there (not cleaned by CleanFits), Dwarfium Lite running
     and the Dwarf connected in it (found by its Dwarf ID, else its IP); a confirmation shows the sessions and
