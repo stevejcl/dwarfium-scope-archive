@@ -57,6 +57,27 @@
     itself (binning, dark frames) - its refusal shown with the reason.
 
 ### BugFix
+    Dark Library: DWARF_DARK is not an older firmware's leftover (user-found: three dark sessions at three
+    temperatures) - each dark session of the Dwarf leaves its raw frames there, in a dated folder, and, on firmwares
+    that make one (a newer one doesn't), the master built from them in CALI_FRAME (one per setting and temperature,
+    replaced by a new session at the same temperature). Each master is now shown with its raw frames (count, date)
+    and dated by its dark session (its file date is the copy's) when a session's darks are chosen; the raw sets
+    without a master (all of them on a firmware making none, an older session at a temperature redone since, a master
+    deleted, undated folders) are listed apart and offered as well, Siril building their master - the same darks
+    were offered twice. "Download the darks" copies DWARF_DARK alone when the Dwarf has no CALI_FRAME (it was given
+    as the source anyway). Texts and help no longer say "older firmware".
+    A session's darks: the temperature now comes before the date (darks at 6, 9 and 12 °C, a session at 8-10 °C took
+    the 12 °C ones - all three within its range ±2 °C, then the closest date won), but only among the darks of the
+    session's era: dated within 3 months of it (a sensor gains hot pixels over time, a firmware update can change the
+    raw frames - no other era's dark corrects that, while Siril's dark optimisation makes up for a temperature gap);
+    all of them when none is. Then the closest date, the master on a tie.
+    Better still, the session's firmware when known: the FIRMWARE header of its FITS and of the raw darks (a master,
+    whose header carries none, takes its raws') - the darks of that firmware first, the 3 months window only when the
+    firmware is unknown on either side. One master per temperature met during a dark session (its frames grouped by
+    the temperature in their names: 7 frames at 23 °C and 1 at 24 °C gave ..._23C_stack_7 and ..._24C_stack_1): the
+    raw sets are split the same way, each master paired with its own frames, and among temperatures 1 °C apart the
+    most frames win (_stack_N) - a master of 1 frame is as noisy as a raw frame. The Dark Library page shows each set's
+    firmware.
     Transfer, several sessions backed up over FTP (Explore's Backup Selected): only the first one was copied - its
     folder was taken for the source's main folder, so the transfer was seen as a single one. Over USB it worked. "Select
     the source" then listed one path made of all the sessions: it lists each of them now.
