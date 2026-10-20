@@ -723,12 +723,16 @@ class TransferApp:
                     base_dir = get_ftp_astroDir(self.dwarf_ip_sta_mode)
                     if not base_dir:
                         base_dir = "" 
-                    if self.session.startswith("RESTACKED"):
-                        subdirs = ["/".join([base_dir, "RESTACKED", self.session])]
-                    elif self.session.startswith("STARTRAILS"):
-                        subdirs = ["/".join([base_dir, "STARTRAILS", self.session])]
-                    else:
-                        subdirs = ["/".join([base_dir, self.session])]
+                    # Each of the sessions given (pipe-separated when several:
+                    # one path per session, not the whole list as one name)
+                    subdirs = []
+                    for session in self.session.split("|"):
+                        if session.startswith("RESTACKED"):
+                            subdirs.append("/".join([base_dir, "RESTACKED", session]))
+                        elif session.startswith("STARTRAILS"):
+                            subdirs.append("/".join([base_dir, "STARTRAILS", session]))
+                        else:
+                            subdirs.append("/".join([base_dir, session]))
                 else:
                     subdirs = list_ftp_subdirectories(self.dwarf_ip_sta_mode)
                     restacked = list_ftp_subdirectories(self.dwarf_ip_sta_mode, subdir='RESTACKED')

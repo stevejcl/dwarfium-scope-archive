@@ -40,7 +40,8 @@
 
 ### BugFix
     Transfer, several sessions backed up over FTP (Explore's Backup Selected): only the first one was copied - its
-    folder was taken for the source's main folder, so the transfer was seen as a single one. Over USB it worked.
+    folder was taken for the source's main folder, so the transfer was seen as a single one. Over USB it worked. "Select
+    the source" then listed one path made of all the sessions: it lists each of them now.
     Sessions never scored automatically: after a backup drive's analysis only the sessions without any quality row
     were scored, but a size measured first (Storage Report, Clean Fits, restored FITS, the Dwarf's sizes written to
     every copy) creates that row without a score - the session then stayed "no score" (no colour on the Sky Map,
