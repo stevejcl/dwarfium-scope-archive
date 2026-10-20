@@ -382,14 +382,24 @@ dans les sessions du Dwarf (`RESTACKED_…`), avec son exposition totale lue dan
 
 Le Dwarf écrit un JPG de chaque image dans le dossier `Thumbnail` de la session, au même nom que son FITS ;
 les images qu'il a rejetées à l'empilement ont le préfixe `failed_`, les deux. **{t:frames_title}** les
-montre : un clic en agrandit une (flèches : précédente / suivante, espace : la cocher). Cochez les mauvaises
-(nuages, traînées, rotation) puis **Supprimer les images cochées** : leur FITS et leur JPG sont supprimés,
-un megastack ou un restack ne prend alors que les bonnes. **Supprimer les images rejetées** supprime d'un coup
-toutes les `failed_`. Suppression définitive, après confirmation (un disque USB n'a souvent pas de corbeille) ;
-les tailles de la session sont remesurées.
+montre : un clic en agrandit une (flèches : précédente / suivante, espace : la marquer). Marquez les mauvaises
+(nuages, traînées, rotation) puis **Supprimer les images cochées** - leur FITS et leur JPG sont retirés, un
+megastack ou un restack ne prend alors que les bonnes ; **Supprimer les images rejetées** prend d'un coup
+toutes les `failed_`. Les tailles de la session sont remesurées.
 
-Sur le Dwarf, il faut le Dwarf branché en USB (sa copie locale n'est pas le Dwarf, son FTP est en lecture
-seule). Sur un disque de sauvegarde aussi. Les images d'une mosaïque sont montrées par panneau.
+Où elles vont :
+- **Sur le Dwarf** (branché en USB - sa copie locale n'est pas le Dwarf, son FTP est en lecture seule) :
+  supprimées définitivement. Une session sauvegardée les a en même temps mises dans la corbeille de sa copie
+  de sauvegarde (son disque branché) ; une session non sauvegardée les perd - c'est dit avant.
+- **Sur un disque de sauvegarde** : dans la corbeille de la session (un dossier `.trash`, dans chaque panneau
+  pour une mosaïque).
+
+**La corbeille** : sous les FITS de la session dans Explorer, « N images dans la corbeille » avec
+**{t:trash_view}** et **{t:trash_empty_btn}**. Voir les montre : marquez chacune **{t:trash_restore}** (elle
+revient dans la session) ou **{t:trash_delete}**, c'est fait en sortant ou avec **{t:trash_apply}**. Le Dwarf
+branché en USB avec la session dessus, les images restaurées peuvent y être recopiées aussi ; sinon la
+restauration de la session (Restore FITS, Transfert) les remettra plus tard. La corbeille n'est jamais copiée
+sur le Dwarf, ni vue comme une session, ni comptée dans les FITS.
 
 ## Conseils
 

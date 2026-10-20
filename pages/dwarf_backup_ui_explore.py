@@ -46,6 +46,7 @@ from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
 from components.db_page_mixin import DbPageMixin
 from components.action_icon import ActionIcon
+from components import frame_review
 from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
@@ -2191,6 +2192,7 @@ class ExploreApp(DbPageMixin):
         self.nb_failed_fits_files = None
         self.nb_tiff_files = None
         self.nb_failed_tiff_files = None
+        self.nb_trash_frames = 0
         restacked_session = False
         size_dir_bytes = None
         try:
@@ -2205,6 +2207,8 @@ class ExploreApp(DbPageMixin):
             self.nb_failed_fits_files = count_failed_fits_files(directory)
             self.nb_tiff_files = count_tiff_files(directory)
             self.nb_failed_tiff_files = count_failed_tiff_files(directory)
+            # Frames deleted from a backup copy, waiting in its trash (components/frame_review.py)
+            self.nb_trash_frames = frame_review.trash_count(directory)
 
             # Store size in SessionQuality if not already stored
             be_id = self.current_session_row[22] if self.current_session_row else None
@@ -2340,6 +2344,15 @@ class ExploreApp(DbPageMixin):
                 for data_detail in details_preview:
                     ui.item(data_detail).classes('text-sm py-0 min-h-0 leading-tight')
 
+                if self.nb_trash_frames:
+                    with ui.row().classes("items-center gap-2 pl-4"):
+                        ui.icon("delete").classes("text-orange-8")
+                        ui.label(t("trash_in_session", count=self.nb_trash_frames)).classes("text-sm text-orange-8")
+                        ui.button(t("trash_view"), icon="visibility", on_click=self._open_frame_trash) \
+                            .props("flat dense no-caps")
+                        ui.button(t("trash_empty_btn"), icon="delete_forever", on_click=self._empty_frame_trash) \
+                            .props("flat dense no-caps color=negative")
+
             if not restacked_session and (self.nb_fits_files is None or self.nb_fits_files == 0):
                 ui.item_label(t("no_fits_on_disk")).classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
             self.get_details_presence_label(self.preview_image_path, file_path)
@@ -2347,6 +2360,7 @@ class ExploreApp(DbPageMixin):
     def get_details_presence_label(self, preview_image_path: str, file_path):
         self.path_result_on_dwarf = None
         self.path_result_on_backupDrive = None
+        self.session_backed_up = False
         if preview_image_path:
             session_dir = os.path.basename(os.path.dirname(preview_image_path))
 
@@ -2377,6 +2391,8 @@ class ExploreApp(DbPageMixin):
                         }
             else:
                 result_on_backupDrive = get_session_present_in_backupDrive(self.conn, session_dir)
+                # Frames deleted from the Dwarf: into the backup copy's trash (_frame_review)
+                self.session_backed_up = bool(result_on_backupDrive)
 
                 if result_on_backupDrive:
                     backup_full_path = get_Backup_fullpath(
@@ -3585,8 +3601,6 @@ class ExploreApp(DbPageMixin):
         """Frames: a session with frames, on a backup drive or on the Dwarf
         plugged in USB - its local copy (Dwarf_Local) isn't the Dwarf:
         explained on a click instead."""
-        from components import frame_review
-
         icon = getattr(self, "frame_review_icon", None)
         if icon is None:
             return
@@ -3604,10 +3618,20 @@ class ExploreApp(DbPageMixin):
             icon.props("color=primary")
         icon.visible = True
 
-    async def _frame_review(self):
-        """The selected session's frames (components/frame_review.py)."""
-        from components import frame_review
+    async def _after_frames_changed(self):
+        """Frames deleted, moved or restored: the session's sizes measured
+        again, like Cleanup FITS, and the session shown again."""
+        self.ensure_conn()
+        be_id = get_backup_entry_id_by_dwarf_data(self.conn, self._get_current_dwarf_data_id())
+        if be_id:
+            await run.io_bound(scan_folder_sizes, self.database, [be_id], None, True, None)
+            await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
+        await self.on_file_selected()
 
+    async def _frame_review(self):
+        """The selected session's frames (components/frame_review.py): on the
+        Dwarf deleted for good - into the trash of its backup copy -, on a
+        backup drive into the session's trash."""
         if getattr(self, "frame_review_needs_usb", False):
             ui.notify(t("frames_usb_hint"), type="warning", multi_line=True, timeout=10000)
             return
@@ -3615,17 +3639,32 @@ class ExploreApp(DbPageMixin):
         if not path or not os.path.isdir(path):
             ui.notify(t("folder_not_exist", path=path), color="negative")
             return
+        on_dwarf = self.mode != "backup"
+        await frame_review.open_review(
+            path, self._after_frames_changed, on_dwarf=on_dwarf,
+            backed_up=on_dwarf and bool(getattr(self, "session_backed_up", False)),
+            backup_path=self.path_result_on_backupDrive if on_dwarf else None,
+        )
 
-        async def deleted():
-            # Its sizes measured again, like Cleanup FITS
-            self.ensure_conn()
-            be_id = get_backup_entry_id_by_dwarf_data(self.conn, self._get_current_dwarf_data_id())
-            if be_id:
-                await run.io_bound(scan_folder_sizes, self.database, [be_id], None, True, None)
-                await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
-            await self.on_file_selected()
+    async def _open_frame_trash(self):
+        """The session's trash: restore or delete its frames - restored ones
+        copied back onto the Dwarf plugged in USB, when asked."""
+        if not self.selected_path:
+            return
+        dwarf_path = getattr(self, "path_result_on_dwarf", None) if self.mode == "backup" else None
+        await frame_review.open_trash(self.selected_path, self._after_frames_changed, dwarf_path=dwarf_path)
 
-        await frame_review.open_review(path, deleted)
+    async def _empty_frame_trash(self):
+        path = self.selected_path
+        if not path:
+            return
+        count = await run.io_bound(frame_review.trash_count, path)
+        if not await frame_review.ask(t("trash_empty_btn"), t("trash_empty_confirm", count=count),
+                                       [(t("trash_empty_btn"), "delete_forever", "negative", True)]):
+            return
+        done = await run.io_bound(frame_review.empty_trash, path)
+        ui.notify(t("frames_deleted", count=done), type="positive")
+        await self._after_frames_changed()
 
     def get_multi_transfer_url(self):
         """Build a Transfer URL with all selected sessions (multi-selection mode)."""

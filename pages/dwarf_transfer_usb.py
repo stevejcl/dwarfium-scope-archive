@@ -8,7 +8,7 @@ import asyncio
 import hashlib
 import traceback
 from components.menu import menu
-from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir, safe_copy2
+from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir, safe_copy2, without_frame_trash
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
@@ -418,7 +418,8 @@ class TransferAppUSB:
 
     async def get_files(self, src_dir, dest_dir, isFullBackup):
         all_files = []
-        for root, _, files in os.walk(src_dir):
+        for root, dirs, files in os.walk(src_dir):
+            dirs[:] = without_frame_trash(dirs)   # Explore's frame trash: not copied
             for file in files:
                 src_path = os.path.join(root, file)
                 rel_path = os.path.relpath(src_path, src_dir)

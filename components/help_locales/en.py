@@ -381,13 +381,22 @@ sessions (`RESTACKED_…`), its total exposure read from its FITS.
 
 The Dwarf writes a JPG of each frame in the session's `Thumbnail` folder, named like its FITS; the frames
 it rejected while stacking carry a `failed_` prefix, both. **{t:frames_title}** shows them: a click enlarges
-one (arrows: previous / next, space: tick it). Tick the bad ones (clouds, trails, rotation) and
-**Delete the ticked frames**: their FITS and their JPG are deleted, so a megastack or a restack takes only
-the good ones. **Delete the rejected frames** deletes all the `failed_` ones at once. Deleted for good, after
-a confirmation (a USB drive often has no recycle bin); the session's sizes are measured again.
+one (arrows: previous / next, space: mark it). Mark the bad ones (clouds, trails, rotation) and
+**Delete the ticked frames** - their FITS and JPG go, so a megastack or a restack takes only the good ones;
+**Delete the rejected frames** takes all the `failed_` ones at once. The session's sizes are measured again.
 
-On the Dwarf, it needs the Dwarf plugged in USB (its local copy isn't the Dwarf, its FTP is read-only).
-On a backup drive too. A mosaic's frames are shown by panel.
+Where they go:
+- **On the Dwarf** (plugged in USB - its local copy isn't the Dwarf, its FTP is read-only): deleted for
+  good from it. A session backed up has them moved into its backup copy's trash at the same time (its drive
+  connected); one not backed up loses them - said before.
+- **On a backup drive**: into the session's trash (a `.trash` folder, in each panel for a mosaic).
+
+**The trash**: under the session's FITS in Explore, "N frames in the trash" with **{t:trash_view}** and
+**{t:trash_empty_btn}**. View shows them: mark each one **{t:trash_restore}** (back into the session) or
+**{t:trash_delete}**, done when you leave or with **{t:trash_apply}**. The Dwarf plugged in USB with the
+session on it, the frames restored can be copied back onto it too; else the session's own restore
+(Restore FITS, Transfer) puts them back later. The trash is never copied onto the Dwarf, nor seen as a
+session or counted in the FITS.
 
 ## Tips
 
