@@ -354,6 +354,8 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 - **{t:megastack_title_short}** (Dwarf mode) — see below
 - **{t:frames_title}** — see below
+- Under the details, the line saying the session is also on the Dwarf (Backup mode) or on a backup drive
+  (Dwarf mode): **{t:explore_view_copy}** opens it there in Explore
 - Next to the quality score: ⌫ **{t:score_clear}** (it then reads "no score"; **{t:score_session_btn}**
   scores it again), and for a solved session **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 

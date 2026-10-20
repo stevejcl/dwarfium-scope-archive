@@ -774,6 +774,8 @@ TRANSLATIONS: dict[str, str] = {
     "megastack_started":             "Megastack lancé sur le Dwarf : {count} session(s) de {target} - suivi dans Dwarfium Lite.",
     "megastack_lite_old":            "Cette version de Dwarfium Lite ne sait pas le faire : mets-la à jour (3.2.6+).",
     "megastack_refused":             "Megastack non lancé : {error}",
+    "explore_view_copy":             "Voir",
+    "explore_view_copy_tip":         "Ouvrir cette session dans Explorer sur cette copie",
     "frames_title":                  "Images de la session",
     "frames_counts":                 "{count} image(s), {rejected} rejetée(s) par le Dwarf",
     "frames_hint":                   "Le JPG de chaque image fait par le Dwarf (dossier Thumbnail). Cliquez pour agrandir (flèches ou molette de la souris : précédente / suivante - tournée vite, ça défile vite ; espace : cocher) ; cochez les mauvaises : leur FITS et leur JPG sont retirés, un megastack ou un restack ne prend alors que les bonnes. En rouge : rejetées par le Dwarf (failed_).",
