@@ -394,8 +394,9 @@ class DarkLibraryApp(DbPageMixin):
         self._show_inventory(result)
 
     def _show_legacy_inventory(self, legacy: dict):
-        """The DWARF_DARK raw sets left without a CALI_FRAME master (an older
-        session at the same temperature, a master deleted, undated folders):
+        """The DWARF_DARK raw sets without a CALI_FRAME master (all of them on
+        a firmware making none, an older session at the same temperature, a
+        master deleted, undated folders):
         used for a session like a master."""
         ui.separator().classes("mt-3")
         if legacy["sets"]:

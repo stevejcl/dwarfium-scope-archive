@@ -547,11 +547,12 @@ par caméra (cam_0 = Télé, cam_1 = Grand angle) et par exposition/gain/binning
 Chaque session de darks du Dwarf laisse ses bruts dans `DWARF_DARK` (à côté de
 `CALI_FRAME`), dans un dossier daté à elle (`wide_exp_15_gain_60_bin_1_2026-10-20-...`,
 la température à la fin du nom de chaque fichier), et le master construit à partir
-d'eux dans `CALI_FRAME` : un master par réglage et par température, remplacé par une
-nouvelle session à la même température. Chaque master est affiché avec ses bruts
-(nombre, date) ; les bruts restés sans master (une session plus ancienne à une
-température refaite depuis, un master supprimé, des dossiers sans date) sont listés
-en dessous.
+d'eux dans `CALI_FRAME` pour les firmwares qui en font un (un master par réglage et
+par température, remplacé par une nouvelle session à la même température ; un
+firmware récent n'en fait pas). Chaque master est affiché avec ses bruts (nombre,
+date) ; les bruts sans master (tous, avec un firmware qui n'en fait pas, une session
+plus ancienne à une température refaite depuis, un master supprimé, des dossiers
+sans date) sont listés en dessous.
 
 Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et ces
 bruts sans distinction : mêmes gain, binning, exposition et caméra ; puis la

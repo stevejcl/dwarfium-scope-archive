@@ -1,9 +1,10 @@
 """The raw darks of the Dwarf: Astronomy/DWARF_DARK, next to CALI_FRAME.
 
 Each dark session of the Dwarf leaves its raw frames there, in a folder of
-its own, and the master it builds from them in CALI_FRAME - one master per
-setting and temperature (CALI_FRAME/dark/cam_N/dark_exp_..._22C.fits), a
-new session at the same temperature replacing it (user-found Oct 2026:
+its own, and - on firmwares that make one, a newer one doesn't - the master
+it builds from them in CALI_FRAME: one master per setting and temperature
+(CALI_FRAME/dark/cam_N/dark_exp_..._22C.fits), a new session at the same
+temperature replacing it (user-found Oct 2026:
 three dark sessions at three temperatures, three dated folders of 10 raw
 frames and three masters; first taken for an older firmware's leftovers):
 
@@ -17,8 +18,9 @@ temperature (_22C); the undated ones carry none (temperature unknown).
 Scope Archive finds DWARF_DARK where the Dark Library's CALI_FRAME is (copied
 side by side by the Transfer page) and pairs each master with the raw
 frames it was built from (pair_masters): the master is used, dated by its
-raws' session. The raw sets left without a master (an older session at the
-same temperature, a master deleted) are candidates for a session too -
+raws' session. The raw sets without a master (all of them on a firmware
+making none, an older session at the same temperature, a master deleted)
+are candidates for a session too -
 closest temperature, then closest date, the master on a tie
 (pick_dark_set): Siril builds the master from the raw frames.
 """
