@@ -271,6 +271,19 @@ def get_basefolder_from_db_path(full_path, file_path):
 def get_extension(file_path):
     return os.path.splitext(file_path)[1].lower().lstrip('.')
 
+# Explore's frame review (components/frame_review.py): the frames deleted from
+# a backup copy wait in its folder's .trash (FITS, and their JPG in
+# .trash/Thumbnail) - restored or deleted for good later. Not a session nor a
+# panel: left out of the drive analysis, the FITS counts, a restore onto the
+# Dwarf (Restore FITS, a session's restore) and the transfers.
+FRAME_TRASH_DIR = ".trash"
+
+
+def without_frame_trash(dirs: list) -> list:
+    """os.walk's dirs, the frame trash taken out (dirs[:] = ...)."""
+    return [d for d in dirs if d != FRAME_TRASH_DIR]
+
+
 def has_subdirectories(directory):
     return any(
         os.path.isdir(os.path.join(directory, entry)) and not entry.startswith('.')  and not entry.startswith('Thumbnail')
@@ -738,6 +751,7 @@ def restore_fits_files(src_backup_folder: str, dst_session_folder: str, app, dry
     total_fits_files = 0
 
     for root, dirs, files in os.walk(src_backup_folder):
+        dirs[:] = without_frame_trash(dirs)   # the frames deleted stay out
         # Determine relative path to preserve folder structure
         rel_path = os.path.relpath(root, src_backup_folder)
         if rel_path == ".":
@@ -1689,6 +1703,10 @@ def determine_session_dir(data_root, session_dir_path, ftp_mode=False):
 
 def check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
     root_basename = os.path.basename(os.path.normpath(root))
+    # The frame trash (Explore) isn't a session; its folder still is one
+    if FRAME_TRASH_DIR in os.path.normpath(root).replace("\\", "/").split("/"):
+        return False
+    dirs = without_frame_trash(dirs)
 
     if session_dir_main_dir:
         return session_dir == root_basename
@@ -2390,7 +2408,8 @@ def count_valid_fits_files(directory: str) -> int:
 
     if is_mosaic:
         # 🔁 recursive scan (subdirectories)
-        for dirpath, _, filenames in os.walk(directory):
+        for dirpath, dirnames, filenames in os.walk(directory):
+            dirnames[:] = without_frame_trash(dirnames)
             for fname in filenames:
                 if not fname.lower().endswith(".fits"):
                     continue

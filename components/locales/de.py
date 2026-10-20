@@ -775,6 +775,49 @@ TRANSLATIONS: dict[str, str] = {
     "megastack_started":             "Megastack started on the Dwarf: {count} session(s) of {target} - followed in Dwarfium Lite.",  # TODO
     "megastack_lite_old":            "This Dwarfium Lite version can't do it: update it (3.2.6+).",  # TODO
     "megastack_refused":             "Megastack not started: {error}",  # TODO
+    "frames_title":                  "Frames",  # TODO
+    "frames_counts":                 "{count} frame(s), {rejected} rejected by the Dwarf",  # TODO
+    "frames_hint":                   "The Dwarf's JPG of each frame (Thumbnail folder). Click to enlarge (arrows: previous / next, space: tick); tick the bad ones: their FITS and JPG go, so a megastack or restack takes only the good ones. Red: rejected by the Dwarf (failed_).",  # TODO
+    "frames_rejected":               "rejected",  # TODO
+    "frames_no_fits":                "no FITS",  # TODO
+    "frames_mark":                   "Delete",  # TODO
+    "frames_clear_selection":        "Untick all",  # TODO
+    "frames_delete":                 "Delete",  # TODO
+    "frames_to_trash":               "Move to the trash",  # TODO
+    "frames_delete_selected":        "Delete the ticked frames ({count})",  # TODO
+    "frames_delete_rejected":        "Delete the rejected frames ({count})",  # TODO
+    "frames_confirm_to_trash":       "{count} frame(s): their FITS and JPG are moved to the session's trash (its .trash folder). Restore them or delete them for good from Explore: \"in the trash\", under the session's FITS.",  # TODO
+    "frames_confirm_dwarf_not_backed":"{count} frame(s): deleted for good from the Dwarf.\nThis session isn't backed up: they can't be got back.",  # TODO
+    "frames_confirm_dwarf_backup_offline":"{count} frame(s): deleted for good from the Dwarf.\nThe session is backed up but its drive isn't connected: they stay in the backup copy (not in its trash).",  # TODO
+    "frames_confirm_dwarf_backed":   "{count} frame(s): deleted for good from the Dwarf, and moved to the trash of the backup copy:\n{path}\nRestore them or delete them for good from Explore, Backup mode.",  # TODO
+    "frames_also_dwarf":             "Also delete them from the Dwarf, for good (plugged in USB: {path}) - else a later backup of the session brings them back",  # TODO
+    "frames_dwarf_deleted":          "{count} frame(s) deleted from the Dwarf.",  # TODO
+    "frames_backup_trashed":         "{count} frame(s) moved to the backup copy's trash.",  # TODO
+    "frames_deleted":                "{count} frame(s) deleted.",  # TODO
+    "frames_trashed":                "{count} frame(s) moved to the trash.",  # TODO
+    "frames_errors":                 "{count} file(s) not done: {first}",  # TODO
+    "frames_none":                   "No frame in this session (no Thumbnail folder, no FITS).",  # TODO
+    "frames_usb_needed":             "Frames: plug the Dwarf in USB",  # TODO
+    "frames_usb_hint":               "This is the Dwarf's local copy, not the Dwarf: to review and delete its frames, plug the Dwarf in USB - its FTP is read-only. Then select the session again.",  # TODO
+    "trash_title":                   "Trash of the session",  # TODO
+    "trash_hint":                    "The frames deleted from this backup copy. Mark each one Restore (back into the session) or Delete (for good); done when you leave or with Apply. Enlarged: arrows previous / next, R restore, D delete.",  # TODO
+    "trash_counts":                  "{count} frame(s)",  # TODO
+    "trash_restore":                 "Restore",  # TODO
+    "trash_delete":                  "Delete for good",  # TODO
+    "trash_all_restore":             "Restore all",  # TODO
+    "trash_apply":                   "Apply",  # TODO
+    "trash_apply_counts":            "Apply ({restore} restored, {delete} deleted)",  # TODO
+    "trash_leave":                   "{restore} frame(s) marked Restore, {delete} marked Delete: apply before leaving?",  # TODO
+    "trash_leave_discard":           "Leave without applying",  # TODO
+    "trash_restored":                "{count} frame(s) restored into the session.",  # TODO
+    "trash_restore_dwarf":           "The Dwarf is plugged in USB with this session on it:\n{path}\nCopy the {count} frame(s) restored back onto it too? (Else the session's restore, Restore FITS, puts them back later.)",  # TODO
+    "trash_restore_dwarf_btn":       "Copy onto the Dwarf",  # TODO
+    "trash_copied_dwarf":            "{count} frame(s) copied back onto the Dwarf.",  # TODO
+    "trash_empty_btn":               "Empty the trash",  # TODO
+    "trash_empty_confirm":           "{count} frame(s): their FITS and JPG are deleted for good.",  # TODO
+    "trash_empty":                   "The trash is empty.",  # TODO
+    "trash_in_session":              "{count} frame(s) in the trash",  # TODO
+    "trash_view":                    "View",  # TODO
     "max_temp":                     "MaxTemp",  # TODO
     "found_one_fits":               "Found one fits image on the disk",  # TODO
     "found_fits_images":            "fits images on the disk",  # TODO

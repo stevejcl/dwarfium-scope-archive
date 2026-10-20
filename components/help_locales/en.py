@@ -353,6 +353,7 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
 - **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 - **{t:megastack_title_short}** (Dwarf mode) — see below
+- **{t:frames_title}** — see below
 - Next to the quality score: ⌫ **{t:score_clear}** (it then reads "no score"; **{t:score_session_btn}**
   scores it again), and for a solved session **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 
@@ -375,6 +376,29 @@ talks to the Dwarf and follows it.
 Follow it on the Dwarf's page in Dwarfium Lite (images stacked so far, the stack growing in the Tele view);
 the Dwarf does nothing else meanwhile (about 1 h for 600 images). The result then appears in the Dwarf's
 sessions (`RESTACKED_…`), its total exposure read from its FITS.
+
+## Session frames
+
+The Dwarf writes a JPG of each frame in the session's `Thumbnail` folder, named like its FITS; the frames
+it rejected while stacking carry a `failed_` prefix, both. **{t:frames_title}** shows them: a click enlarges
+one (arrows: previous / next, space: mark it). Mark the bad ones (clouds, trails, rotation) and
+**Delete the ticked frames** - their FITS and JPG go, so a megastack or a restack takes only the good ones;
+**Delete the rejected frames** takes all the `failed_` ones at once. The session's sizes are measured again.
+
+Where they go:
+- **On the Dwarf** (plugged in USB - its local copy isn't the Dwarf, its FTP is read-only): deleted for
+  good from it. A session backed up has them moved into its backup copy's trash at the same time (its drive
+  connected); one not backed up loses them - said before.
+- **On a backup drive**: into the session's trash (a `.trash` folder, in each panel for a mosaic). The Dwarf
+  plugged in USB with the session still on it, a box (unticked) deletes them from the Dwarf too, for good -
+  else a later backup of the session brings them back.
+
+**The trash**: under the session's FITS in Explore, "N frames in the trash" with **{t:trash_view}** and
+**{t:trash_empty_btn}**. View shows them: mark each one **{t:trash_restore}** (back into the session) or
+**{t:trash_delete}**, done when you leave or with **{t:trash_apply}**. The Dwarf plugged in USB with the
+session on it, the frames restored can be copied back onto it too; else the session's own restore
+(Restore FITS, Transfer) puts them back later. The trash is never copied onto the Dwarf, nor seen as a
+session or counted in the FITS.
 
 ## Tips
 

@@ -14,7 +14,7 @@ from components.folder_picker import choose_folder
 from api.dwarf_session_ip import pick_ftp_ip
 from api.dwarf_backup_fct_ftp import dwarf_ip_param, ftp_conn, check_ftp_connection, get_ftp_astroDir, list_ftp_subdirectories, ftp_path_exists, download_ftp_tree, ftp_download_file
 from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, sftp_clean_subdir_files
-from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir
+from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir, without_frame_trash
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
@@ -1717,7 +1717,8 @@ class TransferApp:
 
     async def get_files_old(self, src_dir, dest_dir, isFullBackup):
         all_files = []
-        for root, _, files in os.walk(src_dir):
+        for root, dirs, files in os.walk(src_dir):
+            dirs[:] = without_frame_trash(dirs)   # Explore's frame trash: not copied
             for file in files:
                 src_path = os.path.join(root, file)
                 rel_path = os.path.relpath(src_path, src_dir)
@@ -1739,7 +1740,8 @@ class TransferApp:
             # USB → FTP : Not Possible Read Only system for D3
             print(f"dest_dir: {dest_dir}")
             base_path = "/mnt/sdcard" # ssh
-            for root, _, files in os.walk(src_dir):
+            for root, dirs, files in os.walk(src_dir):
+                dirs[:] = without_frame_trash(dirs)   # Explore's frame trash: not copied
                 for file in files:
                     src_path = os.path.join(root, file)
                     rel_path = os.path.relpath(src_path, src_dir)
@@ -1750,7 +1752,8 @@ class TransferApp:
 
         else:
             # USB → USB
-            for root, _, files in os.walk(src_dir):
+            for root, dirs, files in os.walk(src_dir):
+                dirs[:] = without_frame_trash(dirs)   # Explore's frame trash: not copied
                 for file in files:
                     src_path = os.path.join(root, file)
                     rel_path = os.path.relpath(src_path, src_dir)
