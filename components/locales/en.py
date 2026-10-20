@@ -744,7 +744,7 @@ TRANSLATIONS: dict[str, str] = {
     "legacy_darks_undated":         "undated",
     "legacy_darks_unknown":         "⚠️ {n} folder(s) of DWARF_DARK not recognised",
     "darks_legacy":                 "(DWARF_DARK raw frames)",
-    "darks_master_raws":            " ({n} raw, {date})",
+    "darks_master_raws":            " ({n} raw, {date}, firmware {fw})",
     "no_darks_found":               "❌ No matching darks found",
     "min_temp":                     "MinTemp",
     "eq_mode_label":                "EQ",

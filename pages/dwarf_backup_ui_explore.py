@@ -19,6 +19,7 @@ from nicegui import app, run, ui, background_tasks
 from api.dwarf_backup_db import DB_NAME, connect_db
 from components.session_notes import session_notes_widget
 from api import sky_map_hidden
+from api.dark_library_legacy import folder_firmware
 from api.dwarf_backup_db_api import get_backup_entry_id_by_dwarf_data, get_Objects_by_sky_position, count_sessions_by_sky_position
 from components.sky_search_dialog import open_sky_search_dialog
 from api.dwarf_backup_db_api import (
@@ -2027,6 +2028,7 @@ class ExploreApp(DbPageMixin):
                             max_temp = int(maxTemp) if maxTemp is not None else None,
                             cam_name = "cam_1" if "_WIDE_" in str(session_dir or "").upper() else "cam_0",
                             session_date = session_date,
+                            session_firmware = folder_firmware(self.selected_path),
                         )
                         # DWARF_DARK raw darks without their CALI_FRAME master
                         _legacy = f" {t('darks_legacy')}" if _dark.get("legacy") else ""

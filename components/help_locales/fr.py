@@ -556,12 +556,17 @@ sans date) sont listés en dessous.
 
 Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et ces
 bruts sans distinction : mêmes gain, binning, exposition et caméra ; puis les darks
-de l'époque de la session - datés à moins de 3 mois d'elle, avant ou après (un
-capteur gagne des pixels chauds avec le temps et une mise à jour du firmware peut
-changer les bruts ; tous quand aucun ne l'est) ; puis la température la plus proche
-de celle de la session (à 1 °C près) ; puis la date la plus proche (date de la
-session de darks du master, date du dossier) ; le master en cas d'égalité.
-L'optimisation des darks de Siril compense un écart de température restant. Avec les bruts de
+du firmware de la session (l'en-tête `FIRMWARE` de ses FITS et des darks bruts, un
+master prenant celui de ses bruts) - une mise à jour du firmware peut changer les
+bruts ; quand le firmware est inconnu d'un côté, les darks de l'époque de la
+session à la place, datés à moins de 3 mois d'elle, avant ou après (un capteur
+gagne des pixels chauds avec le temps) ; tous quand aucun ne l'est. Puis la
+température la plus proche de celle de la session (à 1 °C près) ; puis le plus de
+poses (le `_stack_N` d'un master : les poses de sa session à cette température -
+un master d'une pose est aussi bruité qu'un brut) ; puis la date la plus proche
+(date de la session de darks du master, date du dossier) ; le master en cas
+d'égalité. L'optimisation des darks de Siril compense un écart de température
+restant. Avec les bruts de
 `DWARF_DARK`, Siril construit le master ; le badge 🎯 l'indique.
 
 ## Télécharger les darks

@@ -746,7 +746,7 @@ TRANSLATIONS: dict[str, str] = {
     "legacy_darks_undated":         "sans date",
     "legacy_darks_unknown":         "⚠️ {n} dossier(s) de DWARF_DARK non reconnu(s)",
     "darks_legacy":                 "(bruts DWARF_DARK)",
-    "darks_master_raws":            " ({n} bruts, {date})",
+    "darks_master_raws":            " ({n} bruts, {date}, firmware {fw})",
     "no_darks_found":               "❌ Aucun dark correspondant trouvé",
     "min_temp":                     "TempMin",
     "eq_mode_label":                "EQ",

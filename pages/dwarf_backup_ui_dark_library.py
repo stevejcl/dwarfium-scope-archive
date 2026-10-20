@@ -412,7 +412,7 @@ class DarkLibraryApp(DbPageMixin):
                 date = s["date"][:10] if s["date"] else t("legacy_darks_undated")
                 ui.label(
                     f"  exp={s['exp_s']:g}s  gain={s['gain']}  bin={s['binning']}  →  "
-                    f"{s['count']} raw  {temp}  ({date})"
+                    f"{s['count']} raw  {temp}  ({date}, firmware {s.get('firmware') or '?'})"
                 ).classes("text-sm text-gray-700 ml-4")
         if legacy["errors"]:
             ui.label(t("legacy_darks_unknown", n=len(legacy["errors"]))).classes("text-xs text-orange-600 mt-1")
@@ -453,7 +453,7 @@ class DarkLibraryApp(DbPageMixin):
 
                 for (exp, gain, binning), temps in sorted(groups.items(), key=lambda g: g[0]):
                     temps_str = ", ".join(
-                        f"{tc}°C" + (t("darks_master_raws", n=raw["count"], date=(raw["date"] or "?")[:10]) if raw else "")
+                        f"{tc}°C" + (t("darks_master_raws", n=raw["count"], date=(raw["date"] or "?")[:10], fw=raw.get("firmware") or "?") if raw else "")
                         for tc, raw in sorted(temps, key=lambda p: p[0]))
                     ui.label(
                         f"  exp={exp}s  gain={gain}  bin={binning}  "
