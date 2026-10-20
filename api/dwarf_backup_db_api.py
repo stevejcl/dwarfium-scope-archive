@@ -2816,12 +2816,13 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
     """
     Search all DarkLibrary locations for the given dwarf_id.
     Matching: exact gain+binning, exposure within 2%, same camera when
-    cam_name ("cam_0" tele / "cam_1" wide) is given. Candidates: the current
-    firmware's CALI_FRAME masters (one file each) and the raw darks of an
-    older firmware's DWARF_DARK folders (api/dark_library_legacy.py).
+    cam_name ("cam_0" tele / "cam_1" wide) is given. Candidates: the
+    CALI_FRAME masters (one file each, dated by the DWARF_DARK raw frames
+    they were built from when found - pair_masters), and the DWARF_DARK raw
+    sets left without a master (api/dark_library_legacy.py).
     One is chosen (pick_dark_set): temperature in range, else the closest;
-    then the date closest to session_date (the master's file date, the
-    DWARF_DARK folder's date); the CALI_FRAME master on a tie.
+    then the date closest to session_date (the master's raws' date, else its
+    file date; the DWARF_DARK folder's date); the CALI_FRAME master on a tie.
     Returns: {"status": "matched"|"partial"|"none", "files": [...],
               "count": int, "library": str|None, "temp_match": bool,
               "legacy": bool (DWARF_DARK raw frames)}
@@ -2872,7 +2873,7 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
         return empty
 
     from datetime import datetime as _dt
-    from api.dark_library_legacy import pick_dark_set, scan_legacy_darks
+    from api.dark_library_legacy import pair_masters, pick_dark_set, scan_legacy_darks
 
     exp_tol = max(0.05, exp_s * 0.02)
     sets = []
@@ -2882,6 +2883,7 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
                 and abs(m["exp_s"] - exp_s) <= exp_tol)
 
     for lib_loc in libs:
+        masters = []
         _dark_dir = Path(lib_loc) / "dark"
         if not _dark_dir.is_dir():
             _dark_dir = Path(lib_loc) / "CALI_FRAME" / "dark"
@@ -2897,14 +2899,18 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
                         when = _dt.fromtimestamp(f.stat().st_mtime)
                     except OSError:
                         when = None
-                    sets.append({**meta, "files": [str(f)], "count": 1, "when": when,
-                                 "legacy": False, "library": lib_loc})
+                    masters.append({**meta, "cam": cam, "files": [str(f)], "count": 1, "when": when,
+                                    "legacy": False, "library": lib_loc})
+        raws = []
         try:
-            for s in scan_legacy_darks(lib_loc)["sets"]:
-                if settings_match(s) and (not cam_name or s["cam"] == cam_name):
-                    sets.append({**s, "library": str(Path(s["folder"]).parent.parent)})
+            raws = [{**s, "library": str(Path(s["folder"]).parent.parent)}
+                    for s in scan_legacy_darks(lib_loc)["sets"]
+                    if settings_match(s) and (not cam_name or s["cam"] == cam_name)]
         except OSError as e:
             print(f"[dark match] DWARF_DARK: {e}")
+        # a master and the raw frames it was built from: the same darks once
+        sets.extend(masters)
+        sets.extend(pair_masters(masters, raws))
 
     best, temp_ok = pick_dark_set(sets, min_temp, max_temp, session_date)
     if best is None:

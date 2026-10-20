@@ -1,21 +1,26 @@
-"""Darks of an older Dwarf firmware: Astronomy/DWARF_DARK (user-requested
-Oct 2026), next to CALI_FRAME.
+"""The raw darks of the Dwarf: Astronomy/DWARF_DARK, next to CALI_FRAME.
 
-Not one master dark per setting (CALI_FRAME/dark/cam_N/dark_exp_..._13C.fits)
-but one folder per setting, holding the raw dark frames:
+Each dark session of the Dwarf leaves its raw frames there, in a folder of
+its own, and the master it builds from them in CALI_FRAME - one master per
+setting and temperature (CALI_FRAME/dark/cam_N/dark_exp_..._22C.fits), a
+new session at the same temperature replacing it (user-found Oct 2026:
+three dark sessions at three temperatures, three dated folders of 10 raw
+frames and three masters; first taken for an older firmware's leftovers):
 
-    DWARF_DARK/tele_exp_15_gain_60_bin_1/raw_15s_60_0000.fits ...
     DWARF_DARK/wide_exp_15_gain_60_bin_1_2025-11-18-06-40-05-423/
         raw_15s_60_0000_20251118-064019594_22C.fits ...
+    DWARF_DARK/tele_exp_15_gain_60_bin_1/raw_15s_60_0000.fits ...   (undated)
 
 tele = cam_0, wide = cam_1. The dated folders' frames end with their sensor
-temperature (_22C); the older ones carry none (temperature unknown).
+temperature (_22C); the undated ones carry none (temperature unknown).
 
 Scope Archive finds DWARF_DARK where the Dark Library's CALI_FRAME is (copied
-side by side by the Transfer page), lists it on the Dark Library page, and
-uses its raw frames for a session like the CALI_FRAME masters - closest
-temperature, then closest date to the session, the current firmware's
-master on a tie (pick_dark_set): Siril builds the master from the raw frames.
+side by side by the Transfer page) and pairs each master with the raw
+frames it was built from (pair_masters): the master is used, dated by its
+raws' session. The raw sets left without a master (an older session at the
+same temperature, a master deleted) are candidates for a session too -
+closest temperature, then closest date, the master on a tie
+(pick_dark_set): Siril builds the master from the raw frames.
 """
 from __future__ import annotations
 
@@ -115,6 +120,36 @@ def parse_when(value) -> datetime | None:
     return None
 
 
+PAIR_TEMP_C = 1         # a master and its raws' median temperature: may differ by a degree
+
+
+def pair_masters(masters: list[dict], raw_sets: list[dict]) -> list[dict]:
+    """Links each CALI_FRAME master (cam, exp_s, gain, binning, temp_c) to
+    the raw set it was built from: same camera and settings, temperature
+    within PAIR_TEMP_C, the most recent such folder (a later session at the
+    same temperature replaced the master). Sets master["raw"] = that set and
+    master["when"] = its date when known (a master's file date is the
+    copy's, not the session's). Returns the raw sets left unpaired."""
+    def dated(s):
+        return s.get("when") or datetime.min
+
+    paired = set()
+    for m in masters:
+        twins = [r for r in raw_sets
+                 if r["cam"] == m["cam"] and r["gain"] == m["gain"] and r["binning"] == m["binning"]
+                 and abs(r["exp_s"] - m["exp_s"]) <= max(0.05, m["exp_s"] * 0.02)
+                 and r["temp_c"] is not None and abs(r["temp_c"] - m["temp_c"]) <= PAIR_TEMP_C
+                 and id(r) not in paired]
+        if not twins:
+            continue
+        raw = max(twins, key=dated)
+        paired.add(id(raw))
+        m["raw"] = raw
+        if raw.get("when"):
+            m["when"] = raw["when"]
+    return [r for r in raw_sets if id(r) not in paired]
+
+
 TEMP_MARGIN_C = 2       # around the session's range: still a match (user-requested Oct 2026)
 TEMP_SLACK_C = 2        # temperatures this close to the best one count as equal
 
@@ -123,14 +158,15 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
                   session_date=None) -> tuple[dict | None, bool]:
     """The dark set for a session among sets already matching its settings
     and camera (each: temp_c - None when unknown -, when - a datetime or
-    None -, legacy - DWARF_DARK raw frames or a CALI_FRAME master):
+    None -, legacy - DWARF_DARK raw frames without their master, or a
+    CALI_FRAME master):
 
     1. the temperature in the session's range widened by TEMP_MARGIN_C,
        else the closest known one (within TEMP_SLACK_C), else the sets of
        unknown temperature;
     2. among those, the date closest to the session's, before or after (the
        most recent when the session's date is unknown; undated sets last);
-    3. on a tie, the current firmware's CALI_FRAME master.
+    3. on a tie, the CALI_FRAME master.
 
     (set, temperature matched)."""
     if not sets:

@@ -544,17 +544,21 @@ Où : `exp` = temps de pose en secondes, `gain` = valeur du gain,
 Lit le répertoire `CALI_FRAME/dark/` et affiche un inventaire regroupé
 par caméra (cam_0 = Télé, cam_1 = Grand angle) et par exposition/gain/binning.
 
-Les darks d'un ancien firmware, dans `DWARF_DARK` (à côté de `CALI_FRAME`), sont
-listés aussi : un dossier par réglage (`tele_exp_15_gain_60_bin_1`, parfois daté),
-avec ses darks bruts et leur température quand les fichiers la portent.
+Chaque session de darks du Dwarf laisse ses bruts dans `DWARF_DARK` (à côté de
+`CALI_FRAME`), dans un dossier daté à elle (`wide_exp_15_gain_60_bin_1_2026-10-20-...`,
+la température à la fin du nom de chaque fichier), et le master construit à partir
+d'eux dans `CALI_FRAME` : un master par réglage et par température, remplacé par une
+nouvelle session à la même température. Chaque master est affiché avec ses bruts
+(nombre, date) ; les bruts restés sans master (une session plus ancienne à une
+température refaite depuis, un master supprimé, des dossiers sans date) sont listés
+en dessous.
 
-Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et les
-dossiers de `DWARF_DARK` sans distinction : mêmes gain, binning, exposition et
-caméra ; puis la température dans la plage de la session, à ±2 °C (sinon la plus proche) ;
-puis la date la plus proche de celle de la session, avant ou après (date du
-dossier, date du fichier du master) ; le master du firmware actuel en cas
-d'égalité. Avec les bruts de `DWARF_DARK`, Siril construit le master ; le
-badge 🎯 l'indique.
+Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et ces
+bruts sans distinction : mêmes gain, binning, exposition et caméra ; puis la
+température dans la plage de la session, à ±2 °C (sinon la plus proche) ; puis la
+date la plus proche de celle de la session, avant ou après (date de la session de
+darks du master, date du dossier) ; le master en cas d'égalité. Avec les bruts de
+`DWARF_DARK`, Siril construit le master ; le badge 🎯 l'indique.
 
 ## Télécharger les darks
 
@@ -562,8 +566,8 @@ Ouvre la page **{t:transfer}** avec :
 - La source pré-définie sur le dossier `CALI_FRAME` du Dwarf
 - La destination commençant à la racine du disque de sauvegarde
 
-Si le Dwarf a aussi un dossier `DWARF_DARK` (ancien firmware), il est copié en même
-temps, à côté de `CALI_FRAME`.
+Le dossier `DWARF_DARK` du Dwarf (les bruts de ses sessions de darks) est copié en
+même temps, à côté de `CALI_FRAME`.
 
 Naviguez vers votre dossier `CALI_FRAME` de destination et démarrez le transfert.
 La structure de répertoires `CALI_FRAME` (`dark/`, `bias/`, `flat/`) est

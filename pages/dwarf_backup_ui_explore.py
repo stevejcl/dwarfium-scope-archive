@@ -2028,7 +2028,7 @@ class ExploreApp(DbPageMixin):
                             cam_name = "cam_1" if "_WIDE_" in str(session_dir or "").upper() else "cam_0",
                             session_date = session_date,
                         )
-                        # DWARF_DARK: an older firmware's raw darks
+                        # DWARF_DARK raw darks without their CALI_FRAME master
                         _legacy = f" {t('darks_legacy')}" if _dark.get("legacy") else ""
                         if _dark["status"] == "matched":
                             ui.item(f"🎯 {_dark['count']} {t('darks_matched_range')}{_legacy}").classes('text-green-600')

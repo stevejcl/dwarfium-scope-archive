@@ -740,11 +740,12 @@ TRANSLATIONS: dict[str, str] = {
     "no_subfolders":                "No subdirectories found in Astronomy folder.",  # TODO
     "darks_matched_range":          "dark(s) matched (temp in range)",  # TODO
     "darks_matched_closest":        "dark(s) matched (closest temp)",  # TODO
-    "legacy_darks_title":           "✅ Older firmware darks (DWARF_DARK): {n} raw frame(s)",  # TODO
-    "legacy_darks_hint":            "Used for a session when no CALI_FRAME master dark matches it (Siril builds the master from the raw frames).",  # TODO
+    "legacy_darks_title":           "✅ Raw darks without their master (DWARF_DARK): {n} frame(s)",  # TODO
+    "legacy_darks_hint":            "Older dark sessions at a temperature already redone, or whose master is gone: used for a session like a master (Siril builds the master from the raw frames).",  # TODO
     "legacy_darks_undated":         "undated",  # TODO
     "legacy_darks_unknown":         "⚠️ {n} folder(s) of DWARF_DARK not recognised",  # TODO
-    "darks_legacy":                 "(older firmware)",  # TODO
+    "darks_legacy":                 "(DWARF_DARK raw frames)",  # TODO
+    "darks_master_raws":            " ({n} raw, {date})",  # TODO
     "no_darks_found":               "❌ No matching darks found",  # TODO
     "min_temp":                     "MinTemp",  # TODO
     "eq_mode_label":                "EQ",  # TODO

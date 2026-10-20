@@ -485,16 +485,20 @@ Where: `exp` = exposure in seconds, `gain` = gain value,
 Reads the `CALI_FRAME/dark/` directory and shows an inventory grouped
 by camera (cam_0 = Tele, cam_1 = Wide) and by exposure/gain/binning.
 
-An older firmware's darks, in `DWARF_DARK` (next to `CALI_FRAME`), are listed
-too: one folder per setting (`tele_exp_15_gain_60_bin_1`, sometimes dated), with
-its raw darks and their temperature when the files carry it.
+Each dark session of the Dwarf leaves its raw frames in `DWARF_DARK` (next to
+`CALI_FRAME`), in a dated folder of its own (`wide_exp_15_gain_60_bin_1_2026-10-20-...`,
+the temperature at the end of each file name), and the master built from them in
+`CALI_FRAME`: one master per setting and temperature, replaced by a new session
+at the same temperature. Each master is shown with its raw frames (count, date);
+the raw sets left without a master (an older session at a temperature redone
+since, a master deleted, undated folders) are listed below them.
 
-For a session, the darks are chosen among the `CALI_FRAME` masters and the
-`DWARF_DARK` folders alike: same gain, binning, exposure and camera; then the
-temperature in the session's range, ±2 °C (else the closest); then the date closest to
-the session's, before or after (the folder's date, the master's file date); the
-current firmware's master on a tie. With `DWARF_DARK` raw frames, Siril builds
-the master from them; the 🎯 badge says so.
+For a session, the darks are chosen among the `CALI_FRAME` masters and those raw
+sets alike: same gain, binning, exposure and camera; then the temperature in the
+session's range, ±2 °C (else the closest); then the date closest to the session's,
+before or after (the date of the master's dark session, the folder's date); the
+master on a tie. With `DWARF_DARK` raw frames, Siril builds the master from them;
+the 🎯 badge says so.
 
 ## Download Darks
 
@@ -506,8 +510,8 @@ Navigate to your destination `CALI_FRAME` folder and start the transfer.
 The `CALI_FRAME` directory structure (`dark/`, `bias/`, `flat/`) is
 created automatically.
 
-When the Dwarf also has a `DWARF_DARK` folder (older firmware), it is copied at
-the same time, next to `CALI_FRAME`.
+The Dwarf's `DWARF_DARK` folder (the raw frames of its dark sessions) is copied
+at the same time, next to `CALI_FRAME`.
 
 ## Tips
 

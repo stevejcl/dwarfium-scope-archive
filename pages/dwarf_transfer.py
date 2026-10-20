@@ -436,7 +436,7 @@ class TransferApp:
 
         if self.mode == "Archive":
             # Dark download mode: force source to CALI_FRAME on the Dwarf, and
-            # an older firmware's DWARF_DARK too when the Dwarf has one (user-
+            # DWARF_DARK too (the raw frames of its dark sessions) when there (user-
             # requested Oct 2026) - both then copied side by side (multi-source)
             if self.dest_override:
                 if self.transfert_mode_select.value == "FTP" and self.dwarf_ip_sta_mode:

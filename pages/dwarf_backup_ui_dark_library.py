@@ -14,7 +14,7 @@ from api.dwarf_backup_db_api import (
     delete_DarkLibrary,
     scan_dark_library,
 )
-from api.dark_library_legacy import scan_legacy_darks
+from api.dark_library_legacy import pair_masters, scan_legacy_darks
 from components.win_log import WinLog
 from components.menu import menu, setStyle
 
@@ -379,7 +379,7 @@ class DarkLibraryApp(DbPageMixin):
 
         ui.run_javascript("document.body.style.cursor='wait'")
         result = scan_dark_library(location)
-        try:            # an older firmware's DWARF_DARK, next to CALI_FRAME
+        try:            # the raw darks in DWARF_DARK, next to CALI_FRAME
             result["legacy"] = scan_legacy_darks(location)
         except OSError as e:
             result["legacy"] = {"dirs": [], "total": 0, "sets": [], "errors": [str(e)]}
@@ -394,11 +394,13 @@ class DarkLibraryApp(DbPageMixin):
         self._show_inventory(result)
 
     def _show_legacy_inventory(self, legacy: dict):
-        """DWARF_DARK (an older firmware): one folder of raw darks per setting,
-        used when no CALI_FRAME master matches a session."""
+        """The DWARF_DARK raw sets left without a CALI_FRAME master (an older
+        session at the same temperature, a master deleted, undated folders):
+        used for a session like a master."""
         ui.separator().classes("mt-3")
-        ui.label(t("legacy_darks_title", n=legacy["total"])).classes("font-semibold text-green-700")
-        ui.label(t("legacy_darks_hint")).classes("text-xs text-gray-500")
+        if legacy["sets"]:
+            ui.label(t("legacy_darks_title", n=sum(s["count"] for s in legacy["sets"]))).classes("font-semibold text-green-700")
+            ui.label(t("legacy_darks_hint")).classes("text-xs text-gray-500")
         for cam_name in ("cam_0", "cam_1"):
             sets = [s for s in legacy["sets"] if s["cam"] == cam_name]
             if not sets:
@@ -423,6 +425,10 @@ class DarkLibraryApp(DbPageMixin):
         by_cam = result["by_cam"]
 
         legacy = result.get("legacy") or {"total": 0, "sets": [], "errors": []}
+        # each master with the raw frames it was built from (DWARF_DARK)
+        masters = [{**e, "cam": cam} for cam, entries in by_cam.items() for e in entries]
+        unpaired = pair_masters(masters, legacy["sets"])
+        raw_of = {m["file"]: m["raw"] for m in masters if "raw" in m}
         with self.inventory_container:
             if total == 0 and legacy["total"] == 0:
                 ui.label(t("no_dark_files")).classes(
@@ -442,17 +448,19 @@ class DarkLibraryApp(DbPageMixin):
                 groups: dict = {}
                 for e in entries:
                     key = (e["exp_s"], e["gain"], e["binning"])
-                    groups.setdefault(key, []).append(e["temp_c"])
+                    groups.setdefault(key, []).append((e["temp_c"], raw_of.get(e["file"])))
 
-                for (exp, gain, binning), temps in sorted(groups.items()):
-                    temps_str = ", ".join(f"{t}°C" for t in sorted(temps))
+                for (exp, gain, binning), temps in sorted(groups.items(), key=lambda g: g[0]):
+                    temps_str = ", ".join(
+                        f"{tc}°C" + (t("darks_master_raws", n=raw["count"], date=(raw["date"] or "?")[:10]) if raw else "")
+                        for tc, raw in sorted(temps, key=lambda p: p[0]))
                     ui.label(
                         f"  exp={exp}s  gain={gain}  bin={binning}  "
                         f"→  {len(temps)} file(s)  temps: {temps_str}"
                     ).classes("text-sm text-gray-700 ml-4")
 
-            if legacy["sets"]:
-                self._show_legacy_inventory(legacy)
+            if unpaired or legacy["errors"]:
+                self._show_legacy_inventory({**legacy, "sets": unpaired})
 
             if errors:
                 ui.separator()
