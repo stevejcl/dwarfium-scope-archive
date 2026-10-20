@@ -437,6 +437,10 @@ class ExploreApp(DbPageMixin):
                             # Megastack on the Dwarf (components/dwarf_megastack.py): its picker, Dwarf mode
                             self.megastack_btn = ActionIcon(t("megastack_title_short"), "auto_awesome_motion", self._megastack)
                             self.megastack_btn.visible = False
+                            # The session's frames (its Thumbnail JPGs): bad ones deleted, FITS and
+                            # JPG, the rejected failed_ ones too (components/frame_review.py)
+                            self.frame_review_icon = ActionIcon(t("frames_title"), "burst_mode", self._frame_review)
+                            self.frame_review_icon.visible = False
                             # Link to the ManualSession that was imported alongside this BackupEntry
                             self.linked_manual_session_icon = ActionIcon(t("view_linked_manual"), "link", self.navigate_to_linked_manual_session)
                             self.linked_manual_session_icon.visible = False
@@ -2406,6 +2410,8 @@ class ExploreApp(DbPageMixin):
         self.action_fits_files_icon.disable()
         if self.linked_manual_session_icon:
             self.linked_manual_session_icon.visible = False
+        if getattr(self, "frame_review_icon", None):
+            self.frame_review_icon.visible = False
         self.selected_path = ""
         self.current_session_row = None
         # Delete old icons from UI
@@ -2632,6 +2638,8 @@ class ExploreApp(DbPageMixin):
             else:
                 self.action_fits_files_icon.visible = False
                 self.action_fits_files_icon.disable()
+
+            self._update_frame_review_icon()
 
     async def set_preview(self, path: str):
         if path.lower().endswith('.fits'):
@@ -3572,6 +3580,52 @@ class ExploreApp(DbPageMixin):
             rows.append(row)
             paths.append(full_path or "")
         await dwarf_megastack.open_picker(self.conn, dwarf_id, rows, paths)
+
+    def _update_frame_review_icon(self):
+        """Frames: a session with frames, on a backup drive or on the Dwarf
+        plugged in USB - its local copy (Dwarf_Local) isn't the Dwarf:
+        explained on a click instead."""
+        from components import frame_review
+
+        icon = getattr(self, "frame_review_icon", None)
+        if icon is None:
+            return
+        path = self.selected_path
+        session_dir = os.path.basename(os.path.normpath(path)) if path else ""
+        if not path or not os.path.isdir(path) or is_Restacked(session_dir) or not frame_review.has_frames(path):
+            icon.visible = False
+            return
+        self.frame_review_needs_usb = self.mode != "backup" and is_path_local_dwarf_dir(path)
+        if self.frame_review_needs_usb:
+            icon.text = t("frames_usb_needed")
+            icon.props("color=grey")
+        else:
+            icon.text = t("frames_title")
+            icon.props("color=primary")
+        icon.visible = True
+
+    async def _frame_review(self):
+        """The selected session's frames (components/frame_review.py)."""
+        from components import frame_review
+
+        if getattr(self, "frame_review_needs_usb", False):
+            ui.notify(t("frames_usb_hint"), type="warning", multi_line=True, timeout=10000)
+            return
+        path = self.selected_path
+        if not path or not os.path.isdir(path):
+            ui.notify(t("folder_not_exist", path=path), color="negative")
+            return
+
+        async def deleted():
+            # Its sizes measured again, like Cleanup FITS
+            self.ensure_conn()
+            be_id = get_backup_entry_id_by_dwarf_data(self.conn, self._get_current_dwarf_data_id())
+            if be_id:
+                await run.io_bound(scan_folder_sizes, self.database, [be_id], None, True, None)
+                await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
+            await self.on_file_selected()
+
+        await frame_review.open_review(path, deleted)
 
     def get_multi_transfer_url(self):
         """Build a Transfer URL with all selected sessions (multi-selection mode)."""

@@ -354,6 +354,7 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:view_linked_manual}** — accéder à toute session manuelle liée
 - **{t:favorite_add}** / **{t:favorite_remove}** — afficher ou masquer la session sur la page d'accueil
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
+- **{t:frames_title}** — voir ci-dessous
 - À côté du score de qualité : ⌫ **{t:score_clear}** (elle passe alors « sans score » ;
   **{t:score_session_btn}** la note à nouveau), et pour une session résolue **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 
@@ -376,6 +377,19 @@ qui parle au Dwarf et suit l'empilement.
 Suivez-le sur la page du Dwarf dans Dwarfium Lite (images empilées, l'image qui se construit dans la vue Télé) ;
 le Dwarf ne fait rien d'autre pendant ce temps (environ 1 h pour 600 images). Le résultat apparaît ensuite
 dans les sessions du Dwarf (`RESTACKED_…`), avec son exposition totale lue dans son FITS.
+
+## Images de la session
+
+Le Dwarf écrit un JPG de chaque image dans le dossier `Thumbnail` de la session, au même nom que son FITS ;
+les images qu'il a rejetées à l'empilement ont le préfixe `failed_`, les deux. **{t:frames_title}** les
+montre : un clic en agrandit une (flèches : précédente / suivante, espace : la cocher). Cochez les mauvaises
+(nuages, traînées, rotation) puis **Supprimer les images cochées** : leur FITS et leur JPG sont supprimés,
+un megastack ou un restack ne prend alors que les bonnes. **Supprimer les images rejetées** supprime d'un coup
+toutes les `failed_`. Suppression définitive, après confirmation (un disque USB n'a souvent pas de corbeille) ;
+les tailles de la session sont remesurées.
+
+Sur le Dwarf, il faut le Dwarf branché en USB (sa copie locale n'est pas le Dwarf, son FTP est en lecture
+seule). Sur un disque de sauvegarde aussi. Les images d'une mosaïque sont montrées par panneau.
 
 ## Conseils
 

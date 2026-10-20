@@ -775,6 +775,22 @@ TRANSLATIONS: dict[str, str] = {
     "megastack_started":             "Megastack started on the Dwarf: {count} session(s) of {target} - followed in Dwarfium Lite.",  # TODO
     "megastack_lite_old":            "This Dwarfium Lite version can't do it: update it (3.2.6+).",  # TODO
     "megastack_refused":             "Megastack not started: {error}",  # TODO
+    "frames_title":                  "Frames",  # TODO
+    "frames_counts":                 "{count} frame(s), {rejected} rejected by the Dwarf",  # TODO
+    "frames_hint":                   "The Dwarf's JPG of each frame (Thumbnail folder). Click to enlarge (arrows: previous / next, space: tick); tick the bad ones: their FITS and JPG are deleted, so a megastack or restack takes only the good ones. Red: rejected by the Dwarf (failed_).",  # TODO
+    "frames_rejected":               "rejected",  # TODO
+    "frames_no_fits":                "no FITS",  # TODO
+    "frames_mark":                   "Delete",  # TODO
+    "frames_clear_selection":        "Untick all",  # TODO
+    "frames_delete":                 "Delete",  # TODO
+    "frames_delete_selected":        "Delete the ticked frames ({count})",  # TODO
+    "frames_delete_rejected":        "Delete the rejected frames ({count})",  # TODO
+    "frames_delete_confirm":         "{count} frame(s): their FITS and their JPG are deleted for good (no recycle bin).",  # TODO
+    "frames_deleted":                "{count} frame(s) deleted.",  # TODO
+    "frames_delete_errors":          "{count} file(s) not deleted: {first}",  # TODO
+    "frames_none":                   "No frame in this session (no Thumbnail folder, no FITS).",  # TODO
+    "frames_usb_needed":             "Frames: plug the Dwarf in USB",  # TODO
+    "frames_usb_hint":               "This is the Dwarf's local copy, not the Dwarf: to review and delete its frames, plug the Dwarf in USB - its FTP is read-only. Then select the session again.",  # TODO
     "max_temp":                     "MaxTemp",  # TODO
     "found_one_fits":               "Found one fits image on the disk",  # TODO
     "found_fits_images":            "fits images on the disk",  # TODO

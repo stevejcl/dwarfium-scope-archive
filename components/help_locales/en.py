@@ -353,6 +353,7 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:view_linked_manual}** — jump to any Manual Session linked to this entry
 - **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 - **{t:megastack_title_short}** (Dwarf mode) — see below
+- **{t:frames_title}** — see below
 - Next to the quality score: ⌫ **{t:score_clear}** (it then reads "no score"; **{t:score_session_btn}**
   scores it again), and for a solved session **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 
@@ -375,6 +376,18 @@ talks to the Dwarf and follows it.
 Follow it on the Dwarf's page in Dwarfium Lite (images stacked so far, the stack growing in the Tele view);
 the Dwarf does nothing else meanwhile (about 1 h for 600 images). The result then appears in the Dwarf's
 sessions (`RESTACKED_…`), its total exposure read from its FITS.
+
+## Session frames
+
+The Dwarf writes a JPG of each frame in the session's `Thumbnail` folder, named like its FITS; the frames
+it rejected while stacking carry a `failed_` prefix, both. **{t:frames_title}** shows them: a click enlarges
+one (arrows: previous / next, space: tick it). Tick the bad ones (clouds, trails, rotation) and
+**Delete the ticked frames**: their FITS and their JPG are deleted, so a megastack or a restack takes only
+the good ones. **Delete the rejected frames** deletes all the `failed_` ones at once. Deleted for good, after
+a confirmation (a USB drive often has no recycle bin); the session's sizes are measured again.
+
+On the Dwarf, it needs the Dwarf plugged in USB (its local copy isn't the Dwarf, its FTP is read-only).
+On a backup drive too. A mosaic's frames are shown by panel.
 
 ## Tips
 

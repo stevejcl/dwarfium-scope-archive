@@ -3,6 +3,12 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore: a session's frames (user-requested) - the Dwarf's JPG of each frame (its Thumbnail folder, named like
+    the FITS) in a gallery, enlarged with previous / next (arrows, space ticks); the bad ones ticked are deleted,
+    their FITS and JPG, so a megastack or restack takes only the good ones. "Delete the rejected frames" deletes the
+    failed_ ones (rejected by the Dwarf) at once. For good, after a confirmation; the session's sizes measured
+    again. On the Dwarf plugged in USB (its local copy reads "plug the Dwarf in USB"), and on a backup drive; a
+    mosaic's frames by panel.
     Sky Map (user-requested: "10 sessions of the Lion Nebula, only the best one on the map"): "Best session per
     object" in its toolbar - only the best-scored session of each object, the newest on a tie; "Hide from the Sky
     Map" in a session's popup - it stays solved, so the next scan doesn't solve it again; "Show hidden" shows them
