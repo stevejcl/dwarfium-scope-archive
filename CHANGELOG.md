@@ -3,6 +3,8 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore: a View button on the line saying the session is also on the Dwarf (Backup mode) or on a backup drive
+    (Dwarf mode) - opens that copy of the session in Explore, in the other mode (user-requested).
     Explore: a session's frames (user-requested) - the Dwarf's JPG of each frame (its Thumbnail folder, named like
     the FITS) in a gallery, enlarged with previous / next (arrows, or the mouse wheel - spun faster, it goes faster;
     its place shown, e.g. 12 / 240; space marks); the bad ones marked go, their FITS and JPG, so a megastack or

@@ -2418,7 +2418,7 @@ def get_session_present_in_Dwarf(conn: sqlite3.Connection, session_dir=None):
         if session_dir:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT Dwarf.id, Dwarf.name, Dwarf.usb_astronomy_dir, DwarfData.file_path
+                SELECT Dwarf.id, Dwarf.name, Dwarf.usb_astronomy_dir, DwarfData.file_path, DwarfEntry.id
                 FROM DwarfEntry
                 JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id
                 JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
@@ -2439,7 +2439,8 @@ def get_session_present_in_backupDrive(conn: sqlite3.Connection, session_dir=Non
         if session_dir:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT BackupDrive.id, BackupDrive.name, BackupDrive.location, BackupDrive.astronomy_dir, DwarfData.file_path
+                SELECT BackupDrive.id, BackupDrive.name, BackupDrive.location, BackupDrive.astronomy_dir, DwarfData.file_path,
+                       BackupEntry.id, BackupEntry.dwarf_id
                 FROM BackupEntry
                 JOIN BackupDrive ON BackupEntry.backup_drive_id = BackupDrive.id
                 JOIN DwarfData ON BackupEntry.dwarf_data_id = DwarfData.id

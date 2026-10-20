@@ -2357,6 +2357,32 @@ class ExploreApp(DbPageMixin):
                 ui.item_label(t("no_fits_on_disk")).classes("text-red-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
             self.get_details_presence_label(self.preview_image_path, file_path)
 
+    def _presence_header(self, text: str, url: str | None, extra: str = ""):
+        """The "available on" line, with View: the session opened in Explore
+        on that copy - the Dwarf's from a backup, the backup from the Dwarf
+        (user-requested Oct 2026)."""
+        with ui.row().classes(f"items-center gap-2 no-wrap pl-4 pr-4 {extra}") as row:
+            ui.item_label(text).classes("text-green-600 text-bold").props('header').classes('p-0')
+            if url:
+                ui.button(t("explore_view_copy"), icon="open_in_new", on_click=lambda: ui.navigate.to(url)) \
+                    .props("flat dense no-caps color=positive").tooltip(t("explore_view_copy_tip"))
+        return row
+
+    @staticmethod
+    def _dwarf_copy_url(result_on_dwarf) -> str | None:
+        """get_session_present_in_Dwarf's row -> its Explore page, Dwarf mode."""
+        if not result_on_dwarf or len(result_on_dwarf) < 5 or not result_on_dwarf[4]:
+            return None
+        return f"/Explore/?DwarfId={result_on_dwarf[0]}&mode=dwarf&SessionId={result_on_dwarf[4]}&only_already_backed=1"
+
+    @staticmethod
+    def _backup_copy_url(result_on_backup) -> str | None:
+        """get_session_present_in_backupDrive's row -> its Explore page, Backup mode."""
+        if not result_on_backup or len(result_on_backup) < 7 or not result_on_backup[5]:
+            return None
+        url = f"/Explore/?BackupDriveId={result_on_backup[0]}&SessionId={result_on_backup[5]}&mode=backup"
+        return url + (f"&DwarfId={result_on_backup[6]}" if result_on_backup[6] else "")
+
     def get_details_presence_label(self, preview_image_path: str, file_path):
         self.path_result_on_dwarf = None
         self.path_result_on_backupDrive = None
@@ -2372,7 +2398,7 @@ class ExploreApp(DbPageMixin):
                     print(f"dwarf_full_path: {dwarf_full_path}")
                     if is_path_local_dwarf_dir(dwarf_full_path):
                         return {
-                            ui.item_label(f"DWARF device not connected. Actually available on offline session archive for {result_on_Dwarf[1]}").classes("text-green-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold'),
+                            self._presence_header(f"DWARF device not connected. Actually available on offline session archive for {result_on_Dwarf[1]}", self._dwarf_copy_url(result_on_Dwarf), "pb-4"),
                             ui.label(f"{os.path.dirname(dwarf_full_path)}") \
                             .on('click', lambda: self.open_folder(os.path.dirname(dwarf_full_path))) \
                             .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
@@ -2380,14 +2406,14 @@ class ExploreApp(DbPageMixin):
                     elif os.path.isdir(os.path.dirname(dwarf_full_path)):
                         self.path_result_on_dwarf = os.path.dirname(dwarf_full_path)
                         return {
-                            ui.item_label(f"Actually available on {result_on_Dwarf[1]}").classes("text-green-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold'),
+                            self._presence_header(f"Actually available on {result_on_Dwarf[1]}", self._dwarf_copy_url(result_on_Dwarf), "pb-4"),
                             ui.label(f"{os.path.dirname(dwarf_full_path)}") \
                             .on('click', lambda: self.open_folder(os.path.dirname(dwarf_full_path))) \
                             .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")
                         }
                     else:
                         return {
-                            ui.item_label(f"Actually available on {result_on_Dwarf[1]}").classes("text-green-600").classes("pl-4 pr-4 pb-4").props('header').classes('text-bold')
+                            self._presence_header(f"Actually available on {result_on_Dwarf[1]}", self._dwarf_copy_url(result_on_Dwarf), "pb-4")
                         }
             else:
                 result_on_backupDrive = get_session_present_in_backupDrive(self.conn, session_dir)
@@ -2404,7 +2430,7 @@ class ExploreApp(DbPageMixin):
                     if os.path.isdir(os.path.dirname(backup_full_path)):
                         self.path_result_on_backupDrive = os.path.dirname(backup_full_path)
                     return {
-                        ui.item_label(t("backup_available_on")).classes("text-green-600").classes("pl-4 pr-4").props('header').classes('text-bold'),
+                        self._presence_header(t("backup_available_on"), self._backup_copy_url(result_on_backupDrive)),
                         ui.label(f"{os.path.dirname(backup_full_path)}") \
                         .on('click', lambda: self.open_folder(os.path.dirname(backup_full_path))) \
                         .classes("text-green-600 pl-4 pr-4 pb-4 cursor-pointer hover:underline")

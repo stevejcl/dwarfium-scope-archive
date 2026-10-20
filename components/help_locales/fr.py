@@ -355,6 +355,8 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:favorite_add}** / **{t:favorite_remove}** — afficher ou masquer la session sur la page d'accueil
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
 - **{t:frames_title}** — voir ci-dessous
+- Sous les détails, la ligne qui dit que la session est aussi sur le Dwarf (mode Sauvegarde) ou sur un disque de
+  sauvegarde (mode Dwarf) : **{t:explore_view_copy}** l'ouvre là-bas dans Explorer
 - À côté du score de qualité : ⌫ **{t:score_clear}** (elle passe alors « sans score » ;
   **{t:score_session_btn}** la note à nouveau), et pour une session résolue **{t:sky_map_hide}** / **{t:sky_map_unhide}**
 
