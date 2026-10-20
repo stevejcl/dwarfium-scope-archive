@@ -789,6 +789,8 @@ TRANSLATIONS: dict[str, str] = {
     "frames_confirm_dwarf_not_backed":"{count} image(s) : supprimées définitivement du Dwarf.\nCette session n'est pas sauvegardée : elles ne pourront pas être récupérées.",
     "frames_confirm_dwarf_backup_offline":"{count} image(s) : supprimées définitivement du Dwarf.\nLa session est sauvegardée mais son disque n'est pas branché : elles restent dans la copie de sauvegarde (pas dans sa corbeille).",
     "frames_confirm_dwarf_backed":   "{count} image(s) : supprimées définitivement du Dwarf, et mises dans la corbeille de la copie de sauvegarde :\n{path}\nRestaurez-les ou supprimez-les définitivement depuis Explorer, mode Sauvegarde.",
+    "frames_also_dwarf":             "Les supprimer aussi du Dwarf, définitivement (branché en USB : {path}) - sinon une prochaine sauvegarde de la session les ramène",
+    "frames_dwarf_deleted":          "{count} image(s) supprimée(s) du Dwarf.",
     "frames_backup_trashed":         "{count} image(s) mises dans la corbeille de la copie de sauvegarde.",
     "frames_deleted":                "{count} image(s) supprimée(s).",
     "frames_trashed":                "{count} image(s) mises à la corbeille.",

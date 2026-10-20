@@ -232,17 +232,23 @@ def empty_trash(session_path: str) -> int:
 
 # ── Dialogs ───────────────────────────────────────────────────────────────────
 
-async def ask(title: str, message: str, buttons: list[tuple[str, str, str, object]]) -> object:
-    """A question: buttons (label, icon, color, value); None when closed."""
+async def ask(title: str, message: str, buttons: list[tuple[str, str, str, object]],
+              option: str | None = None) -> object:
+    """A question: buttons (label, icon, color, value); None when closed.
+    option: a checkbox's label, unticked - then (value, ticked)."""
     with ui.dialog() as dialog, ui.card().classes("p-4 gap-3").style("max-width: 640px"):
         ui.label(title).classes("text-base font-medium")
         ui.label(message).classes("text-sm").style("white-space: pre-line")
+        box = ui.checkbox(option).classes("text-sm") if option else None
         with ui.row().classes("w-full justify-end gap-2"):
             ui.button(t("cancel"), on_click=lambda: dialog.submit(None)).props("flat color=grey")
             for label, icon, color, value in buttons:
                 ui.button(label, icon=icon or None, on_click=lambda v=value: dialog.submit(v)).props(f"color={color}")
     result = await dialog
+    ticked = bool(box and box.value)
     dialog.delete()
+    if option:
+        return (result, ticked) if result is not None else None
     return result
 
 
@@ -439,11 +445,15 @@ class _Gallery:
 
 
 async def open_review(session_path: str, on_changed: Callable[[], Awaitable[None]] | None = None, *,
-                      on_dwarf: bool = False, backed_up: bool = False, backup_path: str | None = None) -> None:
+                      on_dwarf: bool = False, backed_up: bool = False, backup_path: str | None = None,
+                      dwarf_path: str | None = None) -> None:
     """The review of the session in session_path: its frames ticked deleted
     - a backup copy's into its trash; on_dwarf: the Dwarf's, deleted for good,
     and moved into the trash of its backup copy in backup_path (backed_up:
     there is one, backup_path None when its drive isn't connected).
+    dwarf_path: a backup copy's session also on the Dwarf plugged in USB -
+    its confirmation offers to delete them from the Dwarf too (for good,
+    unticked: else a later backup of the session brings them back).
     on_changed: called once frames were deleted (Explore refreshes the
     session)."""
     frames = await run.io_bound(list_frames, session_path)
@@ -491,7 +501,14 @@ async def open_review(session_path: str, on_changed: Callable[[], Awaitable[None
         if not indexes:
             return
         label = t("frames_delete") if on_dwarf else t("frames_to_trash")
-        if not await ask(title, confirm_text(len(indexes)), [(label, "delete", "negative", True)]):
+        also_dwarf = False
+        if not on_dwarf and dwarf_path:
+            answer = await ask(title, confirm_text(len(indexes)), [(label, "delete", "negative", True)],
+                               option=t("frames_also_dwarf", path=dwarf_path))
+            if not answer:
+                return
+            also_dwarf = answer[1]
+        elif not await ask(title, confirm_text(len(indexes)), [(label, "delete", "negative", True)]):
             return
         chosen = [frames[i] for i in indexes]
         if on_dwarf:
@@ -508,6 +525,10 @@ async def open_review(session_path: str, on_changed: Callable[[], Awaitable[None
         else:
             done, errors = await run.io_bound(move_to_trash, chosen)
             _notify_result("frames_trashed", done, errors)
+            if also_dwarf:
+                copies = await run.io_bound(frames_at, dwarf_path, chosen)
+                deleted, errors = await run.io_bound(delete_frames, copies)
+                _notify_result("frames_dwarf_deleted", deleted, errors)
         changed["any"] = changed["any"] or done > 0
         gallery.remove(indexes)
 

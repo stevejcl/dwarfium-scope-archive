@@ -392,7 +392,8 @@ Où elles vont :
   supprimées définitivement. Une session sauvegardée les a en même temps mises dans la corbeille de sa copie
   de sauvegarde (son disque branché) ; une session non sauvegardée les perd - c'est dit avant.
 - **Sur un disque de sauvegarde** : dans la corbeille de la session (un dossier `.trash`, dans chaque panneau
-  pour une mosaïque).
+  pour une mosaïque). Le Dwarf branché en USB avec la session encore dessus, une case (décochée) les supprime
+  aussi du Dwarf, définitivement - sinon une prochaine sauvegarde de la session les ramène.
 
 **La corbeille** : sous les FITS de la session dans Explorer, « N images dans la corbeille » avec
 **{t:trash_view}** et **{t:trash_empty_btn}**. Voir les montre : marquez chacune **{t:trash_restore}** (elle

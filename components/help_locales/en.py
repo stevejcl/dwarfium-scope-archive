@@ -389,7 +389,9 @@ Where they go:
 - **On the Dwarf** (plugged in USB - its local copy isn't the Dwarf, its FTP is read-only): deleted for
   good from it. A session backed up has them moved into its backup copy's trash at the same time (its drive
   connected); one not backed up loses them - said before.
-- **On a backup drive**: into the session's trash (a `.trash` folder, in each panel for a mosaic).
+- **On a backup drive**: into the session's trash (a `.trash` folder, in each panel for a mosaic). The Dwarf
+  plugged in USB with the session still on it, a box (unticked) deletes them from the Dwarf too, for good -
+  else a later backup of the session brings them back.
 
 **The trash**: under the session's FITS in Explore, "N frames in the trash" with **{t:trash_view}** and
 **{t:trash_empty_btn}**. View shows them: mark each one **{t:trash_restore}** (back into the session) or

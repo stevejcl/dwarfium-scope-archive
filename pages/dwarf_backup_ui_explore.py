@@ -3644,6 +3644,8 @@ class ExploreApp(DbPageMixin):
             path, self._after_frames_changed, on_dwarf=on_dwarf,
             backed_up=on_dwarf and bool(getattr(self, "session_backed_up", False)),
             backup_path=self.path_result_on_backupDrive if on_dwarf else None,
+            # a backup copy whose session is on the Dwarf plugged in USB: deleted there too, if asked
+            dwarf_path=None if on_dwarf else getattr(self, "path_result_on_dwarf", None),
         )
 
     async def _open_frame_trash(self):

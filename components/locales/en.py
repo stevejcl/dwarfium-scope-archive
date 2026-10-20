@@ -787,6 +787,8 @@ TRANSLATIONS: dict[str, str] = {
     "frames_confirm_dwarf_not_backed":"{count} frame(s): deleted for good from the Dwarf.\nThis session isn't backed up: they can't be got back.",
     "frames_confirm_dwarf_backup_offline":"{count} frame(s): deleted for good from the Dwarf.\nThe session is backed up but its drive isn't connected: they stay in the backup copy (not in its trash).",
     "frames_confirm_dwarf_backed":   "{count} frame(s): deleted for good from the Dwarf, and moved to the trash of the backup copy:\n{path}\nRestore them or delete them for good from Explore, Backup mode.",
+    "frames_also_dwarf":             "Also delete them from the Dwarf, for good (plugged in USB: {path}) - else a later backup of the session brings them back",
+    "frames_dwarf_deleted":          "{count} frame(s) deleted from the Dwarf.",
     "frames_backup_trashed":         "{count} frame(s) moved to the backup copy's trash.",
     "frames_deleted":                "{count} frame(s) deleted.",
     "frames_trashed":                "{count} frame(s) moved to the trash.",
