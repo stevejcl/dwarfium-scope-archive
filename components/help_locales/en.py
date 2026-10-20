@@ -318,6 +318,9 @@ and click the "Show Dwarf Data" button.
 When multiple sessions exist for an object, a **{t:show_gallery}** button appears.
 The gallery opens immediately with the first image and loads the rest in the background.
 Use Previous / Next to browse, or Select to jump directly to that session.
+The mouse wheel goes through them too - a notch a session, spun faster several (their small thumbnail
+meanwhile, the full image once it stops); the automatic slideshow pauses while it turns. The position
+(12 / 240) is shown under the image.
 
 ## Session detail
 

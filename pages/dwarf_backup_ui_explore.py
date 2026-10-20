@@ -12,6 +12,7 @@ import shutil
 import re
 import sys
 import asyncio
+import time
 import urllib.parse
 from glob import glob
 from nicegui import app, run, ui, background_tasks
@@ -61,6 +62,11 @@ ALL_SESSIONS = "[ALL SESSIONS]"
 # sessions lists (the dropdown and the one under it)
 DENSE_LIST_MIN = 10
 DENSE_LIST_SESSION_MIN = 14
+# The sessions' gallery and the mouse wheel: a session per notch (100 px in
+# Chrome / Edge), its image once it stopped that long, thumbnails loaded ahead
+GALLERY_WHEEL_STEP_PX = 100
+GALLERY_WHEEL_SETTLE_S = 0.4
+GALLERY_PRELOAD = 3
 
 def _session_eq_mode(session_dir):
     """The "eq" field of the session's shotsInfo.json (True: captured in EQ
@@ -2807,16 +2813,101 @@ class ExploreApp(DbPageMixin):
                     self.gallery_img     = ui.image("").classes(
                         "w-full h-auto max-w-screen-xl rounded-lg shadow-md "
                         "transition-opacity duration-1000 opacity-100"
-                    )
+                    ).props("no-spinner no-transition")
                     self.gallery_info    = ui.label("").classes("text-center mt-2 text-sm")
                     self.gallery_detail  = ui.label("").classes("text-center text-xs text-gray-400")
                     with ui.row().classes("gap-4 mt-2 mb-4"):
                         self._gallery_btn_prev   = ui.button(t("previous_arrow"), on_click=self._gallery_on_prev)
                         self._gallery_btn_select = ui.button(t("select"),         on_click=self._gallery_select)
                         self._gallery_btn_next   = ui.button(t("next_arrow"),     on_click=self._gallery_on_next)
+                    # the sessions next to the one shown, their thumbnails loaded ahead (the wheel)
+                    with ui.element("div").classes("hidden"):
+                        self._gallery_preload = [ui.element("img") for _ in range(GALLERY_PRELOAD * 2)]
+        # The mouse wheel goes through the sessions (user-requested Oct 2026, All
+        # sessions: hundreds): a notch one, spun faster several, their small
+        # stacked_thumbnail.jpg meanwhile; stopped, the session's image and the
+        # automatic slideshow again. Paused while it turns.
+        self._gallery_wheel_acc = 0.0
+        self._gallery_wheel_last = 0.0
+        self.gallery_dialog.on("wheel.prevent", self._gallery_on_wheel, ["deltaY", "deltaMode"])
+        # closed: no slideshow going on behind it
+        self.gallery_dialog.on_value_change(lambda e: None if e.value else self._gallery_stop_auto())
 
         self.slideshow_timer     = ui.timer(10,  self._gallery_next_auto, active=False, immediate=False, once=False)
         self.slideshow_timer_anim = ui.timer(0.2, self._gallery_do_update, active=False, immediate=False, once=False)
+        self._gallery_wheel_idle = ui.timer(0.2, self._gallery_wheel_settled, active=False, immediate=False, once=False)
+
+    def _gallery_stop_auto(self):
+        self.slideshow_timer_anim.active = False
+        if self.slideshow_timer:
+            self.slideshow_timer.active = False
+        if getattr(self, "_gallery_wheel_idle", None):
+            self._gallery_wheel_idle.active = False
+
+    def _gallery_info_text(self, entry):
+        position = f"{self.current_file_index + 1} / {len(self.slideshow_image_data)}  " \
+            if len(self.slideshow_image_data) > 1 else ""
+        self.gallery_info.text = (
+            f"{position}"
+            f"🛰️ {entry['object_name']} "
+            f"🔭 {entry['type_session']} on {entry['dwarf_name']} "
+            f"{entry['details_session']} "
+            f"📅 {entry['session_date']}"
+        )
+        self.gallery_detail.text = entry['file_path']
+
+    @staticmethod
+    def _gallery_thumb_url(entry):
+        """The session's small stacked_thumbnail.jpg (the wheel), else None."""
+        if "thumb_url" not in entry:
+            thumb = os.path.join(os.path.dirname(entry["file_path"]), "stacked_thumbnail.jpg")
+            entry["thumb_url"] = frame_review.serve_file(thumb) if os.path.isfile(thumb) else None
+        return entry["thumb_url"]
+
+    def _gallery_on_wheel(self, e):
+        data = self.slideshow_image_data
+        if not data or not self.gallery_dialog.value:
+            return
+        dy = float(e.args.get("deltaY") or 0)
+        if e.args.get("deltaMode") == 1:        # lines (Firefox): ~33 px each
+            dy *= 33
+        self._gallery_wheel_acc += dy
+        steps = int(self._gallery_wheel_acc / GALLERY_WHEEL_STEP_PX)
+        if not steps:
+            return
+        self._gallery_wheel_acc -= steps * GALLERY_WHEEL_STEP_PX
+        # the automatic slideshow paused while it turns (_gallery_wheel_settled)
+        self._gallery_stop_auto()
+        self._gallery_wheel_last = time.monotonic()
+        self._gallery_wheel_idle.active = True
+        index = min(max(self.current_file_index + steps, 0), len(data) - 1)
+        if index == self.current_file_index:
+            return
+        self.current_file_index = index
+        entry = data[index]
+        thumb = self._gallery_thumb_url(entry)
+        if thumb:
+            self.gallery_img.source = thumb
+        else:
+            set_base_folder(entry['base_folder'])
+            self.gallery_img.source = entry['url']
+        self.gallery_img.classes(remove='opacity-5', add='opacity-95')
+        self._gallery_info_text(entry)
+        ahead = data[index + 1:index + 1 + GALLERY_PRELOAD] + data[max(0, index - GALLERY_PRELOAD):index]
+        for img, near in zip(self._gallery_preload, ahead):
+            url = self._gallery_thumb_url(near)
+            if url:
+                img.props(f'src="{url}"')
+
+    def _gallery_wheel_settled(self):
+        """The wheel stopped: the session's own image, the slideshow again."""
+        if time.monotonic() - self._gallery_wheel_last < GALLERY_WHEEL_SETTLE_S:
+            return
+        self._gallery_wheel_idle.active = False
+        if not self.gallery_dialog.value:
+            return
+        self._gallery_do_update()
+        self._gallery_reset_auto()
 
     def _gallery_do_update(self):
         self.slideshow_timer_anim.active = False
@@ -2825,17 +2916,11 @@ class ExploreApp(DbPageMixin):
         entry = self.slideshow_image_data[self.current_file_index]
         set_base_folder(entry['base_folder'])
         self.gallery_img.source = entry['url']
-        self.gallery_img.classes('opacity-95').update()
-        self.gallery_info.text = (
-            f"🛰️ {entry['object_name']} "
-            f"🔭 {entry['type_session']} on {entry['dwarf_name']} "
-            f"{entry['details_session']} "
-            f"📅 {entry['session_date']}"
-        )
-        self.gallery_detail.text = entry['file_path']
+        self.gallery_img.classes(remove='opacity-5', add='opacity-95')
+        self._gallery_info_text(entry)
 
     def _gallery_show_with_fade(self):
-        self.gallery_img.classes('opacity-5').update()
+        self.gallery_img.classes(remove='opacity-95', add='opacity-5')
         self.slideshow_timer_anim.active = True
 
     def _gallery_next_auto(self):

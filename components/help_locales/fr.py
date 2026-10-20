@@ -319,6 +319,9 @@ et cliquez sur le bouton **{t:show_dwarf_data}**.
 Quand plusieurs sessions existent pour un objet, un bouton **{t:show_gallery}** apparaît.
 La galerie s'ouvre immédiatement avec la première image et charge les autres en arrière-plan.
 Utilisez Précédent / Suivant pour parcourir, ou Sélectionner pour accéder directement à une session.
+La molette de la souris les fait aussi défiler - un cran une session, tournée vite plusieurs (leur petite
+vignette pendant le défilement, l'image complète à l'arrêt) ; le diaporama automatique se met en pause
+pendant ce temps. La position (12 / 240) est affichée sous l'image.
 
 ## Détail d'une session
 

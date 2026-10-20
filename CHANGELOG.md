@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, the sessions' gallery: the mouse wheel goes through the sessions (user-requested: All sessions, hundreds)
+    - a notch one, spun faster several, their small stacked_thumbnail.jpg meanwhile (the next ones loaded ahead)
+    and the full image once it stops; the automatic slideshow pauses while it turns, and stops when the gallery is
+    closed (it went on behind it). The position (12 / 240) shown.
     Explore: a View button on the line saying the session is also on the Dwarf (Backup mode) or on a backup drive
     (Dwarf mode) - opens that copy of the session in Explore, in the other mode (user-requested).
     Explore: a session's frames (user-requested) - the Dwarf's JPG of each frame (its Thumbnail folder, named like

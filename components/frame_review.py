@@ -51,7 +51,15 @@ def _serve(token: str):
     path = _served.get(token)
     if not path or not os.path.isfile(path):
         raise HTTPException(status_code=404)
-    return FileResponse(path, media_type="image/jpeg")
+    return FileResponse(path)
+
+
+def serve_file(path: str) -> str:
+    """The URL serving this image file - only it (Explore's gallery too: its
+    sessions' thumbnails, each in its own folder)."""
+    token = secrets.token_urlsafe(12)
+    _served[token] = path
+    return f"/frame_review/{token}"
 
 
 # ── Files (blocking) ──────────────────────────────────────────────────────────
