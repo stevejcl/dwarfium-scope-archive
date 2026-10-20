@@ -484,7 +484,12 @@ class TransferApp:
                                 ftp_dirs.append("/".join([base_dir, s]))
                         self.ftp_dwarf_dir = ftp_dirs[0]
                         self.input_src_dir.set_options(ftp_dirs, value=ftp_dirs[0])
-                        self.src_main_dir = self.ftp_dwarf_dir
+                        # The Dwarf's astronomy folder, not the first session: a
+                        # session equal to it makes start_backup() take the
+                        # transfer for a single one - only the first session was
+                        # copied over FTP (user-reported Oct 2026; USB uses the
+                        # astronomy folder too)
+                        self.src_main_dir = base_dir
                     else:
                         if self.session.startswith("RESTACKED"):
                             self.ftp_dwarf_dir = "/".join([base_dir, "RESTACKED", self.session])
