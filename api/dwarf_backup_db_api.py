@@ -2820,8 +2820,8 @@ def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp
     CALI_FRAME masters (one file each, dated by the DWARF_DARK raw frames
     they were built from when found - pair_masters), and the DWARF_DARK raw
     sets left without a master (api/dark_library_legacy.py).
-    One is chosen (pick_dark_set): temperature in range, else the closest;
-    then the date closest to session_date (the master's raws' date, else its
+    One is chosen (pick_dark_set): the session's era (within 3 months), then
+    the closest temperature, then the date closest to session_date (the master's raws' date, else its
     file date; the DWARF_DARK folder's date); the CALI_FRAME master on a tie.
     Returns: {"status": "matched"|"partial"|"none", "files": [...],
               "count": int, "library": str|None, "temp_match": bool,

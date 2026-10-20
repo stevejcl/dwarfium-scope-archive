@@ -153,7 +153,8 @@ def pair_masters(masters: list[dict], raw_sets: list[dict]) -> list[dict]:
 
 
 TEMP_MARGIN_C = 2       # around the session's range: still a match (user-requested Oct 2026)
-TEMP_SLACK_C = 2        # temperatures this close to the best one count as equal
+TEMP_SLACK_C = 1        # temperatures this close to the best one count as equal
+ERA_DAYS = 90           # darks this close to the session's date: the same sensor / firmware era
 
 
 def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
@@ -163,32 +164,37 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
     None -, legacy - DWARF_DARK raw frames without their master, or a
     CALI_FRAME master):
 
-    1. the temperature in the session's range widened by TEMP_MARGIN_C,
-       else the closest known one (within TEMP_SLACK_C), else the sets of
-       unknown temperature;
-    2. among those, the date closest to the session's, before or after (the
-       most recent when the session's date is unknown; undated sets last);
-    3. on a tie, the CALI_FRAME master.
+    1. the darks of the session's era: dated within ERA_DAYS of it, before
+       or after - a sensor gains hot pixels over time and a firmware update
+       can change the raw frames, which no dark of another era corrects,
+       while Siril's dark optimisation makes up for a temperature gap
+       (user-asked Oct 2026: darks at several temperatures, the date used to
+       win over the temperature); all of them when none is;
+    2. among those, the temperature closest to the middle of the session's
+       range (within TEMP_SLACK_C), else the sets of unknown temperature;
+    3. then the date closest to the session's, before or after (the most
+       recent when the session's date is unknown; undated sets last);
+    4. on a tie, the CALI_FRAME master.
 
-    (set, temperature matched)."""
+    (set, temperature matched: within the session's range widened by
+    TEMP_MARGIN_C)."""
     if not sets:
         return None, False
-    known = [s for s in sets if s["temp_c"] is not None]
-    temp_ok = False
+    session_dt = parse_when(session_date)
+
     pool = sets
+    if session_dt is not None:
+        era = [s for s in sets if s.get("when") is not None
+               and abs((s["when"] - session_dt).total_seconds()) <= ERA_DAYS * 86400]
+        pool = era or sets
+
+    known = [s for s in pool if s["temp_c"] is not None]
     if min_temp is not None and max_temp is not None and known:
-        in_range = [s for s in known
-                    if min_temp - TEMP_MARGIN_C <= s["temp_c"] <= max_temp + TEMP_MARGIN_C]
-        if in_range:
-            pool, temp_ok = in_range, True
-        else:
-            middle = (min_temp + max_temp) / 2.0
-            best = min(abs(s["temp_c"] - middle) for s in known)
-            pool = [s for s in known if abs(s["temp_c"] - middle) <= best + TEMP_SLACK_C]
+        middle = (min_temp + max_temp) / 2.0
+        best = min(abs(s["temp_c"] - middle) for s in known)
+        pool = [s for s in known if abs(s["temp_c"] - middle) <= best + TEMP_SLACK_C]
     elif known:
         pool = known
-
-    session_dt = parse_when(session_date)
 
     def distance(s):
         when = s.get("when")
@@ -198,4 +204,7 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
             return -when.timestamp()            # the most recent
         return abs((when - session_dt).total_seconds())
 
-    return min(pool, key=lambda s: (distance(s), s.get("legacy", False))), temp_ok
+    chosen = min(pool, key=lambda s: (distance(s), s.get("legacy", False)))
+    temp_ok = (min_temp is not None and max_temp is not None and chosen["temp_c"] is not None
+               and min_temp - TEMP_MARGIN_C <= chosen["temp_c"] <= max_temp + TEMP_MARGIN_C)
+    return chosen, temp_ok

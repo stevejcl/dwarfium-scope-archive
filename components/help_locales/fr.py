@@ -555,10 +555,13 @@ plus ancienne à une température refaite depuis, un master supprimé, des dossi
 sans date) sont listés en dessous.
 
 Pour une session, les darks sont choisis parmi les masters de `CALI_FRAME` et ces
-bruts sans distinction : mêmes gain, binning, exposition et caméra ; puis la
-température dans la plage de la session, à ±2 °C (sinon la plus proche) ; puis la
-date la plus proche de celle de la session, avant ou après (date de la session de
-darks du master, date du dossier) ; le master en cas d'égalité. Avec les bruts de
+bruts sans distinction : mêmes gain, binning, exposition et caméra ; puis les darks
+de l'époque de la session - datés à moins de 3 mois d'elle, avant ou après (un
+capteur gagne des pixels chauds avec le temps et une mise à jour du firmware peut
+changer les bruts ; tous quand aucun ne l'est) ; puis la température la plus proche
+de celle de la session (à 1 °C près) ; puis la date la plus proche (date de la
+session de darks du master, date du dossier) ; le master en cas d'égalité.
+L'optimisation des darks de Siril compense un écart de température restant. Avec les bruts de
 `DWARF_DARK`, Siril construit le master ; le badge 🎯 l'indique.
 
 ## Télécharger les darks

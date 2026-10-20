@@ -66,6 +66,11 @@
     deleted, undated folders) are listed apart and offered as well, Siril building their master - the same darks
     were offered twice. "Download the darks" copies DWARF_DARK alone when the Dwarf has no CALI_FRAME (it was given
     as the source anyway). Texts and help no longer say "older firmware".
+    A session's darks: the temperature now comes before the date (darks at 6, 9 and 12 °C, a session at 8-10 °C took
+    the 12 °C ones - all three within its range ±2 °C, then the closest date won), but only among the darks of the
+    session's era: dated within 3 months of it (a sensor gains hot pixels over time, a firmware update can change the
+    raw frames - no other era's dark corrects that, while Siril's dark optimisation makes up for a temperature gap);
+    all of them when none is. Then the closest date, the master on a tie.
     Transfer, several sessions backed up over FTP (Explore's Backup Selected): only the first one was copied - its
     folder was taken for the source's main folder, so the transfer was seen as a single one. Over USB it worked. "Select
     the source" then listed one path made of all the sessions: it lists each of them now.

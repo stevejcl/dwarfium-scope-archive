@@ -495,10 +495,13 @@ master (all of them on a firmware making none, an older session at a temperature
 redone since, a master deleted, undated folders) are listed below them.
 
 For a session, the darks are chosen among the `CALI_FRAME` masters and those raw
-sets alike: same gain, binning, exposure and camera; then the temperature in the
-session's range, ±2 °C (else the closest); then the date closest to the session's,
-before or after (the date of the master's dark session, the folder's date); the
-master on a tie. With `DWARF_DARK` raw frames, Siril builds the master from them;
+sets alike: same gain, binning, exposure and camera; then the darks of the
+session's era - dated within 3 months of it, before or after (a sensor gains hot
+pixels over time and a firmware update can change the raw frames; all of them
+when none is); then the temperature closest to the session's (±1 °C); then the
+date closest to the session's (the date of the master's dark session, the
+folder's date); the master on a tie. Siril's dark optimisation makes up for a
+remaining temperature gap. With `DWARF_DARK` raw frames, Siril builds the master from them;
 the 🎯 badge says so.
 
 ## Download Darks
