@@ -777,7 +777,7 @@ TRANSLATIONS: dict[str, str] = {
     "megastack_refused":             "Megastack not started: {error}",  # TODO
     "frames_title":                  "Frames",  # TODO
     "frames_counts":                 "{count} frame(s), {rejected} rejected by the Dwarf",  # TODO
-    "frames_hint":                   "The Dwarf's JPG of each frame (Thumbnail folder). Click to enlarge (arrows: previous / next, space: tick); tick the bad ones: their FITS and JPG go, so a megastack or restack takes only the good ones. Red: rejected by the Dwarf (failed_).",  # TODO
+    "frames_hint":                   "The Dwarf's JPG of each frame (Thumbnail folder). Click to enlarge (arrows or the mouse wheel: previous / next - spun faster, faster; space: tick); tick the bad ones: their FITS and JPG go, so a megastack or restack takes only the good ones. Red: rejected by the Dwarf (failed_).",  # TODO
     "frames_rejected":               "rejected",  # TODO
     "frames_no_fits":                "no FITS",  # TODO
     "frames_mark":                   "Delete",  # TODO
@@ -800,7 +800,7 @@ TRANSLATIONS: dict[str, str] = {
     "frames_usb_needed":             "Frames: plug the Dwarf in USB",  # TODO
     "frames_usb_hint":               "This is the Dwarf's local copy, not the Dwarf: to review and delete its frames, plug the Dwarf in USB - its FTP is read-only. Then select the session again.",  # TODO
     "trash_title":                   "Trash of the session",  # TODO
-    "trash_hint":                    "The frames deleted from this backup copy. Mark each one Restore (back into the session) or Delete (for good); done when you leave or with Apply. Enlarged: arrows previous / next, R restore, D delete.",  # TODO
+    "trash_hint":                    "The frames deleted from this backup copy. Mark each one Restore (back into the session) or Delete (for good); done when you leave or with Apply. Enlarged: arrows or the mouse wheel previous / next, R restore, D delete.",  # TODO
     "trash_counts":                  "{count} frame(s)",  # TODO
     "trash_restore":                 "Restore",  # TODO
     "trash_delete":                  "Delete for good",  # TODO

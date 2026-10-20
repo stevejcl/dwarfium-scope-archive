@@ -381,7 +381,7 @@ sessions (`RESTACKED_…`), its total exposure read from its FITS.
 
 The Dwarf writes a JPG of each frame in the session's `Thumbnail` folder, named like its FITS; the frames
 it rejected while stacking carry a `failed_` prefix, both. **{t:frames_title}** shows them: a click enlarges
-one (arrows: previous / next, space: mark it). Mark the bad ones (clouds, trails, rotation) and
+one (arrows or the mouse wheel: previous / next - spun faster, it goes faster; space: mark it). Mark the bad ones (clouds, trails, rotation) and
 **Delete the ticked frames** - their FITS and JPG go, so a megastack or a restack takes only the good ones;
 **Delete the rejected frames** takes all the `failed_` ones at once. The session's sizes are measured again.
 

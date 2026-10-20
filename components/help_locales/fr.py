@@ -382,7 +382,8 @@ dans les sessions du Dwarf (`RESTACKED_…`), avec son exposition totale lue dan
 
 Le Dwarf écrit un JPG de chaque image dans le dossier `Thumbnail` de la session, au même nom que son FITS ;
 les images qu'il a rejetées à l'empilement ont le préfixe `failed_`, les deux. **{t:frames_title}** les
-montre : un clic en agrandit une (flèches : précédente / suivante, espace : la marquer). Marquez les mauvaises
+montre : un clic en agrandit une (flèches ou molette de la souris : précédente / suivante - tournée vite, ça
+défile vite ; espace : la marquer). Marquez les mauvaises
 (nuages, traînées, rotation) puis **Supprimer les images cochées** - leur FITS et leur JPG sont retirés, un
 megastack ou un restack ne prend alors que les bonnes ; **Supprimer les images rejetées** prend d'un coup
 toutes les `failed_`. Les tailles de la session sont remesurées.

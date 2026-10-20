@@ -42,6 +42,9 @@ FAILED_PREFIX = "failed_"
 
 _served: dict[str, str] = {}        # token -> a frame's JPG
 
+WHEEL_STEP_PX = 100                 # the wheel: a frame per notch (100 px in Chrome / Edge)
+PRELOAD = 3                         # frames loaded ahead on each side of the one enlarged
+
 
 @app.get("/frame_review/{token}", include_in_schema=False)
 def _serve(token: str):
@@ -295,10 +298,20 @@ class _Gallery:
                 self._grid()
             self.footer = ui.row().classes("w-full items-center gap-2")
 
-        with ui.dialog() as self.viewer, ui.card().classes("p-2 gap-2 items-center").style("max-width: 95vw"):
-            self.big = ui.image().classes("rounded").style("width: min(90vw, 1200px); max-height: 80vh") \
-                .props("fit=contain")
-            self.big_name = ui.label("").classes("text-xs text-center")
+        # The enlarged view. The mouse wheel goes through the frames (user-
+        # requested Oct 2026, a session of hundreds): a notch one frame, spun
+        # faster several. A plain <img> (a q-img fades in each one) and its
+        # neighbours loaded ahead, hidden, so going through them doesn't flicker.
+        self._wheel = 0.0
+        with ui.dialog() as self.viewer, ui.card().classes("p-2 gap-2 items-center").style("max-width: 95vw") \
+                .on("wheel.prevent", self._on_wheel, ["deltaY", "deltaMode"]):
+            self.big = ui.element("img").classes("rounded") \
+                .style("width: min(90vw, 1200px); max-height: 80vh; object-fit: contain")
+            with ui.row().classes("items-center gap-2"):
+                self.big_pos = ui.label("").classes("text-xs text-grey-7")
+                self.big_name = ui.label("").classes("text-xs text-center")
+            with ui.element("div").classes("hidden"):
+                self.preload = [ui.element("img") for _ in range(PRELOAD * 2)]
             with ui.row().classes("items-center gap-2"):
                 ui.button(icon="chevron_left", on_click=lambda: self.step(-1)).props("flat round")
                 self.big_buttons = {
@@ -415,22 +428,52 @@ class _Gallery:
             else:
                 button.props("outline")
 
+    def _shown(self) -> list[int]:
+        """The frames the enlarged view goes through: an image, not deleted."""
+        return [i for i, f in enumerate(self.frames) if f["url"] and not f.get("gone")]
+
     def show(self, i: int) -> None:
         self.current = i
         frame = self.frames[i]
-        self.big.set_source(frame["url"] or "")
+        self.big.props(f'src="{frame["url"] or ""}"')
         tags = [t("frames_rejected")] if frame["failed"] else []
         self.big_name.set_text(" · ".join([frame["panel"], frame["name"], *tags]).strip(" ·"))
+        shown = self._shown()
+        if i in shown:
+            k = shown.index(i)
+            self.big_pos.set_text(f"{k + 1} / {len(shown)}")
+            ahead = shown[k + 1:k + 1 + PRELOAD] + shown[max(0, k - PRELOAD):k]
+            for img, j in zip(self.preload, ahead):
+                img.props(f'src="{self.frames[j]["url"]}"')
         self._big_marks()
         self.viewer.open()
 
     def step(self, delta: int) -> None:
-        i = self.current
-        for _ in range(len(self.frames)):
-            i = (i + delta) % len(self.frames)
-            if self.frames[i]["url"] and not self.frames[i].get("gone"):
-                self.show(i)
-                return
+        """delta frames on (back when < 0), round from the last to the first."""
+        shown = self._shown()
+        if not shown:
+            return
+        k = shown.index(self.current) if self.current in shown else 0
+        self.show(shown[(k + delta) % len(shown)])
+
+    def _on_wheel(self, e) -> None:
+        """The wheel: a notch (100 px) a frame, faster turned more frames per
+        event; stops at the first and the last."""
+        dy = float(e.args.get("deltaY") or 0)
+        if e.args.get("deltaMode") == 1:        # lines (Firefox): ~33 px each
+            dy *= 33
+        self._wheel += dy
+        frames = int(self._wheel / WHEEL_STEP_PX)
+        if not frames:
+            return
+        self._wheel -= frames * WHEEL_STEP_PX
+        shown = self._shown()
+        if not shown:
+            return
+        k = shown.index(self.current) if self.current in shown else 0
+        target = min(max(k + frames, 0), len(shown) - 1)
+        if target != k:
+            self.show(shown[target])
 
     def open(self) -> None:
         for listener in self.listeners:
