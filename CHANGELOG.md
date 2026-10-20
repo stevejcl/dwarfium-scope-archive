@@ -4,9 +4,10 @@
 
 ### Add
     Explore: a session's frames (user-requested) - the Dwarf's JPG of each frame (its Thumbnail folder, named like
-    the FITS) in a gallery, enlarged with previous / next (arrows, space marks); the bad ones marked go, their FITS
-    and JPG, so a megastack or restack takes only the good ones. "Delete the rejected frames" takes the failed_ ones
-    (rejected by the Dwarf) at once. On the Dwarf plugged in USB (its local copy reads "plug the Dwarf in USB"):
+    the FITS) in a gallery, enlarged with previous / next (arrows, or the mouse wheel - spun faster, it goes faster;
+    its place shown, e.g. 12 / 240; space marks); the bad ones marked go, their FITS and JPG, so a megastack or
+    restack takes only the good ones. "Delete the rejected frames" takes the failed_ ones (rejected by the Dwarf)
+    at once. On the Dwarf plugged in USB (its local copy reads "plug the Dwarf in USB"):
     deleted for good there - said before for a session not backed up -, and moved into the trash of its backup copy
     (its drive connected). On a backup drive: into the session's trash (.trash, in each panel for a mosaic) - the
     Dwarf plugged in USB with the session on it, a box (unticked) deletes them from it too, for good. Under
