@@ -24,8 +24,10 @@ Output, in a FIXED_FOREGROUND folder next to the sessions: a linear FITS with
 its WCS, a preview, and two stretched 16-bit TIFFs with transparency - the
 sky alone and the foreground alone - for an image editor.
 
-Alt-az sessions (the sky turns in the frame, the ground stays) aren't handled
-yet. Memory: the subs kept as 16-bit (MAX_SUBS of them, evenly spread), the
+Any tracking: each sub's registration on the stars carries its turn too
+(alt-az field rotation, an EQ mount's polar alignment error - 0.3 deg over
+44 min seen), and the ground is placed through that same registration, so
+the geometry holds whichever way the frame moved. Memory: the subs kept as 16-bit (MAX_SUBS of them, evenly spread), the
 stacks computed by blocks of rows.
 
 Pure functions only - no NiceGUI/UI code here.
@@ -194,7 +196,6 @@ def _star_transform(lum, ref_xy, keep=80):
     return best if score >= max(8, len(xy) // 5) else None
 
 
-ALTAZ_TURN_DEG = 0.3      # stars turning more than this in the frame: alt-az tracking
 STARS_SPAN_S = 180        # the first subs within this span show stars and ground both sharp
 FG_ISLAND_MAX = 0.02      # foreground away from the frame's edge kept only above this part of it
 STARRY_MAX = 0.6          # a dark patch with stars over more of it than this is sky
@@ -279,7 +280,8 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     import astropy.units as u
     from scipy.interpolate import RectBivariateSpline
     from scipy.ndimage import binary_dilation, distance_transform_edt
-    from api.mosaic_wcs import solve_catalog, _stretched, write_rgba_tiff, write_preview
+    from api.mosaic_wcs import (solve_catalog, sidecar_wcs, sidecar_path, write_sidecar, _stretched,
+                                write_rgba_tiff, write_preview)
 
     result = {"ok": False, "fits": None, "preview": None, "sky_tif": None, "ground_tif": None,
               "subs": 0, "foreground_pct": None, "error": None}
@@ -309,18 +311,22 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     if len(subs) < MIN_SUBS:
         result["error"] = "too few readable raw frames"
         return result
-    if str(headers[0].get("EQMODE", 1)).strip() in ("0", "False", "F"):
-        result["error"] = "alt-az session (EQMODE = 0): not handled yet - only equatorial ones"
-        return result
     H, W = subs[0].shape[:2]
     times = [_when(h) for h in headers]
 
-    _progress(progress, 0.17, "Plate solving (catalogue)...", log)
-    mean_lum = np.mean([s.mean(axis=2, dtype=np.float32) for s in subs], axis=0)
-    wcs = solve_catalog(mean_lum, headers[0], str(paths[0]), log, session_dir.name)
-    if wcs is None:
-        result["error"] = "plate solving failed (no pointing in the header, or too few stars)"
-        return result
+    # the first sub's solution: its .wcs next to it from an earlier repair, else a solve
+    # (on the mean of the subs - EQ keeps the stars nearly still), written there
+    wcs = sidecar_wcs(paths[0])
+    if wcs is not None:
+        print_log(f"WCS read from {sidecar_path(paths[0]).name}", log)
+    else:
+        _progress(progress, 0.17, "Plate solving (catalogue)...", log)
+        mean_lum = np.mean([s.mean(axis=2, dtype=np.float32) for s in subs], axis=0)
+        wcs = solve_catalog(mean_lum, headers[0], str(paths[0]), log, session_dir.name)
+        if wcs is None:
+            result["error"] = "plate solving failed (no pointing in the header, or too few stars)"
+            return result
+        write_sidecar(paths[0], wcs, (H, W), log, "catalogue, on the mean of the session's subs")
 
     # each sub on the first one's stars (dithering, tracking drift)
     _progress(progress, 0.25, "Registering the subs on the stars...", log)
@@ -339,12 +345,8 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
         turns.append(turn)
         if shift > 2 or abs(turn) > 0.05:
             print_log(f"Sub {k + 1}: {shift:.1f} px, {turn:+.2f} deg off the first one", log)
-    # EQ tracking keeps the frame still on the stars (dithering shifts it);
-    # alt-az turns it (field rotation) - EQMODE isn't in every firmware's frames
-    if max(abs(x) for x in turns) > ALTAZ_TURN_DEG:
-        result["error"] = (f"the stars turn {max(abs(x) for x in turns):.1f} deg in the frame over the session: "
-                           "alt-az tracking - only equatorial sessions are handled yet")
-        return result
+    print_log(f"Stars: up to {max(abs(x) for x in turns):.2f} deg of turn in the frame over the session "
+              "(field rotation / polar alignment), taken into the registration", log)
     subs = [subs[k] for k in keep]
     times = [times[k] for k in keep]
     n = len(subs)

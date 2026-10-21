@@ -13,7 +13,7 @@
     sigma-clipped (a satellite trail gone); both blended in the first frame's geometry. Into FIXED_FOREGROUND next
     to the sessions - the session untouched: a linear FITS with its WCS, a preview, the sky alone and the foreground
     alone as 16-bit TIFFs with transparency. Shown on Backup drives only, for wide sessions with raw frames shot
-    before those firmwares (FIRMWARE / TELESCOP read in a frame); equatorial sessions only for now (EQMODE). Runs
+    before those firmwares (FIRMWARE / TELESCOP read in a frame). Runs
     for the app, as the Milky Way mosaic: the dialog shows it running, its steps and its result. A Mini session of
     22 frames: 90 s, 0.9 GB.
     Mosaic page, new "Milky Way" tab: mosaic by astrometry (user-requested Oct 2026: a Milky Way mosaic of
@@ -105,8 +105,12 @@
     in the middle of the result - the darker half of the sky's own gradient passed for foreground and got the
     foreground stack. A dark patch where the first frames (stars still sharp) show stars over most of it is now sky -
     its starless part kept if it comes in from the frame's edge -, and foreground away from the edge is sky unless
-    large. A session whose stars turn in the frame (alt-az tracking, over 0.3 deg) is refused - EQMODE isn't in
-    every firmware's frames; each frame's offset and turn are in the steps.
+    large. Each frame's offset and turn are in the steps.
+    Fix the foreground refused a session whose stars turned 0.3 deg over 44 min (user-found Oct 2026) as alt-az -
+    an EQ mount's polar alignment error. No session is refused for its tracking any more (nor for EQMODE): each
+    frame's registration on the stars carries its turn, and the ground is placed through it, so the geometry holds
+    for EQ and alt-az alike. The session's plate-solve is written next to its first raw frame (<name>.wcs) and
+    read back by the next repair (a solve saved: 113 -> 87 s on a Mini session).
     Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
     few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
     a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).
