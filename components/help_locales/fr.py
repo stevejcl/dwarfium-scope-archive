@@ -729,8 +729,12 @@ Une mosaïque planifiée tuile par tuile (le Milky Way planner d'Astro Dwarf Ses
 liste ses mosaïques - les sessions dont le nom contient R<rangée>C<colonne>, regroupées par nom et par nuit (la
 plus récente en premier) - ou **{t:wcs_mosaic_add_folder}** prend les FITS d'un dossier (les siens, et les FITS
 empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_mosaic_run}** :
-- chaque tuile est placée là où est son ciel : son WCS, sinon elle est résolue (ASTAP, solve-field ou Nova,
-  comme le scan d'astrométrie), puis recalée sur les étoiles brillantes avec la distorsion de l'objectif ;
+- chaque tuile est placée là où est son ciel : son WCS (dans son en-tête, sinon dans un fichier `.wcs` à côté),
+  sinon elle est résolue - d'abord sur le catalogue d'étoiles brillantes de l'application, près du pointage noté
+  par le Dwarf (hors ligne, quelques dizaines de secondes, fait pour ces grands champs), puis par ASTAP,
+  solve-field ou Nova comme le scan d'astrométrie - et la solution est écrite à côté de la tuile, `<nom>.wcs` (la
+  tuile n'est pas modifiée : l'assemblage suivant et d'autres outils la relisent) ; puis recalée sur les étoiles
+  brillantes avec la distorsion de l'objectif ;
 - l'avant-plan (toit, arbres) est écarté, la luminosité et la couleur de chaque tuile accordées à ses
   voisines, et dans les recouvrements la tuile vue plus près de son centre l'emporte (étoiles plus fines) ;
 - le résultat, dans un dossier `MOSAIC_WCS` à côté des sessions : un FITS linéaire avec son WCS - à traiter
@@ -738,6 +742,7 @@ empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_
   ciel seul, étiré, en TIFF 16 bits avec le décor transparent (`_sky.tif`) : à poser sur une photo du décor (un
   panorama à l'heure bleue par exemple) dans Affinity Photo, Photoshop ou GIMP, sans détourage à la main.
 
+**{t:wcs_mosaic_open_folder}** (à côté de la sortie, et avec le résultat) ouvre le dossier `MOSAIC_WCS`.
 Les zones du ciel qu'aucune tuile ne couvre restent noires. Environ 2 minutes et 1 Go de mémoire pour 5 tuiles.
 L'assemblage continue si vous changez de page : de retour sur l'onglet, un bandeau l'indique en cours (durée,
 étape) au-dessus de ses étapes (résolution, étoiles du catalogue, ciel gardé, accord des luminosités...), puis son

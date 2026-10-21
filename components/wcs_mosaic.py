@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import base64
 import os
+import platform
 import re
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -138,6 +140,21 @@ def folder_tiles(folder) -> list[dict]:
     return tiles
 
 
+def open_dir(folder):
+    """A folder in the system's file manager - through explorer on Windows,
+    as the other pages do."""
+    folder = os.path.normpath(str(folder))
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(f'explorer "{folder}"')
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", folder])
+        else:
+            subprocess.Popen(["xdg-open", folder])
+    except OSError as e:                                  # no file manager to open it with
+        ui.notify(f"{folder}: {e}", color="warning")
+
+
 def default_output(tiles) -> str:
     """MOSAIC_WCS/<prefix>_<date>.fits next to the first tile's session."""
     first = next((d for d in tiles if d["fits"]), None)
@@ -237,7 +254,10 @@ class MilkyWayPanel:
                 ui.button(t("wcs_mosaic_add_folder"), icon="folder_open", on_click=self._add_folder)
             self.empty_label = ui.label("").classes("text-sm text-orange-600")
             self.tile_box = ui.column().classes("w-full gap-0 max-h-80 overflow-auto")
-            self.output = ui.input(t("wcs_mosaic_output")).classes("w-full")
+            with ui.row().classes("w-full items-center no-wrap gap-2"):
+                self.output = ui.input(t("wcs_mosaic_output")).classes("flex-grow")
+                ui.button(icon="folder_open", on_click=self._open_output_folder) \
+                    .props("flat round").tooltip(t("wcs_mosaic_open_folder"))
             with ui.row().classes("w-full items-center"):
                 self.run_btn = ui.button(t("wcs_mosaic_run"), icon="auto_awesome_mosaic", on_click=self._assemble)
                 self.progress = ui.linear_progress(value=0, show_value=False).classes("flex-grow")
@@ -347,6 +367,14 @@ class MilkyWayPanel:
             self._show_result(job["result"])
         self.shown_version = job["version"]
 
+    def _open_output_folder(self):
+        """The output's folder (MOSAIC_WCS) in the system's file manager."""
+        folder = Path((self.output.value or "").strip()).parent
+        if not str(folder) or str(folder) == "." or not folder.is_dir():
+            ui.notify(t("wcs_mosaic_folder_missing", path=str(folder)), color="warning")
+            return
+        open_dir(folder)
+
     def _show_result(self, res):
         with self.result_box:
             for s in res.get("skipped", []):
@@ -357,7 +385,10 @@ class MilkyWayPanel:
             for s in res["tiles"]:
                 rms = f"{s['rms']:.2f} px" if s["rms"] is not None else "-"
                 ui.label(t("wcs_mosaic_tile_line", name=s["name"], stars=s["stars"], rms=rms, sky=s["sky_pct"])).classes("text-xs text-gray-600")
-            ui.label(t("wcs_mosaic_done", path=res["fits"])).classes("text-green-700 text-sm")
+            with ui.row().classes("items-center gap-2"):
+                ui.label(t("wcs_mosaic_done", path=res["fits"])).classes("text-green-700 text-sm")
+                ui.button(t("wcs_mosaic_open_folder"), icon="folder_open",
+                          on_click=lambda p=res["fits"]: open_dir(Path(p).parent)).props("flat dense no-caps")
             if res.get("tiff"):
                 ui.label(t("wcs_mosaic_tiff", path=res["tiff"])).classes("text-green-700 text-sm")
             try:

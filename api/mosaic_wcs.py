@@ -6,8 +6,9 @@ of wide-angle tiles - the image stitchers (Affinity) kept the roof and the
 trees, bent the 70 degrees of sky, and could not level the tiles).
 
 Each tile goes where its sky really is, from its astrometry:
-1. its WCS - the FITS header's, else a solve (api/astrometry_resolver.py),
-   then refit against the Bright Star Catalogue with a TAN-SIP distortion
+1. its WCS - the FITS header's, else its .wcs file, else a solve (on the
+   Bright Star Catalogue near the header's pointing, then
+   api/astrometry_resolver.py) written next to it as <name>.wcs -, then refit against the Bright Star Catalogue with a TAN-SIP distortion
    of order 4 (order 2 left 2-4 px at the edges of a 46 deg field, enough
    to double the stars in the overlaps);
 2. the foreground (roof, trees, branches) masked out: areas without stars,
@@ -58,12 +59,14 @@ def _progress(cb, fraction, message, log=None):
             pass
 
 
-def load_catalog():
-    """The Bright Star Catalogue as a SkyCoord (about 9100 stars, V < 6.5)."""
+def load_catalog(with_mag=False):
+    """The Bright Star Catalogue as a SkyCoord (about 9100 stars, V < 6.5);
+    (SkyCoord, V magnitudes) with `with_mag`."""
     from astropy.coordinates import SkyCoord
     import astropy.units as u
-    data = np.loadtxt(CATALOG_FILE, delimiter=",", comments="#", usecols=(0, 1))
-    return SkyCoord(data[:, 0] * u.deg, data[:, 1] * u.deg)
+    data = np.loadtxt(CATALOG_FILE, delimiter=",", comments="#", usecols=(0, 1, 2))
+    coords = SkyCoord(data[:, 0] * u.deg, data[:, 1] * u.deg)
+    return (coords, data[:, 2]) if with_mag else coords
 
 
 # ---------------------------------------------------------------- tiles
@@ -90,6 +93,141 @@ def header_wcs(header):
         except Exception:
             return None
     return w if w.has_celestial and w.wcs.ctype[0].startswith("RA") else None
+
+
+def sidecar_path(path) -> Path:
+    """The separate WCS file of a tile: <name>.wcs next to it, as ASTAP and
+    astrometry.net write theirs (the astrometry scan only clears *.wcs.fits
+    from session folders)."""
+    return Path(path).with_suffix(".wcs")
+
+
+def sidecar_wcs(path):
+    """The WCS of the tile's separate .wcs file (a FITS header, padded or
+    not), or None."""
+    from astropy.io import fits
+    p = sidecar_path(path)
+    if not p.is_file():
+        return None
+    for read in (lambda: fits.getheader(p), lambda: fits.Header.fromfile(str(p), padding=False)):
+        try:
+            w = header_wcs(read())
+        except Exception:
+            continue
+        if w is not None:
+            return w
+    return None
+
+
+def write_sidecar(path, wcs, shape, log=None, origin=""):
+    """Writes `wcs` as the tile's separate .wcs file (header only, the tile
+    itself untouched) - for the next assembly and for other tools. False
+    when it could not be written (read-only drive...)."""
+    from astropy.io import fits
+    header = wcs.to_header(relax=True)
+    header["IMAGEW"] = (shape[1], "image width the WCS is for")
+    header["IMAGEH"] = (shape[0], "image height the WCS is for")
+    header["COMMENT"] = f"Plate solved by Dwarfium Scope Archive ({origin}), refit on the Bright Star Catalogue"
+    p = sidecar_path(path)
+    try:
+        fits.PrimaryHDU(header=header).writeto(p, overwrite=True)
+    except OSError as e:
+        print_log(f"{Path(path).name}: WCS not written next to it ({e})", log)
+        return False
+    print_log(f"{Path(path).name}: WCS written to {p.name}", log)
+    return True
+
+
+def _brightest_stars(lum, keep):
+    """(x, y) of the `keep` stars with the most light - summed over a box,
+    not their peak: on a stretched stack every bright star saturates at the
+    same peak, and the brightest by peak come out in random order."""
+    from scipy.ndimage import median_filter, uniform_filter
+    bx, by = _detect_stars(lum, keep=max(keep * 30, 1500))
+    if len(bx) == 0:
+        return bx, by
+    hp = np.clip(lum - median_filter(lum, 15), 0, None)
+    flux = uniform_filter(hp, 9)[np.round(by).astype(int), np.round(bx).astype(int)]
+    order = np.argsort(-flux)[:keep]
+    return bx[order], by[order]
+
+
+# The catalogue solver's tries: (brightest stars detected, catalogue stars down
+# to this V magnitude) - a wide field shows a few dozen stars brighter than
+# V 4-5, the triangles of which match whatever the tile's orientation.
+SOLVE_TRIES = ((40, 4.0), (60, 4.5), (25, 4.0), (60, 5.0))
+SOLVE_RADIUS_DEG = 30     # catalogue stars around the header's pointing
+SOLVE_MIN_STARS = 30      # catalogue stars the refit must match for a solution
+WIDE_SCALE_FALLBACK = 88.0  # arcsec/px when the header has no optics
+
+
+def solve_catalog(lum, header, path="", log=None, name=""):
+    """Plate-solves a wide-field tile on the Bright Star Catalogue, near the
+    pointing its header records (RA / DEC, as the Dwarf writes them): its
+    brightest stars matched to the catalogue's by their triangles
+    (astroalign - any orientation, either parity), then refit (refit_wcs).
+    Offline, a few seconds. Returns the WCS, or None."""
+    import astroalign as aa
+    from astropy.wcs import WCS
+    from astropy.wcs.utils import fit_wcs_from_points
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+    from api.astrometry_resolver import dwarf_optics
+    ra, dec = header.get("RA"), header.get("DEC")
+    try:
+        ra, dec = float(ra), float(dec)
+    except (TypeError, ValueError):
+        print_log(f"{name}: no pointing (RA / DEC) in its header for the catalogue solver", log)
+        return None
+    focal, pixel, _ = dwarf_optics(header, str(path))
+    scale = 206.265 * pixel / focal if focal and pixel else WIDE_SCALE_FALLBACK
+    ny, nx = lum.shape
+    catalog, mags = load_catalog(with_mag=True)
+    near = catalog.separation(SkyCoord(ra * u.deg, dec * u.deg)).deg < SOLVE_RADIUS_DEG
+    tried = set()
+    for keep, mag in SOLVE_TRIES:
+        bx, by = _brightest_stars(lum, keep)
+        if len(bx) < 8:
+            break
+        pick = np.where(near & (mags < mag))[0]
+        pick = pick[np.argsort(mags[pick])]              # brightest first: astroalign keeps the first ones
+        sel = catalog[pick]
+        for parity in (-1, 1):
+            if (keep, mag, parity) in tried:
+                continue
+            tried.add((keep, mag, parity))
+            w0 = WCS(naxis=2)
+            w0.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+            w0.wcs.crval = [ra, dec]
+            w0.wcs.crpix = [nx / 2, ny / 2]
+            s = scale / 3600
+            w0.wcs.cd = [[-s, 0], [0, s * parity]]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                px, py = w0.world_to_pixel(sel)
+            # the frame and a margin for the pointing error (a goto is off by a degree or two)
+            inside = (np.isfinite(px) & np.isfinite(py) & (px > -0.1 * nx) & (px < 1.1 * nx)
+                      & (py > -0.1 * ny) & (py < 1.1 * ny))
+            src, stars = np.c_[px[inside], py[inside]], sel[inside]
+            if len(src) < 8:
+                continue
+            try:
+                _, (ms, md) = aa.find_transform(src, np.c_[bx, by], max_control_points=50, min_area=50)
+            except Exception:
+                continue
+            idx = [int(np.argmin(np.hypot(src[:, 0] - a, src[:, 1] - b))) for a, b in ms]
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    w1 = fit_wcs_from_points((md[:, 0], md[:, 1]), stars[idx], projection="TAN")
+            except Exception:
+                continue
+            w2, n, rms = refit_wcs(lum, w1, catalog, None, name)
+            if rms is not None and n >= SOLVE_MIN_STARS:
+                print_log(f"{name}: solved on the catalogue - {n} stars, residual {rms:.2f} px", log)
+                return w2
+    print_log(f"{name}: the catalogue solver found no match", log)
+    return None
 
 
 def solver_settings(conn) -> dict:
@@ -441,9 +579,10 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
     Assembles the FITS tiles `paths` into `out_fits` (linear float32, WCS
     in its header) and a stretched preview next to it (same name, .jpg).
 
-    A tile without a celestial WCS in its header is plate-solved when
-    `solve` (the app's solvers, `settings` from solver_settings()), else
-    left out.
+    A tile without a celestial WCS in its header nor a .wcs next to it is
+    plate-solved when `solve` - the catalogue solver first, then the app's
+    solvers (`settings` from solver_settings()) - and its solution written
+    next to it (<name>.wcs); else it is left out.
     progress(fraction 0-1, message) is called along the way.
 
     Also writes the sky alone, stretched, 16-bit with the foreground
@@ -467,15 +606,27 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
         except Exception as e:
             result["skipped"].append({"name": name, "reason": f"unreadable: {e}"})
             continue
-        w = header_wcs(header)
+        lum = data.mean(axis=0)
+        # the header's WCS, else the tile's .wcs next to it, else a solve: the
+        # catalogue solver (offline, made for these wide fields), then the
+        # app's solvers - a solve written next to the tile as <name>.wcs
+        w, origin = header_wcs(header), None
+        if w is None:
+            w = sidecar_wcs(path)
+            if w is not None:
+                print_log(f"{name}: WCS read from {sidecar_path(path).name}", log)
         if w is None and solve:
-            _progress(progress, 0.4 * k / max(n, 1), f"Plate solving {name}...", log)
-            w = solve_tile(path, settings, log)
+            _progress(progress, 0.4 * k / max(n, 1), f"Plate solving {name} (catalogue)...", log)
+            w, origin = solve_catalog(lum, header, path, log, name), "catalogue"
+            if w is None:
+                _progress(progress, 0.4 * k / max(n, 1), f"Plate solving {name} (ASTAP / solve-field / Nova)...", log)
+                w, origin = solve_tile(path, settings, log), "ASTAP / solve-field / Nova"
         if w is None:
             result["skipped"].append({"name": name, "reason": "no astrometric solution"})
             continue
-        lum = data.mean(axis=0)
         w, stars, rms = refit_wcs(lum, w, catalog, log, name)
+        if origin:
+            write_sidecar(path, w, lum.shape, log, origin)
         data = data[:, MARGIN_PX:-MARGIN_PX, MARGIN_PX:-MARGIN_PX]
         w = w[MARGIN_PX:-MARGIN_PX, MARGIN_PX:-MARGIN_PX]
         good = sky_mask(data.mean(axis=0))

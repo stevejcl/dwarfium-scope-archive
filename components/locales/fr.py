@@ -752,6 +752,8 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_hint":              "Les tuiles cochées sont assemblées : chaque FITS empilé placé là où est son ciel (son WCS, sinon résolu), recalé sur les étoiles brillantes, son avant-plan (toit, arbres) écarté, sa luminosité accordée à ses voisines. Le résultat est linéaire : extraction du fond, calibration des couleurs et étirement dans Siril.",
     "wcs_mosaic_no_fits":           "pas de FITS empilé",
     "wcs_mosaic_output":            "FITS de sortie",
+    "wcs_mosaic_open_folder":      "Ouvrir le dossier",
+    "wcs_mosaic_folder_missing":   "Pas encore de dossier : {path} (créé par le premier assemblage)",
     "wcs_mosaic_run":               "Assembler",
     "wcs_mosaic_running":           "Assemblage... (quelques minutes)",
     "wcs_mosaic_min2":              "Cochez au moins deux tuiles.",
