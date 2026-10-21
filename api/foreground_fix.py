@@ -50,8 +50,8 @@ MIN_SUBS = 5
 BLOCK_ROWS = 96         # rows stacked at once
 SIDEREAL = 15.0410686 / 3600  # deg of RA per second
 FG_HALO_PX = 12         # foreground grown by this much before the sky stack
-FG_GROW_PX = 3          # foreground mask grown by this much: its edge is a little inside the leaves
-BLEND_PX = 3            # foreground edge softened over this much
+FG_GROW_PX = 2 #3       # foreground mask grown by this much: its edge is a little inside the leaves
+BLEND_PX = 2   #3       # foreground edge softened over this much
 GRID = (55, 97)         # rows, cols of the grid the ground's shift is computed on
 BAYER_CODES = {"RGGB": "COLOR_BayerBG2RGB", "BGGR": "COLOR_BayerRG2RGB",
                "GRBG": "COLOR_BayerGB2RGB", "GBRG": "COLOR_BayerGR2RGB"}
@@ -270,7 +270,7 @@ def _foreground(ground, valid, starry=None):
 PREVIEW_SKY_BLACK_PCT = 10   # the preview's black: this percentile of the sky (its vignetted corners darker)
 PREVIEW_STRENGTH = 2         # the preview's asinh stretch - gentle (10 pushed the sky's noise and gradient up)
 TIFF_STRENGTH = 4            # the TIFFs': still room to work in an image editor
-
+PREVIEW_GROUND_LEVEL = 0.14  #0.22 # the foreground's brightness in the preview, against the sky's
 
 def _write_jpeg(rgb, path, max_side=2000):
     """(3, H, W) 0-1 as a JPEG, rows as stored."""
@@ -510,6 +510,8 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     # dark silhouette (stretched apart, the bit of sky in its grown mask came out
     # as a grey band around the leaves)
     look = _stretched(chw, everything, stats=~fg, low=PREVIEW_SKY_BLACK_PCT, strength=PREVIEW_STRENGTH)
+    ground_look = _stretched(chw, everything, stats=fg, strength=PREVIEW_STRENGTH) if fg.any() else look
+    look = look * (1 - soft) + PREVIEW_GROUND_LEVEL * ground_look * soft
     _write_jpeg(look, base + "_preview.jpg")
     result.update(ok=True, fits=str(out_fits), preview=base + "_preview.jpg",
                   sky_tif=sky_tif if ok_sky else None, ground_tif=ground_tif if ok_ground else None)

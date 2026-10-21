@@ -82,7 +82,7 @@ def open_repair_dialog(session_dir: str, on_fixed=None):
     called when this session's repair ends well while the dialog is open."""
     from api.foreground_fix import default_output, raw_subs
     state = {"version": -1, "steps": 0}
-    with ui.dialog() as dialog, ui.card().classes("w-[760px] max-w-full"):
+    with ui.dialog() as dialog, ui.card().classes("w-[80vw] max-w-full"):
         ui.label(t("fg_fix_title")).classes("text-lg font-semibold")
         ui.label(t("fg_fix_hint")).classes("text-sm text-gray-600")
         ui.label(t("fg_fix_session", name=Path(session_dir).name,
