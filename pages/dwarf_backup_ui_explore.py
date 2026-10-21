@@ -49,6 +49,7 @@ from components.astro_object_associate import DwarfData, show_unknown_target_dia
 from components.db_page_mixin import DbPageMixin
 from components.action_icon import ActionIcon
 from components import frame_review
+from components import wcs_mosaic
 from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
@@ -449,6 +450,10 @@ class ExploreApp(DbPageMixin):
                             # JPG, the rejected failed_ ones too (components/frame_review.py)
                             self.frame_review_icon = ActionIcon(t("frames_title"), "burst_mode", self._frame_review)
                             self.frame_review_icon.visible = False
+                            # A mosaic tile's session ("... R1C2"): the Mosaic page's Milky Way
+                            # tab on its mosaic (components/wcs_mosaic.py), backup drives
+                            self.wcs_mosaic_icon = ActionIcon(t("wcs_mosaic_btn"), "auto_awesome_mosaic", self._wcs_mosaic)
+                            self.wcs_mosaic_icon.visible = False
                             # Link to the ManualSession that was imported alongside this BackupEntry
                             self.linked_manual_session_icon = ActionIcon(t("view_linked_manual"), "link", self.navigate_to_linked_manual_session)
                             self.linked_manual_session_icon.visible = False
@@ -1873,6 +1878,7 @@ class ExploreApp(DbPageMixin):
             )
             self.current_session_row = row
             self._update_plan_tonight_icon()   # all sessions: the chosen session's object
+            self.wcs_mosaic_icon.visible = self.mode == "backup" and wcs_mosaic.tile_key(row[13], row[8]) is not None
             self.current_backup_location = row[6] if row[6] else ""
             # extract DB Values
             dwarf_data_id = row[0]
@@ -2462,6 +2468,8 @@ class ExploreApp(DbPageMixin):
             self.linked_manual_session_icon.visible = False
         if getattr(self, "frame_review_icon", None):
             self.frame_review_icon.visible = False
+        if getattr(self, "wcs_mosaic_icon", None):
+            self.wcs_mosaic_icon.visible = False
         self.selected_path = ""
         self.current_session_row = None
         # Delete old icons from UI
@@ -3740,6 +3748,17 @@ class ExploreApp(DbPageMixin):
             await run.io_bound(scan_folder_sizes, self.database, [be_id], None, True, None)
             await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
         await self.on_file_selected()
+
+    def _wcs_mosaic(self):
+        """The Mosaic page's Milky Way tab on the selected tile's mosaic (the
+        tiles named alike on its drive, components/wcs_mosaic.py)."""
+        row = self.current_session_row
+        if not row:
+            return
+        q = urllib.parse.quote
+        back = q(f"/Explore/?BackupDriveId={row[20]}&SessionId={row[22]}&mode=backup", safe="")
+        ui.navigate.to(f"/Mosaic?mode=MilkyWay&DwarfId={row[21]}&BackupId={row[20]}"
+                       f"&tile={q(str(row[13] or row[8] or ''))}&tile_date={q(str(row[7] or ''))}&back_url={back}")
 
     async def _frame_review(self):
         """The selected session's frames (components/frame_review.py): on the

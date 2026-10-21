@@ -1,6 +1,6 @@
 from components.i18n import t
 import webview
-from nicegui import ui, app, run, Client
+from nicegui import ui, app, run, Client, background_tasks
 
 import os
 import shutil
@@ -31,6 +31,7 @@ from components.repair_history_dialog import check_and_show_history
 from components.mosaic_restore_dialog import open_mosaic_restore_dialog
 from api.dwarf_backup_fct_mosaic import rebuild_mosaic_info, backup_merge_files, restore_merge_files, cleanup_backup
 from components.stitch_params_editor import get_stitch_params
+from components.wcs_mosaic import MilkyWayPanel
 
 # =========================================================
 # PAGE + APP CLASS
@@ -44,15 +45,21 @@ async def mosaic_page(
     mode: str = 'Repair',
     BackupId: int = None,
     back_url: str = None,
+    tile: str = None,
+    tile_date: str = None,
 ):
 
     menu(t("page_mosaic"))
     await ui.context.client.connected(timeout=10.0)
-    ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId)
+    # mode=MilkyWay (Explore, a mosaic tile's session): the Milky Way tab on
+    # that tile's mosaic - the other modes keep opening on Merge, as before
+    ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId,
+                                      Mode="MilkyWay" if mode == "MilkyWay" else "Merge",
+                                      Tile=(tile, tile_date) if tile else None)
 
 
 class MosaicApp(DbPageMixin):
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Repair", BackupId=None,  BackUrl=None):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Merge", BackupId=None,  BackUrl=None, Tile=None):
         self.client = client
         self.database = database
         self.dwarfs = []
@@ -100,7 +107,9 @@ class MosaicApp(DbPageMixin):
         self.dwarf_ip_sta_mode = ''
         self.dwarf_type = None
 
-        self.mode = "Merge"
+        self.mode = Mode
+        self.tile = Tile                # (tile name, session date): Milky Way tab's mosaic
+        self.mw_panel = None
         self.cancel_process = threading.Event()
         self.cancel_process.clear()
 
@@ -133,7 +142,7 @@ class MosaicApp(DbPageMixin):
                 if self.BackUrl:
                     ui.button(t("back_btn"), on_click=lambda: ui.navigate.to(self.BackUrl)).classes("justify-self-start")
                 self.mode_toggle = ui.toggle(
-                    {'Merge': t('merge_mode'), 'Repair': t('repair_mode')},
+                    {'Merge': t('merge_mode'), 'Repair': t('repair_mode'), 'MilkyWay': t('milky_way_mode')},
                     value=self.mode, on_change=self.switch_mode
                 ).classes("col-span-1 justify-self-center")
 
@@ -162,8 +171,11 @@ class MosaicApp(DbPageMixin):
                     with ui.column().classes('gap-1 justify-center pt-6'):
                         self.backup_status_label = ui.label("").classes('')
 
+        # ── Milky Way tab: mosaic by astrometry (components/wcs_mosaic.py) ──
+        self.mw_panel = MilkyWayPanel(self.conn, self.client, preselect=self.tile)
+
         # ── Primary session card ─────────────────────────────────────────
-        with ui.card().classes("w-full p-4 mt-1 items-center"):
+        with ui.card().classes("w-full p-4 mt-1 items-center") as self.primary_card:
             self.primary_session_label = ui.label(t("primary_session")).classes("text-lg font-semibold")
             with ui.row().classes("items-center gap-2"):
                 ui.label(t("data_source")).classes("text-sm text-gray-500")
@@ -196,7 +208,7 @@ class MosaicApp(DbPageMixin):
                                      .classes('w-40 h-auto rounded-lg cursor-pointer hover:opacity-80') \
                                      .on('click', lambda: self._show_full_image(self.session_select_image_primary))
         # ── Secondary session card ───────────────────────────────────────
-        with ui.card().classes("w-full p-4 mt-1 items-center"):
+        with ui.card().classes("w-full p-4 mt-1 items-center") as self.secondary_card:
             self.secondary_session_label = ui.label(t("secondary_session")).classes("text-lg font-semibold")
             with ui.row().classes("items-center gap-2"):
                 ui.label(t("data_source")).classes("text-sm text-gray-500")
@@ -250,7 +262,7 @@ class MosaicApp(DbPageMixin):
         self.error_sessions_card.set_visibility(self.mode == "Repair")
 
         # ── Output / temp directory card ─────────────────────────────────
-        with ui.card().classes("w-full p-4 mt-1 items-center"):
+        with ui.card().classes("w-full p-4 mt-1 items-center") as self.output_card:
             ui.label(t("output_dir")).classes("text-lg font-semibold")
             self.input_output_dir = (
                 ui.select(
@@ -268,7 +280,7 @@ class MosaicApp(DbPageMixin):
                 ui.button(t("create_temp_folder"), on_click=self.create_temp_folder).classes(sizeBTN)
 
         # ── Action card ──────────────────────────────────────────────────
-        with ui.card().classes("w-full p-4 mt-1 mb-8 items-center"):
+        with ui.card().classes("w-full p-4 mt-1 mb-8 items-center") as self.action_card:
             self.progress_label = ui.label(t("idle"))
             self.progress = ui.circular_progress(max=100, show_value=True)
 
@@ -286,6 +298,7 @@ class MosaicApp(DbPageMixin):
         self.populate_backup_filter()
 
         self._build_copy_dialog()
+        self.switch_mode()                     # the opening mode's cards (Milky Way from Explore)
  
     def _build_copy_dialog(self):
         """Pre-build the post-process copy dialog in UI context (called from build_ui)."""
@@ -310,9 +323,17 @@ class MosaicApp(DbPageMixin):
 
     def switch_mode(self):
         self.mode = self.mode_toggle.value
+        milky_way = self.mode == "MilkyWay"
+        for card in (self.primary_card, self.secondary_card, self.output_card, self.action_card):
+            card.set_visibility(not milky_way)
+        if self.mw_panel:
+            self.mw_panel.set_visibility(milky_way)
         self.error_sessions_card.set_visibility(self.mode == "Repair")
         self.refresh_error_sessions()
-        if self.mode == "Repair":
+        if milky_way:
+            self.main_label.text = t("milky_way_desc")
+            background_tasks.create(self.mw_panel.refresh(self.BackupId), name="milky-way-mosaics")
+        elif self.mode == "Repair":
             self.main_label.text = t("mosaic_repair_desc")
             self.action_button.text = "🔧 Start Repair"
             self.primary_session_label.text = t("primary_session_repair")
@@ -425,6 +446,8 @@ class MosaicApp(DbPageMixin):
     def on_backup_filter_change(self):
         selected_name = self.backup_filter.value
         self._apply_backup_details(selected_name)
+        if self.mode == "MilkyWay" and self.mw_panel:
+            background_tasks.create(self.mw_panel.refresh(self.BackupId), name="milky-way-mosaics")
 
     async def on_dwarf_filter_change(self):
         self.usb_status_label.text = ""

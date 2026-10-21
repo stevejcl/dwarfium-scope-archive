@@ -358,6 +358,7 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:favorite_add}** / **{t:favorite_remove}** — afficher ou masquer la session sur la page d'accueil
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
 - **{t:frames_title}** — voir ci-dessous
+- **{t:wcs_mosaic_btn}** (mode Sauvegarde, session d'une tuile de mosaïque) — l'onglet **{t:milky_way_mode}** de la page Mosaïque, sur la mosaïque de cette tuile
 - Sous les détails, la ligne qui dit que la session est aussi sur le Dwarf (mode Sauvegarde) ou sur un disque de
   sauvegarde (mode Dwarf) : **{t:explore_view_copy}** l'ouvre là-bas dans Explorer
 - À côté du score de qualité : ⌫ **{t:score_clear}** (elle passe alors « sans score » ;
@@ -720,6 +721,23 @@ adjacents qui sont assemblés en une seule image grand champ.
 - **{t:generate_panorama}** — assembler les panneaux sélectionnés en image grand champ
 - **{t:repair_transfer}** — corriger une mosaïque partiellement transférée
 - **{t:merge_transfer}** — fusionner des panneaux de plusieurs sessions
+
+## Onglet {t:milky_way_mode} : mosaïque par astrométrie
+
+Une mosaïque planifiée tuile par tuile (le Milky Way planner d'Astro Dwarf Session : « MW Tile R1C1 »,
+« MW Tile R1C2 »...) donne une session par tuile. Choisissez le **{t:backup_drive}** : **{t:wcs_mosaic_found}**
+liste ses mosaïques - les sessions dont le nom contient R<rangée>C<colonne>, regroupées par nom et par nuit (la
+plus récente en premier) - ou **{t:wcs_mosaic_add_folder}** prend les FITS d'un dossier (les siens, et les FITS
+empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_mosaic_run}** :
+- chaque tuile est placée là où est son ciel : son WCS, sinon elle est résolue (ASTAP, solve-field ou Nova,
+  comme le scan d'astrométrie), puis recalée sur les étoiles brillantes avec la distorsion de l'objectif ;
+- l'avant-plan (toit, arbres) est écarté, la luminosité et la couleur de chaque tuile accordées à ses
+  voisines, et dans les recouvrements la tuile vue plus près de son centre l'emporte (étoiles plus fines) ;
+- le résultat, dans un dossier `MOSAIC_WCS` à côté des sessions : un FITS linéaire avec son WCS - à traiter
+  dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - et un aperçu étiré.
+
+Les zones du ciel qu'aucune tuile ne couvre restent noires. Environ 2 minutes et 1 Go de mémoire pour 5 tuiles.
+Dans Explore, **{t:wcs_mosaic_btn}** sur la session d'une tuile ouvre cet onglet sur sa mosaïque.
 
 ## Conseils
 

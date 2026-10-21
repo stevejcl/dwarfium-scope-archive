@@ -3,6 +3,18 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Mosaic page, new "Milky Way" tab: mosaic by astrometry (user-requested Oct 2026: a Milky Way mosaic of
+    wide-angle tiles - Affinity kept the roof and the trees, bent the 70 deg of sky and left the tiles uneven). It
+    lists the mosaics found on the backup drive - sessions whose names have R<row>C<col> (Astro Dwarf Session's
+    Milky Way planner: "MW Tile R1C2"), grouped by name and night - or takes the FITS of a folder chosen by hand,
+    and assembles the tiles ticked: each one where its sky is - its WCS, else plate solved (ASTAP / solve-field /
+    Nova, as the astrometry scan) -, refit on the Bright Star Catalogue with a distortion of order 4 (a wide-angle
+    solution is off by 20-100 px at the edges without it, stars doubled in the overlaps), its foreground (roof,
+    trees: no stars, or darker than the sky) left out, its brightness and colour levelled to its neighbours,
+    blended where the tile seen nearer its centre wins (sharper stars). Output in MOSAIC_WCS next to the sessions:
+    a linear 32-bit FITS with its WCS (Siril: background extraction, photometric colour calibration, stretch) and
+    a stretched preview. 5 tiles: ~2 min, ~1 GB. In Explore, "Mosaic (astrometry)" on a tile's session opens the
+    tab on its mosaic.
     Explore, the sessions' gallery: the mouse wheel goes through the sessions (user-requested: All sessions, hundreds)
     - a notch one, spun faster several, their small stacked_thumbnail.jpg meanwhile (the next ones loaded ahead)
     and the full image once it stops; the automatic slideshow pauses while it turns, and stops when the gallery is
