@@ -755,6 +755,18 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_output":            "Output FITS",  # TODO
     "wcs_mosaic_open_folder":      "Open the folder",  # TODO
     "wcs_mosaic_folder_missing":   "No folder yet: {path} (made by the first assembly)",  # TODO
+    "fg_fix_btn":                  "Fix the foreground",  # TODO
+    "fg_fix_title":                "Fix the foreground (trees, roof) from the raw frames",  # TODO
+    "fg_fix_hint":                 "Before DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, the Dwarf stacked on the stars and the foreground, turning 15° an hour against the sky, came out smeared. From the session's raw frames: the sky stacked on the stars without the foreground, the foreground stacked on itself, both blended. Equatorial sessions only for now. The session is untouched.",  # TODO
+    "fg_fix_session":              "Session: {name} - {n} raw frames (40 at most used, spread over the session)",  # TODO
+    "fg_fix_output":               "Written to: {path} (and its _preview.jpg, _sky.tif, _ground.tif)",  # TODO
+    "fg_fix_start":                "Fix",  # TODO
+    "fg_fix_running":              "Fixing the foreground...",  # TODO
+    "fg_fix_banner":               "Fixing the foreground of {name}, please wait... ({time})",  # TODO
+    "fg_fix_busy":                 "A foreground repair is already running",  # TODO
+    "fg_fix_done":                 "Foreground fixed: {path}",  # TODO
+    "fg_fix_failed":               "Foreground not fixed: {error}",  # TODO
+    "fg_fix_files":                "{subs} frames stacked, foreground {fg}% of the frame. Next to it: the preview, the sky alone (_sky.tif) and the foreground alone (_ground.tif), 16-bit with transparency for an image editor.",  # TODO
     "wcs_mosaic_run":               "Assemble",  # TODO
     "wcs_mosaic_running":           "Assembling... (a few minutes)",  # TODO
     "wcs_mosaic_min2":              "Tick at least two tiles.",  # TODO

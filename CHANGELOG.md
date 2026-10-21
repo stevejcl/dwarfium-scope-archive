@@ -3,6 +3,19 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, "Fix the foreground" on a wide session (user-requested Oct 2026: before DWARF 3 V1.5.3.9 / DWARF mini
+    V1.1.4.4 - DWARFLAB's "fixed foreground" beta - the Dwarf stacked on the stars and the trees, the roof came out
+    smeared, the ground turning 15 deg an hour against the sky). From the session's raw frames (40 at most, spread
+    over it): plate solved once on the catalogue, each frame registered on the stars (dithering); the foreground
+    stacked on itself - where each frame saw a bit of ground computed from the sidereal time elapsed (EQ tracking:
+    the ground turns about the celestial pole) - median; its mask on that sharp stack (darker than the sky,
+    vignetting divided out); the sky stacked on the stars, each frame only where its own foreground wasn't,
+    sigma-clipped (a satellite trail gone); both blended in the first frame's geometry. Into FIXED_FOREGROUND next
+    to the sessions - the session untouched: a linear FITS with its WCS, a preview, the sky alone and the foreground
+    alone as 16-bit TIFFs with transparency. Shown on Backup drives only, for wide sessions with raw frames shot
+    before those firmwares (FIRMWARE / TELESCOP read in a frame); equatorial sessions only for now (EQMODE). Runs
+    for the app, as the Milky Way mosaic: the dialog shows it running, its steps and its result. A Mini session of
+    22 frames: 90 s, 0.9 GB.
     Mosaic page, new "Milky Way" tab: mosaic by astrometry (user-requested Oct 2026: a Milky Way mosaic of
     wide-angle tiles - Affinity kept the roof and the trees, bent the 70 deg of sky and left the tiles uneven). It
     lists the mosaics found on the backup drive - sessions whose names have R<row>C<col> (Astro Dwarf Session's
