@@ -83,7 +83,7 @@
     saturates them all) matched to the Bright Star Catalogue's by their triangles, any orientation, then refit with
     the lens distortion: offline, 20-50 s a tile (D3 and Mini wide, 178-263 stars, 0.35-0.46 px on 7 tiles), made
     for these 46 deg fields where ASTAP and solve-field struggle; ASTAP / solve-field / Nova after it. A solution is
-    written next to its tile as <name>.wcs (a header-only FITS, as ASTAP and astrometry.net do - the tile itself
+    written next to its tile as <name>.wcs (a header-only FITS with a CD matrix, as ASTAP and astrometry.net do - the tile itself
     untouched), read back by the next assembly before any solve. "Open the folder" next to the output FITS and with
     the result opens MOSAIC_WCS.
 

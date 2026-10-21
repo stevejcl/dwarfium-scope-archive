@@ -125,6 +125,13 @@ def write_sidecar(path, wcs, shape, log=None, origin=""):
     when it could not be written (read-only drive...)."""
     from astropy.io import fits
     header = wcs.to_header(relax=True)
+    # the CD matrix, as astrometry.net and ASTAP write it (astropy writes PC +
+    # CDELT, which some readers don't take)
+    cd = wcs.pixel_scale_matrix
+    for key in ("PC1_1", "PC1_2", "PC2_1", "PC2_2", "CDELT1", "CDELT2"):
+        header.remove(key, ignore_missing=True)
+    for (i, j), v in np.ndenumerate(cd):
+        header[f"CD{i + 1}_{j + 1}"] = (float(v), "linear transformation matrix")
     header["IMAGEW"] = (shape[1], "image width the WCS is for")
     header["IMAGEH"] = (shape[0], "image height the WCS is for")
     header["COMMENT"] = f"Plate solved by Dwarfium Scope Archive ({origin}), refit on the Bright Star Catalogue"
