@@ -761,6 +761,7 @@ TRANSLATIONS: dict[str, str] = {
     "fg_fix_session":              "Session: {name} - {n} raw frames (40 at most used, spread over the session)",  # TODO
     "fg_fix_output":               "Written to: {path} (and its _preview.jpg, _sky.tif, _ground.tif)",  # TODO
     "fg_fix_start":                "Fix",  # TODO
+    "fg_fix_open_image":           "Open the image",  # TODO
     "fg_fix_running":              "Fixing the foreground...",  # TODO
     "fg_fix_banner":               "Fixing the foreground of {name}, please wait... ({time})",  # TODO
     "fg_fix_busy":                 "A foreground repair is already running",  # TODO

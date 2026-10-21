@@ -21,7 +21,7 @@ from pathlib import Path
 from nicegui import Client, background_tasks, run, ui
 
 from components.i18n import t
-from components.wcs_mosaic import open_dir
+from components.wcs_mosaic import show_in_folder
 
 MAX_STEPS = 300
 REPAIR_JOB = {"lock": threading.Lock(), "running": False, "fraction": 0.0, "message": "", "steps": [],
@@ -116,7 +116,7 @@ def open_repair_dialog(session_dir: str, on_fixed=None):
             with ui.row().classes("items-center gap-2"):
                 ui.label(t("fg_fix_done", path=res["fits"])).classes("text-green-700 text-sm")
                 ui.button(t("wcs_mosaic_open_folder"), icon="folder_open",
-                          on_click=lambda p=res["fits"]: open_dir(Path(p).parent)).props("flat dense no-caps")
+                          on_click=lambda p=res["fits"]: show_in_folder(p)).props("flat dense no-caps")
             ui.label(t("fg_fix_files", subs=res.get("subs"), fg=res.get("foreground_pct"))).classes("text-xs text-gray-600")
             try:
                 data = base64.b64encode(Path(res["preview"]).read_bytes()).decode()

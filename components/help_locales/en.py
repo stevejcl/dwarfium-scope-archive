@@ -359,7 +359,7 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:frames_title}** — see below
 - **{t:wcs_mosaic_btn}** (Backup mode, a mosaic tile's session) — the Mosaic page's **{t:milky_way_mode}** tab on that tile's mosaic
 - **{t:fg_fix_btn}** (Backup mode, a wide session shot before DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, raw frames kept) — the smeared foreground fixed: from the raw frames, the sky stacked on the stars without the foreground (the ground turns 15° an hour against the sky), the foreground stacked on itself, both blended, whatever the tracking (each frame's turn - field rotation, polar alignment - in its registration). Into `FIXED_FOREGROUND` next to the sessions: a FITS, a preview, the sky alone and the foreground alone as 16-bit TIFFs with transparency (Affinity, Photoshop, GIMP). About 1-2 minutes; it goes on if the dialog is closed or the page left, every page is told when it ends
-  Once fixed, the session shows an **{t:explore_tab_fixed}** tab next to **{t:explore_tab_image}**: the fixed preview, the folder a click away
+  Once fixed, the session shows an **{t:explore_tab_fixed}** tab next to **{t:explore_tab_image}**: the fixed preview - a click opens it in your image viewer -, and the folder with the fixed FITS selected
 - Under the details, the line saying the session is also on the Dwarf (Backup mode) or on a backup drive
   (Dwarf mode): **{t:explore_view_copy}** opens it there in Explore
 - Next to the quality score: ⌫ **{t:score_clear}** (it then reads "no score"; **{t:score_session_btn}**

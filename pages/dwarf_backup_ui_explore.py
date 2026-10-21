@@ -501,11 +501,16 @@ class ExploreApp(DbPageMixin):
                             self.no_image_label = ui.label(t('explore_no_image')).classes('text-gray-500 p-4') \
                                 .bind_visibility_from(self.preview_image, 'visible', backward=lambda v: not v)
                         with ui.tab_panel(self.tab_fixed).classes('p-0'):
-                            self.fixed_image = ui.image().classes('w-full h-auto mb-2').props('fit=contain')
+                            # A click on the image opens it in the system's viewer
+                            self.fixed_image = ui.image().classes('w-full h-auto mb-2 cursor-pointer') \
+                                .props('fit=contain').tooltip(t('fg_fix_open_image'))
+                            self.fixed_image.on('click', lambda: self._open_fixed_preview())
                             with ui.row().classes('w-full items-center gap-2 px-2'):
                                 self.fixed_label = ui.label('').classes('text-xs text-gray-500')
+                                ui.button(t('fg_fix_open_image'), icon='image',
+                                          on_click=lambda: self._open_fixed_preview()).props('flat dense no-caps')
                                 ui.button(t('wcs_mosaic_open_folder'), icon='folder_open',
-                                          on_click=lambda: wcs_mosaic.open_dir(Path(self.fixed_label.text).parent)) \
+                                          on_click=lambda: wcs_mosaic.show_in_folder(self.fixed_label.text)) \
                                     .props('flat dense no-caps')
 
         self.fullscreen_image.visible = False
@@ -3814,6 +3819,12 @@ class ExploreApp(DbPageMixin):
         self.tab_fixed.set_visibility(True)
         if select:
             self.view_tabs.value = 'fixed'
+
+    def _open_fixed_preview(self):
+        """The Image Fix tab's preview (the JPEG next to the fixed FITS) in the
+        system's image viewer."""
+        if self.fixed_label.text:
+            wcs_mosaic.open_file(self.fixed_label.text[:-len(".fits")] + "_preview.jpg")
 
     async def _frame_review(self):
         """The selected session's frames (components/frame_review.py): on the

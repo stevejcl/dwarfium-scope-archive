@@ -155,6 +155,35 @@ def open_dir(folder):
         ui.notify(f"{folder}: {e}", color="warning")
 
 
+def show_in_folder(path):
+    """A file's folder in the system's file manager, the file selected where
+    the system can (Explorer, Finder) - the folder alone elsewhere."""
+    path = os.path.normpath(str(path))
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(["explorer", "/select,", path])
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", "-R", path])
+        else:
+            subprocess.Popen(["xdg-open", os.path.dirname(path)])
+    except OSError as e:
+        ui.notify(f"{path}: {e}", color="warning")
+
+
+def open_file(path):
+    """A file in the system's own viewer for it (an image in Photos, ...)."""
+    path = os.path.normpath(str(path))
+    try:
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except OSError as e:
+        ui.notify(f"{path}: {e}", color="warning")
+
+
 def default_output(tiles) -> str:
     """MOSAIC_WCS/<prefix>_<date>.fits next to the first tile's session."""
     first = next((d for d in tiles if d["fits"]), None)
