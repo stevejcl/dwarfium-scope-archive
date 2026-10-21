@@ -754,7 +754,7 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_folder_missing":   "No folder yet: {path} (made by the first assembly)",
     "fg_fix_btn":                  "Fix the foreground",
     "fg_fix_title":                "Fix the foreground (trees, roof) from the raw frames",
-    "fg_fix_hint":                 "Before DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, the Dwarf stacked on the stars and the foreground, turning 15° an hour against the sky, came out smeared. From the session's raw frames: the sky stacked on the stars without the foreground, the foreground stacked on itself, both blended. Equatorial sessions only for now. The session is untouched.",
+    "fg_fix_hint":                 "Before DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, the Dwarf stacked on the stars and the foreground, turning 15° an hour against the sky, came out smeared. From the session's raw frames: the sky stacked on the stars without the foreground, the foreground stacked on itself, both blended - whatever the tracking (EQ or alt-az, the field's turn taken into the registration). The session is untouched.",
     "fg_fix_session":              "Session: {name} - {n} raw frames (40 at most used, spread over the session)",
     "fg_fix_output":               "Written to: {path} (and its _preview.jpg, _sky.tif, _ground.tif)",
     "fg_fix_start":                "Fix",

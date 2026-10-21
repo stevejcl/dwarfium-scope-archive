@@ -756,7 +756,7 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_folder_missing":   "Pas encore de dossier : {path} (créé par le premier assemblage)",
     "fg_fix_btn":                  "Réparer le décor",
     "fg_fix_title":                "Réparer le décor (arbres, toit) à partir des poses brutes",
-    "fg_fix_hint":                 "Avant DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, le Dwarf empilait sur les étoiles et le décor, qui tourne de 15° par heure par rapport au ciel, sortait filé. À partir des poses brutes de la session : le ciel empilé sur les étoiles sans le décor, le décor empilé sur lui-même, puis les deux fusionnés. Sessions équatoriales seulement pour l'instant. La session n'est pas modifiée.",
+    "fg_fix_hint":                 "Avant DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, le Dwarf empilait sur les étoiles et le décor, qui tourne de 15° par heure par rapport au ciel, sortait filé. À partir des poses brutes de la session : le ciel empilé sur les étoiles sans le décor, le décor empilé sur lui-même, puis les deux fusionnés - quel que soit le suivi (EQ ou alt-az, la rotation du champ prise dans le recalage). La session n'est pas modifiée.",
     "fg_fix_session":              "Session : {name} - {n} poses brutes (40 au plus utilisées, réparties sur la session)",
     "fg_fix_output":               "Écrit dans : {path} (avec son _preview.jpg, _sky.tif, _ground.tif)",
     "fg_fix_start":                "Réparer",
