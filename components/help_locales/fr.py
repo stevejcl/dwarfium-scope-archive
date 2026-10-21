@@ -737,6 +737,9 @@ empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_
   dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - et un aperçu étiré.
 
 Les zones du ciel qu'aucune tuile ne couvre restent noires. Environ 2 minutes et 1 Go de mémoire pour 5 tuiles.
+L'assemblage continue si vous changez de page : de retour sur l'onglet, un bandeau l'indique en cours (durée,
+étape) au-dessus de ses étapes (résolution, étoiles du catalogue, ciel gardé, accord des luminosités...), puis son
+résultat ; chaque page ouverte est prévenue à la fin. Un seul assemblage à la fois.
 Dans Explore, **{t:wcs_mosaic_btn}** sur la session d'une tuile ouvre cet onglet sur sa mosaïque.
 
 ## Conseils

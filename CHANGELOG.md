@@ -15,6 +15,11 @@
     a linear 32-bit FITS with its WCS (Siril: background extraction, photometric colour calibration, stretch) and
     a stretched preview. 5 tiles: ~2 min, ~1 GB. In Explore, "Mosaic (astrometry)" on a tile's session opens the
     tab on its mosaic.
+    The assembly belongs to the app, not to the page (user-asked: it takes minutes, one goes elsewhere meanwhile):
+    coming back to the tab shows it - a banner that stays while it runs ("Mosaic being assembled, please wait...",
+    the time and the current step), its steps (plate solving, catalogue stars and residual, sky kept, levelling...),
+    then its result and preview; Assemble is off meanwhile (one at a time), and every open page of the app is told
+    when it ends.
     Explore, the sessions' gallery: the mouse wheel goes through the sessions (user-requested: All sessions, hundreds)
     - a notch one, spun faster several, their small stacked_thumbnail.jpg meanwhile (the next ones loaded ahead)
     and the full image once it stops; the automatic slideshow pauses while it turns, and stops when the gallery is

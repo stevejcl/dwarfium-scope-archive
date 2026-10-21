@@ -457,6 +457,7 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
         data = data[:, MARGIN_PX:-MARGIN_PX, MARGIN_PX:-MARGIN_PX]
         w = w[MARGIN_PX:-MARGIN_PX, MARGIN_PX:-MARGIN_PX]
         good = sky_mask(data.mean(axis=0))
+        print_log(f"{name}: sky kept {100 * good.mean():.0f}% (foreground left out)", log)
         weight, edge = tile_weights(good)
         tiles.append({"name": name, "data": data, "wcs": w, "weight": weight, "edge": edge,
                       "shape": data.shape[1:]})
@@ -470,6 +471,8 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
     ow, shape = mosaic_frame(tiles)
     _progress(progress, 0.45, f"Mosaic frame {shape[1]} x {shape[0]} px, levelling the tiles...", log)
     gains, offs = level_tiles(tiles, ow, shape, nch)
+    for t, g in zip(tiles, gains):
+        print_log(f"{t['name']}: levelled, gain {' / '.join(f'{x:.2f}' for x in g)}", log)
 
     acc = np.zeros((nch,) + shape, np.float32)
     wsum = np.zeros(shape, np.float32)
