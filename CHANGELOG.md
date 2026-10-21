@@ -4,7 +4,9 @@
 
 ### Add
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
-    next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open.
+    next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open. The image
+    opens in the system's viewer (a click on it, or Open the image), and Open the folder shows the fixed FITS
+    selected (Explorer, Finder - user-asked).
     Explore, "Fix the foreground" on a wide session (user-requested Oct 2026: before DWARF 3 V1.5.3.9 / DWARF mini
     V1.1.4.4 - DWARFLAB's "fixed foreground" beta - the Dwarf stacked on the stars and the trees, the roof came out
     smeared, the ground turning 15 deg an hour against the sky). From the session's raw frames (40 at most, spread

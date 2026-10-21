@@ -760,6 +760,7 @@ TRANSLATIONS: dict[str, str] = {
     "fg_fix_session":              "Session : {name} - {n} poses brutes (40 au plus utilisées, réparties sur la session)",
     "fg_fix_output":               "Écrit dans : {path} (avec son _preview.jpg, _sky.tif, _ground.tif)",
     "fg_fix_start":                "Réparer",
+    "fg_fix_open_image":           "Ouvrir l'image",
     "fg_fix_running":              "Réparation du décor...",
     "fg_fix_banner":               "Réparation du décor de {name} en cours, patientez... ({time})",
     "fg_fix_busy":                 "Une réparation du décor est déjà en cours",
