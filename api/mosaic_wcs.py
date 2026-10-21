@@ -272,7 +272,9 @@ def sky_mask(lum):
     noise = 1.4826 * np.median(np.abs(hp - np.median(hp)))
     stars = (hp > 5 * noise).astype(np.float32)
     density = uniform_filter(stars, size=40)
-    sky = density > 0.25 * np.median(density)
+    # the starriest part sets the reference: on a tile mostly roof, the
+    # median is the roof's noise
+    sky = density > 0.15 * np.percentile(density, 90)
     # dark silhouettes still show stars through the leaves on linear data
     level = median_filter(small, size=31)
     if sky.any():

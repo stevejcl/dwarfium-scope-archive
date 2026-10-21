@@ -74,6 +74,9 @@
     itself (binning, dark frames) - its refusal shown with the reason.
 
 ### BugFix
+    Mosaic page, Milky Way tab: a tile mostly roof (user-found: the old R3C1, a lit roof with a wedge of sky) kept
+    patches of the roof full of holes - its noise passed for stars, the star density being judged against the tile's
+    median, the roof's own. The sky is now judged against the tile's starriest part: the roof is left out whole.
     Dark Library: DWARF_DARK is not an older firmware's leftover (user-found: three dark sessions at three
     temperatures) - each dark session of the Dwarf leaves its raw frames there, in a dated folder, and, on firmwares
     that make one (a newer one doesn't), the master built from them in CALI_FRAME (one per setting and temperature,
