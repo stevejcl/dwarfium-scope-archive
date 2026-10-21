@@ -102,7 +102,7 @@ TRANSLATIONS: dict[str, str] = {
     "page_manual_exit":             "Edit Manual Session",  # TODO
     "page_transfer":                "Session Transfer",  # TODO
     "page_usb_transfer":            "Session USB Transfer",  # TODO
-    "page_mosaic":                  "Mosaic Merge / Repair",  # TODO
+    "page_mosaic":                  "Mosaic Merge / Repair / Milky Way",  # TODO
     "page_mtp":                     "DWARF II MTP Device Manager",  # TODO
     "page_catalog":                 "Catalog Edition",  # TODO
     "page_settings":                "Settings",  # TODO

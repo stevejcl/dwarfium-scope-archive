@@ -101,7 +101,7 @@ TRANSLATIONS: dict[str, str] = {
     "page_manual_exit":             "Edition Session Manuelle",
     "page_transfer":                "Transfert de Session",
     "page_usb_transfer":            "Transfert de Session par USB",
-    "page_mosaic":                  "Mosaïque Fusion / Réparer",
+    "page_mosaic":                  "Mosaïque Fusion / Réparer / Voie lactée",
     "page_mtp":                     "DWARF II Gestion MTP",
     "page_catalog":                 "Edition Catalogue",
     "page_settings":                "Paramètres",

@@ -76,6 +76,7 @@
     (user-requested Oct 2026: blend it over a foreground shot - a panorama at blue hour - in Affinity), next to
     the FITS and the preview (_sky.tif): the parts where no tile kept sky (roof, trees, outside the tiles) are
     transparent, fading in like the tiles' own edges - laid over the foreground, no cutting out by hand.
+    The Mosaic page's title names its new tab: "Mosaic Merge / Repair / Milky Way".
 
 ### BugFix
     Mosaic page, Milky Way tab: a tile mostly roof (user-found: the old R3C1, a lit roof with a wedge of sky) kept

@@ -99,7 +99,7 @@ TRANSLATIONS: dict[str, str] = {
     "page_manual_exit":             "Edit Manual Session",
     "page_transfer":                "Session Transfer",
     "page_usb_transfer":            "Session USB Transfer",
-    "page_mosaic":                  "Mosaic Merge / Repair",
+    "page_mosaic":                  "Mosaic Merge / Repair / Milky Way",
     "page_mtp":                     "DWARF II MTP Device Manager",
     "page_catalog":                 "Catalog Edition",
     "page_settings":                "Settings",
