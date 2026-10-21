@@ -16,3 +16,4 @@ scipy
 reportlab
 psutil
 skyfield
+tifffile

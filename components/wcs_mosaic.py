@@ -358,6 +358,8 @@ class MilkyWayPanel:
                 rms = f"{s['rms']:.2f} px" if s["rms"] is not None else "-"
                 ui.label(t("wcs_mosaic_tile_line", name=s["name"], stars=s["stars"], rms=rms, sky=s["sky_pct"])).classes("text-xs text-gray-600")
             ui.label(t("wcs_mosaic_done", path=res["fits"])).classes("text-green-700 text-sm")
+            if res.get("tiff"):
+                ui.label(t("wcs_mosaic_tiff", path=res["tiff"])).classes("text-green-700 text-sm")
             try:
                 data = base64.b64encode(Path(res["preview"]).read_bytes()).decode()
                 ui.image(f"data:image/jpeg;base64,{data}").classes("w-full")
