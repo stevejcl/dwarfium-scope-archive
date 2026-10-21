@@ -450,8 +450,8 @@ class ExploreApp(DbPageMixin):
                             # JPG, the rejected failed_ ones too (components/frame_review.py)
                             self.frame_review_icon = ActionIcon(t("frames_title"), "burst_mode", self._frame_review)
                             self.frame_review_icon.visible = False
-                            # A mosaic tile's session ("... R1C2"): its tiles assembled by
-                            # astrometry (components/wcs_mosaic.py), backup drives
+                            # A mosaic tile's session ("... R1C2"): the Mosaic page's Milky Way
+                            # tab on its mosaic (components/wcs_mosaic.py), backup drives
                             self.wcs_mosaic_icon = ActionIcon(t("wcs_mosaic_btn"), "auto_awesome_mosaic", self._wcs_mosaic)
                             self.wcs_mosaic_icon.visible = False
                             # Link to the ManualSession that was imported alongside this BackupEntry
@@ -3749,11 +3749,16 @@ class ExploreApp(DbPageMixin):
             await run.io_bound(scan_dwarf_session_sizes, self.database, None, None, True, None, [be_id])
         await self.on_file_selected()
 
-    async def _wcs_mosaic(self):
-        """The selected tile's mosaic, assembled by astrometry with the tiles
-        named alike on its drive (components/wcs_mosaic.py)."""
-        if self.current_session_row:
-            await wcs_mosaic.open_dialog(self.conn, self.current_session_row)
+    def _wcs_mosaic(self):
+        """The Mosaic page's Milky Way tab on the selected tile's mosaic (the
+        tiles named alike on its drive, components/wcs_mosaic.py)."""
+        row = self.current_session_row
+        if not row:
+            return
+        q = urllib.parse.quote
+        back = q(f"/Explore/?BackupDriveId={row[20]}&SessionId={row[22]}&mode=backup", safe="")
+        ui.navigate.to(f"/Mosaic?mode=MilkyWay&DwarfId={row[21]}&BackupId={row[20]}"
+                       f"&tile={q(str(row[13] or row[8] or ''))}&tile_date={q(str(row[7] or ''))}&back_url={back}")
 
     async def _frame_review(self):
         """The selected session's frames (components/frame_review.py): on the
