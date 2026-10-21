@@ -358,6 +358,7 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:favorite_add}** / **{t:favorite_remove}** — afficher ou masquer la session sur la page d'accueil
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
 - **{t:frames_title}** — voir ci-dessous
+- **{t:wcs_mosaic_btn}** (mode Sauvegarde, session d'une tuile de mosaïque) — voir ci-dessous
 - Sous les détails, la ligne qui dit que la session est aussi sur le Dwarf (mode Sauvegarde) ou sur un disque de
   sauvegarde (mode Dwarf) : **{t:explore_view_copy}** l'ouvre là-bas dans Explorer
 - À côté du score de qualité : ⌫ **{t:score_clear}** (elle passe alors « sans score » ;
@@ -382,6 +383,21 @@ qui parle au Dwarf et suit l'empilement.
 Suivez-le sur la page du Dwarf dans Dwarfium Lite (images empilées, l'image qui se construit dans la vue Télé) ;
 le Dwarf ne fait rien d'autre pendant ce temps (environ 1 h pour 600 images). Le résultat apparaît ensuite
 dans les sessions du Dwarf (`RESTACKED_…`), avec son exposition totale lue dans son FITS.
+
+## Mosaïque par astrométrie
+
+Une mosaïque planifiée tuile par tuile (le Milky Way planner d'Astro Dwarf Session : « MW Tile R1C1 »,
+« MW Tile R1C2 »...) donne une session par tuile. Sur l'une d'elles (son nom contient R<rangée>C<colonne>),
+**{t:wcs_mosaic_btn}** liste les sessions du même disque nommées de la même façon - celles de la même nuit
+cochées - et assemble leurs FITS empilés :
+- chaque tuile est placée là où est son ciel : son WCS, sinon elle est résolue (ASTAP, solve-field ou Nova,
+  comme le scan d'astrométrie), puis recalée sur les étoiles brillantes avec la distorsion de l'objectif ;
+- l'avant-plan (toit, arbres) est écarté, la luminosité et la couleur de chaque tuile accordées à ses
+  voisines, et dans les recouvrements la tuile vue plus près de son centre l'emporte (étoiles plus fines) ;
+- le résultat, dans un dossier `MOSAIC_WCS` à côté des sessions : un FITS linéaire avec son WCS - à traiter
+  dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - et un aperçu étiré.
+
+Les zones du ciel qu'aucune tuile ne couvre restent noires. Environ 2 minutes et 1 Go de mémoire pour 5 tuiles.
 
 ## Images de la session
 

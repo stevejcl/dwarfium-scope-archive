@@ -16,6 +16,8 @@ sep = os.pathsep  # Cross-platform separator: ; on Windows, : on Unix/macOS
 extra_data = [
     f"{citation_path}{sep}astroquery",
     f"astroquery/simbad/data/query_criteria_fields.json{sep}astroquery/simbad/data",
+    # Bright Star Catalogue of the mosaic by astrometry (api/mosaic_wcs.py)
+    f"assets/catalog/bsc5_radec.csv{sep}assets/catalog",
 #    f"tools{sep}tools",
 ]
    

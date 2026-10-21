@@ -12,6 +12,7 @@ asyncssh
 requests
 portalocker
 astroalign
+scipy
 reportlab
 psutil
 skyfield

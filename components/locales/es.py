@@ -748,6 +748,19 @@ TRANSLATIONS: dict[str, str] = {
     "legacy_darks_unknown":         "⚠️ {n} folder(s) of DWARF_DARK not recognised",  # TODO
     "darks_legacy":                 "(DWARF_DARK raw frames)",  # TODO
     "darks_master_raws":            " ({n} raw, {date}, firmware {fw})",  # TODO
+    "wcs_mosaic_btn":               "Mosaic (astrometry)",  # TODO
+    "wcs_mosaic_not_tile":          "This session is not a mosaic tile (its name has no R<row>C<col>).",  # TODO
+    "wcs_mosaic_title":             "Mosaic by astrometry",  # TODO
+    "wcs_mosaic_hint":              "The sessions of this drive named like this tile; those of the same night are ticked. Each stacked FITS is placed where its sky is (its WCS, else plate solved), refit on the bright stars, its foreground (roof, trees) left out, levelled to its neighbours. The result is linear: background extraction, colour calibration and stretch in Siril.",  # TODO
+    "wcs_mosaic_no_fits":           "no stacked FITS",  # TODO
+    "wcs_mosaic_output":            "Output FITS",  # TODO
+    "wcs_mosaic_run":               "Assemble",  # TODO
+    "wcs_mosaic_running":           "Assembling... (a few minutes)",  # TODO
+    "wcs_mosaic_min2":              "Tick at least two tiles.",  # TODO
+    "wcs_mosaic_skipped":           "Left out: {name} ({reason})",  # TODO
+    "wcs_mosaic_failed":            "Mosaic not made: {error}",  # TODO
+    "wcs_mosaic_tile_line":         "{name}: {stars} catalogue stars, residual {rms}, sky {sky}%",  # TODO
+    "wcs_mosaic_done":              "Mosaic written: {path} (and its _preview.jpg)",  # TODO
     "no_darks_found":               "❌ No matching darks found",  # TODO
     "min_temp":                     "MinTemp",  # TODO
     "eq_mode_label":                "EQ",  # TODO

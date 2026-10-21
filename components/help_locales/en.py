@@ -357,6 +357,7 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:favorite_add}** / **{t:favorite_remove}** — toggle the session on the home page slideshow
 - **{t:megastack_title_short}** (Dwarf mode) — see below
 - **{t:frames_title}** — see below
+- **{t:wcs_mosaic_btn}** (Backup mode, a mosaic tile's session) — see below
 - Under the details, the line saying the session is also on the Dwarf (Backup mode) or on a backup drive
   (Dwarf mode): **{t:explore_view_copy}** opens it there in Explore
 - Next to the quality score: ⌫ **{t:score_clear}** (it then reads "no score"; **{t:score_session_btn}**
@@ -381,6 +382,20 @@ talks to the Dwarf and follows it.
 Follow it on the Dwarf's page in Dwarfium Lite (images stacked so far, the stack growing in the Tele view);
 the Dwarf does nothing else meanwhile (about 1 h for 600 images). The result then appears in the Dwarf's
 sessions (`RESTACKED_…`), its total exposure read from its FITS.
+
+## Mosaic by astrometry
+
+A mosaic planned tile by tile (Astro Dwarf Session's Milky Way planner: "MW Tile R1C1", "MW Tile R1C2"...)
+gives one session per tile. On one of them (its name has R<row>C<col>), **{t:wcs_mosaic_btn}** lists the
+sessions of the same drive named alike - those of the same night ticked - and assembles their stacked FITS:
+- each tile goes where its sky is: its WCS, else it is plate solved (ASTAP, solve-field or Nova, like the
+  astrometry scan), then refit on the bright stars with the lens distortion;
+- the foreground (roof, trees) is left out, each tile's brightness and colour levelled to its neighbours, and
+  in the overlaps the tile seen nearer its centre wins (sharper stars);
+- the result, in a `MOSAIC_WCS` folder next to the sessions: a linear FITS with its WCS - to process in Siril
+  (background extraction, photometric colour calibration, stretch) - and a stretched preview.
+
+Parts of the sky no tile covers stay black. About 2 minutes and 1 GB of memory for 5 tiles.
 
 ## Session frames
 
