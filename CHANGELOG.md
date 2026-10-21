@@ -79,6 +79,9 @@
     The Mosaic page's title names its new tab: "Mosaic Merge / Repair / Milky Way".
 
 ### BugFix
+    Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
+    few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
+    a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).
     Mosaic page, Milky Way tab: a tile mostly roof (user-found: the old R3C1, a lit roof with a wedge of sky) kept
     patches of the roof full of holes - its noise passed for stars, the star density being judged against the tile's
     median, the roof's own. The sky is now judged against the tile's starriest part: the roof is left out whole.

@@ -263,10 +263,13 @@ def refit_wcs(lum, wcs, catalog, log=None, name=""):
     return w, stars, rms
 
 
+FG_ISLAND_MAX = 0.02   # a foreground patch not touching the frame's edge is kept only above this part of it
+
+
 def sky_mask(lum):
     """True where the sky shows stars - False on the foreground (roof,
     trees: no stars, or clearly darker than the sky)."""
-    from scipy.ndimage import median_filter, uniform_filter, binary_opening, binary_closing, zoom
+    from scipy.ndimage import median_filter, uniform_filter, binary_opening, binary_closing, zoom, label
     small = lum[::2, ::2]
     hp = small - median_filter(small, size=9)
     noise = 1.4826 * np.median(np.abs(hp - np.median(hp)))
@@ -282,6 +285,19 @@ def sky_mask(lum):
         spread = 1.4826 * np.median(np.abs(level[sky] - ref))
         sky &= level > ref - max(4 * spread, 0.04 * ref)
     sky = binary_opening(binary_closing(sky, iterations=6), iterations=10)
+    # foreground comes into the frame from an edge (trees, a roof): an island
+    # of it in the middle of the sky is a patch where fewer stars happened to
+    # be detected (user-found Oct 2026: small holes in an open sky), unless
+    # it's large
+    fg, n = label(~sky)
+    if n:
+        sizes = np.bincount(fg.ravel())
+        edge = np.unique(np.r_[fg[0], fg[-1], fg[:, 0], fg[:, -1]])
+        island = np.ones(n + 1, bool)
+        island[0] = False
+        island[edge] = False
+        island[sizes > FG_ISLAND_MAX * fg.size] = False
+        sky |= island[fg]
     sky = zoom(sky.astype(np.uint8), 2, order=0).astype(bool)
     out = np.zeros(lum.shape, bool)
     out[:sky.shape[0], :sky.shape[1]] = sky[:lum.shape[0], :lum.shape[1]]
