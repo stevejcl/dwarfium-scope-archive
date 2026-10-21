@@ -1290,6 +1290,7 @@ TRANSLATIONS: dict[str, str] = {
     "explore_plan_tonight":       "Plan tonight", # TODO
     "explore_tab_infos":          "Infos", # TODO
     "explore_tab_image":          "Image", # TODO
+    "explore_tab_fixed":          "Image Fix", # TODO
     "explore_no_image":           "Pick a session to see its image", # TODO
     "explore_image_missing":        "This session has no image to show", # TODO
     "explore_image_unreachable":    "Image not available: path not found: {path}", # TODO

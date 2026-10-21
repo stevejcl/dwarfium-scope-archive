@@ -483,6 +483,9 @@ class ExploreApp(DbPageMixin):
                             .classes('w-full explore-view-tabs') as self.view_tabs:
                         tab_infos = ui.tab('infos', label=t('explore_tab_infos'), icon='info')
                         tab_image = ui.tab('image', label=t('explore_tab_image'), icon='image')
+                        # the session's foreground fixed (components/foreground_repair.py), once it is
+                        self.tab_fixed = ui.tab('fixed', label=t('explore_tab_fixed'), icon='park')
+                        self.tab_fixed.set_visibility(False)
                     with ui.tab_panels(self.view_tabs, value=tab_infos) \
                             .props('animated swipeable transition-prev=slide-right transition-next=slide-left') \
                             .classes('w-full bg-transparent'):
@@ -497,6 +500,13 @@ class ExploreApp(DbPageMixin):
                             # Why there is no image: no session chosen, or its image can't be read
                             self.no_image_label = ui.label(t('explore_no_image')).classes('text-gray-500 p-4') \
                                 .bind_visibility_from(self.preview_image, 'visible', backward=lambda v: not v)
+                        with ui.tab_panel(self.tab_fixed).classes('p-0'):
+                            self.fixed_image = ui.image().classes('w-full h-auto mb-2').props('fit=contain')
+                            with ui.row().classes('w-full items-center gap-2 px-2'):
+                                self.fixed_label = ui.label('').classes('text-xs text-gray-500')
+                                ui.button(t('wcs_mosaic_open_folder'), icon='folder_open',
+                                          on_click=lambda: wcs_mosaic.open_dir(Path(self.fixed_label.text).parent)) \
+                                    .props('flat dense no-caps')
 
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
@@ -1923,6 +1933,7 @@ class ExploreApp(DbPageMixin):
             self.current_session_full_dir = self.selected_path
             self.fg_fix_icon.visible = (self.mode == "backup" and "_WIDE_" in os.path.basename(self.selected_path).upper()
                                         and foreground_fix.can_repair(self.selected_path))
+            self._show_fixed_tab()
             print(f"Full PAth: {full_path}")
             print(f"file_path: {file_path}")
             # Store the base folder once
@@ -2480,6 +2491,8 @@ class ExploreApp(DbPageMixin):
             self.wcs_mosaic_icon.visible = False
         if getattr(self, "fg_fix_icon", None):
             self.fg_fix_icon.visible = False
+        if getattr(self, "tab_fixed", None):
+            self._show_fixed_tab(None)
         self.selected_path = ""
         self.current_session_row = None
         # Delete old icons from UI
@@ -3777,7 +3790,30 @@ class ExploreApp(DbPageMixin):
         if not path or not os.path.isdir(path):
             ui.notify(t("folder_not_exist", path=path), color="negative")
             return
-        foreground_repair.open_repair_dialog(path)
+        foreground_repair.open_repair_dialog(path, on_fixed=lambda res: self._show_fixed_tab(path, select=True))
+
+    def _show_fixed_tab(self, session_dir="", select=False):
+        """The "Fixed" tab: the session's repaired foreground's preview, when it
+        was repaired (FIXED_FOREGROUND next to the sessions), hidden otherwise."""
+        import base64
+        session_dir = self.selected_path if session_dir == "" else session_dir
+        fixed = foreground_fix.default_output(session_dir) if session_dir else None
+        preview = Path(str(fixed)[:-len(".fits")] + "_preview.jpg") if fixed else None
+        if not preview or not preview.is_file():
+            if self.view_tabs.value == 'fixed':
+                self.view_tabs.value = 'image'
+            self.tab_fixed.set_visibility(False)
+            return
+        try:
+            data = base64.b64encode(preview.read_bytes()).decode()
+        except OSError:
+            self.tab_fixed.set_visibility(False)
+            return
+        self.fixed_image.set_source(f"data:image/jpeg;base64,{data}")
+        self.fixed_label.text = str(fixed)
+        self.tab_fixed.set_visibility(True)
+        if select:
+            self.view_tabs.value = 'fixed'
 
     async def _frame_review(self):
         """The selected session's frames (components/frame_review.py): on the

@@ -76,9 +76,10 @@ def _tell_every_page(res):
             pass
 
 
-def open_repair_dialog(session_dir: str):
+def open_repair_dialog(session_dir: str, on_fixed=None):
     """The dialog: what the repair does, Start, then its progress, steps and
-    result - the app's repair whatever session it is on."""
+    result - the app's repair whatever session it is on. on_fixed(result) is
+    called when this session's repair ends well while the dialog is open."""
     from api.foreground_fix import default_output, raw_subs
     state = {"version": -1, "steps": 0}
     with ui.dialog() as dialog, ui.card().classes("w-[760px] max-w-full"):
@@ -148,6 +149,8 @@ def open_repair_dialog(session_dir: str):
             steps_log.push(line)
         if state["version"] != job["version"] and job["result"] is not None:
             _show_result(job["result"])
+            if on_fixed and job["result"].get("ok") and job["session"] == str(session_dir):
+                on_fixed(job["result"])
         state["version"] = job["version"]
 
     timer = ui.timer(0.5, _follow)

@@ -1289,6 +1289,7 @@ TRANSLATIONS: dict[str, str] = {
     "explore_plan_tonight":       "Programmer cette nuit",
     "explore_tab_infos":          "Infos",
     "explore_tab_image":          "Image",
+    "explore_tab_fixed":          "Image Fix",
     "explore_no_image":           "Choisissez une session pour voir son image",
     "explore_image_missing":        "Cette session n'a pas d'image à afficher",
     "explore_image_unreachable":    "Image non disponible : chemin introuvable : {path}",
