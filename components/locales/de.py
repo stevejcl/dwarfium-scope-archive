@@ -760,6 +760,9 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_failed":            "Mosaic not made: {error}",  # TODO
     "wcs_mosaic_tile_line":         "{name}: {stars} catalogue stars, residual {rms}, sky {sky}%",  # TODO
     "wcs_mosaic_done":              "Mosaic written: {path} (and its _preview.jpg)",  # TODO
+    "wcs_mosaic_banner":            "Mosaic being assembled, please wait... ({time}) - {step}",  # TODO
+    "wcs_mosaic_steps":             "Steps",  # TODO
+    "wcs_mosaic_busy":              "A mosaic is already being assembled: wait for it to end.",  # TODO
     "milky_way_mode":               "Milky Way",  # TODO
     "milky_way_desc":               "Tiles of a mosaic (Astro Dwarf Session's Milky Way planner: MW Tile R1C1, R1C2...) assembled by astrometry. Result in a MOSAIC_WCS folder next to the sessions.",  # TODO
     "wcs_mosaic_found":             "Mosaics found on this backup drive",  # TODO

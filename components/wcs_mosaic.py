@@ -10,6 +10,12 @@ the FITS of a folder the user chooses; the tiles ticked are assembled by
 api/mosaic_wcs.py (plate solved when their header has no WCS) into a
 linear FITS and a preview, in a MOSAIC_WCS folder next to the sessions.
 Explore's button on a tile's session opens it on that tile's mosaic.
+
+An assembly belongs to the app, not to the page (user-asked Oct 2026: it
+takes minutes, the user goes elsewhere): MOSAIC_JOB holds its state, steps
+and result, one at a time; the tab shows it whenever it is open - a banner
+while it runs, its steps, then its result - and every open page is told
+when it ends.
 """
 from __future__ import annotations
 
@@ -19,7 +25,10 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from nicegui import run, ui
+import threading
+import time
+
+from nicegui import Client, background_tasks, run, ui
 
 from components.i18n import t
 
@@ -140,10 +149,64 @@ def default_output(tiles) -> str:
     return str(session_folder.parent / OUTPUT_DIR / f"{name}_{date}.fits")
 
 
+class _JobLog:
+    """What api/mosaic_wcs.py (and the solvers) log: kept in the job's steps."""
+
+    def push(self, message, classes=None):
+        with MOSAIC_JOB["lock"]:
+            MOSAIC_JOB["steps"].append(f"{time.strftime('%H:%M:%S')}  {message}")
+            del MOSAIC_JOB["steps"][:-MAX_STEPS]
+
+
+MAX_STEPS = 300
+MOSAIC_JOB = {"lock": threading.Lock(), "running": False, "fraction": 0.0, "message": "",
+              "steps": [], "result": None, "output": "", "started": None, "version": 0}
+
+
+def start_job(paths, out, settings) -> bool:
+    """Starts the assembly in the background, app-wide; False when one runs."""
+    from api.mosaic_wcs import build_mosaic
+    with MOSAIC_JOB["lock"]:
+        if MOSAIC_JOB["running"]:
+            return False
+        MOSAIC_JOB.update(running=True, fraction=0.0, message=t("wcs_mosaic_running"), steps=[],
+                          result=None, output=out, started=time.time())
+        MOSAIC_JOB["version"] += 1
+
+    def on_progress(fraction, message):
+        MOSAIC_JOB["fraction"], MOSAIC_JOB["message"] = fraction, message
+
+    async def job():
+        try:
+            res = await run.io_bound(build_mosaic, paths, out, settings, _JobLog(), on_progress, True)
+        except Exception as e:
+            res = {"ok": False, "error": str(e), "skipped": [], "tiles": []}
+        with MOSAIC_JOB["lock"]:
+            MOSAIC_JOB.update(running=False, result=res, fraction=1.0 if res.get("ok") else MOSAIC_JOB["fraction"])
+            MOSAIC_JOB["version"] += 1
+        _tell_every_page(res)
+
+    background_tasks.create(job(), name="milky-way-mosaic")
+    return True
+
+
+def _tell_every_page(res):
+    """The end of the assembly, on every open page of the app."""
+    text = t("wcs_mosaic_done", path=res["fits"]) if res.get("ok") else t("wcs_mosaic_failed", error=res.get("error") or "")
+    for client in list(Client.instances.values()):
+        try:
+            if client.has_socket_connection:
+                with client:
+                    ui.notify(text, type="positive" if res.get("ok") else "negative", multi_line=True, timeout=15000)
+        except Exception:
+            pass
+
+
 class MilkyWayPanel:
     """The Milky Way tab's content, built in the caller's UI context.
     refresh(backup_drive_id) lists that drive's mosaics; `preselect`
-    (tile name, session date) picks the mosaic holding that tile."""
+    (tile name, session date) picks the mosaic holding that tile. Shows the
+    app's assembly (MOSAIC_JOB) - running or done - whenever it is open."""
 
     def __init__(self, conn, client, preselect: tuple[str, str] | None = None):
         from api.mosaic_wcs import solver_settings
@@ -154,11 +217,17 @@ class MilkyWayPanel:
         self.groups: list[dict] = []
         self.tiles: list[dict] = []
         self.checks: dict = {}
-        self.state = {"fraction": 0.0, "message": ""}
+        self.shown_version = -1
+        self.shown_steps = 0
         self._build()
 
     def _build(self):
         with ui.card().classes("w-full p-4 mt-1") as self.card:
+            # stays while an assembly runs, whatever page it was started from
+            with ui.row().classes("w-full items-center gap-3 p-3 rounded bg-amber-100 text-amber-900") as self.banner:
+                ui.spinner(size="md")
+                self.banner_text = ui.label("").classes("text-base font-semibold")
+            self.banner.set_visibility(False)
             ui.label(t("wcs_mosaic_title")).classes("text-lg font-semibold")
             ui.label(t("wcs_mosaic_hint")).classes("text-xs text-gray-500")
             with ui.row().classes("w-full items-center gap-4"):
@@ -173,8 +242,11 @@ class MilkyWayPanel:
                 self.run_btn = ui.button(t("wcs_mosaic_run"), icon="auto_awesome_mosaic", on_click=self._assemble)
                 self.progress = ui.linear_progress(value=0, show_value=False).classes("flex-grow")
             self.status = ui.label("").classes("text-sm")
+            with ui.expansion(t("wcs_mosaic_steps"), icon="list", value=True).classes("w-full") as self.steps_box:
+                self.steps_log = ui.log(max_lines=MAX_STEPS).classes("w-full").style("height: 220px")
+            self.steps_box.set_visibility(False)
             self.result_box = ui.column().classes("w-full")
-        self.timer = ui.timer(0.5, self._refresh_progress, active=False)
+        self.timer = ui.timer(0.5, self._follow_job)
 
     def set_visibility(self, visible: bool):
         self.card.set_visibility(visible)
@@ -231,12 +303,7 @@ class MilkyWayPanel:
         self.mosaic_select.set_value(None)
         self._show_tiles(tiles)
 
-    def _refresh_progress(self):
-        self.progress.value = self.state["fraction"]
-        self.status.text = self.state["message"]
-
-    async def _assemble(self):
-        from api.mosaic_wcs import build_mosaic
+    def _assemble(self):
         chosen = [d["fits"] for d in self.tiles if d["fits"] and self.checks[d["entry_id"]].value]
         if len(chosen) < 2:
             ui.notify(t("wcs_mosaic_min2"), type="warning")
@@ -245,21 +312,42 @@ class MilkyWayPanel:
         if not out:
             ui.notify(t("wcs_mosaic_output"), type="warning")
             return
-        self.run_btn.disable()
-        self.state.update(fraction=0.0, message=t("wcs_mosaic_running"))
-        self.timer.activate()
-        self.result_box.clear()
+        if not start_job(chosen, out, self.settings):
+            ui.notify(t("wcs_mosaic_busy"), type="warning")
+            return
+        self._follow_job()
 
-        def on_progress(fraction, message):
-            self.state["fraction"], self.state["message"] = fraction, message
+    def _follow_job(self):
+        """The app's assembly on this tab: banner, progress, new steps, and
+        its result once - each time the tab is open."""
+        job = MOSAIC_JOB
+        running = job["running"]
+        self.banner.set_visibility(running)
+        if running:
+            elapsed = int(time.time() - (job["started"] or time.time()))
+            self.banner_text.text = t("wcs_mosaic_banner", time=f"{elapsed // 60}:{elapsed % 60:02d}", step=job["message"])
+        self.run_btn.set_enabled(not running)
+        if job["started"] is None:
+            return
+        self.progress.value = job["fraction"]
+        self.status.text = job["message"]
+        self.steps_box.set_visibility(True)
+        if self.shown_version != job["version"]:          # another assembly: its steps from the start
+            self.steps_log.clear()
+            self.shown_steps = 0
+            self.result_box.clear()
+            if running:
+                self.output.value = job["output"]
+        with job["lock"]:
+            new = job["steps"][self.shown_steps:]
+            self.shown_steps = len(job["steps"])
+        for line in new:
+            self.steps_log.push(line)
+        if self.shown_version != job["version"] and job["result"] is not None:
+            self._show_result(job["result"])
+        self.shown_version = job["version"]
 
-        try:
-            res = await run.io_bound(build_mosaic, chosen, out, self.settings, None, on_progress, True)
-        except Exception as e:
-            res = {"ok": False, "error": str(e), "skipped": [], "tiles": []}
-        self.timer.deactivate()
-        self._refresh_progress()
-        self.run_btn.enable()
+    def _show_result(self, res):
         with self.result_box:
             for s in res.get("skipped", []):
                 ui.label(t("wcs_mosaic_skipped", name=s["name"], reason=s["reason"])).classes("text-orange-600 text-sm")

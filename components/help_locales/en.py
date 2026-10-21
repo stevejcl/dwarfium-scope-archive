@@ -731,6 +731,9 @@ takes the FITS of a folder (its own, and the stacked FITS of its subfolders). Un
   (background extraction, photometric colour calibration, stretch) - and a stretched preview.
 
 Parts of the sky no tile covers stay black. About 2 minutes and 1 GB of memory for 5 tiles.
+The assembly carries on if you go to another page: back on the tab, a banner shows it running (time, current
+step) above its steps (plate solving, catalogue stars, sky kept, levelling...), then its result; every open page is
+told when it ends. One assembly at a time.
 In Explore, **{t:wcs_mosaic_btn}** on a tile's session opens this tab on its mosaic.
 
 ## Tips
