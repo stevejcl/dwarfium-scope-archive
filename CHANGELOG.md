@@ -117,6 +117,11 @@
     the trees' black as the sky's. Sky and foreground are now stretched each on its own pixels - the preview's black
     at the sky's background, the foreground kept darker -, and _ground.tif no longer has its trees clipped to black.
     Its stretch made gentler too (asinh 2 for the preview, 4 for the TIFFs, from 10 - user-asked).
+    Fix the foreground left the trees smeared in star trails (user-found Oct 2026, NGC 6871 session under a bright
+    sky): 0% foreground found - the check keeping only pixels the frames saw well (over 90% of the median) dropped
+    the trees, darker than that. Now 30%: 36% foreground found, sharp silhouettes. The foreground is grown by 3 px
+    so the sky's halo at its edge doesn't show, the preview is stretched once on the sky (no grey band around the
+    trees), and the steps list a frame's offset only when it's large (over 30 px or 0.2 deg).
     Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
     few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
     a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).
