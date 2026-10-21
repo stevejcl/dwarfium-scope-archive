@@ -77,8 +77,20 @@
     the FITS and the preview (_sky.tif): the parts where no tile kept sky (roof, trees, outside the tiles) are
     transparent, fading in like the tiles' own edges - laid over the foreground, no cutting out by hand.
     The Mosaic page's title names its new tab: "Mosaic Merge / Repair / Milky Way".
+    Mosaic page, Milky Way tab: plate solving on the app's own catalogue first (user-requested Oct 2026: the
+    Dwarf's FITS have no WCS, and the tools reading mosaics need one) - near the pointing the Dwarf records (RA /
+    DEC) at the scale of its optics, the tile's brightest stars (by their light, not their peak: a stretched stack
+    saturates them all) matched to the Bright Star Catalogue's by their triangles, any orientation, then refit with
+    the lens distortion: offline, 20-50 s a tile (D3 and Mini wide, 178-263 stars, 0.35-0.46 px on 7 tiles), made
+    for these 46 deg fields where ASTAP and solve-field struggle; ASTAP / solve-field / Nova after it. A solution is
+    written next to its tile as <name>.wcs (a header-only FITS with a CD matrix, as ASTAP and astrometry.net do -
+    the tile itself untouched), read back by the next assembly before any solve. "Open the folder" next to the
+    output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
+    few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
+    a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).
     Mosaic page, Milky Way tab: a tile mostly roof (user-found: the old R3C1, a lit roof with a wedge of sky) kept
     patches of the roof full of holes - its noise passed for stars, the star density being judged against the tile's
     median, the roof's own. The sky is now judged against the tile's starriest part: the roof is left out whole.

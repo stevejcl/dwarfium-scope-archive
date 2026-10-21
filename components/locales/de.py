@@ -753,6 +753,8 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_hint":              "The tiles ticked are assembled: each stacked FITS placed where its sky is (its WCS, else plate solved), refit on the bright stars, its foreground (roof, trees) left out, levelled to its neighbours. The result is linear: background extraction, colour calibration and stretch in Siril.",  # TODO
     "wcs_mosaic_no_fits":           "no stacked FITS",  # TODO
     "wcs_mosaic_output":            "Output FITS",  # TODO
+    "wcs_mosaic_open_folder":      "Open the folder",  # TODO
+    "wcs_mosaic_folder_missing":   "No folder yet: {path} (made by the first assembly)",  # TODO
     "wcs_mosaic_run":               "Assemble",  # TODO
     "wcs_mosaic_running":           "Assembling... (a few minutes)",  # TODO
     "wcs_mosaic_min2":              "Tick at least two tiles.",  # TODO

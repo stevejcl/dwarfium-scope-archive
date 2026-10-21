@@ -723,8 +723,11 @@ gives one session per tile. Choose the **{t:backup_drive}**: **{t:wcs_mosaic_fou
 sessions whose names have R<row>C<col>, grouped by name and night (newest first) - or **{t:wcs_mosaic_add_folder}**
 takes the FITS of a folder (its own, and the stacked FITS of its subfolders). Untick the tiles to leave out, then
 **{t:wcs_mosaic_run}**:
-- each tile goes where its sky is: its WCS, else it is plate solved (ASTAP, solve-field or Nova, like the
-  astrometry scan), then refit on the bright stars with the lens distortion;
+- each tile goes where its sky is: its WCS (in its header, else in a `.wcs` file next to it), else it is plate
+  solved - first on the app's own catalogue of bright stars, near the pointing the Dwarf records (offline, a few
+  dozen seconds, made for these wide fields), then by ASTAP, solve-field or Nova like the astrometry scan - and
+  the solution is written next to the tile as `<name>.wcs` (the tile untouched: the next assembly and other tools
+  read it); then refit on the bright stars with the lens distortion;
 - the foreground (roof, trees) is left out, each tile's brightness and colour levelled to its neighbours, and
   in the overlaps the tile seen nearer its centre wins (sharper stars);
 - the result, in a `MOSAIC_WCS` folder next to the sessions: a linear FITS with its WCS - to process in Siril
@@ -732,6 +735,7 @@ takes the FITS of a folder (its own, and the stacked FITS of its subfolders). Un
   stretched, as a 16-bit TIFF with the foreground transparent (`_sky.tif`): laid over a foreground shot (a
   panorama at blue hour, for instance) in Affinity Photo, Photoshop or GIMP, without cutting it out by hand.
 
+**{t:wcs_mosaic_open_folder}** (next to the output, and with the result) opens the `MOSAIC_WCS` folder.
 Parts of the sky no tile covers stay black. About 2 minutes and 1 GB of memory for 5 tiles.
 The assembly carries on if you go to another page: back on the tab, a banner shows it running (time, current
 step) above its steps (plate solving, catalogue stars, sky kept, levelling...), then its result; every open page is
