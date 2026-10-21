@@ -728,7 +728,9 @@ takes the FITS of a folder (its own, and the stacked FITS of its subfolders). Un
 - the foreground (roof, trees) is left out, each tile's brightness and colour levelled to its neighbours, and
   in the overlaps the tile seen nearer its centre wins (sharper stars);
 - the result, in a `MOSAIC_WCS` folder next to the sessions: a linear FITS with its WCS - to process in Siril
-  (background extraction, photometric colour calibration, stretch) - and a stretched preview.
+  (background extraction, photometric colour calibration, stretch) - a stretched preview, and the sky alone,
+  stretched, as a 16-bit TIFF with the foreground transparent (`_sky.tif`): laid over a foreground shot (a
+  panorama at blue hour, for instance) in Affinity Photo, Photoshop or GIMP, without cutting it out by hand.
 
 Parts of the sky no tile covers stay black. About 2 minutes and 1 GB of memory for 5 tiles.
 The assembly carries on if you go to another page: back on the tab, a banner shows it running (time, current

@@ -734,7 +734,9 @@ empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_
 - l'avant-plan (toit, arbres) est écarté, la luminosité et la couleur de chaque tuile accordées à ses
   voisines, et dans les recouvrements la tuile vue plus près de son centre l'emporte (étoiles plus fines) ;
 - le résultat, dans un dossier `MOSAIC_WCS` à côté des sessions : un FITS linéaire avec son WCS - à traiter
-  dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - et un aperçu étiré.
+  dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - un aperçu étiré, et le
+  ciel seul, étiré, en TIFF 16 bits avec le décor transparent (`_sky.tif`) : à poser sur une photo du décor (un
+  panorama à l'heure bleue par exemple) dans Affinity Photo, Photoshop ou GIMP, sans détourage à la main.
 
 Les zones du ciel qu'aucune tuile ne couvre restent noires. Environ 2 minutes et 1 Go de mémoire pour 5 tuiles.
 L'assemblage continue si vous changez de page : de retour sur l'onglet, un bandeau l'indique en cours (durée,

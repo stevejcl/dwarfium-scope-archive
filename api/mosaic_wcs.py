@@ -430,12 +430,16 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
     left out.
     progress(fraction 0-1, message) is called along the way.
 
-    Returns {"ok", "fits", "preview", "tiles": [{"name", "stars", "rms",
+    Also writes the sky alone, stretched, 16-bit with the foreground
+    transparent (same name, _sky.tif), for blending over a foreground shot
+    in an image editor.
+
+    Returns {"ok", "fits", "preview", "tiff", "tiles": [{"name", "stars", "rms",
     "sky_pct"}], "skipped": [{"name", "reason"}], "error"}.
     """
     from astropy.io import fits
 
-    result = {"ok": False, "fits": None, "preview": None, "tiles": [], "skipped": [], "error": None}
+    result = {"ok": False, "fits": None, "preview": None, "tiff": None, "tiles": [], "skipped": [], "error": None}
     catalog = load_catalog()
     tiles = []
     n = len(paths)
@@ -515,16 +519,20 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
     os.makedirs(os.path.dirname(out_fits) or ".", exist_ok=True)
     fits.PrimaryHDU(mos if nch > 1 else mos[0], header=header).writeto(out_fits, overwrite=True)
 
-    preview = re.sub(r"\.fits?$", "", out_fits, flags=re.IGNORECASE) + "_preview.jpg"
+    base = re.sub(r"\.fits?$", "", out_fits, flags=re.IGNORECASE)
+    preview = base + "_preview.jpg"
     write_preview(mos, covered, preview)
-    result.update(ok=True, fits=out_fits, preview=preview)
+    _progress(progress, 0.96, "Writing the sky with a transparent foreground (TIFF)...", log)
+    tiff = base + "_sky.tif"
+    if not write_sky_tiff(mos, covered, tiff):
+        tiff = None
+    result.update(ok=True, fits=out_fits, preview=preview, tiff=tiff)
     _progress(progress, 1.0, f"Mosaic written: {out_fits}", log)
     return result
 
 
-def write_preview(mos, covered, path, max_side=2000):
-    """A stretched JPEG of the mosaic (asinh, per channel), north up."""
-    from PIL import Image
+def _stretched(mos, covered):
+    """The mosaic stretched for viewing (asinh, per channel), 0-1, 3 channels."""
     prev = np.empty_like(mos)
     for c in range(mos.shape[0]):
         v = mos[c][covered]
@@ -536,6 +544,39 @@ def write_preview(mos, covered, path, max_side=2000):
     prev[:, ~covered] = 0
     if prev.shape[0] == 1:
         prev = np.repeat(prev, 3, axis=0)
+    return prev
+
+
+def write_preview(mos, covered, path, max_side=2000):
+    """A stretched JPEG of the mosaic, north up."""
+    from PIL import Image
+    prev = _stretched(mos, covered)
     img = Image.fromarray((np.transpose(prev, (1, 2, 0))[::-1] * 255).astype(np.uint8))  # FITS y goes up
     img.thumbnail((max_side, max_side))
     img.save(path, quality=90)
+
+
+TIFF_FEATHER_PX = 12   # the sky fades out over this many px towards the foreground
+
+
+def write_sky_tiff(mos, covered, path):
+    """The stretched mosaic as a 16-bit RGBA TIFF, north up, transparent
+    where no sky was kept (foreground, outside the tiles) and fading in over
+    TIFF_FEATHER_PX - the 4th channel tagged as unassociated alpha, as
+    image editors expect (OpenCV leaves the tag out). False when it could
+    not be written."""
+    import tifffile
+    from scipy.ndimage import distance_transform_edt
+    prev = _stretched(mos, covered)
+    rgba = np.empty(prev.shape[1:] + (4,), np.uint16)
+    for c in range(3):
+        rgba[..., c] = np.round(prev[c] * 65535)
+    del prev
+    rgba[..., 3] = np.round(np.clip(distance_transform_edt(covered) / TIFF_FEATHER_PX, 0, 1) * 65535)
+    try:
+        tifffile.imwrite(path, rgba[::-1], photometric="rgb", extrasamples=["unassalpha"],
+                         compression="zlib")                    # FITS y goes up
+    except (OSError, ValueError) as e:
+        print_log(f"Sky TIFF not written: {e}")
+        return False
+    return True

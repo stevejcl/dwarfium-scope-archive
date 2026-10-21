@@ -757,6 +757,7 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_failed":            "Mosaic not made: {error}",
     "wcs_mosaic_tile_line":         "{name}: {stars} catalogue stars, residual {rms}, sky {sky}%",
     "wcs_mosaic_done":              "Mosaic written: {path} (and its _preview.jpg)",
+    "wcs_mosaic_tiff":              "Sky alone, foreground transparent (16-bit TIFF, to lay over a foreground shot in Affinity, Photoshop...): {path}",
     "wcs_mosaic_banner":            "Mosaic being assembled, please wait... ({time}) - {step}",
     "wcs_mosaic_steps":             "Steps",
     "wcs_mosaic_busy":              "A mosaic is already being assembled: wait for it to end.",

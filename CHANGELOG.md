@@ -72,6 +72,10 @@
     one (one target, single captures or mosaics - not mixed), the images counted below, then Start: Dwarfium Lite
     must be running and the Dwarf connected in it (found by its Dwarf ID, else its IP). The Dwarf checks the rest
     itself (binning, dark frames) - its refusal shown with the reason.
+    Mosaic page, Milky Way tab: the sky alone, stretched, as a 16-bit TIFF with the foreground transparent
+    (user-requested Oct 2026: blend it over a foreground shot - a panorama at blue hour - in Affinity), next to
+    the FITS and the preview (_sky.tif): the parts where no tile kept sky (roof, trees, outside the tiles) are
+    transparent, fading in like the tiles' own edges - laid over the foreground, no cutting out by hand.
 
 ### BugFix
     Mosaic page, Milky Way tab: a tile mostly roof (user-found: the old R3C1, a lit roof with a wedge of sky) kept
