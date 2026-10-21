@@ -194,10 +194,21 @@ def _star_transform(lum, ref_xy, keep=80):
     return best if score >= max(8, len(xy) // 5) else None
 
 
-def _foreground(ground, valid):
+ALTAZ_TURN_DEG = 0.3      # stars turning more than this in the frame: alt-az tracking
+STARS_SPAN_S = 180        # the first subs within this span show stars and ground both sharp
+FG_ISLAND_MAX = 0.02      # foreground away from the frame's edge kept only above this part of it
+STARRY_MAX = 0.6          # a dark patch with stars over more of it than this is sky
+
+
+def _foreground(ground, valid, starry=None):
     """The foreground on the ground stack: darker than the sky (Otsu), stars
     and noise smoothed out, vignetting divided out first (a dark corner of
-    sky passed for a tree)."""
+    sky passed for a tree) - and without stars where `starry` (the first
+    subs, stars sharp) shows some: on a session with little foreground the
+    darker half of the sky's own gradient passed for it (user-found Oct
+    2026: a disc of sky, starless, in the middle of the frame). Foreground
+    comes in from the frame's edge: a patch of it away from the edge is sky
+    unless it's large."""
     import cv2
     from scipy.ndimage import gaussian_filter, binary_dilation, binary_opening, binary_closing
     gl = ground.mean(axis=2)
@@ -221,7 +232,35 @@ def _foreground(ground, valid):
         coef = np.linalg.lstsq(A, gl[sel] - pedestal, rcond=None)[0]
         level = coef[0] + coef[1] * xx + coef[2] * yy + coef[3] * xx ** 2 + coef[4] * yy ** 2 + coef[5] * xx * yy
         dark = split((gl - pedestal) / np.maximum(level, 1e-3))
-    return binary_opening(binary_closing(dark, iterations=2), iterations=2), ok
+    fg = binary_opening(binary_closing(dark, iterations=2), iterations=2)
+    from scipy.ndimage import label
+    lab, n = label(fg)
+    if n:
+        sizes = np.bincount(lab.ravel(), minlength=n + 1)
+        keep = np.zeros(n + 1, bool)
+        keep[np.unique(np.r_[lab[0], lab[-1], lab[:, 0], lab[:, -1]])] = True
+        keep[sizes > FG_ISLAND_MAX * fg.size] = True
+        sky_like = np.zeros(n + 1, bool)
+        if starry is not None:
+            # a dark patch mostly full of stars is sky - patch by patch: the star
+            # density is too coarse at a tree's edge to cut there
+            stars_in = np.bincount(lab.ravel(), weights=starry.ravel().astype(float), minlength=n + 1)
+            sky_like = stars_in >= STARRY_MAX * np.maximum(sizes, 1)
+        keep[0] = sky_like[0] = False
+        fg = keep[lab] & ~sky_like[lab]
+        if sky_like.any():
+            # from such a patch, its starless part - a real foreground the sky's
+            # gradient was joined to - if it comes in from the edge or is large
+            rest = sky_like[lab] & ~starry
+            lab2, n2 = label(rest)
+            if n2:
+                sizes2 = np.bincount(lab2.ravel(), minlength=n2 + 1)
+                keep2 = np.zeros(n2 + 1, bool)
+                keep2[np.unique(np.r_[lab2[0], lab2[-1], lab2[:, 0], lab2[:, -1]])] = True
+                keep2[sizes2 > FG_ISLAND_MAX * fg.size] = True
+                keep2[0] = False
+                fg |= keep2[lab2]
+    return fg, ok
 
 
 def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs=MAX_SUBS):
@@ -288,6 +327,7 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     ref_xy = _quick_stars(subs[0].mean(axis=2, dtype=np.float32), 80)
     to_sub = [np.eye(3)]                       # reference pixel -> sub pixel
     keep = [0]
+    turns = [0.0]
     for k in range(1, len(subs)):
         T = _star_transform(subs[k].mean(axis=2, dtype=np.float32), ref_xy)
         if T is None:
@@ -295,9 +335,16 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
             continue
         to_sub.append(np.linalg.inv(T))
         keep.append(k)
-        shift = np.hypot(*T[:2, 2])
-        if shift > 2:
-            print_log(f"Sub {k + 1}: {shift:.1f} px off the first one (dithering)", log)
+        shift, turn = np.hypot(*T[:2, 2]), np.degrees(np.arctan2(T[1, 0], T[0, 0]))
+        turns.append(turn)
+        if shift > 2 or abs(turn) > 0.05:
+            print_log(f"Sub {k + 1}: {shift:.1f} px, {turn:+.2f} deg off the first one", log)
+    # EQ tracking keeps the frame still on the stars (dithering shifts it);
+    # alt-az turns it (field rotation) - EQMODE isn't in every firmware's frames
+    if max(abs(x) for x in turns) > ALTAZ_TURN_DEG:
+        result["error"] = (f"the stars turn {max(abs(x) for x in turns):.1f} deg in the frame over the session: "
+                           "alt-az tracking - only equatorial sessions are handled yet")
+        return result
     subs = [subs[k] for k in keep]
     times = [times[k] for k in keep]
     n = len(subs)
@@ -354,8 +401,16 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
             ground[r0:r1] = np.nanmedian(block, axis=0)
     _progress(progress, 0.6, "Foreground stacked on the ground", log)
 
-    # 3. its mask
-    fg, _ = _foreground(ground, np.isfinite(ground).all(axis=2))
+    # 3. its mask - where the first subs, registered on the stars, show stars is sky
+    from api.mosaic_wcs import sky_mask
+    first = [k for k in range(n) if (times[k] - times[0]).total_seconds() <= STARS_SPAN_S][:6]
+    early = np.zeros((H, W), np.float32)
+    for k in first:
+        lum = subs[k].mean(axis=2, dtype=np.float32)
+        early += cv2.warpAffine(lum, to_sub[k][:2].astype(np.float32), (W, H),
+                                flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
+    starry = sky_mask(early / len(first))
+    fg, _ = _foreground(ground, np.isfinite(ground).all(axis=2), starry)
     result["foreground_pct"] = round(100 * float(fg.mean()))
     print_log(f"Foreground: {result['foreground_pct']}% of the frame", log)
     halo = binary_dilation(fg, iterations=FG_HALO_PX).astype(np.uint8)

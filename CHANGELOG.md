@@ -101,6 +101,12 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Explore, Fix the foreground: on a session with little foreground (user-found Oct 2026), a starless disc of sky
+    in the middle of the result - the darker half of the sky's own gradient passed for foreground and got the
+    foreground stack. A dark patch where the first frames (stars still sharp) show stars over most of it is now sky -
+    its starless part kept if it comes in from the frame's edge -, and foreground away from the edge is sky unless
+    large. A session whose stars turn in the frame (alt-az tracking, over 0.3 deg) is refused - EQMODE isn't in
+    every firmware's frames; each frame's offset and turn are in the steps.
     Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
     few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
     a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).
