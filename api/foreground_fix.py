@@ -264,6 +264,18 @@ def _foreground(ground, valid, starry=None):
     return fg, ok
 
 
+PREVIEW_SKY_BLACK_PCT = 5    # the preview's black: this percentile of the sky (its vignetted corners darker)
+PREVIEW_GROUND_LEVEL = 0.5   # the foreground's brightness in the preview, against the sky's
+
+
+def _write_jpeg(rgb, path, max_side=2000):
+    """(3, H, W) 0-1 as a JPEG, rows as stored."""
+    from PIL import Image
+    img = Image.fromarray((np.transpose(np.clip(rgb, 0, 1), (1, 2, 0)) * 255).astype(np.uint8))
+    img.thumbnail((max_side, max_side))
+    img.save(path, quality=90)
+
+
 def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs=MAX_SUBS):
     """
     The session `session_dir`'s foreground fixed, from its raw subs, into
@@ -281,7 +293,7 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     from scipy.interpolate import RectBivariateSpline
     from scipy.ndimage import binary_dilation, distance_transform_edt
     from api.mosaic_wcs import (solve_catalog, sidecar_wcs, sidecar_path, write_sidecar, _stretched,
-                                write_rgba_tiff, write_preview)
+                                write_rgba_tiff)
 
     result = {"ok": False, "fits": None, "preview": None, "sky_tif": None, "ground_tif": None,
               "subs": 0, "foreground_pct": None, "error": None}
@@ -475,14 +487,21 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     fits.PrimaryHDU(chw, header=header).writeto(out_fits, overwrite=True)
     base = re.sub(r"\.fits?$", "", str(out_fits), flags=re.IGNORECASE)
     # the preview and the TIFFs the way round the Dwarf and the app show its
-    # frames (rows as stored - write_preview turns a mosaic north up);
-    # one stretch for both TIFFs: they lay back together in an image editor
-    write_preview(chw[:, ::-1], np.ones(fg.shape, bool), base + "_preview.jpg")
-    stretched = _stretched(chw, ~fg)
-    sky_tif, ground_tif = base + "_sky.tif", base + "_ground.tif"
+    # frames (rows as stored). Sky and foreground each stretched on their own
+    # pixels: one stretch over both took the trees' black as the sky's and the
+    # sky came out pale grey (user-found), and the foreground TIFF had its
+    # trees clipped to black
+    everything = np.ones(fg.shape, bool)
     soft = np.clip(distance_transform_edt(fg) / BLEND_PX, 0, 1)
-    ok_sky = write_rgba_tiff(stretched, 1 - soft, sky_tif, flip=False)
-    ok_ground = write_rgba_tiff(stretched, soft, ground_tif, flip=False)
+    sky_str = _stretched(chw, everything, stats=~fg)
+    ground_str = _stretched(chw, everything, stats=fg) if fg.any() else sky_str
+    sky_tif, ground_tif = base + "_sky.tif", base + "_ground.tif"
+    ok_sky = write_rgba_tiff(sky_str, 1 - soft, sky_tif, flip=False)
+    ok_ground = write_rgba_tiff(ground_str, soft, ground_tif, flip=False)
+    # the preview: the sky's black at its background, the foreground kept darker
+    look = _stretched(chw, everything, stats=~fg, low=PREVIEW_SKY_BLACK_PCT)
+    look = look * (1 - soft) + PREVIEW_GROUND_LEVEL * ground_str * soft
+    _write_jpeg(look, base + "_preview.jpg")
     result.update(ok=True, fits=str(out_fits), preview=base + "_preview.jpg",
                   sky_tif=sky_tif if ok_sky else None, ground_tif=ground_tif if ok_ground else None)
     _progress(progress, 1.0, f"Foreground fixed: {out_fits}", log)

@@ -111,6 +111,9 @@
     frame's registration on the stars carries its turn, and the ground is placed through it, so the geometry holds
     for EQ and alt-az alike. The session's plate-solve is written next to its first raw frame (<name>.wcs) and
     read back by the next repair (a solve saved: 113 -> 87 s on a Mini session).
+    Fix the foreground's preview showed a pale grey sky (user-found Oct 2026): one stretch over the whole frame took
+    the trees' black as the sky's. Sky and foreground are now stretched each on its own pixels - the preview's black
+    at the sky's background, the foreground kept darker -, and _ground.tif no longer has its trees clipped to black.
     Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
     few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
     a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).
