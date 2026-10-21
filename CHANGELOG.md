@@ -114,6 +114,7 @@
     Fix the foreground's preview showed a pale grey sky (user-found Oct 2026): one stretch over the whole frame took
     the trees' black as the sky's. Sky and foreground are now stretched each on its own pixels - the preview's black
     at the sky's background, the foreground kept darker -, and _ground.tif no longer has its trees clipped to black.
+    Its stretch made gentler too (asinh 2 for the preview, 4 for the TIFFs, from 10 - user-asked).
     Mosaic page, Milky Way tab: small square holes in an open sky (user-found Oct 2026) - a patch of sky where a
     few less stars happened to be detected passed for foreground. Foreground comes into a tile from its edge (trees,
     a roof): a patch of it in the middle of the sky is now kept as sky, unless it's large (over 2% of the tile).

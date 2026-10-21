@@ -706,10 +706,10 @@ def build_mosaic(paths, out_fits, settings=None, log=None, progress=None, solve=
     return result
 
 
-def _stretched(mos, covered, stats=None, low=1):
-    """The mosaic stretched for viewing (asinh, per channel), 0-1, 3 channels,
-    black outside `covered`; black and white points from the pixels of
-    `stats` (default: `covered`), black at their `low` percentile."""
+def _stretched(mos, covered, stats=None, low=1, strength=10):
+    """The mosaic stretched for viewing (asinh of `strength`, per channel),
+    0-1, 3 channels, black outside `covered`; black and white points from the
+    pixels of `stats` (default: `covered`), black at their `low` percentile."""
     prev = np.empty_like(mos)
     stats = covered if stats is None else stats
     for c in range(mos.shape[0]):
@@ -718,7 +718,7 @@ def _stretched(mos, covered, stats=None, low=1):
             prev[c] = 0
             continue
         b, t = np.percentile(v, low), np.percentile(v, 99.8)
-        prev[c] = np.arcsinh(10 * np.clip((mos[c] - b) / max(t - b, 1e-12), 0, 1)) / np.arcsinh(10)
+        prev[c] = np.arcsinh(strength * np.clip((mos[c] - b) / max(t - b, 1e-12), 0, 1)) / np.arcsinh(strength)
     prev[:, ~covered] = 0
     if prev.shape[0] == 1:
         prev = np.repeat(prev, 3, axis=0)

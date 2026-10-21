@@ -264,7 +264,9 @@ def _foreground(ground, valid, starry=None):
     return fg, ok
 
 
-PREVIEW_SKY_BLACK_PCT = 5    # the preview's black: this percentile of the sky (its vignetted corners darker)
+PREVIEW_SKY_BLACK_PCT = 10   # the preview's black: this percentile of the sky (its vignetted corners darker)
+PREVIEW_STRENGTH = 2         # the preview's asinh stretch - gentle (10 pushed the sky's noise and gradient up)
+TIFF_STRENGTH = 4            # the TIFFs': still room to work in an image editor
 PREVIEW_GROUND_LEVEL = 0.5   # the foreground's brightness in the preview, against the sky's
 
 
@@ -493,14 +495,15 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     # trees clipped to black
     everything = np.ones(fg.shape, bool)
     soft = np.clip(distance_transform_edt(fg) / BLEND_PX, 0, 1)
-    sky_str = _stretched(chw, everything, stats=~fg)
-    ground_str = _stretched(chw, everything, stats=fg) if fg.any() else sky_str
+    sky_str = _stretched(chw, everything, stats=~fg, strength=TIFF_STRENGTH)
+    ground_str = _stretched(chw, everything, stats=fg, strength=TIFF_STRENGTH) if fg.any() else sky_str
     sky_tif, ground_tif = base + "_sky.tif", base + "_ground.tif"
     ok_sky = write_rgba_tiff(sky_str, 1 - soft, sky_tif, flip=False)
     ok_ground = write_rgba_tiff(ground_str, soft, ground_tif, flip=False)
     # the preview: the sky's black at its background, the foreground kept darker
-    look = _stretched(chw, everything, stats=~fg, low=PREVIEW_SKY_BLACK_PCT)
-    look = look * (1 - soft) + PREVIEW_GROUND_LEVEL * ground_str * soft
+    look = _stretched(chw, everything, stats=~fg, low=PREVIEW_SKY_BLACK_PCT, strength=PREVIEW_STRENGTH)
+    ground_look = _stretched(chw, everything, stats=fg, strength=PREVIEW_STRENGTH) if fg.any() else look
+    look = look * (1 - soft) + PREVIEW_GROUND_LEVEL * ground_look * soft
     _write_jpeg(look, base + "_preview.jpg")
     result.update(ok=True, fits=str(out_fits), preview=base + "_preview.jpg",
                   sky_tif=sky_tif if ok_sky else None, ground_tif=ground_tif if ok_ground else None)
