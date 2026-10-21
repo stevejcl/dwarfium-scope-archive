@@ -50,6 +50,7 @@ MIN_SUBS = 5
 BLOCK_ROWS = 96         # rows stacked at once
 SIDEREAL = 15.0410686 / 3600  # deg of RA per second
 FG_HALO_PX = 12         # foreground grown by this much before the sky stack
+FG_GROW_PX = 3          # foreground mask grown by this much: its edge is a little inside the leaves
 BLEND_PX = 3            # foreground edge softened over this much
 GRID = (55, 97)         # rows, cols of the grid the ground's shift is computed on
 BAYER_CODES = {"RGGB": "COLOR_BayerBG2RGB", "BGGR": "COLOR_BayerRG2RGB",
@@ -214,7 +215,9 @@ def _foreground(ground, valid, starry=None):
     from scipy.ndimage import gaussian_filter, binary_dilation, binary_opening, binary_closing
     gl = ground.mean(axis=2)
     ok = valid & np.isfinite(gl)
-    ok &= gl > 0.9 * np.median(gl[ok])           # not the borders no sub saw
+    # the borders no sub saw are NaN already; this only drops dead pixels - a
+    # 10% margin dropped the trees themselves under a bright sky (user-found)
+    ok &= gl > 0.3 * np.median(gl[ok])
 
     def split(img):
         s = gaussian_filter(np.where(ok, img, np.median(img[ok])), 3)
@@ -267,7 +270,6 @@ def _foreground(ground, valid, starry=None):
 PREVIEW_SKY_BLACK_PCT = 10   # the preview's black: this percentile of the sky (its vignetted corners darker)
 PREVIEW_STRENGTH = 2         # the preview's asinh stretch - gentle (10 pushed the sky's noise and gradient up)
 TIFF_STRENGTH = 4            # the TIFFs': still room to work in an image editor
-PREVIEW_GROUND_LEVEL = 0.5   # the foreground's brightness in the preview, against the sky's
 
 
 def _write_jpeg(rgb, path, max_side=2000):
@@ -357,7 +359,7 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
         keep.append(k)
         shift, turn = np.hypot(*T[:2, 2]), np.degrees(np.arctan2(T[1, 0], T[0, 0]))
         turns.append(turn)
-        if shift > 2 or abs(turn) > 0.05:
+        if shift > 30 or abs(turn) > 0.2:
             print_log(f"Sub {k + 1}: {shift:.1f} px, {turn:+.2f} deg off the first one", log)
     print_log(f"Stars: up to {max(abs(x) for x in turns):.2f} deg of turn in the frame over the session "
               "(field rotation / polar alignment), taken into the registration", log)
@@ -427,6 +429,9 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
                                 flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
     starry = sky_mask(early / len(first))
     fg, _ = _foreground(ground, np.isfinite(ground).all(axis=2), starry)
+    # the mask stops a little inside the silhouette (smoothed split): grown so the
+    # leaves' edge comes from the foreground stack, not the sky's smeared one
+    fg = binary_dilation(fg, iterations=FG_GROW_PX) if fg.any() else fg
     result["foreground_pct"] = round(100 * float(fg.mean()))
     print_log(f"Foreground: {result['foreground_pct']}% of the frame", log)
     halo = binary_dilation(fg, iterations=FG_HALO_PX).astype(np.uint8)
@@ -501,9 +506,10 @@ def repair_session(session_dir, out_fits=None, log=None, progress=None, max_subs
     ok_sky = write_rgba_tiff(sky_str, 1 - soft, sky_tif, flip=False)
     ok_ground = write_rgba_tiff(ground_str, soft, ground_tif, flip=False)
     # the preview: the sky's black at its background, the foreground kept darker
+    # one stretch on the sky's points over the whole frame: the foreground stays a
+    # dark silhouette (stretched apart, the bit of sky in its grown mask came out
+    # as a grey band around the leaves)
     look = _stretched(chw, everything, stats=~fg, low=PREVIEW_SKY_BLACK_PCT, strength=PREVIEW_STRENGTH)
-    ground_look = _stretched(chw, everything, stats=fg, strength=PREVIEW_STRENGTH) if fg.any() else look
-    look = look * (1 - soft) + PREVIEW_GROUND_LEVEL * ground_look * soft
     _write_jpeg(look, base + "_preview.jpg")
     result.update(ok=True, fits=str(out_fits), preview=base + "_preview.jpg",
                   sky_tif=sky_tif if ok_sky else None, ground_tif=ground_tif if ok_ground else None)
