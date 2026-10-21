@@ -50,6 +50,8 @@ from components.db_page_mixin import DbPageMixin
 from components.action_icon import ActionIcon
 from components import frame_review
 from components import wcs_mosaic
+from components import foreground_repair
+from api import foreground_fix
 from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
@@ -454,6 +456,10 @@ class ExploreApp(DbPageMixin):
                             # tab on its mosaic (components/wcs_mosaic.py), backup drives
                             self.wcs_mosaic_icon = ActionIcon(t("wcs_mosaic_btn"), "auto_awesome_mosaic", self._wcs_mosaic)
                             self.wcs_mosaic_icon.visible = False
+                            # A wide session shot before its Dwarf froze the foreground: the
+                            # trees fixed from its raw subs (components/foreground_repair.py)
+                            self.fg_fix_icon = ActionIcon(t("fg_fix_btn"), "park", self._fix_foreground)
+                            self.fg_fix_icon.visible = False
                             # Link to the ManualSession that was imported alongside this BackupEntry
                             self.linked_manual_session_icon = ActionIcon(t("view_linked_manual"), "link", self.navigate_to_linked_manual_session)
                             self.linked_manual_session_icon.visible = False
@@ -1915,6 +1921,8 @@ class ExploreApp(DbPageMixin):
             full_path = get_Backup_fullpath (self.conn, backup_path, "", file_path, self.get_selected_dwarf_id())
             self.selected_path = os.path.dirname(full_path)
             self.current_session_full_dir = self.selected_path
+            self.fg_fix_icon.visible = (self.mode == "backup" and "_WIDE_" in os.path.basename(self.selected_path).upper()
+                                        and foreground_fix.can_repair(self.selected_path))
             print(f"Full PAth: {full_path}")
             print(f"file_path: {file_path}")
             # Store the base folder once
@@ -2470,6 +2478,8 @@ class ExploreApp(DbPageMixin):
             self.frame_review_icon.visible = False
         if getattr(self, "wcs_mosaic_icon", None):
             self.wcs_mosaic_icon.visible = False
+        if getattr(self, "fg_fix_icon", None):
+            self.fg_fix_icon.visible = False
         self.selected_path = ""
         self.current_session_row = None
         # Delete old icons from UI
@@ -3759,6 +3769,15 @@ class ExploreApp(DbPageMixin):
         back = q(f"/Explore/?BackupDriveId={row[20]}&SessionId={row[22]}&mode=backup", safe="")
         ui.navigate.to(f"/Mosaic?mode=MilkyWay&DwarfId={row[21]}&BackupId={row[20]}"
                        f"&tile={q(str(row[13] or row[8] or ''))}&tile_date={q(str(row[7] or ''))}&back_url={back}")
+
+    def _fix_foreground(self):
+        """The selected wide session's foreground fixed from its raw subs
+        (components/foreground_repair.py)."""
+        path = self.selected_path
+        if not path or not os.path.isdir(path):
+            ui.notify(t("folder_not_exist", path=path), color="negative")
+            return
+        foreground_repair.open_repair_dialog(path)
 
     async def _frame_review(self):
         """The selected session's frames (components/frame_review.py): on the

@@ -192,8 +192,9 @@ def solve_catalog(lum, header, path="", log=None, name=""):
     catalog, mags = load_catalog(with_mag=True)
     near = catalog.separation(SkyCoord(ra * u.deg, dec * u.deg)).deg < SOLVE_RADIUS_DEG
     tried = set()
+    all_x, all_y = _brightest_stars(lum, max(k for k, _ in SOLVE_TRIES))   # once: ranked by light
     for keep, mag in SOLVE_TRIES:
-        bx, by = _brightest_stars(lum, keep)
+        bx, by = all_x[:keep], all_y[:keep]
         if len(bx) < 8:
             break
         pick = np.where(near & (mags < mag))[0]
@@ -736,21 +737,26 @@ TIFF_FEATHER_PX = 12   # the sky fades out over this many px towards the foregro
 def write_sky_tiff(mos, covered, path):
     """The stretched mosaic as a 16-bit RGBA TIFF, north up, transparent
     where no sky was kept (foreground, outside the tiles) and fading in over
-    TIFF_FEATHER_PX - the 4th channel tagged as unassociated alpha, as
-    image editors expect (OpenCV leaves the tag out). False when it could
-    not be written."""
-    import tifffile
+    TIFF_FEATHER_PX. False when it could not be written."""
     from scipy.ndimage import distance_transform_edt
-    prev = _stretched(mos, covered)
-    rgba = np.empty(prev.shape[1:] + (4,), np.uint16)
+    alpha = np.clip(distance_transform_edt(covered) / TIFF_FEATHER_PX, 0, 1)
+    return write_rgba_tiff(_stretched(mos, covered), alpha, path)
+
+
+def write_rgba_tiff(rgb, alpha, path, flip=True):
+    """3 channels (0-1, (3, H, W)) and an alpha (0-1) as a 16-bit RGBA TIFF,
+    the 4th channel tagged as unassociated alpha, as image editors expect
+    (OpenCV leaves the tag out); rows flipped (FITS y goes up) when `flip`.
+    False when it could not be written."""
+    import tifffile
+    rgba = np.empty(rgb.shape[1:] + (4,), np.uint16)
     for c in range(3):
-        rgba[..., c] = np.round(prev[c] * 65535)
-    del prev
-    rgba[..., 3] = np.round(np.clip(distance_transform_edt(covered) / TIFF_FEATHER_PX, 0, 1) * 65535)
+        rgba[..., c] = np.round(np.clip(rgb[c], 0, 1) * 65535)
+    rgba[..., 3] = np.round(np.clip(alpha, 0, 1) * 65535)
     try:
-        tifffile.imwrite(path, rgba[::-1], photometric="rgb", extrasamples=["unassalpha"],
-                         compression="zlib")                    # FITS y goes up
+        tifffile.imwrite(path, rgba[::-1] if flip else rgba, photometric="rgb",
+                         extrasamples=["unassalpha"], compression="zlib")
     except (OSError, ValueError) as e:
-        print_log(f"Sky TIFF not written: {e}")
+        print_log(f"TIFF not written: {e}")
         return False
     return True

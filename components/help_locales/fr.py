@@ -359,6 +359,7 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
 - **{t:frames_title}** — voir ci-dessous
 - **{t:wcs_mosaic_btn}** (mode Sauvegarde, session d'une tuile de mosaïque) — l'onglet **{t:milky_way_mode}** de la page Mosaïque, sur la mosaïque de cette tuile
+- **{t:fg_fix_btn}** (mode Sauvegarde, session grand champ prise avant DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, poses brutes conservées) — le décor filé réparé : à partir des poses brutes, le ciel empilé sur les étoiles sans le décor (le sol tourne de 15° par heure par rapport au ciel), le décor empilé sur lui-même, puis les deux fusionnés ; sessions équatoriales pour l'instant. Dans `FIXED_FOREGROUND` à côté des sessions : un FITS, un aperçu, le ciel seul et le décor seul en TIFF 16 bits avec transparence (Affinity, Photoshop, GIMP). Environ 1 à 2 minutes ; la réparation continue si la fenêtre est fermée ou la page quittée, chaque page est prévenue à la fin
 - Sous les détails, la ligne qui dit que la session est aussi sur le Dwarf (mode Sauvegarde) ou sur un disque de
   sauvegarde (mode Dwarf) : **{t:explore_view_copy}** l'ouvre là-bas dans Explorer
 - À côté du score de qualité : ⌫ **{t:score_clear}** (elle passe alors « sans score » ;
