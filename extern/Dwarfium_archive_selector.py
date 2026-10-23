@@ -10,6 +10,7 @@ Version 1.0.0
 ChangeLog:
     0.9.0   initial release, beta state for gathering feedback
     1.0.0   add Dwarfium Scope Archive scripts compatibility
+    1.0.1   add photometry option (variable star light curve), by Dwarfium Scope Archive
 """
 
 from genericpath import exists
@@ -25,7 +26,7 @@ import shlex
 import shutil
 import sys
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
@@ -38,6 +39,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QMainWindow,
@@ -165,6 +167,92 @@ For suggestions, support and issues feel free to contact me:
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
+
+# ── photometry helpers ────────────────────────────────────────────────────
+_FITS_BLOCK = 2880
+
+# DWARF II tele FITS have no FOCALLEN / XPIXSZ: plate scale (arcsec/px at the
+# FITS resolution) by image width, as Dwarfium Scope Archive's
+# api/astrometry_resolver.py - 3840 px upscaled, 1920 px binned, 1928/1932 native
+_D2_PLATE_SCALE_BY_WIDTH = {3840: 3.01, 1920: 6.02, 1928: 5.98, 1932: 5.98}
+_D2_TELE_FOCAL_MM = 100.0
+
+
+def read_fits_cards(path):
+    """The primary header's cards of a FITS file: list of (offset, key,
+    value, comment), value without quotes for strings. Reads the header
+    blocks only, no image data (no astropy in Siril's Python)."""
+    cards = []
+    with open(path, "rb") as f:
+        offset = 0
+        while True:
+            block = f.read(_FITS_BLOCK)
+            if len(block) < _FITS_BLOCK:
+                return cards
+            for i in range(0, _FITS_BLOCK, 80):
+                card = block[i:i + 80].decode("ascii", errors="replace")
+                key = card[:8].strip()
+                if key == "END":
+                    return cards
+                value, comment = "", ""
+                if card[8:10] == "= ":
+                    rest = card[10:]
+                    if rest.lstrip().startswith("'"):
+                        start = rest.index("'") + 1
+                        end = rest.find("'", start)
+                        while end != -1 and rest[end + 1:end + 2] == "'":  # '' escape
+                            end = rest.find("'", end + 2)
+                        value = rest[start:end].replace("''", "'").rstrip() if end != -1 else rest[start:]
+                        comment = rest[end + 1:].partition("/")[2].strip() if end != -1 else ""
+                    else:
+                        value, _, comment = rest.partition("/")
+                        value, comment = value.strip(), comment.strip()
+                cards.append((offset + i, key, value, comment))
+            offset += _FITS_BLOCK
+
+
+def fix_dwarf_date_obs(path):
+    """The DWARF writes DATE-OBS as the END of the exposure (its comment says
+    so), while Siril takes it as the start and adds half the exposure for the
+    light curve's time: shift it back by EXPTIME, in place - only on the
+    copies in Siril's lights/ folder. Returns True when changed (a file
+    already fixed, or a DATE-OBS not marked as end of exposure, is kept)."""
+    cards = read_fits_cards(path)
+    by_key = {key: (offset, value, comment) for offset, key, value, comment in cards}
+    if "DATE-OBS" not in by_key or "EXPTIME" not in by_key:
+        return False
+    offset, value, comment = by_key["DATE-OBS"]
+    if "end of exposure" not in comment.lower():
+        return False
+    try:
+        end = datetime.fromisoformat(value.strip().replace("Z", ""))
+        start = end - timedelta(seconds=float(by_key["EXPTIME"][1]))
+    except ValueError:
+        return False
+    card = f"DATE-OBS= '{start.isoformat(timespec='milliseconds')}' / Time start of exposure (end - EXPTIME)"
+    with open(path, "r+b") as f:
+        f.seek(offset)
+        f.write(card.ljust(80)[:80].encode("ascii"))
+    return True
+
+
+def dwarf_platesolve_args(path):
+    """platesolve's -focal= / -pixelsize= for the green-extracted image (half
+    the size, pixels twice as large) when the FITS header has no FOCALLEN /
+    XPIXSZ (DWARF II tele), else [] - Siril reads them from the header and
+    doubles the pixel size itself when extracting the green channel."""
+    cards = {key: value for _, key, value, _ in read_fits_cards(path)}
+    if cards.get("FOCALLEN") and cards.get("XPIXSZ"):
+        return []
+    try:
+        scale = _D2_PLATE_SCALE_BY_WIDTH.get(int(cards.get("NAXIS1", 0)))
+    except ValueError:
+        scale = None
+    if not scale:
+        return []
+    pixel_um = 2 * scale * _D2_TELE_FOCAL_MM / 206.265
+    return [f"-focal={_D2_TELE_FOCAL_MM:g}", f"-pixelsize={pixel_um:.3f}"]
+
 
 def win_long_path(filepath):
     if os.name == 'nt': 
@@ -424,6 +512,9 @@ class PreprocessingInterface(QMainWindow):
         self._last_generated_scripts = []
         self._mosaic_include_stacks = []
         self._last_json_path = None
+        # Stores the last loaded siril_session.json (single session), for
+        # the optional photometry script generated after the copy
+        self._last_session_data = None
         # defaults for presets
         self.load_presets()
         self.create_widgets()
@@ -556,6 +647,19 @@ class PreprocessingInterface(QMainWindow):
         )
         self.json_btn.clicked.connect(self.load_dwarfium_json)
         button_layout.addWidget(self.json_btn)
+
+        # Photometry option (variable stars): with a single siril_session.json,
+        # generate a light-curve script instead of stacking (see
+        # _generate_photometry_script)
+        self.photometry_checkbox = QCheckBox("📈 Photometry")
+        self.photometry_checkbox.setToolTip(
+            "Variable star photometry for a single siril_session.json:\n"
+            "after the copy, a 01_photometry_*.ssf script is generated instead of\n"
+            "stacking - calibration, green channel (AAVSO TG band), registration,\n"
+            "plate solve, comparison stars (findcompstars) and light_curve.\n"
+            "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
+        )
+        button_layout.addWidget(self.photometry_checkbox)
 
         # Run the generated .ssf stack/combine scripts directly in Siril
         self.build_sessions_btn = QPushButton("🚀 Build Sessions")
@@ -837,8 +941,10 @@ class PreprocessingInterface(QMainWindow):
         # ── Megastack JSON ─────────────────────────────────────────────────
         if data.get("type") == "megastack":
             self._last_json_path = json_path
+            self._last_session_data = None
             self._load_megastack_json(data)
             return
+        self._last_session_data = data
 
         # ── Single session JSON (original behaviour) ────────────────────────
         session  = data.get("session", {})
@@ -1893,6 +1999,12 @@ class PreprocessingInterface(QMainWindow):
 
     def _copy_from_json_done(self, count):
         """Called when JSON-based copy is complete."""
+        photometry = None
+        # _last_session_data: None after a megastack JSON
+        if self.photometry_checkbox.isChecked() and self._last_session_data:
+            photometry = self._generate_photometry_script(self._last_session_data, self.current_working_directory)
+            if photometry:
+                self._last_generated_scripts = [photometry]
         self.json_btn.setDisabled(False)
         self.copy_btn.setDisabled(False)
         self.build_sessions_btn.setDisabled(not self._last_generated_scripts)
@@ -1901,12 +2013,134 @@ class PreprocessingInterface(QMainWindow):
         self.progressbar.setMaximum(1)
         self.progress_label.setText("completed")
         self.siril.log(f"Dwarfium JSON copy complete: {count} file(s) copied.", LogColor.GREEN)
+        if photometry:
+            QMessageBox.information(
+                self,
+                "Copy complete",
+                f"{count} file(s) copied to Siril working directory.\n"
+                f"Photometry script generated: {os.path.basename(photometry[0])}\n"
+                f"Click Build Sessions to run it (light_curve.dat and its plot\n"
+                f"are written in the process folder).",
+            )
+            return
         QMessageBox.information(
             self,
             "Copy complete",
             f"{count} file(s) copied to Siril working directory.\n"
             f"You can now close this window and run your Siril script.",
         )
+
+    def _generate_photometry_script(self, data: dict, cwd: str):
+        """Variable star photometry script for a single session (the
+        "📈 Photometry" option): calibration with the master dark, green
+        channel (AAVSO TG band of these colour sensors), registration without
+        stacking, plate solve of the reference image, comparison stars found
+        by Siril (APASS) and the light curve - light_curve.dat and its plot in
+        the process folder. Returns (ssf_path, lines), or None when cancelled
+        or not possible. Requires Siril 1.4.0+ (findcompstars)."""
+        lights_dir = os.path.join(cwd, "lights")
+        lights = sorted(
+            os.path.join(lights_dir, f) for f in os.listdir(lights_dir)
+            if f.lower().endswith((".fits", ".fit", ".fts"))
+        ) if os.path.isdir(lights_dir) else []
+        if not lights:
+            QMessageBox.warning(
+                self, "Photometry",
+                "No light FITS directly in lights/ (a mosaic session can't be measured).",
+            )
+            return None
+
+        session = data.get("session", {})
+        star, ok = QInputDialog.getText(
+            self, "Photometry",
+            "Variable star (name known to Siril / SIMBAD, e.g. RZ Cas):",
+            text=session.get("target", ""),
+        )
+        star = " ".join(star.split())
+        if not ok or not star:
+            return None
+
+        fixed = sum(1 for f in lights if fix_dwarf_date_obs(f))
+        if fixed:
+            self.siril.log(
+                f"[photometry] DATE-OBS of {fixed} light(s) moved back by EXPTIME "
+                "(the DWARF writes the end of the exposure).", LogColor.BLUE,
+            )
+
+        darks_dir = os.path.join(cwd, "darks")
+        n_darks = len([
+            f for f in os.listdir(darks_dir) if f.lower().endswith((".fits", ".fit", ".fts"))
+        ]) if os.path.isdir(darks_dir) else 0
+        proc = os.path.join(cwd, "process")
+        seq = "Green_pp_light" if n_darks else "Green_light"
+
+        lines = [
+            f"# Dwarfium photometry — {star} — {session.get('date', '')[:16]} — {session.get('dwarf', '')}",
+            f"# {len(lights)} light(s), {n_darks} dark(s) — generated by Dwarfium Archive Selector",
+            "requires 1.4.0",
+            "setext fit",
+            f'cd "{cwd}"',
+            "",
+            "# Convert light frames",
+            "cd lights",
+            "convert light -out=../process",
+            "cd ..",
+            "",
+        ]
+        if n_darks:
+            lines += [
+                "# Convert darks",
+                "cd darks",
+                "convert dark -out=../process",
+                "cd ..",
+                "",
+            ]
+        lines += ["cd process", ""]
+        if n_darks >= 2:
+            lines += ["# Master dark", "stack dark rej 3 3 -nonorm -out=master_dark", ""]
+        elif n_darks == 1:
+            lines += ["# Single pre-stacked dark used as master dark", "load dark_00001", "save master_dark", ""]
+        if n_darks:
+            lines += [
+                "# Dark calibration, kept as CFA",
+                "calibrate light -dark=master_dark -cc=dark -cfa",
+                "",
+                "# Green channel of the CFA images (AAVSO TG band)",
+                "seqextract_Green pp_light",
+                "",
+            ]
+        else:
+            lines += [
+                "# No dark found: green channel of the raw CFA images (AAVSO TG band)",
+                "seqextract_Green light",
+                "",
+            ]
+        solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
+        lines += [
+            "# Registration only - every image is a point of the light curve",
+            f"register {seq}",
+            "",
+            "# Plate solve the first image, made the reference: light_curve finds",
+            "# the stars by their coordinates in the reference image",
+            f"setref r_{seq} 1",
+            f"load r_{seq}_00001",
+            solve,
+            f"save r_{seq}_00001",
+            "",
+            "# Comparison stars (APASS catalog, Internet), then the light curve",
+            f'findcompstars "{star}" -out=comparison_stars.csv',
+            f"light_curve r_{seq} 0 -autoring -ninastars=comparison_stars.csv",
+            "",
+            f"# Result: {os.path.join(proc, 'light_curve.dat')} (and its plot)",
+            "cd ..",
+        ]
+
+        star_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in star)
+        ssf_path = os.path.join(cwd, f"01_photometry_{star_safe}.ssf")
+        with open(ssf_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        self.siril.log(f"Photometry script saved: {ssf_path}", LogColor.GREEN)
+        return ssf_path, lines
 
     def build_mosaic_from_restacked(self):
         """Collect RESTACKED_ tiles from the last loaded siril_megastack.json,

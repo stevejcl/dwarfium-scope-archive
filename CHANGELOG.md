@@ -3,6 +3,13 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Dwarfium Archive Selector (Siril script), "📈 Photometry" option (user-requested Oct 2026: measure variable
+    stars - eclipsing binary minima planned with Astro Dwarf Session - in Siril). Ticked, a single siril_session.json
+    gives 01_photometry_<star>.ssf instead of stacking, run with Build Sessions: master dark, green channel (AAVSO TG
+    band), registration without stacking, plate solve of the first frame made the reference (DWARF II tele focal
+    length / pixel size passed: not in its FITS), comparison stars (findcompstars, APASS) and light_curve -
+    process/light_curve.dat and its plot. The DWARF writes DATE-OBS as the end of the exposure ("Time end of
+    exposure"), Siril reads it as the start: moved back by EXPTIME in the copied lights. Siril 1.4.0+, Internet.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
     next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open. The image
     opens in the system's viewer (a click on it, or Open the image), and Open the folder shows the fixed FITS
