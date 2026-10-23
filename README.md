@@ -1,6 +1,8 @@
 # Dwarfium Scope Archive
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> 🌌 **This project is part of the [Dwarfium Lite Suite](https://stevejcl.github.io/Dwarfium-Lite-Suite/)** — Dwarfium Hub, Dwarfium Lite and Dwarfium Scope Archive. The complete documentation (get started, "I want to…" recipes, reference) is here: **[stevejcl.github.io/Dwarfium-Lite-Suite](https://stevejcl.github.io/Dwarfium-Lite-Suite/)**
+
 A desktop application to **back up, organise, explore and process** your [DWARF telescope](https://www.dwarflab.com/) astrophotography sessions.
 
 > **Current version:** V3.4.x (evolution-main branch) — actively developed.
@@ -97,7 +99,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 
 ### Prerequisites
 
-- **Python 3.10+**
+- **Python 3.12+**
 - Windows, macOS 13+ or Linux
 
 ### 1 — Clone the repository
