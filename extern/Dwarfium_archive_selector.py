@@ -2185,10 +2185,19 @@ class PreprocessingInterface(QMainWindow):
         report = [f"Exposure check — {star} — eclipse depth {depth:.2f} mag",
                   f"Saturation level {_DWARF_12BIT_PHOT_MAX} ADU (12-bit data), longest exposure for a peak at 80 % of it", ""]
         self.exposure_btn.setDisabled(True)
+        longest_by_frame = []
         try:
             for path in files:
-                report += self._check_exposure_frame(path, star, depth, work, margin_level)
-                report.append("")
+                lines, longest = self._check_exposure_frame(path, star, depth, work, margin_level)
+                report += lines + [""]
+                if longest:
+                    longest_by_frame.append(longest)
+            # The peak changes from frame to frame with the seeing (about 15 %
+            # over 5 frames of a real test): the shortest of the longest
+            # exposures is the safe one
+            if len(longest_by_frame) > 1:
+                report += [f"Over {len(longest_by_frame)} frames: {min(longest_by_frame):.0f} s at most "
+                           f"(from {min(longest_by_frame):.0f} to {max(longest_by_frame):.0f} s - the seeing)", ""]
         finally:
             self.exposure_btn.setDisabled(False)
             # Siril's working directory back (each frame was measured in exposure_check/)
@@ -2207,7 +2216,8 @@ class PreprocessingInterface(QMainWindow):
         QMessageBox.information(self, "Check exposure", text + f"\n\nSaved in {work}")
 
     def _check_exposure_frame(self, path, star, depth, work, margin_level):
-        """The report lines of one test frame (see check_exposure())."""
+        """(report lines, longest exposure in s or None) of one test frame (see
+        check_exposure())."""
         cards = {key: value for _, key, value, _ in read_fits_cards(path)}
         name = os.path.basename(path)
         try:
@@ -2229,11 +2239,11 @@ class PreprocessingInterface(QMainWindow):
             # The plate solved green image, measured with astropy (measure_star)
             self.siril.cmd("save", "solved_" + base)
         except (s.SirilError, OSError) as e:
-            return [title, f"  failed: {e}"]
+            return [title, f"  failed: {e}"], None
         solved = next((os.path.join(work, f) for f in sorted(os.listdir(work))
                        if os.path.splitext(f)[0] == "solved_" + base), None)
         if not solved:
-            return [title, "  the plate solved image was not saved"]
+            return [title, "  the plate solved image was not saved"], None
         try:
             import warnings
             from astropy.io import fits as _fits
@@ -2249,9 +2259,9 @@ class PreprocessingInterface(QMainWindow):
             if data.max() <= 1.5:   # 32-bit float image: 0..1
                 data = data * 65535.0
             if not wcs.has_celestial:
-                return [title, "  no plate solve in the saved image"]
+                return [title, "  no plate solve in the saved image"], None
         except Exception as e:
-            return [title, f"  the plate solved image was not read: {e}"]
+            return [title, f"  the plate solved image was not read: {e}"], None
 
         targets, comps = [], []
         try:
@@ -2265,9 +2275,9 @@ class PreprocessingInterface(QMainWindow):
                         continue
                     (targets if row.get("type", "").lower() == "target" else comps).append(radec)
         except OSError as e:
-            return [title, f"  comparison stars not read: {e}"]
+            return [title, f"  comparison stars not read: {e}"], None
         if not targets:
-            return [title, "  the star was not found by findcompstars (name, plate solve)"]
+            return [title, "  the star was not found by findcompstars (name, plate solve)"], None
 
         def _measure(ra, dec):
             try:
@@ -2277,7 +2287,7 @@ class PreprocessingInterface(QMainWindow):
 
         measured = _measure(*targets[0])
         if measured is None:
-            return [title, "  the star was not detected in the frame (out of the field, too faint?)"]
+            return [title, "  the star was not detected in the frame (out of the field, too faint?)"], None
         peak, background, snr = measured
         lines = [title, f"  {star}: peak {peak:.0f} / {_DWARF_12BIT_PHOT_MAX} ADU ({100 * peak / _DWARF_12BIT_PHOT_MAX:.0f} %), "
                         f"background {background:.0f}, S/N about {snr:.0f}"]
@@ -2288,7 +2298,8 @@ class PreprocessingInterface(QMainWindow):
             model = (cards.get("TELESCOP") or "").replace(" ", "").upper()
             model_max = _MAX_EXPOSURE_BY_TELESCOP.get(model)
             if model_max and longest > model_max:
-                lines.append(f"  longest exposure at this gain: {longest:.0f} s - {model_max:g} s at most on this model:"
+                longest = model_max
+                lines.append(f"  longest exposure at this gain: more than {model_max:g} s, the most on this model:"
                              " raise the gain for more signal")
             else:
                 lines.append(f"  longest exposure at this gain: {longest:.0f} s")
@@ -2296,7 +2307,7 @@ class PreprocessingInterface(QMainWindow):
         comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
         saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
         lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")
-        return lines
+        return lines, (longest if peak < _DWARF_12BIT_PHOT_MAX and exposure > 0 and peak > background else None)
 
     def _generate_photometry_script(self, data: dict, cwd: str):
         """Variable star photometry script for a single session (the
