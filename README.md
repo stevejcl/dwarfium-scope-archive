@@ -338,8 +338,8 @@ run with **🚀 Build Sessions**:
 1. calibration with the master dark (from the matched darks), kept as CFA;
 2. the green channel only (`seqextract_Green`: the AAVSO **TG** band of these
    colour sensors);
-3. plate solve of every image (`seqplatesolve`): each one is measured with its
-   own solution, so no registration is needed and the dithering doesn't matter;
+3. plate solve of every image, one after the other with its progress shown:
+   each one is measured with its own solution, so no registration is needed and the dithering doesn't matter;
 4. comparison stars found by Siril in the APASS catalogue (`findcompstars`);
 5. differential photometry, by the script itself rather than Siril's
    `light_curve` (in Siril 1.4.0–1.4.2 it failed on these images one way after

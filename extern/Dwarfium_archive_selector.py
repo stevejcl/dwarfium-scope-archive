@@ -2328,6 +2328,14 @@ class PreprocessingInterface(QMainWindow):
                                 self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
+                # Python-side plate solve, image by image: # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
+                if line.startswith("# PYTHON_PLATESOLVE"):
+                    self._build_log(line)
+                    folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
+                    if not self._platesolve_images(folder, seq_name, solve_args.split()):
+                        ran_ok = False
+                        break
+                    continue
                 if line.startswith("# PYTHON_PHOTOMETRY"):
                     self._build_log(line)
                     fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
@@ -2428,6 +2436,43 @@ class PreprocessingInterface(QMainWindow):
                 os.fsync(f.fileno())
         except OSError:
             pass
+
+    def _platesolve_images(self, folder, seq_name, solve_args):
+        """platesolve of each image of the sequence, saved with its solution,
+        the progress shown between images (Siril's log, build_sessions.log,
+        the progress bar). An image that can't be solved is left as it is
+        (the photometry skips it). The first solved image is left loaded, for
+        findcompstars. False when none could be solved."""
+        frames = sorted(
+            f for f in os.listdir(folder)
+            if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
+        )
+        solved, failed, first_solved = 0, [], None
+        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+        for index, frame in enumerate(frames, 1):
+            base = os.path.splitext(frame)[0]
+            try:
+                self.siril.cmd("load", base)
+                self.siril.cmd("platesolve", *solve_args)
+                self.siril.cmd("save", base)
+                solved += 1
+                first_solved = first_solved or base
+            except s.SirilError as e:
+                failed.append(frame)
+                self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
+            self.progressbar.setMaximum(max(len(frames), 1))
+            self.progressbar.setValue(index)
+            self.progress_label.setText(f"{index} / {len(frames)}")
+            if index == len(frames) or index % 10 == 0:
+                self._build_log(f"platesolve: {index} / {len(frames)} images ({len(failed)} failed)")
+                self.siril.log(f"[platesolve] {index} / {len(frames)} images ({len(failed)} failed)", LogColor.BLUE)
+            QApplication.processEvents()
+        if failed:
+            self.siril.log(f"[platesolve] not solved, left out: {', '.join(failed)}", LogColor.SALMON)
+        if first_solved:
+            # The next step (findcompstars) needs a plate solved image loaded
+            self.siril.cmd("load", first_solved)
+        return solved > 0
 
     def _release_working_dir(self):
         """Siril out of its subfolders, its image / sequence closed, so that
@@ -2734,20 +2779,22 @@ class PreprocessingInterface(QMainWindow):
                 "seqextract_Green light",
                 "",
             ]
-        # -noreg: no astrometric registration of the sequence after the solves
-        # - not needed (each image measured with its own solution), and Siril
-        # closed right after "Astrometric registration computed" on a
-        # 141-image session (user-reported Oct 2026)
-        solve = " ".join(["seqplatesolve", seq, "-noreg"] + dwarf_platesolve_args(lights[0]))
+        # One image after the other from Python (# PYTHON_PLATESOLVE), not
+        # seqplatesolve: on a 141-image session the script's window stayed
+        # frozen through its minutes, the session looked stopped (user-
+        # reported Oct 2026) - now its progress is shown between images.
+        # -noflip: each image saved as it is, its solution with it
+        solve_args = " ".join(["-noflip"] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
         saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
         lines += [
-            "# Plate solve of every image (its header updated): each one measured",
-            "# with its own solution - no registration, the dithering doesn't matter",
-            solve,
+            "# Plate solve of every image (saved with its solution), one after the",
+            "# other: each one measured with its own solution - no registration,",
+            "# the dithering doesn't matter",
+            f"# PYTHON_PLATESOLVE {proc}|{seq}|{solve_args}",
             "",
-            "# Comparison stars (APASS catalog, Internet)",
-            f"load {seq}_00001",
+            "# Comparison stars (APASS catalog, Internet), on the first solved image",
+            "# (loaded by the plate solve step)",
             f'findcompstars "{star}" -out=comparison_stars.csv',
             "",
             "# Differential photometry in Python (not Siril's light_curve): the target",
