@@ -15,6 +15,9 @@
     light_curve without -autoring, its background annulus set to 10-15 px with setphot (FWHM 2 - 2.5 px) and Siril's
     defaults put back: in Siril 1.4.0 - 1.4.2 -autoring clears the reference image it measured, and the target star is
     then looked for in an image without its plate solve ("There was a problem finding the target star", real test).
+    A script stopped on a failed command left Siril in process/ with its sequence open: the next Load Dwarfium JSON
+    failed on Windows deleting process/ (os.rmdir). Siril now closes its image / sequence and goes back to the working
+    directory before the copy deletes its folders, and after a failed Build Sessions.
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure

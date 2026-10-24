@@ -998,6 +998,7 @@ class PreprocessingInterface(QMainWindow):
         # create new lights dir and delete process dir, when there is one
         os.mkdir(lights_dir)
         if os.path.exists(process_dir):
+            self._release_working_dir()
             shutil.rmtree(process_dir)
 
         # collect all the files that will get copied
@@ -1116,6 +1117,7 @@ class PreprocessingInterface(QMainWindow):
     def _start_copy_from_json(self, lights, darks, bias_dir, flat_dir, bias_file=None, flat_file=None):
         """Copy lights, darks, bias and flat into Siril working directories."""
         cwd = self.current_working_directory
+        self._release_working_dir()   # its folders are deleted below
 
         # Build (src, dest_dir) pairs
         pairs = []
@@ -1186,7 +1188,16 @@ class PreprocessingInterface(QMainWindow):
         # Delete process dir
         process_dir = os.path.join(cwd, "process")
         if os.path.exists(process_dir):
-            shutil.rmtree(process_dir)
+            self._release_working_dir()
+            try:
+                shutil.rmtree(process_dir)
+            except OSError as e:
+                QMessageBox.critical(
+                    self, "process folder in use",
+                    f"Could not delete {process_dir}:\n{e}\n\n"
+                    "Close the image or sequence open in Siril (or a file open in another program) and try again.",
+                )
+                return
 
         self.progressbar.setMaximum(len(pairs))
         self.progressbar.setValue(0)
@@ -1311,6 +1322,7 @@ class PreprocessingInterface(QMainWindow):
     def _start_copy_megastack_json(self, data: dict):
         """Copy lights and darks for each filter group, then generate .ssf scripts."""
         cwd    = self.current_working_directory
+        self._release_working_dir()   # its folders are deleted below
         groups = data.get("sessions_by_filter", {})
         single = data.get("single_filter", True)
         hint   = data.get("combination_hint") or ("single" if single else "manual")
@@ -2109,6 +2121,9 @@ class PreprocessingInterface(QMainWindow):
             elif ssf_name.startswith("02_combine_"):
                 self._save_step("combined")
 
+        if not ran_ok:
+            # A script stopped before its own "cd ..": Siril back to the working directory
+            self._release_working_dir()
         self.build_sessions_btn.setDisabled(False)
         self.json_btn.setDisabled(False)
         self.copy_btn.setDisabled(False)
@@ -2122,6 +2137,18 @@ class PreprocessingInterface(QMainWindow):
                 self, "Build failed",
                 "A command failed while running the scripts.\nCheck the Siril log for details."
             )
+
+    def _release_working_dir(self):
+        """Siril out of its subfolders, its image / sequence closed, so that
+        process/ can be deleted (user-reported Oct 2026, Windows: a script
+        stopped on a failed command left Siril in process/ with its sequence
+        open, and the next copy failed on os.rmdir)."""
+        cwd = self.current_working_directory
+        for args in (("close",), ("cd", f'"{cwd}"' if " " in cwd else cwd)):
+            try:
+                self.siril.cmd(*args)
+            except s.SirilError:
+                pass
 
     def _copy_from_json_done(self, count):
         """Called when JSON-based copy is complete."""
