@@ -213,6 +213,16 @@ def read_fits_cards(path):
             offset += _FITS_BLOCK
 
 
+def local_utc_offset_hours(date_obs):
+    """This PC's UTC offset in hours at the wall-clock time date_obs (an ISO
+    string), daylight saving time included; 0.0 when not readable."""
+    try:
+        local = datetime.fromisoformat(str(date_obs).strip().replace("Z", ""))
+        return local.astimezone().utcoffset().total_seconds() / 3600.0
+    except (ValueError, OverflowError, OSError, AttributeError):
+        return 0.0
+
+
 def fix_dwarf_date_obs(path):
     """The DWARF writes DATE-OBS as the END of the exposure (its comment says
     so), while Siril takes it as the start and adds half the exposure for the
@@ -353,7 +363,7 @@ def read_compstars_csv(path):
     return sorted(stars, key=lambda st: st["type"].lower() != "target")
 
 
-def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None):
+def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -367,7 +377,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     measured in 90 % of the images), the target's magnitude and its error.
     Time: the middle of the
     exposure (DATE-OBS is its start once fix_dwarf_date_obs() ran), as JD
-    UTC, HJD UTC and BJD TDB. Writes out_csv; returns the summary lines."""
+    UTC, HJD UTC and BJD TDB. utc_offset_h: DATE-OBS's UTC offset - the DWARF
+    writes its local time there (user-checked Oct 2026: the last frame of a
+    session at 04:10 by DATE-OBS, the next session started at 04:22 French
+    summer time on the same DWARF 3). Writes out_csv; returns the summary
+    lines."""
     import math
     import warnings
     import numpy as np
@@ -406,7 +420,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if not wcs.has_celestial:
                 skipped.append(f"{name}: no plate solve")
                 continue
-            start = Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
+            start = (Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
+                     - (utc_offset_h or 0.0) * u.hour)
             mid = start + float(header.get("EXPTIME", 0) or 0) / 2 * u.s
         except Exception as e:
             skipped.append(f"{name}: {e}")
@@ -460,13 +475,15 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
-                         f"{len(comps)} comparison stars (findcompstars), times at mid-exposure"])
+                         f"{len(comps)} comparison stars (findcompstars), times at mid-exposure in UTC "
+                         f"(DATE-OBS taken as UTC{utc_offset_h:+g} h)"])
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak"])
         for name, jd, hjd, bjd, mag, err, n, peak in rows:
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
                              f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}"])
 
-    summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}"]
+    summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
+               f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
     if rows:
         mags = np.array([r[4] for r in rows])
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
@@ -2231,7 +2248,9 @@ class PreprocessingInterface(QMainWindow):
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
                 if line.startswith("# PYTHON_PHOTOMETRY"):
-                    folder, seq_name, saturation = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
+                    fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
+                    folder, seq_name, saturation = fields[:3]
+                    utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
                     try:
                         s.ensure_installed(["astropy"])
                         frames = sorted(
@@ -2241,7 +2260,7 @@ class PreprocessingInterface(QMainWindow):
                         summary = differential_light_curve(
                             frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
                             os.path.join(folder, f"light_curve_{seq_name}.csv"),
-                            saturation=float(saturation) or None,
+                            saturation=float(saturation) or None, utc_offset_h=utc_offset,
                         )
                         for text in summary:
                             self.siril.log(text, LogColor.GREEN)
@@ -2538,6 +2557,18 @@ class PreprocessingInterface(QMainWindow):
         star = " ".join(star.split())
         if not ok or not star:
             return None
+        # The DWARF writes its local time in DATE-OBS: its UTC offset, this
+        # PC's at the session's date by default (daylight saving included)
+        first = {key: value for _, key, value, _ in read_fits_cards(lights[0])}
+        pc_offset = local_utc_offset_hours(first.get("DATE-OBS", ""))
+        utc_offset, ok = QInputDialog.getDouble(
+            self, "Photometry",
+            "The DWARF writes its local time in DATE-OBS.\n"
+            f"UTC offset of that time, in hours (this PC on {str(first.get('DATE-OBS', ''))[:10]}: {pc_offset:+g}):",
+            pc_offset, -14.0, 14.0, 2,
+        )
+        if not ok:
+            return None
 
         fixed = sum(1 for f in lights if fix_dwarf_date_obs(f))
         if fixed:
@@ -2610,7 +2641,8 @@ class PreprocessingInterface(QMainWindow):
             "# and comparison stars at their coordinates in each image, times at",
             "# mid-exposure in JD, HJD and BJD"
             + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
-            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}",
+            f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
+            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}",
             "",
             f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
             "cd ..",

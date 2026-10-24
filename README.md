@@ -352,7 +352,9 @@ run with **🚀 Build Sessions**:
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the
 exposure time in the copied lights, so the times are the middle of each
-exposure. Their data is 12-bit (saturated at 4095) in a 16-bit file: stars
+exposure. The DWARF also writes its **local time** there, not UTC: the
+script asks for its UTC offset (this PC's at the session's date by default,
+daylight saving included) and converts the times to UTC. Their data is 12-bit (saturated at 4095) in a 16-bit file: stars
 above 3700 ADU are left out.
 Requires Siril **1.4.0+** (`findcompstars`), Internet (the star's
 name, the APASS catalogue) and astropy (installed in Siril's Python the first

@@ -31,6 +31,9 @@
     frame of HD 216999 (V 9.36): 9.384 +/- 0.046 from 20 comparison stars.
     The same comparison stars in every image (those measured in at least 90 % of them): 19 to 23 from one image to the
     next made the zero point jump (first real light curve).
+    The DWARF writes its local time in DATE-OBS, not UTC (user-checked: on the same DWARF 3 the last frame of a session
+    read 04:10, the next session started at 04:22 French summer time): the script asks for its UTC offset - this PC's
+    at the session's date by default, daylight saving included - and the CSV's JD / HJD / BJD are UTC-based.
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
