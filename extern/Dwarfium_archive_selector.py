@@ -2734,7 +2734,11 @@ class PreprocessingInterface(QMainWindow):
                 "seqextract_Green light",
                 "",
             ]
-        solve = " ".join(["seqplatesolve", seq] + dwarf_platesolve_args(lights[0]))
+        # -noreg: no astrometric registration of the sequence after the solves
+        # - not needed (each image measured with its own solution), and Siril
+        # closed right after "Astrometric registration computed" on a
+        # 141-image session (user-reported Oct 2026)
+        solve = " ".join(["seqplatesolve", seq, "-noreg"] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
         saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
         lines += [

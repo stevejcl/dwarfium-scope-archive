@@ -7,6 +7,8 @@
     before it runs (user-reported Oct 2026: Siril closed on a 141-image photometry session, its log gone with it) -
     its last line is where it stopped. The photometry logs its progress every 10 images, moves the progress bar,
     keeps the window alive and reads the images as float32.
+    seqplatesolve -noreg: Siril closed right after the astrometric registration it computes after the solves, which the
+    photometry doesn't need (each image measured with its own solution).
     Dwarfium Archive Selector (Siril script), "📈 Photometry" option (user-requested Oct 2026: measure variable
     stars - eclipsing binary minima planned with Astro Dwarf Session - in Siril). Ticked, a single siril_session.json
     gives 01_photometry_<star>.ssf instead of stacking, run with Build Sessions: master dark, green channel (AAVSO TG
