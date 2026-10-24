@@ -10,6 +10,7 @@ Version 1.0.0
 ChangeLog:
     0.9.0   initial release, beta state for gathering feedback
     1.0.0   add Dwarfium Scope Archive scripts compatibility
+    1.0.1   add photometry option (variable star light curve), by Dwarfium Scope Archive
 """
 
 from genericpath import exists
@@ -19,13 +20,14 @@ from sirilpy import LogColor
 
 s.ensure_installed(["PyQt6"])
 
+import csv
 import json
 import os
 import shlex
 import shutil
 import sys
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
@@ -38,6 +40,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QMainWindow,
@@ -165,6 +168,132 @@ For suggestions, support and issues feel free to contact me:
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
+
+# ── photometry helpers ────────────────────────────────────────────────────
+_FITS_BLOCK = 2880
+
+# Older DWARF II firmware wrote no FOCALLEN / XPIXSZ in its tele FITS (2.2.18
+# does: 100 mm, 1.45 um, Sep 2026): plate scale (arcsec/px at the
+# FITS resolution) by image width, as Dwarfium Scope Archive's
+# api/astrometry_resolver.py - 3840 px upscaled, 1920 px binned, 1928/1932 native
+_D2_PLATE_SCALE_BY_WIDTH = {3840: 3.01, 1920: 6.02, 1928: 5.98, 1932: 5.98}
+_D2_TELE_FOCAL_MM = 100.0
+
+
+def read_fits_cards(path):
+    """The primary header's cards of a FITS file: list of (offset, key,
+    value, comment), value without quotes for strings. Reads the header
+    blocks only, no image data (no astropy in Siril's Python)."""
+    cards = []
+    with open(path, "rb") as f:
+        offset = 0
+        while True:
+            block = f.read(_FITS_BLOCK)
+            if len(block) < _FITS_BLOCK:
+                return cards
+            for i in range(0, _FITS_BLOCK, 80):
+                card = block[i:i + 80].decode("ascii", errors="replace")
+                key = card[:8].strip()
+                if key == "END":
+                    return cards
+                value, comment = "", ""
+                if card[8:10] == "= ":
+                    rest = card[10:]
+                    if rest.lstrip().startswith("'"):
+                        start = rest.index("'") + 1
+                        end = rest.find("'", start)
+                        while end != -1 and rest[end + 1:end + 2] == "'":  # '' escape
+                            end = rest.find("'", end + 2)
+                        value = rest[start:end].replace("''", "'").rstrip() if end != -1 else rest[start:]
+                        comment = rest[end + 1:].partition("/")[2].strip() if end != -1 else ""
+                    else:
+                        value, _, comment = rest.partition("/")
+                        value, comment = value.strip(), comment.strip()
+                cards.append((offset + i, key, value, comment))
+            offset += _FITS_BLOCK
+
+
+def fix_dwarf_date_obs(path):
+    """The DWARF writes DATE-OBS as the END of the exposure (its comment says
+    so), while Siril takes it as the start and adds half the exposure for the
+    light curve's time: shift it back by EXPTIME, in place - only on the
+    copies in Siril's lights/ folder. Returns True when changed (a file
+    already fixed, or a DATE-OBS not marked as end of exposure, is kept)."""
+    cards = read_fits_cards(path)
+    by_key = {key: (offset, value, comment) for offset, key, value, comment in cards}
+    if "DATE-OBS" not in by_key or "EXPTIME" not in by_key:
+        return False
+    offset, value, comment = by_key["DATE-OBS"]
+    if "end of exposure" not in comment.lower():
+        return False
+    try:
+        end = datetime.fromisoformat(value.strip().replace("Z", ""))
+        start = end - timedelta(seconds=float(by_key["EXPTIME"][1]))
+    except ValueError:
+        return False
+    card = f"DATE-OBS= '{start.isoformat(timespec='milliseconds')}' / Time start of exposure (end - EXPTIME)"
+    with open(path, "r+b") as f:
+        f.seek(offset)
+        f.write(card.ljust(80)[:80].encode("ascii"))
+    return True
+
+
+# The DWARF's raw FITS are 16-bit files holding 12-bit data (saturated at 4095
+# - a DWARF 3 sub, Oct 2026) while Siril's photometry takes a star as
+# saturated above 60000 ADU by default: the saturation level given to
+# setphot -max_val=, a bit under 4095 minus the dark level
+_DWARF_12BIT_MAX = 4095
+# Longest exposure a model allows, when shorter than what the star could take
+# (user-reported Oct 2026: 15 s at most on a DWARF II)
+_MAX_EXPOSURE_BY_TELESCOP = {"DWARFII": 15.0}
+_DWARF_12BIT_PHOT_MAX = 3700
+
+
+def fits_data_max(path):
+    """Highest pixel value of a 2-D 16-bit FITS (BZERO applied), None when
+    not readable (numpy missing, another format)."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    cards = {key: value for _, key, value, _ in read_fits_cards(path)}
+    try:
+        if int(cards.get("BITPIX", 0)) != 16 or int(cards.get("NAXIS", 0)) != 2:
+            return None
+        width, height = int(cards["NAXIS1"]), int(cards["NAXIS2"])
+        bzero = float(cards.get("BZERO", 0) or 0)
+    except (KeyError, ValueError):
+        return None
+    with open(path, "rb") as f:
+        header_blocks = 0
+        while True:
+            block = f.read(_FITS_BLOCK)
+            if len(block) < _FITS_BLOCK:
+                return None
+            header_blocks += 1
+            if any(block[i:i + 8] == b"END     " for i in range(0, _FITS_BLOCK, 80)):
+                break
+    data = np.fromfile(path, dtype=">i2", count=width * height, offset=header_blocks * _FITS_BLOCK)
+    return float(data.max()) + bzero if data.size else None
+
+
+def dwarf_platesolve_args(path):
+    """platesolve's -focal= / -pixelsize= for the green-extracted image (half
+    the size, pixels twice as large) when the FITS header has no FOCALLEN /
+    XPIXSZ (DWARF II tele), else [] - Siril reads them from the header and
+    doubles the pixel size itself when extracting the green channel."""
+    cards = {key: value for _, key, value, _ in read_fits_cards(path)}
+    if cards.get("FOCALLEN") and cards.get("XPIXSZ"):
+        return []
+    try:
+        scale = _D2_PLATE_SCALE_BY_WIDTH.get(int(cards.get("NAXIS1", 0)))
+    except ValueError:
+        scale = None
+    if not scale:
+        return []
+    pixel_um = 2 * scale * _D2_TELE_FOCAL_MM / 206.265
+    return [f"-focal={_D2_TELE_FOCAL_MM:g}", f"-pixelsize={pixel_um:.3f}"]
+
 
 def win_long_path(filepath):
     if os.name == 'nt': 
@@ -424,6 +553,9 @@ class PreprocessingInterface(QMainWindow):
         self._last_generated_scripts = []
         self._mosaic_include_stacks = []
         self._last_json_path = None
+        # Stores the last loaded siril_session.json (single session), for
+        # the optional photometry script generated after the copy
+        self._last_session_data = None
         # defaults for presets
         self.load_presets()
         self.create_widgets()
@@ -510,6 +642,11 @@ class PreprocessingInterface(QMainWindow):
         button_layout.setContentsMargins(
             0, 15, 0, 0
         )  # Add top margin to separate from content
+        # Second row: the mosaic options on the left, the variable star tools
+        # on the right - on one row with the buttons, they overlapped
+        # (user-reported Oct 2026: ~1500 px needed in a 750 px window)
+        option_layout = QHBoxLayout()
+        variable_layout = QHBoxLayout()
 
         help_btn = QPushButton("?")
         help_btn.setMinimumWidth(35)
@@ -557,6 +694,32 @@ class PreprocessingInterface(QMainWindow):
         self.json_btn.clicked.connect(self.load_dwarfium_json)
         button_layout.addWidget(self.json_btn)
 
+        # Photometry option (variable stars): with a single siril_session.json,
+        # generate a light-curve script instead of stacking (see
+        # _generate_photometry_script)
+        self.photometry_checkbox = QCheckBox("📈 Photometry")
+        self.photometry_checkbox.setToolTip(
+            "Variable star photometry for a single siril_session.json:\n"
+            "after the copy, a 01_photometry_*.ssf script is generated instead of\n"
+            "stacking - calibration, green channel (AAVSO TG band), registration,\n"
+            "plate solve, comparison stars (findcompstars) and light_curve.\n"
+            "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
+        )
+        variable_layout.addWidget(self.photometry_checkbox)
+
+        # Exposure check: a few test frames of the variable star measured, to
+        # choose the exposure / gain of the photometry session
+        self.exposure_btn = QPushButton("🔆 Check exposure")
+        self.exposure_btn.setMinimumHeight(35)
+        self.exposure_btn.setToolTip(
+            "Measure the variable star in a few test frames (raw FITS):\n"
+            "its peak against the 12-bit saturation, its S/N, saturated comparison\n"
+            "stars, and the longest exposure at that gain. Plate solve and\n"
+            "findcompstars: Siril 1.4.0+ and Internet."
+        )
+        self.exposure_btn.clicked.connect(self.check_exposure)
+        variable_layout.addWidget(self.exposure_btn)
+
         # Run the generated .ssf stack/combine scripts directly in Siril
         self.build_sessions_btn = QPushButton("🚀 Build Sessions")
         self.build_sessions_btn.setMinimumHeight(35)
@@ -596,7 +759,7 @@ class PreprocessingInterface(QMainWindow):
         self.feather_checkbox.stateChanged.connect(
             lambda state: self.feather_spinbox.setEnabled(state == Qt.CheckState.Checked.value)
         )
-        button_layout.addWidget(self.feather_checkbox)
+        option_layout.addWidget(self.feather_checkbox)
 
         self.feather_spinbox = QSpinBox()
         self.feather_spinbox.setRange(1, 2000)
@@ -606,7 +769,7 @@ class PreprocessingInterface(QMainWindow):
         self.feather_spinbox.setMaximumWidth(80)
         self.feather_spinbox.setEnabled(False)
         self.feather_spinbox.setToolTip("Width (in pixels) of the feathered blend zone.")
-        button_layout.addWidget(self.feather_spinbox)
+        option_layout.addWidget(self.feather_spinbox)
 
         # HaRGB blend ratio — Ha weight in the R channel composition
         # R = Ha * ratio + astro_r * (1 - ratio)
@@ -616,7 +779,7 @@ class PreprocessingInterface(QMainWindow):
             "R = Ha × ratio + Astro_R × (1 − ratio)\n"
             "0.7 = 70% Ha, 30% natural star color from Astro."
         )
-        button_layout.addWidget(self.ha_blend_label)
+        option_layout.addWidget(self.ha_blend_label)
 
         self.ha_blend_spinbox = QDoubleSpinBox()
         self.ha_blend_spinbox.setRange(0.0, 1.0)
@@ -628,7 +791,7 @@ class PreprocessingInterface(QMainWindow):
         self.ha_blend_spinbox.setToolTip(
             "Ha blend ratio for HaRGB combination (0.0 = pure Astro R, 1.0 = pure Ha)."
         )
-        button_layout.addWidget(self.ha_blend_spinbox)
+        option_layout.addWidget(self.ha_blend_spinbox)
 
         # close button
         close_button = QPushButton("Close")
@@ -639,12 +802,18 @@ class PreprocessingInterface(QMainWindow):
 
         main_layout.addLayout(button_layout)
 
+        option_layout.addStretch()
+        variable_label = QLabel("Variable stars:")
+        option_layout.addWidget(variable_label)
+        option_layout.addLayout(variable_layout)
+        main_layout.addLayout(option_layout)
+
     def create_widgets(self):
         """Creates the UI widgets using PyQt6."""
 
         # Main layout
         main_widget = QWidget()
-        self.setMinimumSize(750, 600)
+        self.setMinimumSize(1000, 640)  # the two rows of buttons (was 750 x 600: they overlapped)
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
         main_layout.setContentsMargins(12, 6, 12, 12)
@@ -837,8 +1006,10 @@ class PreprocessingInterface(QMainWindow):
         # ── Megastack JSON ─────────────────────────────────────────────────
         if data.get("type") == "megastack":
             self._last_json_path = json_path
+            self._last_session_data = None
             self._load_megastack_json(data)
             return
+        self._last_session_data = data
 
         # ── Single session JSON (original behaviour) ────────────────────────
         session  = data.get("session", {})
@@ -1893,6 +2064,12 @@ class PreprocessingInterface(QMainWindow):
 
     def _copy_from_json_done(self, count):
         """Called when JSON-based copy is complete."""
+        photometry = None
+        # _last_session_data: None after a megastack JSON
+        if self.photometry_checkbox.isChecked() and self._last_session_data:
+            photometry = self._generate_photometry_script(self._last_session_data, self.current_working_directory)
+            if photometry:
+                self._last_generated_scripts = [photometry]
         self.json_btn.setDisabled(False)
         self.copy_btn.setDisabled(False)
         self.build_sessions_btn.setDisabled(not self._last_generated_scripts)
@@ -1901,12 +2078,282 @@ class PreprocessingInterface(QMainWindow):
         self.progressbar.setMaximum(1)
         self.progress_label.setText("completed")
         self.siril.log(f"Dwarfium JSON copy complete: {count} file(s) copied.", LogColor.GREEN)
+        if photometry:
+            QMessageBox.information(
+                self,
+                "Copy complete",
+                f"{count} file(s) copied to Siril working directory.\n"
+                f"Photometry script generated: {os.path.basename(photometry[0])}\n"
+                f"Click Build Sessions to run it (light_curve.dat and its plot\n"
+                f"are written in the process folder).",
+            )
+            return
         QMessageBox.information(
             self,
             "Copy complete",
             f"{count} file(s) copied to Siril working directory.\n"
             f"You can now close this window and run your Siril script.",
         )
+
+    def check_exposure(self):
+        """Measures the variable star in a few test frames (the "🔆 Check
+        exposure" button) - user-requested Oct 2026: set the exposure and gain
+        of a photometry session from a few test frames. Each frame: green
+        channel (as the photometry script), plate solve, the star and its
+        comparison stars from findcompstars, Siril's PSF of the stars found.
+        Reports the star's peak against the 12-bit saturation level, its S/N,
+        the comparison stars saturated, the longest exposure at that gain
+        (the signal is proportional to the exposure) and the S/N at the
+        minimum for a given eclipse depth."""
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Test frames of the variable star", "",
+            "FITS files (*.fits *.fit *.fts);;All files (*.*)",
+        )
+        if not files:
+            return
+        first = {key: value for _, key, value, _ in read_fits_cards(files[0])}
+        star, ok = QInputDialog.getText(
+            self, "Check exposure",
+            "Variable star (name known to Siril / SIMBAD, e.g. RZ Cas):",
+            text=(first.get("OBJECT") or "").strip(),
+        )
+        star = " ".join(star.split())
+        if not ok or not star:
+            return
+        depth, ok = QInputDialog.getDouble(
+            self, "Check exposure", "Eclipse depth (mag), for the S/N at the minimum:", 1.0, 0.0, 5.0, 2,
+        )
+        if not ok:
+            return
+
+        work = os.path.join(self.current_working_directory, "exposure_check")
+        os.makedirs(work, exist_ok=True)
+        margin_level = 0.8 * _DWARF_12BIT_PHOT_MAX
+        report = [f"Exposure check — {star} — eclipse depth {depth:.2f} mag",
+                  f"Saturation level {_DWARF_12BIT_PHOT_MAX} ADU (12-bit data), longest exposure for a peak at 80 % of it", ""]
+        self.exposure_btn.setDisabled(True)
+        try:
+            for path in files:
+                report += self._check_exposure_frame(path, star, depth, work, margin_level)
+                report.append("")
+        finally:
+            self.exposure_btn.setDisabled(False)
+
+        text = "\n".join(report)
+        with open(os.path.join(work, "exposure_check.txt"), "w", encoding="utf-8") as f:
+            f.write(text)
+        for line in report:
+            self.siril.log(line, LogColor.BLUE)
+        QMessageBox.information(self, "Check exposure", text + f"\n\nSaved in {work}")
+
+    def _check_exposure_frame(self, path, star, depth, work, margin_level):
+        """The report lines of one test frame (see check_exposure())."""
+        cards = {key: value for _, key, value, _ in read_fits_cards(path)}
+        name = os.path.basename(path)
+        try:
+            exposure = float(cards.get("EXPTIME") or 0)
+        except ValueError:
+            exposure = 0.0
+        title = f"{name}: {exposure:g} s, gain {cards.get('GAIN', '?')}"
+        base = os.path.splitext(name)[0].replace(" ", "_")
+        try:
+            shutil.copy2(path, os.path.join(work, base + ".fits"))
+            self.siril.cmd("cd", f'"{work}"' if " " in work else work)
+            self.siril.cmd("load", base + ".fits")
+            self.siril.cmd("extract_Green")
+            self.siril.cmd("load", "Green_" + base)
+            solve = dwarf_platesolve_args(path)
+            self.siril.cmd("platesolve", *solve)
+            csv_name = f"check_{base}.csv"
+            self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
+            stars = self.siril.get_image_stars() or []
+            shape = self.siril.get_image_shape()
+        except (s.SirilError, OSError) as e:
+            return [title, f"  failed: {e}"]
+
+        targets, comps = [], []
+        try:
+            with open(os.path.join(work, csv_name), encoding="utf-8") as f:
+                rows = csv.DictReader(line for line in f if line.strip() and not line.startswith("#"))
+                for row in rows:
+                    row = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+                    try:
+                        radec = (float(row["ra"]), float(row["dec"]))
+                    except (KeyError, ValueError):
+                        continue
+                    (targets if row.get("type", "").lower() == "target" else comps).append(radec)
+        except OSError as e:
+            return [title, f"  comparison stars not read: {e}"]
+        if not targets:
+            return [title, "  the star was not found by findcompstars (name, plate solve)"]
+
+        height = shape[1] if shape else None
+
+        def _measure(ra, dec):
+            """(peak ADU, background ADU, S/N) of the star found at ra/dec."""
+            try:
+                xy = self.siril.radec2pix(ra, dec)
+            except (ValueError, s.SirilError):
+                return None
+            if not xy:
+                return None
+            best, best_d = None, None
+            for psf in stars:
+                for y in {xy[1], (height - 1 - xy[1]) if height else xy[1]}:  # y origin either way
+                    d = ((psf.xpos - xy[0]) ** 2 + (psf.ypos - y) ** 2) ** 0.5
+                    if best_d is None or d < best_d:
+                        best, best_d = psf, d
+            if best is None or best_d > max(5.0, 2 * max(best.fwhmx, best.fwhmy)):
+                return None
+            scale = 65535.0 if best.B + best.A <= 1.5 else 1.0   # 32-bit float images: 0..1
+            return (best.A + best.B) * scale, best.B * scale, best.SNR
+
+        measured = _measure(*targets[0])
+        if measured is None:
+            return [title, "  the star was not detected in the frame (out of the field, too faint?)"]
+        peak, background, snr = measured
+        lines = [title, f"  {star}: peak {peak:.0f} / {_DWARF_12BIT_PHOT_MAX} ADU ({100 * peak / _DWARF_12BIT_PHOT_MAX:.0f} %), "
+                        f"background {background:.0f}, S/N {snr:.0f}"]
+        if peak >= _DWARF_12BIT_PHOT_MAX:
+            lines.append("  SATURATED: shorter exposure or lower gain")
+        elif exposure > 0 and peak > background:
+            longest = exposure * (margin_level - background) / (peak - background)
+            model = (cards.get("TELESCOP") or "").replace(" ", "").upper()
+            model_max = _MAX_EXPOSURE_BY_TELESCOP.get(model)
+            if model_max and longest > model_max:
+                lines.append(f"  longest exposure at this gain: {longest:.0f} s - {model_max:g} s at most on this model:"
+                             " raise the gain for more signal")
+            else:
+                lines.append(f"  longest exposure at this gain: {longest:.0f} s")
+        lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
+        comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
+        saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
+        lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")
+        return lines
+
+    def _generate_photometry_script(self, data: dict, cwd: str):
+        """Variable star photometry script for a single session (the
+        "📈 Photometry" option): calibration with the master dark, green
+        channel (AAVSO TG band of these colour sensors), registration without
+        stacking, plate solve of the reference image, comparison stars found
+        by Siril (APASS) and the light curve - light_curve.dat and its plot in
+        the process folder. Returns (ssf_path, lines), or None when cancelled
+        or not possible. Requires Siril 1.4.0+ (findcompstars)."""
+        lights_dir = os.path.join(cwd, "lights")
+        lights = sorted(
+            os.path.join(lights_dir, f) for f in os.listdir(lights_dir)
+            if f.lower().endswith((".fits", ".fit", ".fts"))
+        ) if os.path.isdir(lights_dir) else []
+        if not lights:
+            QMessageBox.warning(
+                self, "Photometry",
+                "No light FITS directly in lights/ (a mosaic session can't be measured).",
+            )
+            return None
+
+        session = data.get("session", {})
+        star, ok = QInputDialog.getText(
+            self, "Photometry",
+            "Variable star (name known to Siril / SIMBAD, e.g. RZ Cas):",
+            text=session.get("target", ""),
+        )
+        star = " ".join(star.split())
+        if not ok or not star:
+            return None
+
+        fixed = sum(1 for f in lights if fix_dwarf_date_obs(f))
+        if fixed:
+            self.siril.log(
+                f"[photometry] DATE-OBS of {fixed} light(s) moved back by EXPTIME "
+                "(the DWARF writes the end of the exposure).", LogColor.BLUE,
+            )
+
+        darks_dir = os.path.join(cwd, "darks")
+        n_darks = len([
+            f for f in os.listdir(darks_dir) if f.lower().endswith((".fits", ".fit", ".fts"))
+        ]) if os.path.isdir(darks_dir) else 0
+        proc = os.path.join(cwd, "process")
+        seq = "Green_pp_light" if n_darks else "Green_light"
+
+        lines = [
+            f"# Dwarfium photometry — {star} — {session.get('date', '')[:16]} — {session.get('dwarf', '')}",
+            f"# {len(lights)} light(s), {n_darks} dark(s) — generated by Dwarfium Archive Selector",
+            "requires 1.4.0",
+            "setext fit",
+            f'cd "{cwd}"',
+            "",
+            "# Convert light frames",
+            "cd lights",
+            "convert light -out=../process",
+            "cd ..",
+            "",
+        ]
+        if n_darks:
+            lines += [
+                "# Convert darks",
+                "cd darks",
+                "convert dark -out=../process",
+                "cd ..",
+                "",
+            ]
+        lines += ["cd process", ""]
+        if n_darks >= 2:
+            lines += ["# Master dark", "stack dark rej 3 3 -nonorm -out=master_dark", ""]
+        elif n_darks == 1:
+            lines += ["# Single pre-stacked dark used as master dark", "load dark_00001", "save master_dark", ""]
+        if n_darks:
+            lines += [
+                "# Dark calibration, kept as CFA",
+                "calibrate light -dark=master_dark -cc=dark -cfa",
+                "",
+                "# Green channel of the CFA images (AAVSO TG band)",
+                "seqextract_Green pp_light",
+                "",
+            ]
+        else:
+            lines += [
+                "# No dark found: green channel of the raw CFA images (AAVSO TG band)",
+                "seqextract_Green light",
+                "",
+            ]
+        solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
+        data_max = fits_data_max(lights[0])
+        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
+            lines += [
+                f"# 12-bit data (highest value {data_max:.0f}): stars above {_DWARF_12BIT_PHOT_MAX} ADU",
+                "# counted as saturated, instead of Siril's default 60000",
+                f"setphot -max_val={_DWARF_12BIT_PHOT_MAX}",
+                "",
+            ]
+        lines += [
+            "# Registration only - every image is a point of the light curve",
+            f"register {seq}",
+            "",
+            "# Plate solve the first image, made the reference: light_curve finds",
+            "# the stars by their coordinates in the reference image",
+            f"setref r_{seq} 1",
+            f"load r_{seq}_00001",
+            solve,
+            f"save r_{seq}_00001",
+            "",
+            "# Comparison stars (APASS catalog, Internet), then the light curve",
+            f'findcompstars "{star}" -out=comparison_stars.csv',
+            f"light_curve r_{seq} 0 -autoring -ninastars=comparison_stars.csv",
+            "",
+        ]
+        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
+            lines += ["# Siril's default saturation level back (setphot is a preference)", "setphot -max_val=60000", ""]
+        lines += [
+            f"# Result: {os.path.join(proc, 'light_curve.dat')} (and its plot)",
+            "cd ..",
+        ]
+
+        star_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in star)
+        ssf_path = os.path.join(cwd, f"01_photometry_{star_safe}.ssf")
+        with open(ssf_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        self.siril.log(f"Photometry script saved: {ssf_path}", LogColor.GREEN)
+        return ssf_path, lines
 
     def build_mosaic_from_restacked(self):
         """Collect RESTACKED_ tiles from the last loaded siril_megastack.json,

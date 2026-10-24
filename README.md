@@ -326,6 +326,52 @@ darks, if a 🎯 match was found in the [Dark Library](#dark-library)) to a
 processing folder and writes a `siril_session.json`. Run it through the
 Dwarfium Archive Selector script inside Siril to calibrate, register and stack.
  
+### Photometry (variable stars)
+
+For a variable star session (e.g. an eclipsing binary minimum planned with
+Astro Dwarf Session), tick **📈 Photometry** in the Dwarfium Archive Selector
+script before **📡 Load Dwarfium JSON** with the session's
+`siril_session.json`. After the copy, the script asks for the star's name
+(prefilled with the session's target) and writes `01_photometry_<star>.ssf`,
+run with **🚀 Build Sessions**:
+
+1. calibration with the master dark (from the matched darks), kept as CFA;
+2. the green channel only (`seqextract_Green`: the AAVSO **TG** band of these
+   colour sensors);
+3. registration, without stacking — every frame is a point of the light curve;
+4. plate solve of the first frame, made the reference (the DWARF II tele's
+   focal length and pixel size, missing from its FITS, are passed);
+5. comparison stars found by Siril in the APASS catalogue (`findcompstars`),
+   then `light_curve` — `process/light_curve.dat` and its plot.
+
+The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
+says so) while Siril takes it as the start: the script moves it back by the
+exposure time in the copied lights, so the light curve's times are the middle
+of each exposure. Their data is 12-bit (saturated at 4095) in a 16-bit file: the
+script sets Siril's photometry saturation level to 3700 ADU for the run
+(`setphot -max_val`, 60000 by default), so saturated stars are not measured.
+Requires Siril **1.4.0+** (`findcompstars`) and Internet (the
+star's name, the APASS catalogue). The time of minimum (and O–C) is then
+measured from `light_curve.dat`.
+
+#### Choosing the exposure: 🔆 Check exposure
+
+Before the session, take a few test frames of the variable star (at one or
+several exposures / gains) and give them to **🔆 Check exposure** with the
+star's name and the eclipse depth. For each frame, on its green channel and
+after a plate solve, the script finds the star and its comparison stars
+(`findcompstars`) and reports:
+
+- the star's peak against the saturation level (3700 ADU: 12-bit data), its
+  background and S/N;
+- the longest exposure at that gain, for a peak at 80 % of the saturation
+  level (the signal is proportional to the exposure);
+- the S/N at the minimum for the eclipse depth given;
+- how many comparison stars are saturated.
+
+The report is shown, logged and saved in `exposure_check/exposure_check.txt`
+in the Siril working folder. Siril 1.4.0+ and Internet.
+
 ### Prepare for Siril (multi-session)
  
 Selecting several sessions of the same object and clicking **🧩 Prepare for
