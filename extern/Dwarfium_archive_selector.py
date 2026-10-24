@@ -2366,6 +2366,7 @@ class PreprocessingInterface(QMainWindow):
                         )
                         for text in summary:
                             self.siril.log(text, LogColor.GREEN)
+                            self._build_log(text)   # the images left out and why, kept with the run
                         self._last_photometry_summary = summary
                     except Exception as e:
                         self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)
