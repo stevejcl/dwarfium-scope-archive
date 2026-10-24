@@ -236,6 +236,42 @@ def fix_dwarf_date_obs(path):
     return True
 
 
+# The DWARF's raw FITS are 16-bit files holding 12-bit data (saturated at 4095
+# - a DWARF 3 sub, Oct 2026) while Siril's photometry takes a star as
+# saturated above 60000 ADU by default: the saturation level given to
+# setphot -max_val=, a bit under 4095 minus the dark level
+_DWARF_12BIT_MAX = 4095
+_DWARF_12BIT_PHOT_MAX = 3700
+
+
+def fits_data_max(path):
+    """Highest pixel value of a 2-D 16-bit FITS (BZERO applied), None when
+    not readable (numpy missing, another format)."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    cards = {key: value for _, key, value, _ in read_fits_cards(path)}
+    try:
+        if int(cards.get("BITPIX", 0)) != 16 or int(cards.get("NAXIS", 0)) != 2:
+            return None
+        width, height = int(cards["NAXIS1"]), int(cards["NAXIS2"])
+        bzero = float(cards.get("BZERO", 0) or 0)
+    except (KeyError, ValueError):
+        return None
+    with open(path, "rb") as f:
+        header_blocks = 0
+        while True:
+            block = f.read(_FITS_BLOCK)
+            if len(block) < _FITS_BLOCK:
+                return None
+            header_blocks += 1
+            if any(block[i:i + 8] == b"END     " for i in range(0, _FITS_BLOCK, 80)):
+                break
+    data = np.fromfile(path, dtype=">i2", count=width * height, offset=header_blocks * _FITS_BLOCK)
+    return float(data.max()) + bzero if data.size else None
+
+
 def dwarf_platesolve_args(path):
     """platesolve's -focal= / -pixelsize= for the green-extracted image (half
     the size, pixels twice as large) when the FITS header has no FOCALLEN /
@@ -2116,6 +2152,14 @@ class PreprocessingInterface(QMainWindow):
                 "",
             ]
         solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
+        data_max = fits_data_max(lights[0])
+        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
+            lines += [
+                f"# 12-bit data (highest value {data_max:.0f}): stars above {_DWARF_12BIT_PHOT_MAX} ADU",
+                "# counted as saturated, instead of Siril's default 60000",
+                f"setphot -max_val={_DWARF_12BIT_PHOT_MAX}",
+                "",
+            ]
         lines += [
             "# Registration only - every image is a point of the light curve",
             f"register {seq}",
@@ -2131,6 +2175,10 @@ class PreprocessingInterface(QMainWindow):
             f'findcompstars "{star}" -out=comparison_stars.csv',
             f"light_curve r_{seq} 0 -autoring -ninastars=comparison_stars.csv",
             "",
+        ]
+        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
+            lines += ["# Siril's default saturation level back (setphot is a preference)", "setphot -max_val=60000", ""]
+        lines += [
             f"# Result: {os.path.join(proc, 'light_curve.dat')} (and its plot)",
             "cd ..",
         ]

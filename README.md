@@ -347,7 +347,10 @@ run with **🚀 Build Sessions**:
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the
 exposure time in the copied lights, so the light curve's times are the middle
-of each exposure. Requires Siril **1.4.0+** (`findcompstars`) and Internet (the
+of each exposure. Their data is 12-bit (saturated at 4095) in a 16-bit file: the
+script sets Siril's photometry saturation level to 3700 ADU for the run
+(`setphot -max_val`, 60000 by default), so saturated stars are not measured.
+Requires Siril **1.4.0+** (`findcompstars`) and Internet (the
 star's name, the APASS catalogue). The time of minimum (and O–C) is then
 measured from `light_curve.dat`.
 

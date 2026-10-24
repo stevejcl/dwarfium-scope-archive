@@ -9,7 +9,9 @@
     band), registration without stacking, plate solve of the first frame made the reference (DWARF II tele focal
     length / pixel size passed: not in its FITS), comparison stars (findcompstars, APASS) and light_curve -
     process/light_curve.dat and its plot. The DWARF writes DATE-OBS as the end of the exposure ("Time end of
-    exposure"), Siril reads it as the start: moved back by EXPTIME in the copied lights. Siril 1.4.0+, Internet.
+    exposure"), Siril reads it as the start: moved back by EXPTIME in the copied lights. The raw FITS hold 12-bit data
+    (saturated at 4095) while Siril's photometry counts a star as saturated above 60000 ADU: setphot -max_val=3700 for
+    the run (a DWARF 3 V1.5.3.9 sub). Siril 1.4.0+, Internet.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
     next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open. The image
     opens in the system's viewer (a click on it, or Open the image), and Open the folder shows the fixed FITS
