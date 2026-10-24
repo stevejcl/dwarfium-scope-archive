@@ -277,6 +277,57 @@ def fits_data_max(path):
     return float(data.max()) + bzero if data.size else None
 
 
+def measure_star(data, wcs, ra, dec, search_r=10, peak_r=3, aperture_r=4, annulus=(12, 20)):
+    """(peak, background, S/N) in ADU of the star at ra/dec in a plate solved
+    image (numpy array + astropy WCS), None when out of the field or not
+    detected (peak under 5 sigma of the background, or a lone hot pixel). Measured here rather than
+    through Siril's selection functions, whose pixel coordinates didn't match
+    radec2pix's on a real test (Oct 2026). The star is the brightest pixel
+    within search_r of its computed position (plate solve, distortion); peak:
+    the brightest pixel within peak_r of it (a fitted Gaussian is a third
+    lower on these sharp stars); S/N of an aperture_r aperture, background
+    from the annulus, a gain of 1 e-/ADU assumed for the star's own noise
+    (an estimate)."""
+    import numpy as np
+    height, width = data.shape
+    x, y = wcs.world_to_pixel_values(ra, dec)
+    x, y = float(x), float(y)
+    if not (0 <= x < width and 0 <= y < height):
+        return None
+
+    def _cut(cx, cy, r):
+        x0, x1 = max(0, int(round(cx)) - r), min(width, int(round(cx)) + r + 1)
+        y0, y1 = max(0, int(round(cy)) - r), min(height, int(round(cy)) + r + 1)
+        return data[y0:y1, x0:x1], x0, y0
+
+    box, x0, y0 = _cut(x, y, search_r)
+    if box.size < 9:
+        return None
+    # Brightest 3x3 mean, so a hot pixel alone is not taken for the star
+    padded = np.pad(box, 1, mode="edge")
+    smooth = sum(padded[dy:dy + box.shape[0], dx:dx + box.shape[1]] for dy in range(3) for dx in range(3)) / 9.0
+    iy, ix = np.unravel_index(np.argmax(smooth), smooth.shape)
+    cx, cy = x0 + ix, y0 + iy
+
+    r_out = annulus[1]
+    cut, x0, y0 = _cut(cx, cy, r_out)
+    gy, gx = np.mgrid[y0:y0 + cut.shape[0], x0:x0 + cut.shape[1]]
+    dist = np.hypot(gx - cx, gy - cy)
+    ring = cut[(dist >= annulus[0]) & (dist <= annulus[1])]
+    if ring.size < 20:
+        return None
+    background = float(np.median(ring))
+    sigma = float(1.4826 * np.median(np.abs(ring - background)))
+    peak = float(cut[dist <= peak_r].max())
+    # A star: several pixels well above the background, not a lone hot pixel
+    if sigma <= 0 or peak - background < 5 * sigma or (cut[dist <= 1.5] > background + 3 * sigma).sum() < 3:
+        return None
+    aperture = cut[dist <= aperture_r]
+    flux = float((aperture - background).sum())
+    noise = (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
+    return peak, background, flux / noise if noise > 0 else 0.0
+
+
 def dwarf_platesolve_args(path):
     """platesolve's -focal= / -pixelsize= for the green-extracted image (half
     the size, pixels twice as large) when the FITS header has no FOCALLEN /
@@ -2111,6 +2162,8 @@ class PreprocessingInterface(QMainWindow):
         )
         if not files:
             return
+        # astropy reads the plate solved images (measure_star)
+        s.ensure_installed(["astropy"])
         first = {key: value for _, key, value, _ in read_fits_cards(files[0])}
         star, ok = QInputDialog.getText(
             self, "Check exposure",
@@ -2173,9 +2226,32 @@ class PreprocessingInterface(QMainWindow):
             self.siril.cmd("platesolve", *solve)
             csv_name = f"check_{base}.csv"
             self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
-            shape = self.siril.get_image_shape()
+            # The plate solved green image, measured with astropy (measure_star)
+            self.siril.cmd("save", "solved_" + base)
         except (s.SirilError, OSError) as e:
             return [title, f"  failed: {e}"]
+        solved = next((os.path.join(work, f) for f in sorted(os.listdir(work))
+                       if os.path.splitext(f)[0] == "solved_" + base), None)
+        if not solved:
+            return [title, "  the plate solved image was not saved"]
+        try:
+            import warnings
+            from astropy.io import fits as _fits
+            from astropy.wcs import WCS
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with _fits.open(solved) as hdul:
+                    hdu = hdul[0]
+                    data = hdu.data.astype("float64")
+                    wcs = WCS(hdu.header)
+            if data.ndim == 3:
+                data = data[0]
+            if data.max() <= 1.5:   # 32-bit float image: 0..1
+                data = data * 65535.0
+            if not wcs.has_celestial:
+                return [title, "  no plate solve in the saved image"]
+        except Exception as e:
+            return [title, f"  the plate solved image was not read: {e}"]
 
         targets, comps = [], []
         try:
@@ -2193,64 +2269,18 @@ class PreprocessingInterface(QMainWindow):
         if not targets:
             return [title, "  the star was not found by findcompstars (name, plate solve)"]
 
-        height, width = (shape[1], shape[2]) if shape else (None, None)
-
-        def _box(x, y, r):
-            """[x, y, w, h] of a square of half-size r around x, y, inside the image."""
-            x0, y0 = max(0, int(x) - r), max(0, int(y) - r)
-            x1 = min(width - 1, int(x) + r) if width else int(x) + r
-            y1 = min(height - 1, int(y) + r) if height else int(y) + r
-            return [x0, y0, max(1, x1 - x0 + 1), max(1, y1 - y0 + 1)]
-
         def _measure(ra, dec):
-            """(peak ADU, background ADU, S/N) of the star at ra/dec, None when
-            not found. Siril measures it in a box around its position (user-
-            reported Oct 2026: the stars Siril detected by itself left most
-            comparison stars out, and gave no S/N): the S/N from Siril's
-            photometry, the peak as the box's brightest pixel - the fitted
-            Gaussian's A + B was a third lower on these sharp stars, which
-            overestimated the longest exposure."""
             try:
-                xy = self.siril.radec2pix(ra, dec)
-            except (ValueError, s.SirilError):
+                return measure_star(data, wcs, ra, dec)
+            except Exception:
                 return None
-            if not xy or (width and not (0 <= xy[0] < width)):
-                return None
-            found = None
-            for y in {xy[1], (height - 1 - xy[1]) if height else xy[1]}:  # y origin either way
-                if height and not (0 <= y < height):
-                    continue
-                box = _box(xy[0], y, 12)
-                try:
-                    star = self.siril.get_selection_star(shape=box, channel=0)
-                except (ValueError, s.SirilError):
-                    star = None
-                if star is None:
-                    continue
-                # Its position, in the image or in the box
-                sx, sy = star.xpos, star.ypos
-                if abs(sx - xy[0]) > 12 and abs(sx + box[0] - xy[0]) <= 12:
-                    sx, sy = sx + box[0], sy + box[1]
-                d = ((sx - xy[0]) ** 2 + (sy - y) ** 2) ** 0.5
-                if d <= 8 and (found is None or d < found[0]):
-                    found = (d, star, sx, sy)
-            if found is None:
-                return None
-            _, star, sx, sy = found
-            try:
-                stats = self.siril.get_selection_stats(shape=_box(sx, sy, 4), channel=0)
-                peak = stats.max if stats else star.A + star.B
-            except (ValueError, s.SirilError):
-                peak = star.A + star.B
-            scale = 65535.0 if peak <= 1.5 else 1.0   # 32-bit float images: 0..1
-            return peak * scale, star.B * scale, star.SNR
 
         measured = _measure(*targets[0])
         if measured is None:
             return [title, "  the star was not detected in the frame (out of the field, too faint?)"]
         peak, background, snr = measured
         lines = [title, f"  {star}: peak {peak:.0f} / {_DWARF_12BIT_PHOT_MAX} ADU ({100 * peak / _DWARF_12BIT_PHOT_MAX:.0f} %), "
-                        f"background {background:.0f}, S/N {snr:.0f}" + ("" if snr else " (not computed by Siril)")]
+                        f"background {background:.0f}, S/N about {snr:.0f}"]
         if peak >= _DWARF_12BIT_PHOT_MAX:
             lines.append("  SATURATED: shorter exposure or lower gain")
         elif exposure > 0 and peak > background:
@@ -2262,8 +2292,7 @@ class PreprocessingInterface(QMainWindow):
                              " raise the gain for more signal")
             else:
                 lines.append(f"  longest exposure at this gain: {longest:.0f} s")
-        if snr:
-            lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
+        lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
         comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
         saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
         lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")

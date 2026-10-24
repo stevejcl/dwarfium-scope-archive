@@ -370,7 +370,8 @@ after a plate solve, the script finds the star and its comparison stars
 - how many comparison stars are saturated.
 
 The report is shown, logged and saved in `exposure_check/exposure_check.txt`
-in the Siril working folder. Siril 1.4.0+ and Internet.
+in the Siril working folder. The measurement reads the plate solved image with
+astropy, installed in Siril's Python the first time. Siril 1.4.0+ and Internet.
 
 ### Prepare for Siril (multi-session)
  

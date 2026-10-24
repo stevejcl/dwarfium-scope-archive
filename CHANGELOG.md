@@ -16,9 +16,11 @@
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
     at that gain (peak at 80 % of it; 15 s at most on a DWARF II), the S/N at the minimum for the eclipse depth given, the comparison stars
-    saturated. Shown, logged and saved in exposure_check/exposure_check.txt. Each star measured by Siril in a box around
-    its position (get_selection_star: photometry and S/N), its peak the box's brightest pixel - the fitted Gaussian
-    was a third lower on these sharp stars (first real test, Oct 2026).
+    saturated. Shown, logged and saved in exposure_check/exposure_check.txt. The plate solved green image is saved and read
+    with astropy (installed in Siril's Python if missing), each star measured at its coordinates: its peak the
+    brightest pixel near it - Siril's fitted Gaussian was a third lower on these sharp stars -, a lone hot pixel
+    rejected, the S/N from an aperture and its background annulus (first real tests, Oct 2026: Siril's own star
+    list left the comparison stars out and gave no S/N, its selection coordinates didn't match radec2pix's).
     The script's buttons overlapped (one row needing ~1500 px in a 750 px window): two rows now - the stacking
     buttons, then the mosaic options and the variable star tools -, the window at least 1000 x 640.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
