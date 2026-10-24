@@ -2138,6 +2138,12 @@ class PreprocessingInterface(QMainWindow):
                 report.append("")
         finally:
             self.exposure_btn.setDisabled(False)
+            # Siril's working directory back (each frame was measured in exposure_check/)
+            cwd = self.current_working_directory
+            try:
+                self.siril.cmd("cd", f'"{cwd}"' if " " in cwd else cwd)
+            except s.SirilError:
+                pass
 
         text = "\n".join(report)
         with open(os.path.join(work, "exposure_check.txt"), "w", encoding="utf-8") as f:
