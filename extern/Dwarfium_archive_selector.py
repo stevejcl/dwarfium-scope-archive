@@ -243,6 +243,9 @@ def fix_dwarf_date_obs(path):
 # saturated above 60000 ADU by default: the saturation level given to
 # setphot -max_val=, a bit under 4095 minus the dark level
 _DWARF_12BIT_MAX = 4095
+# Longest exposure a model allows, when shorter than what the star could take
+# (user-reported Oct 2026: 15 s at most on a DWARF II)
+_MAX_EXPOSURE_BY_TELESCOP = {"DWARFII": 15.0}
 _DWARF_12BIT_PHOT_MAX = 3700
 
 
@@ -2204,7 +2207,13 @@ class PreprocessingInterface(QMainWindow):
             lines.append("  SATURATED: shorter exposure or lower gain")
         elif exposure > 0 and peak > background:
             longest = exposure * (margin_level - background) / (peak - background)
-            lines.append(f"  longest exposure at this gain: {longest:.0f} s")
+            model = (cards.get("TELESCOP") or "").replace(" ", "").upper()
+            model_max = _MAX_EXPOSURE_BY_TELESCOP.get(model)
+            if model_max and longest > model_max:
+                lines.append(f"  longest exposure at this gain: {longest:.0f} s - {model_max:g} s at most on this model:"
+                             " raise the gain for more signal")
+            else:
+                lines.append(f"  longest exposure at this gain: {longest:.0f} s")
         lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
         comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
         saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)

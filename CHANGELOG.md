@@ -15,7 +15,7 @@
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
-    at that gain (peak at 80 % of it), the S/N at the minimum for the eclipse depth given, the comparison stars
+    at that gain (peak at 80 % of it; 15 s at most on a DWARF II), the S/N at the minimum for the eclipse depth given, the comparison stars
     saturated. Shown, logged and saved in exposure_check/exposure_check.txt.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
     next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open. The image
