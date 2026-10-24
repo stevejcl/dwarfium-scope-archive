@@ -338,21 +338,30 @@ run with **🚀 Build Sessions**:
 1. calibration with the master dark (from the matched darks), kept as CFA;
 2. the green channel only (`seqextract_Green`: the AAVSO **TG** band of these
    colour sensors);
-3. registration, without stacking — every frame is a point of the light curve;
-4. plate solve of the first frame, made the reference (the DWARF II tele's
-   focal length and pixel size, missing from its FITS, are passed);
-5. comparison stars found by Siril in the APASS catalogue (`findcompstars`),
-   then `light_curve` — `process/light_curve.dat` and its plot.
+3. plate solve of every image (`seqplatesolve`): each one is measured with its
+   own solution, so no registration is needed and the dithering doesn't matter;
+4. comparison stars found by Siril in the APASS catalogue (`findcompstars`);
+5. differential photometry, by the script itself rather than Siril's
+   `light_curve` (in Siril 1.4.0–1.4.2 it failed on these images one way after
+   another): the target and each comparison star measured at their
+   coordinates in every image, a zero point per image from the comparison
+   stars, the target's magnitude and its error — written to
+   `process/light_curve_<sequence>.csv` with the mid-exposure time as JD UTC,
+   HJD UTC and BJD TDB. A check star (the comparison star closest to the
+   target's magnitude, left out of the zero point) is measured too, and
+   `light_curve_<sequence>.png` plots both against HJD, with means of 3 points
+   beyond 15 images.
 
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the
-exposure time in the copied lights, so the light curve's times are the middle
-of each exposure. Their data is 12-bit (saturated at 4095) in a 16-bit file: the
-script sets Siril's photometry saturation level to 3700 ADU for the run
-(`setphot -max_val`, 60000 by default), so saturated stars are not measured.
-Requires Siril **1.4.0+** (`findcompstars`) and Internet (the
-star's name, the APASS catalogue). The time of minimum (and O–C) is then
-measured from `light_curve.dat`.
+exposure time in the copied lights, so the times are the middle of each
+exposure. The DWARF also writes its **local time** there, not UTC: the
+script asks for its UTC offset (this PC's at the session's date by default,
+daylight saving included) and converts the times to UTC. Their data is 12-bit (saturated at 4095) in a 16-bit file: stars
+above 3700 ADU are left out.
+Requires Siril **1.4.0+** (`findcompstars`), Internet (the star's
+name, the APASS catalogue), astropy and matplotlib (installed in Siril's
+Python the first time). The time of minimum (and O–C) is then measured from the CSV.
 
 #### Choosing the exposure: 🔆 Check exposure
 
@@ -370,7 +379,8 @@ after a plate solve, the script finds the star and its comparison stars
 - how many comparison stars are saturated.
 
 The report is shown, logged and saved in `exposure_check/exposure_check.txt`
-in the Siril working folder. Siril 1.4.0+ and Internet.
+in the Siril working folder. The measurement reads the plate solved image with
+astropy, installed in Siril's Python the first time. Siril 1.4.0+ and Internet.
 
 ### Prepare for Siril (multi-session)
  
