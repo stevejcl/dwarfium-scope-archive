@@ -2149,7 +2149,8 @@ class PreprocessingInterface(QMainWindow):
         with open(os.path.join(work, "exposure_check.txt"), "w", encoding="utf-8") as f:
             f.write(text)
         for line in report:
-            self.siril.log(line, LogColor.BLUE)
+            if line.strip():   # Siril's log refuses an empty message ("unknown interface error")
+                self.siril.log(line, LogColor.BLUE)
         QMessageBox.information(self, "Check exposure", text + f"\n\nSaved in {work}")
 
     def _check_exposure_frame(self, path, star, depth, work, margin_level):
