@@ -213,6 +213,16 @@ def read_fits_cards(path):
             offset += _FITS_BLOCK
 
 
+def local_utc_offset_hours(date_obs):
+    """This PC's UTC offset in hours at the wall-clock time date_obs (an ISO
+    string), daylight saving time included; 0.0 when not readable."""
+    try:
+        local = datetime.fromisoformat(str(date_obs).strip().replace("Z", ""))
+        return local.astimezone().utcoffset().total_seconds() / 3600.0
+    except (ValueError, OverflowError, OSError, AttributeError):
+        return 0.0
+
+
 def fix_dwarf_date_obs(path):
     """The DWARF writes DATE-OBS as the END of the exposure (its comment says
     so), while Siril takes it as the start and adds half the exposure for the
@@ -240,8 +250,8 @@ def fix_dwarf_date_obs(path):
 
 # The DWARF's raw FITS are 16-bit files holding 12-bit data (saturated at 4095
 # - a DWARF 3 sub, Oct 2026) while Siril's photometry takes a star as
-# saturated above 60000 ADU by default: the saturation level given to
-# setphot -max_val=, a bit under 4095 minus the dark level
+# saturated above 60000 ADU by default: stars above this level, a bit under
+# 4095 minus the dark level, are left out
 _DWARF_12BIT_MAX = 4095
 # Longest exposure a model allows, when shorter than what the star could take
 # (user-reported Oct 2026: 15 s at most on a DWARF II)
@@ -275,6 +285,283 @@ def fits_data_max(path):
                 break
     data = np.fromfile(path, dtype=">i2", count=width * height, offset=header_blocks * _FITS_BLOCK)
     return float(data.max()) + bzero if data.size else None
+
+
+def measure_star(data, wcs, ra, dec, **kwargs):
+    """(peak, background, S/N) of the star at ra/dec, None when not found -
+    see _star_measure()."""
+    m = _star_measure(data, wcs, ra, dec, **kwargs)
+    return None if m is None else (m[0], m[1], m[2] / m[3] if m[3] > 0 else 0.0)
+
+
+def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20)):
+    """(peak, background, flux, noise) in ADU of the star at ra/dec in a plate solved
+    image (numpy array + astropy WCS), None when out of the field or not
+    detected (peak under 5 sigma of the background, or a lone hot pixel). Measured here rather than
+    through Siril's selection functions, whose pixel coordinates didn't match
+    radec2pix's on a real test (Oct 2026). The star is the brightest pixel
+    within search_r of its computed position - Siril's solution (SIP) put the
+    stars of a real frame within 0.5 px, a wider search took a fainter
+    comparison star's neighbour 9 px away instead; peak:
+    the brightest pixel within peak_r of it (a fitted Gaussian is a third
+    lower on these sharp stars); S/N of an aperture_r aperture, background
+    from the annulus, a gain of 1 e-/ADU assumed for the star's own noise
+    (an estimate)."""
+    import numpy as np
+    height, width = data.shape
+    x, y = wcs.world_to_pixel_values(ra, dec)
+    x, y = float(x), float(y)
+    if not (0 <= x < width and 0 <= y < height):
+        return None
+
+    def _cut(cx, cy, r):
+        x0, x1 = max(0, int(round(cx)) - r), min(width, int(round(cx)) + r + 1)
+        y0, y1 = max(0, int(round(cy)) - r), min(height, int(round(cy)) + r + 1)
+        return data[y0:y1, x0:x1], x0, y0
+
+    box, x0, y0 = _cut(x, y, search_r)
+    if box.size < 9:
+        return None
+    # Brightest 3x3 mean, so a hot pixel alone is not taken for the star
+    padded = np.pad(box, 1, mode="edge")
+    smooth = sum(padded[dy:dy + box.shape[0], dx:dx + box.shape[1]] for dy in range(3) for dx in range(3)) / 9.0
+    iy, ix = np.unravel_index(np.argmax(smooth), smooth.shape)
+    cx, cy = x0 + ix, y0 + iy
+
+    r_out = annulus[1]
+    cut, x0, y0 = _cut(cx, cy, r_out)
+    gy, gx = np.mgrid[y0:y0 + cut.shape[0], x0:x0 + cut.shape[1]]
+    dist = np.hypot(gx - cx, gy - cy)
+    ring = cut[(dist >= annulus[0]) & (dist <= annulus[1])]
+    if ring.size < 20:
+        return None
+    background = float(np.median(ring))
+    sigma = float(1.4826 * np.median(np.abs(ring - background)))
+    peak = float(cut[dist <= peak_r].max())
+    # A star: several pixels well above the background, not a lone hot pixel
+    if sigma <= 0 or peak - background < 5 * sigma or (cut[dist <= 1.5] > background + 3 * sigma).sum() < 3:
+        return None
+    aperture = cut[dist <= aperture_r]
+    flux = float((aperture - background).sum())
+    noise = (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
+    return peak, background, flux, noise
+
+
+def read_compstars_csv(path):
+    """The stars of a findcompstars CSV: list of dict (type, name, ra, dec,
+    mag), the target first."""
+    stars = []
+    with open(path, encoding="utf-8") as f:
+        for row in csv.DictReader(line for line in f if line.strip() and not line.startswith("#")):
+            row = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            try:
+                stars.append({"type": row.get("type", ""), "name": row.get("name", ""),
+                              "ra": float(row["ra"]), "dec": float(row["dec"]),
+                              "mag": float(row["mag"]) if row.get("mag") else None})
+            except (KeyError, ValueError):
+                continue
+    return sorted(stars, key=lambda st: st["type"].lower() != "target")
+
+
+def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0):
+    """Differential photometry of the target over plate solved images (user-
+    requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
+    -autoring loses the reference's plate solve, its default min_val rejects
+    dark-subtracted stars, a setphot without -dyn_ratio fixes its aperture,
+    and its reference frame must match the others' orientation - one real
+    test after another). Each image measured with its own plate solve, so no
+    registration: the target and comparison stars at their coordinates
+    (_star_measure), a zero point per image from the comparison stars
+    (catalogue V - instrumental magnitude, weighted mean after a 3-sigma
+    clip; the same comparison stars in every image when enough of them are
+    measured in 90 % of the images), the target's magnitude and its error.
+    Time: the middle of the
+    exposure (DATE-OBS is its start once fix_dwarf_date_obs() ran), as JD
+    UTC, HJD UTC and BJD TDB. utc_offset_h: DATE-OBS's UTC offset - the DWARF
+    writes its local time there (user-checked Oct 2026: the last frame of a
+    session at 04:10 by DATE-OBS, the next session started at 04:22 French
+    summer time on the same DWARF 3). Writes out_csv; returns the summary
+    lines."""
+    import math
+    import warnings
+    import numpy as np
+    from astropy.io import fits as _fits
+    from astropy.wcs import WCS
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord, EarthLocation
+    import astropy.units as u
+    from astropy.utils import iers
+    # No IERS download, and its bundled values accepted however old (user-
+    # reported Oct 2026: "interpolating from IERS_Auto using predictive values
+    # that are more than 30.0 days old" stopped the photometry). The times are
+    # computed at the geocentre: the Earth's rotation (UT1) plays no part,
+    # the light time and UTC -> TDB don't need these tables.
+    iers.conf.auto_download = False
+    iers.conf.auto_max_age = None
+    iers.conf.iers_degraded_accuracy = "ignore"
+
+    target, comps = stars[0], [st for st in stars[1:] if st["mag"] is not None]
+    coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
+    geocentre = EarthLocation.from_geocentric(0, 0, 0, unit=u.m)
+    rows, skipped, frames = [], [], []
+    for path in files:
+        name = os.path.basename(path)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with _fits.open(path) as hdul:
+                    header = hdul[0].header
+                    data = hdul[0].data.astype("float64")
+                    wcs = WCS(header)
+            if data.ndim == 3:
+                data = data[0]
+            if data.max() <= 1.5:   # 32-bit float image: 0..1
+                data = data * 65535.0
+            if not wcs.has_celestial:
+                skipped.append(f"{name}: no plate solve")
+                continue
+            start = (Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
+                     - (utc_offset_h or 0.0) * u.hour)
+            mid = start + float(header.get("EXPTIME", 0) or 0) / 2 * u.s
+        except Exception as e:
+            skipped.append(f"{name}: {e}")
+            continue
+
+        t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=aperture_r)
+        if t is None or t[2] <= 0:
+            skipped.append(f"{name}: target not measured")
+            continue
+        if saturation and t[0] >= saturation:
+            skipped.append(f"{name}: target saturated (peak {t[0]:.0f})")
+            continue
+        measured = {}
+        for i, st in enumerate(comps):
+            m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=aperture_r)
+            if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
+                measured[i] = m
+        frames.append((name, mid, t, measured))
+
+    # The same comparison stars in every image (user-reported Oct 2026: 19 to
+    # 23 of them from one image to the next made the zero point jump): those
+    # measured in at least 90 % of the images, else each image's own
+    counts = [sum(1 for _, _, _, measured in frames if i in measured) for i in range(len(comps))]
+    fixed = {i for i, n in enumerate(counts) if frames and n >= 0.9 * len(frames)}
+    if len(fixed) < 3:
+        fixed = None
+    # Check star (as HD 218587 in V. Lecomte's DY Peg procedure, Oct 2026):
+    # the comparison star closest to the target's magnitude among the most
+    # measured ones, measured like the target and left out of the zero point -
+    # flat, it shows the target's changes are real
+    target_mag = target.get("mag")
+    candidates = [i for i in (fixed or range(len(comps))) if counts[i] >= 0.9 * max(counts or [0]) and counts[i]]
+    check = None
+    if len(candidates) >= 4:
+        check = min(candidates, key=lambda i: abs(comps[i]["mag"] - (target_mag if target_mag is not None else comps[i]["mag"])))
+
+    for name, mid, t, measured in frames:
+        used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
+        if len(used) < 2:
+            skipped.append(f"{name}: fewer than 2 comparison stars measured")
+            continue
+        zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
+        weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
+        keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
+        zps, weights = zps[keep], weights[keep]
+        zp = float(np.average(zps, weights=weights))
+        zp_err = float(np.std(zps) / math.sqrt(len(zps)))
+        mag = -2.5 * math.log10(t[2]) + zp
+        err = math.hypot(1.0857 * t[3] / t[2], zp_err)
+        check_mag = check_err = None
+        if check is not None and check in measured:
+            cm = measured[check]
+            check_mag = -2.5 * math.log10(cm[2]) + zp
+            check_err = math.hypot(1.0857 * cm[3] / cm[2], zp_err)
+        try:
+            hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
+            bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
+        except Exception as e:   # astropy's time tables: the magnitudes are kept
+            hjd = bjd = None
+            if not any(line.startswith("HJD / BJD not computed") for line in skipped):
+                skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
+        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err))
+    rows.sort(key=lambda r: r[1])
+
+    with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
+                         f"{len(comps)} comparison stars (findcompstars), times at mid-exposure in UTC "
+                         f"(DATE-OBS taken as UTC{utc_offset_h:+g} h)"])
+        check_label = f"check_{comps[check]['name']}" if check is not None else "check"
+        writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
+                         f"{check_label}_mag", f"{check_label}_err"])
+        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr in rows:
+            writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
+                             f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
+                             "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}"])
+
+    summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
+               f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
+    if rows:
+        mags = np.array([r[4] for r in rows])
+        summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
+                       f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
+                       + (f" (the same {len(fixed)} in every image)" if fixed else ""))
+    if rows and check is not None:
+        cmags = np.array([r[8] for r in rows if r[8] is not None])
+        if cmags.size:
+            summary.append(f"  check star (comparison {comps[check]['name']}, V {comps[check]['mag']:.2f}): "
+                           f"std {cmags.std():.3f}")
+    if rows:
+        png = os.path.splitext(out_csv)[0] + ".png"
+        try:
+            plot_light_curve(rows, png, target["name"],
+                             f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None)
+            summary.append(f"  plot -> {png}")
+        except Exception as e:
+            summary.append(f"  plot not drawn: {e}")
+    summary += [f"  {line}" if line.startswith("HJD") else f"  skipped {line}" for line in skipped]
+    return summary
+
+
+def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
+    """The light curve as a PNG, as in V. Lecomte's DY Peg procedure (user-
+    requested Oct 2026): the target's magnitude against HJD (JD when not
+    computed) with its error bars, the check star's, magnitudes growing
+    downwards; beyond 15 points, means of bin_size points over them."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    times = np.array([r[2] if r[2] is not None else r[1] for r in rows])
+    label_time = "HJD (UTC)" if all(r[2] is not None for r in rows) else "JD (UTC)"
+    origin = float(np.floor(times.min()))
+    x = times - origin
+    mags, errs = np.array([r[4] for r in rows]), np.array([r[5] for r in rows])
+
+    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=110)
+    ax.errorbar(x, mags, yerr=errs, fmt="o", ms=3, lw=0.8, color="#1f5fbf", alpha=0.55, label=target_name)
+    if check_label:
+        cx = np.array([xi for xi, r in zip(x, rows) if r[8] is not None])
+        cm = np.array([r[8] for r in rows if r[8] is not None])
+        ce = np.array([r[9] for r in rows if r[8] is not None])
+        if cm.size:
+            ax.errorbar(cx, cm, yerr=ce, fmt="s", ms=3, lw=0.8, color="#c03030", alpha=0.45, label=check_label)
+    if len(rows) > 15 and bin_size > 1:
+        n = len(rows) // bin_size * bin_size
+        bx = x[:n].reshape(-1, bin_size).mean(axis=1)
+        bm = mags[:n].reshape(-1, bin_size).mean(axis=1)
+        be = mags[:n].reshape(-1, bin_size).std(axis=1) / np.sqrt(bin_size)
+        ax.errorbar(bx, bm, yerr=be, fmt="o", ms=5, lw=1.2, color="#0b2f6b", label=f"{target_name}, mean of {bin_size}")
+    ax.invert_yaxis()
+    ax.set_xlabel(f"{label_time} - {origin:.0f}")
+    ax.set_ylabel("Magnitude (TG, green channel)")
+    ax.set_title(f"{target_name} - differential photometry")
+    ax.grid(alpha=0.3)
+    ax.legend(loc="best", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(png)
+    plt.close(fig)
 
 
 def dwarf_platesolve_args(path):
@@ -701,8 +988,8 @@ class PreprocessingInterface(QMainWindow):
         self.photometry_checkbox.setToolTip(
             "Variable star photometry for a single siril_session.json:\n"
             "after the copy, a 01_photometry_*.ssf script is generated instead of\n"
-            "stacking - calibration, green channel (AAVSO TG band), registration,\n"
-            "plate solve, comparison stars (findcompstars) and light_curve.\n"
+            "stacking - calibration, green channel (AAVSO TG band), plate solve of\n"
+            "every image, comparison stars (findcompstars), differential photometry.\n"
             "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
         )
         variable_layout.addWidget(self.photometry_checkbox)
@@ -937,6 +1224,7 @@ class PreprocessingInterface(QMainWindow):
         # create new lights dir and delete process dir, when there is one
         os.mkdir(lights_dir)
         if os.path.exists(process_dir):
+            self._release_working_dir()
             shutil.rmtree(process_dir)
 
         # collect all the files that will get copied
@@ -1055,6 +1343,7 @@ class PreprocessingInterface(QMainWindow):
     def _start_copy_from_json(self, lights, darks, bias_dir, flat_dir, bias_file=None, flat_file=None):
         """Copy lights, darks, bias and flat into Siril working directories."""
         cwd = self.current_working_directory
+        self._release_working_dir()   # its folders are deleted below
 
         # Build (src, dest_dir) pairs
         pairs = []
@@ -1125,7 +1414,16 @@ class PreprocessingInterface(QMainWindow):
         # Delete process dir
         process_dir = os.path.join(cwd, "process")
         if os.path.exists(process_dir):
-            shutil.rmtree(process_dir)
+            self._release_working_dir()
+            try:
+                shutil.rmtree(process_dir)
+            except OSError as e:
+                QMessageBox.critical(
+                    self, "process folder in use",
+                    f"Could not delete {process_dir}:\n{e}\n\n"
+                    "Close the image or sequence open in Siril (or a file open in another program) and try again.",
+                )
+                return
 
         self.progressbar.setMaximum(len(pairs))
         self.progressbar.setValue(0)
@@ -1250,6 +1548,7 @@ class PreprocessingInterface(QMainWindow):
     def _start_copy_megastack_json(self, data: dict):
         """Copy lights and darks for each filter group, then generate .ssf scripts."""
         cwd    = self.current_working_directory
+        self._release_working_dir()   # its folders are deleted below
         groups = data.get("sessions_by_filter", {})
         single = data.get("single_filter", True)
         hint   = data.get("combination_hint") or ("single" if single else "manual")
@@ -2018,6 +2317,30 @@ class PreprocessingInterface(QMainWindow):
                             except Exception as e:
                                 self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
                     continue
+                # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
+                if line.startswith("# PYTHON_PHOTOMETRY"):
+                    fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
+                    folder, seq_name, saturation = fields[:3]
+                    utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
+                    try:
+                        s.ensure_installed(["astropy", "matplotlib"])
+                        frames = sorted(
+                            os.path.join(folder, f) for f in os.listdir(folder)
+                            if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
+                        )
+                        summary = differential_light_curve(
+                            frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
+                            os.path.join(folder, f"light_curve_{seq_name}.csv"),
+                            saturation=float(saturation) or None, utc_offset_h=utc_offset,
+                        )
+                        for text in summary:
+                            self.siril.log(text, LogColor.GREEN)
+                        self._last_photometry_summary = summary
+                    except Exception as e:
+                        self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)
+                        ran_ok = False
+                        break
+                    continue
                 if line.startswith("#"):
                     continue
                 try:
@@ -2048,6 +2371,9 @@ class PreprocessingInterface(QMainWindow):
             elif ssf_name.startswith("02_combine_"):
                 self._save_step("combined")
 
+        if not ran_ok:
+            # A script stopped before its own "cd ..": Siril back to the working directory
+            self._release_working_dir()
         self.build_sessions_btn.setDisabled(False)
         self.json_btn.setDisabled(False)
         self.copy_btn.setDisabled(False)
@@ -2055,12 +2381,27 @@ class PreprocessingInterface(QMainWindow):
 
         if ran_ok:
             self.siril.log("[build] All scripts completed successfully.", LogColor.GREEN)
-            QMessageBox.information(self, "Build complete", "All scripts ran successfully.")
+            summary = getattr(self, "_last_photometry_summary", None)
+            self._last_photometry_summary = None
+            QMessageBox.information(self, "Build complete", "All scripts ran successfully."
+                                    + ("\n\n" + "\n".join(summary) if summary else ""))
         else:
             QMessageBox.critical(
                 self, "Build failed",
                 "A command failed while running the scripts.\nCheck the Siril log for details."
             )
+
+    def _release_working_dir(self):
+        """Siril out of its subfolders, its image / sequence closed, so that
+        process/ can be deleted (user-reported Oct 2026, Windows: a script
+        stopped on a failed command left Siril in process/ with its sequence
+        open, and the next copy failed on os.rmdir)."""
+        cwd = self.current_working_directory
+        for args in (("close",), ("cd", f'"{cwd}"' if " " in cwd else cwd)):
+            try:
+                self.siril.cmd(*args)
+            except s.SirilError:
+                pass
 
     def _copy_from_json_done(self, count):
         """Called when JSON-based copy is complete."""
@@ -2084,8 +2425,8 @@ class PreprocessingInterface(QMainWindow):
                 "Copy complete",
                 f"{count} file(s) copied to Siril working directory.\n"
                 f"Photometry script generated: {os.path.basename(photometry[0])}\n"
-                f"Click Build Sessions to run it (light_curve.dat and its plot\n"
-                f"are written in the process folder).",
+                f"Click Build Sessions to run it (the light curve is written in the\n"
+                f"process folder: light_curve_*.csv).",
             )
             return
         QMessageBox.information(
@@ -2111,6 +2452,8 @@ class PreprocessingInterface(QMainWindow):
         )
         if not files:
             return
+        # astropy reads the plate solved images (measure_star)
+        s.ensure_installed(["astropy"])
         first = {key: value for _, key, value, _ in read_fits_cards(files[0])}
         star, ok = QInputDialog.getText(
             self, "Check exposure",
@@ -2132,22 +2475,39 @@ class PreprocessingInterface(QMainWindow):
         report = [f"Exposure check — {star} — eclipse depth {depth:.2f} mag",
                   f"Saturation level {_DWARF_12BIT_PHOT_MAX} ADU (12-bit data), longest exposure for a peak at 80 % of it", ""]
         self.exposure_btn.setDisabled(True)
+        longest_by_frame = []
         try:
             for path in files:
-                report += self._check_exposure_frame(path, star, depth, work, margin_level)
-                report.append("")
+                lines, longest = self._check_exposure_frame(path, star, depth, work, margin_level)
+                report += lines + [""]
+                if longest:
+                    longest_by_frame.append(longest)
+            # The peak changes from frame to frame with the seeing (about 15 %
+            # over 5 frames of a real test): the shortest of the longest
+            # exposures is the safe one
+            if len(longest_by_frame) > 1:
+                report += [f"Over {len(longest_by_frame)} frames: {min(longest_by_frame):.0f} s at most "
+                           f"(from {min(longest_by_frame):.0f} to {max(longest_by_frame):.0f} s - the seeing)", ""]
         finally:
             self.exposure_btn.setDisabled(False)
+            # Siril's working directory back (each frame was measured in exposure_check/)
+            cwd = self.current_working_directory
+            try:
+                self.siril.cmd("cd", f'"{cwd}"' if " " in cwd else cwd)
+            except s.SirilError:
+                pass
 
         text = "\n".join(report)
         with open(os.path.join(work, "exposure_check.txt"), "w", encoding="utf-8") as f:
             f.write(text)
         for line in report:
-            self.siril.log(line, LogColor.BLUE)
+            if line.strip():   # Siril's log refuses an empty message ("unknown interface error")
+                self.siril.log(line, LogColor.BLUE)
         QMessageBox.information(self, "Check exposure", text + f"\n\nSaved in {work}")
 
     def _check_exposure_frame(self, path, star, depth, work, margin_level):
-        """The report lines of one test frame (see check_exposure())."""
+        """(report lines, longest exposure in s or None) of one test frame (see
+        check_exposure())."""
         cards = {key: value for _, key, value, _ in read_fits_cards(path)}
         name = os.path.basename(path)
         try:
@@ -2166,10 +2526,32 @@ class PreprocessingInterface(QMainWindow):
             self.siril.cmd("platesolve", *solve)
             csv_name = f"check_{base}.csv"
             self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
-            stars = self.siril.get_image_stars() or []
-            shape = self.siril.get_image_shape()
+            # The plate solved green image, measured with astropy (measure_star)
+            self.siril.cmd("save", "solved_" + base)
         except (s.SirilError, OSError) as e:
-            return [title, f"  failed: {e}"]
+            return [title, f"  failed: {e}"], None
+        solved = next((os.path.join(work, f) for f in sorted(os.listdir(work))
+                       if os.path.splitext(f)[0] == "solved_" + base), None)
+        if not solved:
+            return [title, "  the plate solved image was not saved"], None
+        try:
+            import warnings
+            from astropy.io import fits as _fits
+            from astropy.wcs import WCS
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with _fits.open(solved) as hdul:
+                    hdu = hdul[0]
+                    data = hdu.data.astype("float64")
+                    wcs = WCS(hdu.header)
+            if data.ndim == 3:
+                data = data[0]
+            if data.max() <= 1.5:   # 32-bit float image: 0..1
+                data = data * 65535.0
+            if not wcs.has_celestial:
+                return [title, "  no plate solve in the saved image"], None
+        except Exception as e:
+            return [title, f"  the plate solved image was not read: {e}"], None
 
         targets, comps = [], []
         try:
@@ -2183,37 +2565,22 @@ class PreprocessingInterface(QMainWindow):
                         continue
                     (targets if row.get("type", "").lower() == "target" else comps).append(radec)
         except OSError as e:
-            return [title, f"  comparison stars not read: {e}"]
+            return [title, f"  comparison stars not read: {e}"], None
         if not targets:
-            return [title, "  the star was not found by findcompstars (name, plate solve)"]
-
-        height = shape[1] if shape else None
+            return [title, "  the star was not found by findcompstars (name, plate solve)"], None
 
         def _measure(ra, dec):
-            """(peak ADU, background ADU, S/N) of the star found at ra/dec."""
             try:
-                xy = self.siril.radec2pix(ra, dec)
-            except (ValueError, s.SirilError):
+                return measure_star(data, wcs, ra, dec)
+            except Exception:
                 return None
-            if not xy:
-                return None
-            best, best_d = None, None
-            for psf in stars:
-                for y in {xy[1], (height - 1 - xy[1]) if height else xy[1]}:  # y origin either way
-                    d = ((psf.xpos - xy[0]) ** 2 + (psf.ypos - y) ** 2) ** 0.5
-                    if best_d is None or d < best_d:
-                        best, best_d = psf, d
-            if best is None or best_d > max(5.0, 2 * max(best.fwhmx, best.fwhmy)):
-                return None
-            scale = 65535.0 if best.B + best.A <= 1.5 else 1.0   # 32-bit float images: 0..1
-            return (best.A + best.B) * scale, best.B * scale, best.SNR
 
         measured = _measure(*targets[0])
         if measured is None:
-            return [title, "  the star was not detected in the frame (out of the field, too faint?)"]
+            return [title, "  the star was not detected in the frame (out of the field, too faint?)"], None
         peak, background, snr = measured
         lines = [title, f"  {star}: peak {peak:.0f} / {_DWARF_12BIT_PHOT_MAX} ADU ({100 * peak / _DWARF_12BIT_PHOT_MAX:.0f} %), "
-                        f"background {background:.0f}, S/N {snr:.0f}"]
+                        f"background {background:.0f}, S/N about {snr:.0f}"]
         if peak >= _DWARF_12BIT_PHOT_MAX:
             lines.append("  SATURATED: shorter exposure or lower gain")
         elif exposure > 0 and peak > background:
@@ -2221,7 +2588,8 @@ class PreprocessingInterface(QMainWindow):
             model = (cards.get("TELESCOP") or "").replace(" ", "").upper()
             model_max = _MAX_EXPOSURE_BY_TELESCOP.get(model)
             if model_max and longest > model_max:
-                lines.append(f"  longest exposure at this gain: {longest:.0f} s - {model_max:g} s at most on this model:"
+                longest = model_max
+                lines.append(f"  longest exposure at this gain: more than {model_max:g} s, the most on this model:"
                              " raise the gain for more signal")
             else:
                 lines.append(f"  longest exposure at this gain: {longest:.0f} s")
@@ -2229,15 +2597,15 @@ class PreprocessingInterface(QMainWindow):
         comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
         saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
         lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")
-        return lines
+        return lines, (longest if peak < _DWARF_12BIT_PHOT_MAX and exposure > 0 and peak > background else None)
 
     def _generate_photometry_script(self, data: dict, cwd: str):
         """Variable star photometry script for a single session (the
         "📈 Photometry" option): calibration with the master dark, green
-        channel (AAVSO TG band of these colour sensors), registration without
-        stacking, plate solve of the reference image, comparison stars found
-        by Siril (APASS) and the light curve - light_curve.dat and its plot in
-        the process folder. Returns (ssf_path, lines), or None when cancelled
+        channel (AAVSO TG band of these colour sensors), plate solve of every
+        image, comparison stars found by Siril (APASS), then the differential
+        photometry in Python (differential_light_curve(), run by Build
+        Sessions) - light_curve_<sequence>.csv in the process folder. Returns (ssf_path, lines), or None when cancelled
         or not possible. Requires Siril 1.4.0+ (findcompstars)."""
         lights_dir = os.path.join(cwd, "lights")
         lights = sorted(
@@ -2259,6 +2627,18 @@ class PreprocessingInterface(QMainWindow):
         )
         star = " ".join(star.split())
         if not ok or not star:
+            return None
+        # The DWARF writes its local time in DATE-OBS: its UTC offset, this
+        # PC's at the session's date by default (daylight saving included)
+        first = {key: value for _, key, value, _ in read_fits_cards(lights[0])}
+        pc_offset = local_utc_offset_hours(first.get("DATE-OBS", ""))
+        utc_offset, ok = QInputDialog.getDouble(
+            self, "Photometry",
+            "The DWARF writes its local time in DATE-OBS.\n"
+            f"UTC offset of that time, in hours (this PC on {str(first.get('DATE-OBS', ''))[:10]}: {pc_offset:+g}):",
+            pc_offset, -14.0, 14.0, 2,
+        )
+        if not ok:
             return None
 
         fixed = sum(1 for f in lights if fix_dwarf_date_obs(f))
@@ -2316,35 +2696,26 @@ class PreprocessingInterface(QMainWindow):
                 "seqextract_Green light",
                 "",
             ]
-        solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
+        solve = " ".join(["seqplatesolve", seq] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
-        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
-            lines += [
-                f"# 12-bit data (highest value {data_max:.0f}): stars above {_DWARF_12BIT_PHOT_MAX} ADU",
-                "# counted as saturated, instead of Siril's default 60000",
-                f"setphot -max_val={_DWARF_12BIT_PHOT_MAX}",
-                "",
-            ]
+        saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
         lines += [
-            "# Registration only - every image is a point of the light curve",
-            f"register {seq}",
-            "",
-            "# Plate solve the first image, made the reference: light_curve finds",
-            "# the stars by their coordinates in the reference image",
-            f"setref r_{seq} 1",
-            f"load r_{seq}_00001",
+            "# Plate solve of every image (its header updated): each one measured",
+            "# with its own solution - no registration, the dithering doesn't matter",
             solve,
-            f"save r_{seq}_00001",
             "",
-            "# Comparison stars (APASS catalog, Internet), then the light curve",
+            "# Comparison stars (APASS catalog, Internet)",
+            f"load {seq}_00001",
             f'findcompstars "{star}" -out=comparison_stars.csv',
-            f"light_curve r_{seq} 0 -autoring -ninastars=comparison_stars.csv",
             "",
-        ]
-        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
-            lines += ["# Siril's default saturation level back (setphot is a preference)", "setphot -max_val=60000", ""]
-        lines += [
-            f"# Result: {os.path.join(proc, 'light_curve.dat')} (and its plot)",
+            "# Differential photometry in Python (not Siril's light_curve): the target",
+            "# and comparison stars at their coordinates in each image, times at",
+            "# mid-exposure in JD, HJD and BJD"
+            + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
+            f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
+            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}",
+            "",
+            f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
             "cd ..",
         ]
 

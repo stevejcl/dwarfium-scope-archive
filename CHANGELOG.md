@@ -12,11 +12,40 @@
     exposure"), Siril reads it as the start: moved back by EXPTIME in the copied lights. The raw FITS hold 12-bit data
     (saturated at 4095) while Siril's photometry counts a star as saturated above 60000 ADU: setphot -max_val=3700 for
     the run (a DWARF 3 V1.5.3.9 sub). Siril 1.4.0+, Internet.
+    light_curve without -autoring, its background annulus set to 10-15 px with setphot (FWHM 2 - 2.5 px) and Siril's
+    defaults put back: in Siril 1.4.0 - 1.4.2 -autoring clears the reference image it measured, and the target star is
+    then looked for in an image without its plate solve ("There was a problem finding the target star", real test).
+    setphot -min_val=-1000: Siril rejects a star when a pixel of its aperture or annulus is <= min_val (0 by default),
+    and after the dark the background is a few ADU - every comparison star was rejected. -dyn_ratio=4.0 given with it:
+    a setphot without it fixes the aperture to 10 px.
+    platesolve -noflip on the reference: platesolve turns an image it finds upside down the right way up, the reference
+    was saved mirrored against the other registered frames and light_curve found no star in them.
+    A script stopped on a failed command left Siril in process/ with its sequence open: the next Load Dwarfium JSON
+    failed on Windows deleting process/ (os.rmdir). Siril now closes its image / sequence and goes back to the working
+    directory before the copy deletes its folders, and after a failed Build Sessions.
+    The photometry no longer uses Siril's light_curve, which failed on real DWARF images one way after another in
+    Siril 1.4.0 - 1.4.2 (fixes above): seqplatesolve of every image, then the script measures the target and the
+    comparison stars at their coordinates in each image (as Check exposure), a zero point per image from the
+    comparison stars, the target's magnitude and error - process/light_curve_<sequence>.csv, with the mid-exposure
+    time as JD UTC, HJD UTC and BJD TDB. No registration (the dithering doesn't matter), no setphot. A real DWARF 3
+    frame of HD 216999 (V 9.36): 9.384 +/- 0.046 from 20 comparison stars.
+    The same comparison stars in every image (those measured in at least 90 % of them): 19 to 23 from one image to the
+    next made the zero point jump (first real light curve).
+    The DWARF writes its local time in DATE-OBS, not UTC (user-checked: on the same DWARF 3 the last frame of a session
+    read 04:10, the next session started at 04:22 French summer time): the script asks for its UTC offset - this PC's
+    at the session's date by default, daylight saving included - and the CSV's JD / HJD / BJD are UTC-based.
+    A check star - the comparison star closest to the target's magnitude, left out of the zero point (as HD 218587 in V.
+    Lecomte's DY Peg procedure) - in the CSV, and light_curve_<sequence>.png: the target and the check star against HJD,
+    error bars, magnitudes growing downwards, means of 3 points beyond 15 images (matplotlib, installed if missing).
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
     at that gain (peak at 80 % of it; 15 s at most on a DWARF II), the S/N at the minimum for the eclipse depth given, the comparison stars
-    saturated. Shown, logged and saved in exposure_check/exposure_check.txt.
+    saturated. Shown, logged and saved in exposure_check/exposure_check.txt. The plate solved green image is saved and read
+    with astropy (installed in Siril's Python if missing), each star measured at its coordinates: its peak the
+    brightest pixel near it - Siril's fitted Gaussian was a third lower on these sharp stars -, a lone hot pixel
+    rejected, the S/N from an aperture and its background annulus (first real tests, Oct 2026: Siril's own star
+    list left the comparison stars out and gave no S/N, its selection coordinates didn't match radec2pix's).
     The script's buttons overlapped (one row needing ~1500 px in a 750 px window): two rows now - the stacking
     buttons, then the mosaic options and the variable star tools -, the window at least 1000 x 640.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
