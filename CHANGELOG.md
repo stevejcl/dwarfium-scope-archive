@@ -15,6 +15,9 @@
     light_curve without -autoring, its background annulus set to 10-15 px with setphot (FWHM 2 - 2.5 px) and Siril's
     defaults put back: in Siril 1.4.0 - 1.4.2 -autoring clears the reference image it measured, and the target star is
     then looked for in an image without its plate solve ("There was a problem finding the target star", real test).
+    setphot -min_val=-1000: Siril rejects a star when a pixel of its aperture or annulus is <= min_val (0 by default),
+    and after the dark the background is a few ADU - every comparison star was rejected. -dyn_ratio=4.0 given with it:
+    a setphot without it fixes the aperture to 10 px.
     A script stopped on a failed command left Siril in process/ with its sequence open: the next Load Dwarfium JSON
     failed on Windows deleting process/ (os.rmdir). Siril now closes its image / sequence and goes back to the working
     directory before the copy deletes its folders, and after a failed Build Sessions.

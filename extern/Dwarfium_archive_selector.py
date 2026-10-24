@@ -250,7 +250,15 @@ _DWARF_12BIT_MAX = 4095
 # image without its plate solve ("There was a problem finding the target star
 # in the image" - first real test). Siril's defaults put back afterwards.
 _PHOT_INNER, _PHOT_OUTER = 10, 15
-_PHOT_DEFAULTS = "-inner=20 -outer=30"
+# Siril rejects a star when any pixel of its aperture or annulus is <= min_val
+# (0 by default): after the dark subtraction the background is a few ADU with
+# a noise of about 12, and every comparison star was rejected ("The reference
+# stars are not good enough, probably out of the configured valid pixel
+# range" - real test). -dyn_ratio must be given each time: a setphot without
+# it fixes the aperture to its 10 px radius instead of 4 x half the FWHM.
+_PHOT_MIN = -1000
+_PHOT_DYN_RATIO = 4.0
+_PHOT_DEFAULTS = "-inner=20 -outer=30 -min_val=0 -dyn_ratio=4.0"
 # Longest exposure a model allows, when shorter than what the star could take
 # (user-reported Oct 2026: 15 s at most on a DWARF II)
 _MAX_EXPOSURE_BY_TELESCOP = {"DWARFII": 15.0}
@@ -2434,8 +2442,13 @@ class PreprocessingInterface(QMainWindow):
         solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
         twelve_bit = data_max is not None and data_max <= _DWARF_12BIT_MAX
-        setphot = f"setphot -inner={_PHOT_INNER} -outer={_PHOT_OUTER}"
-        lines += [f"# Background annulus {_PHOT_INNER}-{_PHOT_OUTER} px (not -autoring: Siril 1.4.0 - 1.4.2 loses the plate solve with it)"]
+        setphot = (f"setphot -inner={_PHOT_INNER} -outer={_PHOT_OUTER} -min_val={_PHOT_MIN}"
+                   f" -dyn_ratio={_PHOT_DYN_RATIO}")
+        lines += [
+            f"# Background annulus {_PHOT_INNER}-{_PHOT_OUTER} px (not -autoring: Siril 1.4.0 - 1.4.2 loses the plate solve with it),",
+            f"# pixels down to {_PHOT_MIN} ADU accepted (the background after the dark is a few ADU: pixels at 0 or below",
+            "# made Siril reject the stars), aperture 4 x half the FWHM of each star",
+        ]
         if twelve_bit:
             lines += [
                 f"# 12-bit data (highest value {data_max:.0f}): stars above {_DWARF_12BIT_PHOT_MAX} ADU",
