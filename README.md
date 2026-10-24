@@ -347,7 +347,10 @@ run with **🚀 Build Sessions**:
    coordinates in every image, a zero point per image from the comparison
    stars, the target's magnitude and its error — written to
    `process/light_curve_<sequence>.csv` with the mid-exposure time as JD UTC,
-   HJD UTC and BJD TDB.
+   HJD UTC and BJD TDB. A check star (the comparison star closest to the
+   target's magnitude, left out of the zero point) is measured too, and
+   `light_curve_<sequence>.png` plots both against HJD, with means of 3 points
+   beyond 15 images.
 
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the
@@ -357,8 +360,8 @@ script asks for its UTC offset (this PC's at the session's date by default,
 daylight saving included) and converts the times to UTC. Their data is 12-bit (saturated at 4095) in a 16-bit file: stars
 above 3700 ADU are left out.
 Requires Siril **1.4.0+** (`findcompstars`), Internet (the star's
-name, the APASS catalogue) and astropy (installed in Siril's Python the first
-time). The time of minimum (and O–C) is then measured from the CSV.
+name, the APASS catalogue), astropy and matplotlib (installed in Siril's
+Python the first time). The time of minimum (and O–C) is then measured from the CSV.
 
 #### Choosing the exposure: 🔆 Check exposure
 

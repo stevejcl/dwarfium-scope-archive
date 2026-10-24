@@ -448,9 +448,18 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     fixed = {i for i, n in enumerate(counts) if frames and n >= 0.9 * len(frames)}
     if len(fixed) < 3:
         fixed = None
+    # Check star (as HD 218587 in V. Lecomte's DY Peg procedure, Oct 2026):
+    # the comparison star closest to the target's magnitude among the most
+    # measured ones, measured like the target and left out of the zero point -
+    # flat, it shows the target's changes are real
+    target_mag = target.get("mag")
+    candidates = [i for i in (fixed or range(len(comps))) if counts[i] >= 0.9 * max(counts or [0]) and counts[i]]
+    check = None
+    if len(candidates) >= 4:
+        check = min(candidates, key=lambda i: abs(comps[i]["mag"] - (target_mag if target_mag is not None else comps[i]["mag"])))
 
     for name, mid, t, measured in frames:
-        used = {i: m for i, m in measured.items() if fixed is None or i in fixed}
+        used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
         if len(used) < 2:
             skipped.append(f"{name}: fewer than 2 comparison stars measured")
             continue
@@ -462,6 +471,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         zp_err = float(np.std(zps) / math.sqrt(len(zps)))
         mag = -2.5 * math.log10(t[2]) + zp
         err = math.hypot(1.0857 * t[3] / t[2], zp_err)
+        check_mag = check_err = None
+        if check is not None and check in measured:
+            cm = measured[check]
+            check_mag = -2.5 * math.log10(cm[2]) + zp
+            check_err = math.hypot(1.0857 * cm[3] / cm[2], zp_err)
         try:
             hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
             bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
@@ -469,7 +483,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             hjd = bjd = None
             if not any(line.startswith("HJD / BJD not computed") for line in skipped):
                 skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
-        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0]))
+        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err))
     rows.sort(key=lambda r: r[1])
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
@@ -477,10 +491,13 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
                          f"{len(comps)} comparison stars (findcompstars), times at mid-exposure in UTC "
                          f"(DATE-OBS taken as UTC{utc_offset_h:+g} h)"])
-        writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak"])
-        for name, jd, hjd, bjd, mag, err, n, peak in rows:
+        check_label = f"check_{comps[check]['name']}" if check is not None else "check"
+        writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
+                         f"{check_label}_mag", f"{check_label}_err"])
+        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr in rows:
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
-                             f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}"])
+                             f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
+                             "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}"])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
                f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
@@ -489,8 +506,62 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
                        f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
                        + (f" (the same {len(fixed)} in every image)" if fixed else ""))
+    if rows and check is not None:
+        cmags = np.array([r[8] for r in rows if r[8] is not None])
+        if cmags.size:
+            summary.append(f"  check star (comparison {comps[check]['name']}, V {comps[check]['mag']:.2f}): "
+                           f"std {cmags.std():.3f}")
+    if rows:
+        png = os.path.splitext(out_csv)[0] + ".png"
+        try:
+            plot_light_curve(rows, png, target["name"],
+                             f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None)
+            summary.append(f"  plot -> {png}")
+        except Exception as e:
+            summary.append(f"  plot not drawn: {e}")
     summary += [f"  {line}" if line.startswith("HJD") else f"  skipped {line}" for line in skipped]
     return summary
+
+
+def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
+    """The light curve as a PNG, as in V. Lecomte's DY Peg procedure (user-
+    requested Oct 2026): the target's magnitude against HJD (JD when not
+    computed) with its error bars, the check star's, magnitudes growing
+    downwards; beyond 15 points, means of bin_size points over them."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    times = np.array([r[2] if r[2] is not None else r[1] for r in rows])
+    label_time = "HJD (UTC)" if all(r[2] is not None for r in rows) else "JD (UTC)"
+    origin = float(np.floor(times.min()))
+    x = times - origin
+    mags, errs = np.array([r[4] for r in rows]), np.array([r[5] for r in rows])
+
+    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=110)
+    ax.errorbar(x, mags, yerr=errs, fmt="o", ms=3, lw=0.8, color="#1f5fbf", alpha=0.55, label=target_name)
+    if check_label:
+        cx = np.array([xi for xi, r in zip(x, rows) if r[8] is not None])
+        cm = np.array([r[8] for r in rows if r[8] is not None])
+        ce = np.array([r[9] for r in rows if r[8] is not None])
+        if cm.size:
+            ax.errorbar(cx, cm, yerr=ce, fmt="s", ms=3, lw=0.8, color="#c03030", alpha=0.45, label=check_label)
+    if len(rows) > 15 and bin_size > 1:
+        n = len(rows) // bin_size * bin_size
+        bx = x[:n].reshape(-1, bin_size).mean(axis=1)
+        bm = mags[:n].reshape(-1, bin_size).mean(axis=1)
+        be = mags[:n].reshape(-1, bin_size).std(axis=1) / np.sqrt(bin_size)
+        ax.errorbar(bx, bm, yerr=be, fmt="o", ms=5, lw=1.2, color="#0b2f6b", label=f"{target_name}, mean of {bin_size}")
+    ax.invert_yaxis()
+    ax.set_xlabel(f"{label_time} - {origin:.0f}")
+    ax.set_ylabel("Magnitude (TG, green channel)")
+    ax.set_title(f"{target_name} - differential photometry")
+    ax.grid(alpha=0.3)
+    ax.legend(loc="best", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(png)
+    plt.close(fig)
 
 
 def dwarf_platesolve_args(path):
@@ -2252,7 +2323,7 @@ class PreprocessingInterface(QMainWindow):
                     folder, seq_name, saturation = fields[:3]
                     utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
                     try:
-                        s.ensure_installed(["astropy"])
+                        s.ensure_installed(["astropy", "matplotlib"])
                         frames = sorted(
                             os.path.join(folder, f) for f in os.listdir(folder)
                             if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
