@@ -17,6 +17,8 @@
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
     at that gain (peak at 80 % of it; 15 s at most on a DWARF II), the S/N at the minimum for the eclipse depth given, the comparison stars
     saturated. Shown, logged and saved in exposure_check/exposure_check.txt.
+    The script's buttons overlapped (one row needing ~1500 px in a 750 px window): two rows now - the stacking
+    buttons, then the mosaic options and the variable star tools -, the window at least 1000 x 640.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
     next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open. The image
     opens in the system's viewer (a click on it, or Open the image), and Open the folder shows the fixed FITS

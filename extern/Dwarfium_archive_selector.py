@@ -642,6 +642,11 @@ class PreprocessingInterface(QMainWindow):
         button_layout.setContentsMargins(
             0, 15, 0, 0
         )  # Add top margin to separate from content
+        # Second row: the mosaic options on the left, the variable star tools
+        # on the right - on one row with the buttons, they overlapped
+        # (user-reported Oct 2026: ~1500 px needed in a 750 px window)
+        option_layout = QHBoxLayout()
+        variable_layout = QHBoxLayout()
 
         help_btn = QPushButton("?")
         help_btn.setMinimumWidth(35)
@@ -700,7 +705,7 @@ class PreprocessingInterface(QMainWindow):
             "plate solve, comparison stars (findcompstars) and light_curve.\n"
             "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
         )
-        button_layout.addWidget(self.photometry_checkbox)
+        variable_layout.addWidget(self.photometry_checkbox)
 
         # Exposure check: a few test frames of the variable star measured, to
         # choose the exposure / gain of the photometry session
@@ -713,7 +718,7 @@ class PreprocessingInterface(QMainWindow):
             "findcompstars: Siril 1.4.0+ and Internet."
         )
         self.exposure_btn.clicked.connect(self.check_exposure)
-        button_layout.addWidget(self.exposure_btn)
+        variable_layout.addWidget(self.exposure_btn)
 
         # Run the generated .ssf stack/combine scripts directly in Siril
         self.build_sessions_btn = QPushButton("🚀 Build Sessions")
@@ -754,7 +759,7 @@ class PreprocessingInterface(QMainWindow):
         self.feather_checkbox.stateChanged.connect(
             lambda state: self.feather_spinbox.setEnabled(state == Qt.CheckState.Checked.value)
         )
-        button_layout.addWidget(self.feather_checkbox)
+        option_layout.addWidget(self.feather_checkbox)
 
         self.feather_spinbox = QSpinBox()
         self.feather_spinbox.setRange(1, 2000)
@@ -764,7 +769,7 @@ class PreprocessingInterface(QMainWindow):
         self.feather_spinbox.setMaximumWidth(80)
         self.feather_spinbox.setEnabled(False)
         self.feather_spinbox.setToolTip("Width (in pixels) of the feathered blend zone.")
-        button_layout.addWidget(self.feather_spinbox)
+        option_layout.addWidget(self.feather_spinbox)
 
         # HaRGB blend ratio — Ha weight in the R channel composition
         # R = Ha * ratio + astro_r * (1 - ratio)
@@ -774,7 +779,7 @@ class PreprocessingInterface(QMainWindow):
             "R = Ha × ratio + Astro_R × (1 − ratio)\n"
             "0.7 = 70% Ha, 30% natural star color from Astro."
         )
-        button_layout.addWidget(self.ha_blend_label)
+        option_layout.addWidget(self.ha_blend_label)
 
         self.ha_blend_spinbox = QDoubleSpinBox()
         self.ha_blend_spinbox.setRange(0.0, 1.0)
@@ -786,7 +791,7 @@ class PreprocessingInterface(QMainWindow):
         self.ha_blend_spinbox.setToolTip(
             "Ha blend ratio for HaRGB combination (0.0 = pure Astro R, 1.0 = pure Ha)."
         )
-        button_layout.addWidget(self.ha_blend_spinbox)
+        option_layout.addWidget(self.ha_blend_spinbox)
 
         # close button
         close_button = QPushButton("Close")
@@ -797,12 +802,18 @@ class PreprocessingInterface(QMainWindow):
 
         main_layout.addLayout(button_layout)
 
+        option_layout.addStretch()
+        variable_label = QLabel("Variable stars:")
+        option_layout.addWidget(variable_label)
+        option_layout.addLayout(variable_layout)
+        main_layout.addLayout(option_layout)
+
     def create_widgets(self):
         """Creates the UI widgets using PyQt6."""
 
         # Main layout
         main_widget = QWidget()
-        self.setMinimumSize(750, 600)
+        self.setMinimumSize(1000, 640)  # the two rows of buttons (was 750 x 600: they overlapped)
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
         main_layout.setContentsMargins(12, 6, 12, 12)
