@@ -363,7 +363,9 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     registration: the target and comparison stars at their coordinates
     (_star_measure), a zero point per image from the comparison stars
     (catalogue V - instrumental magnitude, weighted mean after a 3-sigma
-    clip), the target's magnitude and its error. Time: the middle of the
+    clip; the same comparison stars in every image when enough of them are
+    measured in 90 % of the images), the target's magnitude and its error.
+    Time: the middle of the
     exposure (DATE-OBS is its start once fix_dwarf_date_obs() ran), as JD
     UTC, HJD UTC and BJD TDB. Writes out_csv; returns the summary lines."""
     import math
@@ -387,7 +389,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     target, comps = stars[0], [st for st in stars[1:] if st["mag"] is not None]
     coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
     geocentre = EarthLocation.from_geocentric(0, 0, 0, unit=u.m)
-    rows, skipped = [], []
+    rows, skipped, frames = [], [], []
     for path in files:
         name = os.path.basename(path)
         try:
@@ -417,17 +419,28 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         if saturation and t[0] >= saturation:
             skipped.append(f"{name}: target saturated (peak {t[0]:.0f})")
             continue
-        zps, weights = [], []
-        for st in comps:
+        measured = {}
+        for i, st in enumerate(comps):
             m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=aperture_r)
-            if m is None or m[2] <= 0 or (saturation and m[0] >= saturation):
-                continue
-            zps.append(st["mag"] + 2.5 * math.log10(m[2]))
-            weights.append(1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6))
-        if len(zps) < 2:
+            if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
+                measured[i] = m
+        frames.append((name, mid, t, measured))
+
+    # The same comparison stars in every image (user-reported Oct 2026: 19 to
+    # 23 of them from one image to the next made the zero point jump): those
+    # measured in at least 90 % of the images, else each image's own
+    counts = [sum(1 for _, _, _, measured in frames if i in measured) for i in range(len(comps))]
+    fixed = {i for i, n in enumerate(counts) if frames and n >= 0.9 * len(frames)}
+    if len(fixed) < 3:
+        fixed = None
+
+    for name, mid, t, measured in frames:
+        used = {i: m for i, m in measured.items() if fixed is None or i in fixed}
+        if len(used) < 2:
             skipped.append(f"{name}: fewer than 2 comparison stars measured")
             continue
-        zps, weights = np.array(zps), np.array(weights)
+        zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
+        weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
         keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
         zps, weights = zps[keep], weights[keep]
         zp = float(np.average(zps, weights=weights))
@@ -442,6 +455,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if not any(line.startswith("HJD / BJD not computed") for line in skipped):
                 skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
         rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0]))
+    rows.sort(key=lambda r: r[1])
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
@@ -456,7 +470,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     if rows:
         mags = np.array([r[4] for r in rows])
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
-                       f"{int(np.median([r[6] for r in rows]))} comparison stars per image")
+                       f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
+                       + (f" (the same {len(fixed)} in every image)" if fixed else ""))
     summary += [f"  {line}" if line.startswith("HJD") else f"  skipped {line}" for line in skipped]
     return summary
 

@@ -29,6 +29,8 @@
     comparison stars, the target's magnitude and error - process/light_curve_<sequence>.csv, with the mid-exposure
     time as JD UTC, HJD UTC and BJD TDB. No registration (the dithering doesn't matter), no setphot. A real DWARF 3
     frame of HD 216999 (V 9.36): 9.384 +/- 0.046 from 20 comparison stars.
+    The same comparison stars in every image (those measured in at least 90 % of them): 19 to 23 from one image to the
+    next made the zero point jump (first real light curve).
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
