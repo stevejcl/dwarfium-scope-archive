@@ -2173,7 +2173,6 @@ class PreprocessingInterface(QMainWindow):
             self.siril.cmd("platesolve", *solve)
             csv_name = f"check_{base}.csv"
             self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
-            stars = self.siril.get_image_stars() or []
             shape = self.siril.get_image_shape()
         except (s.SirilError, OSError) as e:
             return [title, f"  failed: {e}"]
@@ -2194,33 +2193,64 @@ class PreprocessingInterface(QMainWindow):
         if not targets:
             return [title, "  the star was not found by findcompstars (name, plate solve)"]
 
-        height = shape[1] if shape else None
+        height, width = (shape[1], shape[2]) if shape else (None, None)
+
+        def _box(x, y, r):
+            """[x, y, w, h] of a square of half-size r around x, y, inside the image."""
+            x0, y0 = max(0, int(x) - r), max(0, int(y) - r)
+            x1 = min(width - 1, int(x) + r) if width else int(x) + r
+            y1 = min(height - 1, int(y) + r) if height else int(y) + r
+            return [x0, y0, max(1, x1 - x0 + 1), max(1, y1 - y0 + 1)]
 
         def _measure(ra, dec):
-            """(peak ADU, background ADU, S/N) of the star found at ra/dec."""
+            """(peak ADU, background ADU, S/N) of the star at ra/dec, None when
+            not found. Siril measures it in a box around its position (user-
+            reported Oct 2026: the stars Siril detected by itself left most
+            comparison stars out, and gave no S/N): the S/N from Siril's
+            photometry, the peak as the box's brightest pixel - the fitted
+            Gaussian's A + B was a third lower on these sharp stars, which
+            overestimated the longest exposure."""
             try:
                 xy = self.siril.radec2pix(ra, dec)
             except (ValueError, s.SirilError):
                 return None
-            if not xy:
+            if not xy or (width and not (0 <= xy[0] < width)):
                 return None
-            best, best_d = None, None
-            for psf in stars:
-                for y in {xy[1], (height - 1 - xy[1]) if height else xy[1]}:  # y origin either way
-                    d = ((psf.xpos - xy[0]) ** 2 + (psf.ypos - y) ** 2) ** 0.5
-                    if best_d is None or d < best_d:
-                        best, best_d = psf, d
-            if best is None or best_d > max(5.0, 2 * max(best.fwhmx, best.fwhmy)):
+            found = None
+            for y in {xy[1], (height - 1 - xy[1]) if height else xy[1]}:  # y origin either way
+                if height and not (0 <= y < height):
+                    continue
+                box = _box(xy[0], y, 12)
+                try:
+                    star = self.siril.get_selection_star(shape=box, channel=0)
+                except (ValueError, s.SirilError):
+                    star = None
+                if star is None:
+                    continue
+                # Its position, in the image or in the box
+                sx, sy = star.xpos, star.ypos
+                if abs(sx - xy[0]) > 12 and abs(sx + box[0] - xy[0]) <= 12:
+                    sx, sy = sx + box[0], sy + box[1]
+                d = ((sx - xy[0]) ** 2 + (sy - y) ** 2) ** 0.5
+                if d <= 8 and (found is None or d < found[0]):
+                    found = (d, star, sx, sy)
+            if found is None:
                 return None
-            scale = 65535.0 if best.B + best.A <= 1.5 else 1.0   # 32-bit float images: 0..1
-            return (best.A + best.B) * scale, best.B * scale, best.SNR
+            _, star, sx, sy = found
+            try:
+                stats = self.siril.get_selection_stats(shape=_box(sx, sy, 4), channel=0)
+                peak = stats.max if stats else star.A + star.B
+            except (ValueError, s.SirilError):
+                peak = star.A + star.B
+            scale = 65535.0 if peak <= 1.5 else 1.0   # 32-bit float images: 0..1
+            return peak * scale, star.B * scale, star.SNR
 
         measured = _measure(*targets[0])
         if measured is None:
             return [title, "  the star was not detected in the frame (out of the field, too faint?)"]
         peak, background, snr = measured
         lines = [title, f"  {star}: peak {peak:.0f} / {_DWARF_12BIT_PHOT_MAX} ADU ({100 * peak / _DWARF_12BIT_PHOT_MAX:.0f} %), "
-                        f"background {background:.0f}, S/N {snr:.0f}"]
+                        f"background {background:.0f}, S/N {snr:.0f}" + ("" if snr else " (not computed by Siril)")]
         if peak >= _DWARF_12BIT_PHOT_MAX:
             lines.append("  SATURATED: shorter exposure or lower gain")
         elif exposure > 0 and peak > background:
@@ -2232,7 +2262,8 @@ class PreprocessingInterface(QMainWindow):
                              " raise the gain for more signal")
             else:
                 lines.append(f"  longest exposure at this gain: {longest:.0f} s")
-        lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
+        if snr:
+            lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
         comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
         saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
         lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")
