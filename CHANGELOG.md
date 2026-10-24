@@ -18,6 +18,8 @@
     setphot -min_val=-1000: Siril rejects a star when a pixel of its aperture or annulus is <= min_val (0 by default),
     and after the dark the background is a few ADU - every comparison star was rejected. -dyn_ratio=4.0 given with it:
     a setphot without it fixes the aperture to 10 px.
+    platesolve -noflip on the reference: platesolve turns an image it finds upside down the right way up, the reference
+    was saved mirrored against the other registered frames and light_curve found no star in them.
     A script stopped on a failed command left Siril in process/ with its sequence open: the next Load Dwarfium JSON
     failed on Windows deleting process/ (os.rmdir). Siril now closes its image / sequence and goes back to the working
     directory before the copy deletes its folders, and after a failed Build Sessions.

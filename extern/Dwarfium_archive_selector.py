@@ -2439,7 +2439,10 @@ class PreprocessingInterface(QMainWindow):
                 "seqextract_Green light",
                 "",
             ]
-        solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
+        # -noflip: platesolve turns an image it finds upside down the right way
+        # up - the reference saved mirrored against the other registered
+        # frames, light_curve found no star in them (real test, Oct 2026)
+        solve = " ".join(["platesolve", "-noflip"] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
         twelve_bit = data_max is not None and data_max <= _DWARF_12BIT_MAX
         setphot = (f"setphot -inner={_PHOT_INNER} -outer={_PHOT_OUTER} -min_val={_PHOT_MIN}"
