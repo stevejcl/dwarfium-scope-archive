@@ -363,7 +363,7 @@ def read_compstars_csv(path):
     return sorted(stars, key=lambda st: st["type"].lower() != "target")
 
 
-def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0):
+def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -381,7 +381,9 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     writes its local time there (user-checked Oct 2026: the last frame of a
     session at 04:10 by DATE-OBS, the next session started at 04:22 French
     summer time on the same DWARF 3). Writes out_csv; returns the summary
-    lines."""
+    lines. progress(done, total): called after each image (user-reported
+    Oct 2026: Siril stopped on a 141-image session, nothing in its log while
+    the measurement ran)."""
     import math
     import warnings
     import numpy as np
@@ -404,14 +406,16 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
     geocentre = EarthLocation.from_geocentric(0, 0, 0, unit=u.m)
     rows, skipped, frames = [], [], []
-    for path in files:
+    for index, path in enumerate(files, 1):
+        if progress is not None:
+            progress(index - 1, len(files))
         name = os.path.basename(path)
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 with _fits.open(path) as hdul:
                     header = hdul[0].header
-                    data = hdul[0].data.astype("float64")
+                    data = hdul[0].data.astype("float32")   # half the memory of float64
                     wcs = WCS(header)
             if data.ndim == 3:
                 data = data[0]
@@ -440,6 +444,9 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
                 measured[i] = m
         frames.append((name, mid, t, measured))
+        del data
+    if progress is not None:
+        progress(len(files), len(files))
 
     # The same comparison stars in every image (user-reported Oct 2026: 19 to
     # 23 of them from one image to the next made the zero point jump): those
@@ -2288,6 +2295,9 @@ class PreprocessingInterface(QMainWindow):
         self.mosaic_btn.setDisabled(True)
 
         ran_ok = True
+        self._build_log_path = os.path.join(self.current_working_directory, "build_sessions.log")
+        self._build_log(f"=== Build Sessions {datetime.now():%Y-%m-%d %H:%M:%S}: "
+                        + ", ".join(os.path.basename(p) for p, _ in scripts_to_run), new=True)
         for ssf_path, lines in scripts_to_run:
             ssf_name = os.path.basename(ssf_path)
             self.siril.log(f"[build] Running {ssf_name}…", LogColor.BLUE)
@@ -2319,6 +2329,7 @@ class PreprocessingInterface(QMainWindow):
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
                 if line.startswith("# PYTHON_PHOTOMETRY"):
+                    self._build_log(line)
                     fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
                     folder, seq_name, saturation = fields[:3]
                     utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
@@ -2328,10 +2339,22 @@ class PreprocessingInterface(QMainWindow):
                             os.path.join(folder, f) for f in os.listdir(folder)
                             if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
                         )
+                        def _progress(done, total):
+                            # The script's window kept alive, and where it is in Siril's log
+                            self.progressbar.setMaximum(max(total, 1))
+                            self.progressbar.setValue(done)
+                            self.progress_label.setText(f"{done} / {total}")
+                            if done == total or done % 10 == 0:
+                                self._build_log(f"photometry: {done} / {total} images measured")
+                                self.siril.log(f"[photometry] {done} / {total} images measured", LogColor.BLUE)
+                            QApplication.processEvents()
+
+                        self.siril.log(f"[photometry] {len(frames)} images to measure", LogColor.BLUE)
                         summary = differential_light_curve(
                             frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
                             os.path.join(folder, f"light_curve_{seq_name}.csv"),
                             saturation=float(saturation) or None, utc_offset_h=utc_offset,
+                            progress=_progress,
                         )
                         for text in summary:
                             self.siril.log(text, LogColor.GREEN)
@@ -2357,6 +2380,7 @@ class PreprocessingInterface(QMainWindow):
                 # be re-quoted here, same as it was originally in the .ssf
                 # text — shlex.split() above already stripped those quotes.
                 quoted_args = [f'"{a}"' if " " in a else a for a in args]
+                self._build_log(line)
                 try:
                     self.siril.cmd(*quoted_args)
                 except s.CommandError as e:
@@ -2390,6 +2414,20 @@ class PreprocessingInterface(QMainWindow):
                 self, "Build failed",
                 "A command failed while running the scripts.\nCheck the Siril log for details."
             )
+
+    def _build_log(self, text, new=False):
+        """One line in build_sessions.log (Siril working directory), written
+        and flushed before each command (user-reported Oct 2026: Siril closed
+        on a 141-image session, its log gone with it): the last line is where
+        it stopped."""
+        path = getattr(self, "_build_log_path", None) or os.path.join(self.current_working_directory, "build_sessions.log")
+        try:
+            with open(path, "w" if new else "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%H:%M:%S} {text}\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError:
+            pass
 
     def _release_working_dir(self):
         """Siril out of its subfolders, its image / sequence closed, so that
