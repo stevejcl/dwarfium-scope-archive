@@ -375,7 +375,14 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     from astropy.coordinates import SkyCoord, EarthLocation
     import astropy.units as u
     from astropy.utils import iers
-    iers.conf.auto_download = False   # no download for the time scales
+    # No IERS download, and its bundled values accepted however old (user-
+    # reported Oct 2026: "interpolating from IERS_Auto using predictive values
+    # that are more than 30.0 days old" stopped the photometry). The times are
+    # computed at the geocentre: the Earth's rotation (UT1) plays no part,
+    # the light time and UTC -> TDB don't need these tables.
+    iers.conf.auto_download = False
+    iers.conf.auto_max_age = None
+    iers.conf.iers_degraded_accuracy = "ignore"
 
     target, comps = stars[0], [st for st in stars[1:] if st["mag"] is not None]
     coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
@@ -427,8 +434,13 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         zp_err = float(np.std(zps) / math.sqrt(len(zps)))
         mag = -2.5 * math.log10(t[2]) + zp
         err = math.hypot(1.0857 * t[3] / t[2], zp_err)
-        hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
-        bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
+        try:
+            hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
+            bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
+        except Exception as e:   # astropy's time tables: the magnitudes are kept
+            hjd = bjd = None
+            if not any(line.startswith("HJD / BJD not computed") for line in skipped):
+                skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
         rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0]))
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
@@ -437,14 +449,15 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                          f"{len(comps)} comparison stars (findcompstars), times at mid-exposure"])
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak"])
         for name, jd, hjd, bjd, mag, err, n, peak in rows:
-            writer.writerow([name, f"{jd:.6f}", f"{hjd:.6f}", f"{bjd:.6f}", f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}"])
+            writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
+                             f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}"])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}"]
     if rows:
         mags = np.array([r[4] for r in rows])
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
                        f"{int(np.median([r[6] for r in rows]))} comparison stars per image")
-    summary += [f"  skipped {line}" for line in skipped]
+    summary += [f"  {line}" if line.startswith("HJD") else f"  skipped {line}" for line in skipped]
     return summary
 
 
