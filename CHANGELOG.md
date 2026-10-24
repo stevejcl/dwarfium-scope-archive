@@ -23,6 +23,12 @@
     A script stopped on a failed command left Siril in process/ with its sequence open: the next Load Dwarfium JSON
     failed on Windows deleting process/ (os.rmdir). Siril now closes its image / sequence and goes back to the working
     directory before the copy deletes its folders, and after a failed Build Sessions.
+    The photometry no longer uses Siril's light_curve, which failed on real DWARF images one way after another in
+    Siril 1.4.0 - 1.4.2 (fixes above): seqplatesolve of every image, then the script measures the target and the
+    comparison stars at their coordinates in each image (as Check exposure), a zero point per image from the
+    comparison stars, the target's magnitude and error - process/light_curve_<sequence>.csv, with the mid-exposure
+    time as JD UTC, HJD UTC and BJD TDB. No registration (the dithering doesn't matter), no setphot. A real DWARF 3
+    frame of HD 216999 (V 9.36): 9.384 +/- 0.046 from 20 comparison stars.
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure

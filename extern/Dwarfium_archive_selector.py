@@ -240,25 +240,9 @@ def fix_dwarf_date_obs(path):
 
 # The DWARF's raw FITS are 16-bit files holding 12-bit data (saturated at 4095
 # - a DWARF 3 sub, Oct 2026) while Siril's photometry takes a star as
-# saturated above 60000 ADU by default: the saturation level given to
-# setphot -max_val=, a bit under 4095 minus the dark level
+# saturated above 60000 ADU by default: stars above this level, a bit under
+# 4095 minus the dark level, are left out
 _DWARF_12BIT_MAX = 4095
-# Background annulus of light_curve, in pixels of the green image (FWHM about
-# 2 - 2.5 px on a DWARF 3, Oct 2026: what -autoring computes, 4.2 and 6.3
-# FWHM). -autoring can't be used: in Siril 1.4.0 - 1.4.2 it clears the
-# reference image it measured, and the target star is then looked for in an
-# image without its plate solve ("There was a problem finding the target star
-# in the image" - first real test). Siril's defaults put back afterwards.
-_PHOT_INNER, _PHOT_OUTER = 10, 15
-# Siril rejects a star when any pixel of its aperture or annulus is <= min_val
-# (0 by default): after the dark subtraction the background is a few ADU with
-# a noise of about 12, and every comparison star was rejected ("The reference
-# stars are not good enough, probably out of the configured valid pixel
-# range" - real test). -dyn_ratio must be given each time: a setphot without
-# it fixes the aperture to its 10 px radius instead of 4 x half the FWHM.
-_PHOT_MIN = -1000
-_PHOT_DYN_RATIO = 4.0
-_PHOT_DEFAULTS = "-inner=20 -outer=30 -min_val=0 -dyn_ratio=4.0"
 # Longest exposure a model allows, when shorter than what the star could take
 # (user-reported Oct 2026: 15 s at most on a DWARF II)
 _MAX_EXPOSURE_BY_TELESCOP = {"DWARFII": 15.0}
@@ -293,8 +277,15 @@ def fits_data_max(path):
     return float(data.max()) + bzero if data.size else None
 
 
-def measure_star(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20)):
-    """(peak, background, S/N) in ADU of the star at ra/dec in a plate solved
+def measure_star(data, wcs, ra, dec, **kwargs):
+    """(peak, background, S/N) of the star at ra/dec, None when not found -
+    see _star_measure()."""
+    m = _star_measure(data, wcs, ra, dec, **kwargs)
+    return None if m is None else (m[0], m[1], m[2] / m[3] if m[3] > 0 else 0.0)
+
+
+def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20)):
+    """(peak, background, flux, noise) in ADU of the star at ra/dec in a plate solved
     image (numpy array + astropy WCS), None when out of the field or not
     detected (peak under 5 sigma of the background, or a lone hot pixel). Measured here rather than
     through Siril's selection functions, whose pixel coordinates didn't match
@@ -343,7 +334,118 @@ def measure_star(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus
     aperture = cut[dist <= aperture_r]
     flux = float((aperture - background).sum())
     noise = (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
-    return peak, background, flux / noise if noise > 0 else 0.0
+    return peak, background, flux, noise
+
+
+def read_compstars_csv(path):
+    """The stars of a findcompstars CSV: list of dict (type, name, ra, dec,
+    mag), the target first."""
+    stars = []
+    with open(path, encoding="utf-8") as f:
+        for row in csv.DictReader(line for line in f if line.strip() and not line.startswith("#")):
+            row = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            try:
+                stars.append({"type": row.get("type", ""), "name": row.get("name", ""),
+                              "ra": float(row["ra"]), "dec": float(row["dec"]),
+                              "mag": float(row["mag"]) if row.get("mag") else None})
+            except (KeyError, ValueError):
+                continue
+    return sorted(stars, key=lambda st: st["type"].lower() != "target")
+
+
+def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None):
+    """Differential photometry of the target over plate solved images (user-
+    requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
+    -autoring loses the reference's plate solve, its default min_val rejects
+    dark-subtracted stars, a setphot without -dyn_ratio fixes its aperture,
+    and its reference frame must match the others' orientation - one real
+    test after another). Each image measured with its own plate solve, so no
+    registration: the target and comparison stars at their coordinates
+    (_star_measure), a zero point per image from the comparison stars
+    (catalogue V - instrumental magnitude, weighted mean after a 3-sigma
+    clip), the target's magnitude and its error. Time: the middle of the
+    exposure (DATE-OBS is its start once fix_dwarf_date_obs() ran), as JD
+    UTC, HJD UTC and BJD TDB. Writes out_csv; returns the summary lines."""
+    import math
+    import warnings
+    import numpy as np
+    from astropy.io import fits as _fits
+    from astropy.wcs import WCS
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord, EarthLocation
+    import astropy.units as u
+    from astropy.utils import iers
+    iers.conf.auto_download = False   # no download for the time scales
+
+    target, comps = stars[0], [st for st in stars[1:] if st["mag"] is not None]
+    coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
+    geocentre = EarthLocation.from_geocentric(0, 0, 0, unit=u.m)
+    rows, skipped = [], []
+    for path in files:
+        name = os.path.basename(path)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with _fits.open(path) as hdul:
+                    header = hdul[0].header
+                    data = hdul[0].data.astype("float64")
+                    wcs = WCS(header)
+            if data.ndim == 3:
+                data = data[0]
+            if data.max() <= 1.5:   # 32-bit float image: 0..1
+                data = data * 65535.0
+            if not wcs.has_celestial:
+                skipped.append(f"{name}: no plate solve")
+                continue
+            start = Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
+            mid = start + float(header.get("EXPTIME", 0) or 0) / 2 * u.s
+        except Exception as e:
+            skipped.append(f"{name}: {e}")
+            continue
+
+        t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=aperture_r)
+        if t is None or t[2] <= 0:
+            skipped.append(f"{name}: target not measured")
+            continue
+        if saturation and t[0] >= saturation:
+            skipped.append(f"{name}: target saturated (peak {t[0]:.0f})")
+            continue
+        zps, weights = [], []
+        for st in comps:
+            m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=aperture_r)
+            if m is None or m[2] <= 0 or (saturation and m[0] >= saturation):
+                continue
+            zps.append(st["mag"] + 2.5 * math.log10(m[2]))
+            weights.append(1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6))
+        if len(zps) < 2:
+            skipped.append(f"{name}: fewer than 2 comparison stars measured")
+            continue
+        zps, weights = np.array(zps), np.array(weights)
+        keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
+        zps, weights = zps[keep], weights[keep]
+        zp = float(np.average(zps, weights=weights))
+        zp_err = float(np.std(zps) / math.sqrt(len(zps)))
+        mag = -2.5 * math.log10(t[2]) + zp
+        err = math.hypot(1.0857 * t[3] / t[2], zp_err)
+        hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
+        bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
+        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0]))
+
+    with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
+                         f"{len(comps)} comparison stars (findcompstars), times at mid-exposure"])
+        writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak"])
+        for name, jd, hjd, bjd, mag, err, n, peak in rows:
+            writer.writerow([name, f"{jd:.6f}", f"{hjd:.6f}", f"{bjd:.6f}", f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}"])
+
+    summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}"]
+    if rows:
+        mags = np.array([r[4] for r in rows])
+        summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
+                       f"{int(np.median([r[6] for r in rows]))} comparison stars per image")
+    summary += [f"  skipped {line}" for line in skipped]
+    return summary
 
 
 def dwarf_platesolve_args(path):
@@ -770,8 +872,8 @@ class PreprocessingInterface(QMainWindow):
         self.photometry_checkbox.setToolTip(
             "Variable star photometry for a single siril_session.json:\n"
             "after the copy, a 01_photometry_*.ssf script is generated instead of\n"
-            "stacking - calibration, green channel (AAVSO TG band), registration,\n"
-            "plate solve, comparison stars (findcompstars) and light_curve.\n"
+            "stacking - calibration, green channel (AAVSO TG band), plate solve of\n"
+            "every image, comparison stars (findcompstars), differential photometry.\n"
             "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
         )
         variable_layout.addWidget(self.photometry_checkbox)
@@ -2099,6 +2201,28 @@ class PreprocessingInterface(QMainWindow):
                             except Exception as e:
                                 self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
                     continue
+                # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
+                if line.startswith("# PYTHON_PHOTOMETRY"):
+                    folder, seq_name, saturation = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
+                    try:
+                        s.ensure_installed(["astropy"])
+                        frames = sorted(
+                            os.path.join(folder, f) for f in os.listdir(folder)
+                            if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
+                        )
+                        summary = differential_light_curve(
+                            frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
+                            os.path.join(folder, f"light_curve_{seq_name}.csv"),
+                            saturation=float(saturation) or None,
+                        )
+                        for text in summary:
+                            self.siril.log(text, LogColor.GREEN)
+                        self._last_photometry_summary = summary
+                    except Exception as e:
+                        self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)
+                        ran_ok = False
+                        break
+                    continue
                 if line.startswith("#"):
                     continue
                 try:
@@ -2139,7 +2263,10 @@ class PreprocessingInterface(QMainWindow):
 
         if ran_ok:
             self.siril.log("[build] All scripts completed successfully.", LogColor.GREEN)
-            QMessageBox.information(self, "Build complete", "All scripts ran successfully.")
+            summary = getattr(self, "_last_photometry_summary", None)
+            self._last_photometry_summary = None
+            QMessageBox.information(self, "Build complete", "All scripts ran successfully."
+                                    + ("\n\n" + "\n".join(summary) if summary else ""))
         else:
             QMessageBox.critical(
                 self, "Build failed",
@@ -2180,8 +2307,8 @@ class PreprocessingInterface(QMainWindow):
                 "Copy complete",
                 f"{count} file(s) copied to Siril working directory.\n"
                 f"Photometry script generated: {os.path.basename(photometry[0])}\n"
-                f"Click Build Sessions to run it (light_curve.dat and its plot\n"
-                f"are written in the process folder).",
+                f"Click Build Sessions to run it (the light curve is written in the\n"
+                f"process folder: light_curve_*.csv).",
             )
             return
         QMessageBox.information(
@@ -2357,10 +2484,10 @@ class PreprocessingInterface(QMainWindow):
     def _generate_photometry_script(self, data: dict, cwd: str):
         """Variable star photometry script for a single session (the
         "📈 Photometry" option): calibration with the master dark, green
-        channel (AAVSO TG band of these colour sensors), registration without
-        stacking, plate solve of the reference image, comparison stars found
-        by Siril (APASS) and the light curve - light_curve.dat and its plot in
-        the process folder. Returns (ssf_path, lines), or None when cancelled
+        channel (AAVSO TG band of these colour sensors), plate solve of every
+        image, comparison stars found by Siril (APASS), then the differential
+        photometry in Python (differential_light_curve(), run by Build
+        Sessions) - light_curve_<sequence>.csv in the process folder. Returns (ssf_path, lines), or None when cancelled
         or not possible. Requires Siril 1.4.0+ (findcompstars)."""
         lights_dir = os.path.join(cwd, "lights")
         lights = sorted(
@@ -2439,47 +2566,25 @@ class PreprocessingInterface(QMainWindow):
                 "seqextract_Green light",
                 "",
             ]
-        # -noflip: platesolve turns an image it finds upside down the right way
-        # up - the reference saved mirrored against the other registered
-        # frames, light_curve found no star in them (real test, Oct 2026)
-        solve = " ".join(["platesolve", "-noflip"] + dwarf_platesolve_args(lights[0]))
+        solve = " ".join(["seqplatesolve", seq] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
-        twelve_bit = data_max is not None and data_max <= _DWARF_12BIT_MAX
-        setphot = (f"setphot -inner={_PHOT_INNER} -outer={_PHOT_OUTER} -min_val={_PHOT_MIN}"
-                   f" -dyn_ratio={_PHOT_DYN_RATIO}")
+        saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
         lines += [
-            f"# Background annulus {_PHOT_INNER}-{_PHOT_OUTER} px (not -autoring: Siril 1.4.0 - 1.4.2 loses the plate solve with it),",
-            f"# pixels down to {_PHOT_MIN} ADU accepted (the background after the dark is a few ADU: pixels at 0 or below",
-            "# made Siril reject the stars), aperture 4 x half the FWHM of each star",
-        ]
-        if twelve_bit:
-            lines += [
-                f"# 12-bit data (highest value {data_max:.0f}): stars above {_DWARF_12BIT_PHOT_MAX} ADU",
-                "# counted as saturated, instead of Siril's default 60000",
-            ]
-            setphot += f" -max_val={_DWARF_12BIT_PHOT_MAX}"
-        lines += [setphot, ""]
-        lines += [
-            "# Registration only - every image is a point of the light curve",
-            f"register {seq}",
-            "",
-            "# Plate solve the first image, made the reference: light_curve finds",
-            "# the stars by their coordinates in the reference image",
-            f"setref r_{seq} 1",
-            f"load r_{seq}_00001",
+            "# Plate solve of every image (its header updated): each one measured",
+            "# with its own solution - no registration, the dithering doesn't matter",
             solve,
-            f"save r_{seq}_00001",
             "",
-            "# Comparison stars (APASS catalog, Internet), then the light curve",
+            "# Comparison stars (APASS catalog, Internet)",
+            f"load {seq}_00001",
             f'findcompstars "{star}" -out=comparison_stars.csv',
-            f"light_curve r_{seq} 0 -ninastars=comparison_stars.csv",
             "",
-            "# Siril's default photometry settings back (setphot is a preference)",
-            f"setphot {_PHOT_DEFAULTS}" + (" -max_val=60000" if twelve_bit else ""),
+            "# Differential photometry in Python (not Siril's light_curve): the target",
+            "# and comparison stars at their coordinates in each image, times at",
+            "# mid-exposure in JD, HJD and BJD"
+            + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
+            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}",
             "",
-        ]
-        lines += [
-            f"# Result: {os.path.join(proc, 'light_curve.dat')} (and its plot)",
+            f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
             "cd ..",
         ]
 
