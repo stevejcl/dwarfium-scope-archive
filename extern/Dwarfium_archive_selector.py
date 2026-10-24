@@ -277,13 +277,15 @@ def fits_data_max(path):
     return float(data.max()) + bzero if data.size else None
 
 
-def measure_star(data, wcs, ra, dec, search_r=10, peak_r=3, aperture_r=4, annulus=(12, 20)):
+def measure_star(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20)):
     """(peak, background, S/N) in ADU of the star at ra/dec in a plate solved
     image (numpy array + astropy WCS), None when out of the field or not
     detected (peak under 5 sigma of the background, or a lone hot pixel). Measured here rather than
     through Siril's selection functions, whose pixel coordinates didn't match
     radec2pix's on a real test (Oct 2026). The star is the brightest pixel
-    within search_r of its computed position (plate solve, distortion); peak:
+    within search_r of its computed position - Siril's solution (SIP) put the
+    stars of a real frame within 0.5 px, a wider search took a fainter
+    comparison star's neighbour 9 px away instead; peak:
     the brightest pixel within peak_r of it (a fitted Gaussian is a third
     lower on these sharp stars); S/N of an aperture_r aperture, background
     from the annulus, a gain of 1 e-/ADU assumed for the star's own noise
