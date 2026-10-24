@@ -342,7 +342,10 @@ run with **🚀 Build Sessions**:
 4. plate solve of the first frame, made the reference (the DWARF II tele's
    focal length and pixel size, missing from its FITS, are passed);
 5. comparison stars found by Siril in the APASS catalogue (`findcompstars`),
-   then `light_curve` — `process/light_curve.dat` and its plot.
+   then `light_curve` — `process/light_curve.dat` and its plot. Its background
+   annulus is set to 10–15 px (`setphot`): `-autoring` can't be used, in Siril
+   1.4.0–1.4.2 it loses the reference image's plate solve and the target star
+   is not found.
 
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the

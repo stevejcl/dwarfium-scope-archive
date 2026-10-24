@@ -12,6 +12,9 @@
     exposure"), Siril reads it as the start: moved back by EXPTIME in the copied lights. The raw FITS hold 12-bit data
     (saturated at 4095) while Siril's photometry counts a star as saturated above 60000 ADU: setphot -max_val=3700 for
     the run (a DWARF 3 V1.5.3.9 sub). Siril 1.4.0+, Internet.
+    light_curve without -autoring, its background annulus set to 10-15 px with setphot (FWHM 2 - 2.5 px) and Siril's
+    defaults put back: in Siril 1.4.0 - 1.4.2 -autoring clears the reference image it measured, and the target star is
+    then looked for in an image without its plate solve ("There was a problem finding the target star", real test).
     Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
     each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
     measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure

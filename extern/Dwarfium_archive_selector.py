@@ -243,6 +243,14 @@ def fix_dwarf_date_obs(path):
 # saturated above 60000 ADU by default: the saturation level given to
 # setphot -max_val=, a bit under 4095 minus the dark level
 _DWARF_12BIT_MAX = 4095
+# Background annulus of light_curve, in pixels of the green image (FWHM about
+# 2 - 2.5 px on a DWARF 3, Oct 2026: what -autoring computes, 4.2 and 6.3
+# FWHM). -autoring can't be used: in Siril 1.4.0 - 1.4.2 it clears the
+# reference image it measured, and the target star is then looked for in an
+# image without its plate solve ("There was a problem finding the target star
+# in the image" - first real test). Siril's defaults put back afterwards.
+_PHOT_INNER, _PHOT_OUTER = 10, 15
+_PHOT_DEFAULTS = "-inner=20 -outer=30"
 # Longest exposure a model allows, when shorter than what the star could take
 # (user-reported Oct 2026: 15 s at most on a DWARF II)
 _MAX_EXPOSURE_BY_TELESCOP = {"DWARFII": 15.0}
@@ -2398,13 +2406,16 @@ class PreprocessingInterface(QMainWindow):
             ]
         solve = " ".join(["platesolve"] + dwarf_platesolve_args(lights[0]))
         data_max = fits_data_max(lights[0])
-        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
+        twelve_bit = data_max is not None and data_max <= _DWARF_12BIT_MAX
+        setphot = f"setphot -inner={_PHOT_INNER} -outer={_PHOT_OUTER}"
+        lines += [f"# Background annulus {_PHOT_INNER}-{_PHOT_OUTER} px (not -autoring: Siril 1.4.0 - 1.4.2 loses the plate solve with it)"]
+        if twelve_bit:
             lines += [
                 f"# 12-bit data (highest value {data_max:.0f}): stars above {_DWARF_12BIT_PHOT_MAX} ADU",
                 "# counted as saturated, instead of Siril's default 60000",
-                f"setphot -max_val={_DWARF_12BIT_PHOT_MAX}",
-                "",
             ]
+            setphot += f" -max_val={_DWARF_12BIT_PHOT_MAX}"
+        lines += [setphot, ""]
         lines += [
             "# Registration only - every image is a point of the light curve",
             f"register {seq}",
@@ -2418,11 +2429,12 @@ class PreprocessingInterface(QMainWindow):
             "",
             "# Comparison stars (APASS catalog, Internet), then the light curve",
             f'findcompstars "{star}" -out=comparison_stars.csv',
-            f"light_curve r_{seq} 0 -autoring -ninastars=comparison_stars.csv",
+            f"light_curve r_{seq} 0 -ninastars=comparison_stars.csv",
+            "",
+            "# Siril's default photometry settings back (setphot is a preference)",
+            f"setphot {_PHOT_DEFAULTS}" + (" -max_val=60000" if twelve_bit else ""),
             "",
         ]
-        if data_max is not None and data_max <= _DWARF_12BIT_MAX:
-            lines += ["# Siril's default saturation level back (setphot is a preference)", "setphot -max_val=60000", ""]
         lines += [
             f"# Result: {os.path.join(proc, 'light_curve.dat')} (and its plot)",
             "cd ..",
