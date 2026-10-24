@@ -354,6 +354,24 @@ Requires Siril **1.4.0+** (`findcompstars`) and Internet (the
 star's name, the APASS catalogue). The time of minimum (and O–C) is then
 measured from `light_curve.dat`.
 
+#### Choosing the exposure: 🔆 Check exposure
+
+Before the session, take a few test frames of the variable star (at one or
+several exposures / gains) and give them to **🔆 Check exposure** with the
+star's name and the eclipse depth. For each frame, on its green channel and
+after a plate solve, the script finds the star and its comparison stars
+(`findcompstars`) and reports:
+
+- the star's peak against the saturation level (3700 ADU: 12-bit data), its
+  background and S/N;
+- the longest exposure at that gain, for a peak at 80 % of the saturation
+  level (the signal is proportional to the exposure);
+- the S/N at the minimum for the eclipse depth given;
+- how many comparison stars are saturated.
+
+The report is shown, logged and saved in `exposure_check/exposure_check.txt`
+in the Siril working folder. Siril 1.4.0+ and Internet.
+
 ### Prepare for Siril (multi-session)
  
 Selecting several sessions of the same object and clicking **🧩 Prepare for

@@ -12,6 +12,11 @@
     exposure"), Siril reads it as the start: moved back by EXPTIME in the copied lights. The raw FITS hold 12-bit data
     (saturated at 4095) while Siril's photometry counts a star as saturated above 60000 ADU: setphot -max_val=3700 for
     the run (a DWARF 3 V1.5.3.9 sub). Siril 1.4.0+, Internet.
+    Same script, "🔆 Check exposure" (user-requested Oct 2026: set the exposure and gain from a few test frames): for
+    each test frame, its green channel plate solved, the variable star and its comparison stars (findcompstars)
+    measured with Siril's PSF - the star's peak against the 3700 ADU saturation level, its S/N, the longest exposure
+    at that gain (peak at 80 % of it), the S/N at the minimum for the eclipse depth given, the comparison stars
+    saturated. Shown, logged and saved in exposure_check/exposure_check.txt.
     Explore, "Image Fix" tab (user-requested Oct 2026): a session whose foreground was fixed shows the fixed preview
     next to Infos / Image, with its folder - opened by itself when a repair ends with its dialog open. The image
     opens in the system's viewer (a click on it, or Open the image), and Open the folder shows the fixed FITS

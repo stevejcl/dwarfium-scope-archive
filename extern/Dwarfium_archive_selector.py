@@ -20,6 +20,7 @@ from sirilpy import LogColor
 
 s.ensure_installed(["PyQt6"])
 
+import csv
 import json
 import os
 import shlex
@@ -171,7 +172,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # ── photometry helpers ────────────────────────────────────────────────────
 _FITS_BLOCK = 2880
 
-# DWARF II tele FITS have no FOCALLEN / XPIXSZ: plate scale (arcsec/px at the
+# Older DWARF II firmware wrote no FOCALLEN / XPIXSZ in its tele FITS (2.2.18
+# does: 100 mm, 1.45 um, Sep 2026): plate scale (arcsec/px at the
 # FITS resolution) by image width, as Dwarfium Scope Archive's
 # api/astrometry_resolver.py - 3840 px upscaled, 1920 px binned, 1928/1932 native
 _D2_PLATE_SCALE_BY_WIDTH = {3840: 3.01, 1920: 6.02, 1928: 5.98, 1932: 5.98}
@@ -696,6 +698,19 @@ class PreprocessingInterface(QMainWindow):
             "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
         )
         button_layout.addWidget(self.photometry_checkbox)
+
+        # Exposure check: a few test frames of the variable star measured, to
+        # choose the exposure / gain of the photometry session
+        self.exposure_btn = QPushButton("🔆 Check exposure")
+        self.exposure_btn.setMinimumHeight(35)
+        self.exposure_btn.setToolTip(
+            "Measure the variable star in a few test frames (raw FITS):\n"
+            "its peak against the 12-bit saturation, its S/N, saturated comparison\n"
+            "stars, and the longest exposure at that gain. Plate solve and\n"
+            "findcompstars: Siril 1.4.0+ and Internet."
+        )
+        self.exposure_btn.clicked.connect(self.check_exposure)
+        button_layout.addWidget(self.exposure_btn)
 
         # Run the generated .ssf stack/combine scripts directly in Siril
         self.build_sessions_btn = QPushButton("🚀 Build Sessions")
@@ -2065,6 +2080,136 @@ class PreprocessingInterface(QMainWindow):
             f"{count} file(s) copied to Siril working directory.\n"
             f"You can now close this window and run your Siril script.",
         )
+
+    def check_exposure(self):
+        """Measures the variable star in a few test frames (the "🔆 Check
+        exposure" button) - user-requested Oct 2026: set the exposure and gain
+        of a photometry session from a few test frames. Each frame: green
+        channel (as the photometry script), plate solve, the star and its
+        comparison stars from findcompstars, Siril's PSF of the stars found.
+        Reports the star's peak against the 12-bit saturation level, its S/N,
+        the comparison stars saturated, the longest exposure at that gain
+        (the signal is proportional to the exposure) and the S/N at the
+        minimum for a given eclipse depth."""
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Test frames of the variable star", "",
+            "FITS files (*.fits *.fit *.fts);;All files (*.*)",
+        )
+        if not files:
+            return
+        first = {key: value for _, key, value, _ in read_fits_cards(files[0])}
+        star, ok = QInputDialog.getText(
+            self, "Check exposure",
+            "Variable star (name known to Siril / SIMBAD, e.g. RZ Cas):",
+            text=(first.get("OBJECT") or "").strip(),
+        )
+        star = " ".join(star.split())
+        if not ok or not star:
+            return
+        depth, ok = QInputDialog.getDouble(
+            self, "Check exposure", "Eclipse depth (mag), for the S/N at the minimum:", 1.0, 0.0, 5.0, 2,
+        )
+        if not ok:
+            return
+
+        work = os.path.join(self.current_working_directory, "exposure_check")
+        os.makedirs(work, exist_ok=True)
+        margin_level = 0.8 * _DWARF_12BIT_PHOT_MAX
+        report = [f"Exposure check — {star} — eclipse depth {depth:.2f} mag",
+                  f"Saturation level {_DWARF_12BIT_PHOT_MAX} ADU (12-bit data), longest exposure for a peak at 80 % of it", ""]
+        self.exposure_btn.setDisabled(True)
+        try:
+            for path in files:
+                report += self._check_exposure_frame(path, star, depth, work, margin_level)
+                report.append("")
+        finally:
+            self.exposure_btn.setDisabled(False)
+
+        text = "\n".join(report)
+        with open(os.path.join(work, "exposure_check.txt"), "w", encoding="utf-8") as f:
+            f.write(text)
+        for line in report:
+            self.siril.log(line, LogColor.BLUE)
+        QMessageBox.information(self, "Check exposure", text + f"\n\nSaved in {work}")
+
+    def _check_exposure_frame(self, path, star, depth, work, margin_level):
+        """The report lines of one test frame (see check_exposure())."""
+        cards = {key: value for _, key, value, _ in read_fits_cards(path)}
+        name = os.path.basename(path)
+        try:
+            exposure = float(cards.get("EXPTIME") or 0)
+        except ValueError:
+            exposure = 0.0
+        title = f"{name}: {exposure:g} s, gain {cards.get('GAIN', '?')}"
+        base = os.path.splitext(name)[0].replace(" ", "_")
+        try:
+            shutil.copy2(path, os.path.join(work, base + ".fits"))
+            self.siril.cmd("cd", f'"{work}"' if " " in work else work)
+            self.siril.cmd("load", base + ".fits")
+            self.siril.cmd("extract_Green")
+            self.siril.cmd("load", "Green_" + base)
+            solve = dwarf_platesolve_args(path)
+            self.siril.cmd("platesolve", *solve)
+            csv_name = f"check_{base}.csv"
+            self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
+            stars = self.siril.get_image_stars() or []
+            shape = self.siril.get_image_shape()
+        except (s.SirilError, OSError) as e:
+            return [title, f"  failed: {e}"]
+
+        targets, comps = [], []
+        try:
+            with open(os.path.join(work, csv_name), encoding="utf-8") as f:
+                rows = csv.DictReader(line for line in f if line.strip() and not line.startswith("#"))
+                for row in rows:
+                    row = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+                    try:
+                        radec = (float(row["ra"]), float(row["dec"]))
+                    except (KeyError, ValueError):
+                        continue
+                    (targets if row.get("type", "").lower() == "target" else comps).append(radec)
+        except OSError as e:
+            return [title, f"  comparison stars not read: {e}"]
+        if not targets:
+            return [title, "  the star was not found by findcompstars (name, plate solve)"]
+
+        height = shape[1] if shape else None
+
+        def _measure(ra, dec):
+            """(peak ADU, background ADU, S/N) of the star found at ra/dec."""
+            try:
+                xy = self.siril.radec2pix(ra, dec)
+            except (ValueError, s.SirilError):
+                return None
+            if not xy:
+                return None
+            best, best_d = None, None
+            for psf in stars:
+                for y in {xy[1], (height - 1 - xy[1]) if height else xy[1]}:  # y origin either way
+                    d = ((psf.xpos - xy[0]) ** 2 + (psf.ypos - y) ** 2) ** 0.5
+                    if best_d is None or d < best_d:
+                        best, best_d = psf, d
+            if best is None or best_d > max(5.0, 2 * max(best.fwhmx, best.fwhmy)):
+                return None
+            scale = 65535.0 if best.B + best.A <= 1.5 else 1.0   # 32-bit float images: 0..1
+            return (best.A + best.B) * scale, best.B * scale, best.SNR
+
+        measured = _measure(*targets[0])
+        if measured is None:
+            return [title, "  the star was not detected in the frame (out of the field, too faint?)"]
+        peak, background, snr = measured
+        lines = [title, f"  {star}: peak {peak:.0f} / {_DWARF_12BIT_PHOT_MAX} ADU ({100 * peak / _DWARF_12BIT_PHOT_MAX:.0f} %), "
+                        f"background {background:.0f}, S/N {snr:.0f}"]
+        if peak >= _DWARF_12BIT_PHOT_MAX:
+            lines.append("  SATURATED: shorter exposure or lower gain")
+        elif exposure > 0 and peak > background:
+            longest = exposure * (margin_level - background) / (peak - background)
+            lines.append(f"  longest exposure at this gain: {longest:.0f} s")
+        lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
+        comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
+        saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
+        lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")
+        return lines
 
     def _generate_photometry_script(self, data: dict, cwd: str):
         """Variable star photometry script for a single session (the
