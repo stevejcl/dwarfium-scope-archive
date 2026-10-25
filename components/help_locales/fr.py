@@ -74,7 +74,8 @@ nouveau aux fichiers.
 - Avant chaque analyse, les dossiers `FIXED_FOREGROUND`, `PHOTOMETRY` et `MOSAIC_WCS` créés à côté des
   sessions par les versions précédentes sont déplacés à la racine du dossier analysé (au niveau de
   `RESTACKED`) sous les noms `_FIXED_FOREGROUND`, `_PHOTOMETRY` et `_WCS_MOSAIC`, fusionnés avec ceux déjà présents (un même fichier gardé une fois, un différent renommé
-  `_1`) ; chaque déplacement est dans le journal.
+  `_1`) ; chaque déplacement est dans le journal. La photométrie d'une session, avant dans
+  `_PHOTOMETRY/<session>/`, va dans `_PHOTOMETRY/<étoile>/<session>/` (les sessions d'une étoile côte à côte).
 ''',
     },
     '/RecommendTonight': {

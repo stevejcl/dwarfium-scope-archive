@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry results by star (user-requested Oct 2026: a star's sessions side by side, to be put together):
+    _PHOTOMETRY/<star>/<session folder>/ instead of _PHOTOMETRY/<session folder>/. Analyze all moves the earlier
+    ones (each star's files to its folder, build_sessions.log to every one); Explore finds both until then.
     Explore, Photometry tab read again on each click and a Refresh button (user-reported Oct 2026: a run of the Siril
     script after the session was selected kept showing the previous plots).
     Photometry: saturation level of the DWARF's 12-bit data 3300 ADU instead of 3700 (user's HD 216964 test, Oct

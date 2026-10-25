@@ -364,9 +364,10 @@ run with **🚀 Build Sessions**:
    comparison star.
 
 The results are then archived at the root of the archive — the backup's
-Astronomy folder, the level of `RESTACKED` — in `_PHOTOMETRY/<session folder>/`
-(as `_FIXED_FOREGROUND`), so two copies of a session in different sub-folders
-share them: the light curve, the
+Astronomy folder, the level of `RESTACKED` — in
+`_PHOTOMETRY/<star>/<session folder>/` (as `_FIXED_FOREGROUND`; by star, so a
+star's sessions are side by side), so two copies of a session in different
+sub-folders share them: the light curve, the
 field survey and the comparison stars of each star measured
 (`light_curve_<star>.csv/.png`, `stars_variability_<star>.csv/.png`,
 `comparison_stars_<star>.csv`), with the `.ssf` script and

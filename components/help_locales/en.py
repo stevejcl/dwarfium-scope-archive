@@ -74,7 +74,8 @@ matches the files again.
   sessions by earlier versions are moved to the root of the folder analyzed (the level of `RESTACKED`) as
   `_FIXED_FOREGROUND`, `_PHOTOMETRY` and `_WCS_MOSAIC`,
   merged with those already there (the same file twice kept once, a different one renamed `_1`); each
-  move is in the log.
+  move is in the log. The photometry of a session, in `_PHOTOMETRY/<session>/` before, goes to
+  `_PHOTOMETRY/<star>/<session>/` (a star's sessions side by side).
 ''',
     },
     '/RecommendTonight': {
