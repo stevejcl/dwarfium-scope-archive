@@ -3114,6 +3114,12 @@ def _astronomy_root(session_dir):
         return ""
 
 
+# Not raw lights: the Dwarf's results and Siril's files, and the frames the Dwarf
+# rejected (failed_: left out of its stack - user-asked Oct 2026, as the
+# frame counts, the foreground repair and the mosaics leave them out)
+_NOT_LIGHTS = ("stacked", "pp_", "r_pp_", "dsl_", "failed_")
+
+
 async def generate_siril_session_json(conn, row, backup_location, session_full_dir=""):
     """Generate siril_session.json from a session row."""
     import os
@@ -3179,7 +3185,7 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
                 fits_files.extend(Path(full_session_dir).glob(f"*{ext}"))
         for f in sorted(set(fits_files)):
             n = f.name.lower()
-            if not any(n.startswith(x) for x in ("stacked","pp_","r_pp_","dsl_")):
+            if not any(n.startswith(x) for x in _NOT_LIGHTS):
                 lights.append(str(f))
 
         # No raw lights found (e.g. a RESTACKED_ session that only has the
@@ -3395,7 +3401,7 @@ async def generate_siril_megastack_json(conn, rows, backup_location, stack_mode=
                         fits_files.extend(Path(full_dir).glob(f"*{ext}"))
                 for f in sorted(set(fits_files)):
                     n = f.name.lower()
-                    if not any(n.startswith(x) for x in ("stacked","pp_","r_pp_","dsl_")):
+                    if not any(n.startswith(x) for x in _NOT_LIGHTS):
                         lights.append(str(f))
 
                 # No raw lights found (e.g. a RESTACKED_ session that was
