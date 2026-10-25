@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Check exposure, VSX: requests when Siril's Python has it, else urllib with a User-Agent and certifi's
+    certificates; the reason shown and logged when it fails (user-reported Oct 2026: "Not found in VSX" for DY Peg
+    from Siril, found by Astro Dwarf Session).
     Photometry, sessions put together: the drives not plugged in named in one line (a user's database knew 10).
     Prepare for Siril (one session and Megastack): the frames the Dwarf rejected (failed_*.fits) left out of the
     lights (user-asked Oct 2026), as the frame counts, the foreground repair and the mosaics do.
