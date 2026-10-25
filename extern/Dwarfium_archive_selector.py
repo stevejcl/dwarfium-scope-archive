@@ -23,6 +23,7 @@ s.ensure_installed(["PyQt6"])
 import csv
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -632,6 +633,50 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
     except Exception as e:
         lines.append(f"  survey plot not drawn: {e}")
     return lines
+
+
+# Where the photometry's results are archived with the session (user-requested
+# Oct 2026: shown in Dwarfium Scope Archive's Explore, kept with the archive):
+# _PHOTOMETRY/<session folder>/ at the root of the archive - the backup's
+# Astronomy folder, the level of RESTACKED, given by Scope Archive in
+# siril_session.json ("astronomy_root") - the same convention as its
+# api/photometry_results.py and api/archive_paths.py
+PHOTOMETRY_DIR = "_PHOTOMETRY"   # api/archive_paths.py's
+
+
+def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root=""):
+    """The light curve, the field survey and the comparison stars copied from
+    the process folder to _PHOTOMETRY/<session folder>/ at the archive's root
+    (`root`; without it, the session's parent folder - its grandparent when
+    that is RESTACKED, STARTRAILS or Archive, as Scope Archive's
+    astronomy_root()), named after the target (several stars of one session
+    kept side by side). Returns the folder, None when the session folder isn't
+    reachable."""
+    if not session_dir or not os.path.isdir(session_dir):
+        return None
+    session_dir = os.path.normpath(session_dir)
+    name = re.sub(r"[^\w.-]+", "_", os.path.basename(session_dir)) or "session"
+    if not root or not os.path.isdir(root):
+        root = os.path.dirname(session_dir)
+        if os.path.basename(root).upper() in ("RESTACKED", "STARTRAILS", "ARCHIVE"):
+            root = os.path.dirname(root)
+    out = os.path.join(root, PHOTOMETRY_DIR, name)
+    os.makedirs(out, exist_ok=True)
+    star = re.sub(r"[^\w.-]+", "_", target_name) or "target"
+    copies = {
+        f"light_curve_{seq_name}.csv": f"light_curve_{star}.csv",
+        f"light_curve_{seq_name}.png": f"light_curve_{star}.png",
+        "stars_variability.csv": f"stars_variability_{star}.csv",
+        "stars_variability.png": f"stars_variability_{star}.png",
+        "comparison_stars.csv": f"comparison_stars_{star}.csv",
+    }
+    for src, dst in copies.items():
+        if os.path.isfile(os.path.join(folder, src)):
+            shutil.copy2(os.path.join(folder, src), os.path.join(out, dst))
+    for path in extra:   # the .ssf script, build_sessions.log
+        if path and os.path.isfile(path):
+            shutil.copy2(path, os.path.join(out, os.path.basename(path)))
+    return out
 
 
 def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
@@ -2445,6 +2490,8 @@ class PreprocessingInterface(QMainWindow):
                     fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
                     folder, seq_name, saturation = fields[:3]
                     utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
+                    session_dir = fields[4] if len(fields) > 4 else ""
+                    astronomy_root = fields[5] if len(fields) > 5 else ""
                     try:
                         s.ensure_installed(["astropy", "matplotlib"])
                         frames = sorted(
@@ -2468,9 +2515,22 @@ class PreprocessingInterface(QMainWindow):
                             saturation=float(saturation) or None, utc_offset_h=utc_offset,
                             progress=_progress,
                         )
+                        stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
+                        self._build_log("\n".join(summary))
+                        try:
+                            archived = archive_photometry(folder, seq_name, session_dir,
+                                                          stars[0]["name"] if stars else "target",
+                                                          extra=(ssf_path, self._build_log_path),
+                                                          root=astronomy_root)
+                        except OSError as e:
+                            archived = None
+                            summary.append(f"  results not archived: {e}")
+                        if archived:
+                            summary.append(f"  archived with the session -> {archived}")
+                        elif session_dir:
+                            summary.append(f"  not archived: session folder not reachable ({session_dir})")
                         for text in summary:
                             self.siril.log(text, LogColor.GREEN)
-                            self._build_log(text)   # the images left out and why, kept with the run
                         self._last_photometry_summary = summary
                     except Exception as e:
                         self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)
@@ -2907,7 +2967,9 @@ class PreprocessingInterface(QMainWindow):
             "# mid-exposure in JD, HJD and BJD"
             + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
             f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
-            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}",
+            "# Results then archived at the archive's root: _PHOTOMETRY/<session folder>/",
+            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
+            f"|{data.get('astronomy_root') or ''}",
             "",
             f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
             "cd ..",

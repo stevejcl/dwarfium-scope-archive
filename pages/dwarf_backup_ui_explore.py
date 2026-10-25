@@ -52,6 +52,7 @@ from components import frame_review
 from components import wcs_mosaic
 from components import foreground_repair
 from api import foreground_fix
+from api import photometry_results
 from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
@@ -486,6 +487,9 @@ class ExploreApp(DbPageMixin):
                         # the session's foreground fixed (components/foreground_repair.py), once it is
                         self.tab_fixed = ui.tab('fixed', label=t('explore_tab_fixed'), icon='park')
                         self.tab_fixed.set_visibility(False)
+                        # its photometry (the Siril script's 📈 Photometry, api/photometry_results.py), once done
+                        self.tab_photometry = ui.tab('photometry', label=t('explore_tab_photometry'), icon='show_chart')
+                        self.tab_photometry.set_visibility(False)
                     with ui.tab_panels(self.view_tabs, value=tab_infos) \
                             .props('animated swipeable transition-prev=slide-right transition-next=slide-left') \
                             .classes('w-full bg-transparent'):
@@ -512,6 +516,9 @@ class ExploreApp(DbPageMixin):
                                 ui.button(t('wcs_mosaic_open_folder'), icon='folder_open',
                                           on_click=lambda: wcs_mosaic.show_in_folder(self.fixed_label.text)) \
                                     .props('flat dense no-caps')
+                        with ui.tab_panel(self.tab_photometry).classes('p-0'):
+                            # Filled by _show_photometry_tab(): one block per star measured
+                            self.photometry_box = ui.column().classes('w-full gap-2')
 
         self.fullscreen_image.visible = False
         self.preview_image.visible = False
@@ -1939,6 +1946,7 @@ class ExploreApp(DbPageMixin):
             self.fg_fix_icon.visible = (self.mode == "backup" and "_WIDE_" in os.path.basename(self.selected_path).upper()
                                         and foreground_fix.can_repair(self.selected_path))
             self._show_fixed_tab()
+            self._show_photometry_tab()
             print(f"Full PAth: {full_path}")
             print(f"file_path: {file_path}")
             # Store the base folder once
@@ -2498,6 +2506,8 @@ class ExploreApp(DbPageMixin):
             self.fg_fix_icon.visible = False
         if getattr(self, "tab_fixed", None):
             self._show_fixed_tab(None)
+        if getattr(self, "tab_photometry", None):
+            self._show_photometry_tab(None)
         self.selected_path = ""
         self.current_session_row = None
         # Delete old icons from UI
@@ -3799,10 +3809,11 @@ class ExploreApp(DbPageMixin):
 
     def _show_fixed_tab(self, session_dir="", select=False):
         """The "Fixed" tab: the session's repaired foreground's preview, when it
-        was repaired (FIXED_FOREGROUND next to the sessions), hidden otherwise."""
+        was repaired (_FIXED_FOREGROUND at the archive's root, or next to the
+        session for older repairs), hidden otherwise."""
         import base64
         session_dir = self.selected_path if session_dir == "" else session_dir
-        fixed = foreground_fix.default_output(session_dir) if session_dir else None
+        fixed = foreground_fix.existing_output(session_dir) if session_dir else None
         preview = Path(str(fixed)[:-len(".fits")] + "_preview.jpg") if fixed else None
         if not preview or not preview.is_file():
             if self.view_tabs.value == 'fixed':
@@ -3819,6 +3830,45 @@ class ExploreApp(DbPageMixin):
         self.tab_fixed.set_visibility(True)
         if select:
             self.view_tabs.value = 'fixed'
+
+    def _show_photometry_tab(self, session_dir=""):
+        """The "Photometry" tab: the session's light curves and field surveys,
+        as the Siril script archived them (_PHOTOMETRY at the archive's root,
+        api/photometry_results.py), hidden when there are none."""
+        import base64
+        session_dir = self.selected_path if session_dir == "" else session_dir
+        results = photometry_results.find_results(session_dir) if session_dir else []
+        self.photometry_box.clear()
+        if not results:
+            if self.view_tabs.value == 'photometry':
+                self.view_tabs.value = 'image'
+            self.tab_photometry.set_visibility(False)
+            return
+
+        def _png(path):
+            try:
+                return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+            except OSError:
+                return None
+
+        with self.photometry_box:
+            for res in results:
+                ui.label(res["star"]).classes('text-md font-semibold px-2')
+                for key in ("curve_png", "survey_png"):
+                    src = _png(res[key]) if res[key] else None
+                    if src:
+                        # A click opens it in the system's viewer
+                        ui.image(src).classes('w-full h-auto cursor-pointer').props('fit=contain') \
+                            .on('click', lambda _e=None, p=res[key]: wcs_mosaic.open_file(p)) \
+                            .tooltip(t('photometry_open_image'))
+                with ui.row().classes('w-full items-center gap-2 px-2'):
+                    ui.label(str(res["curve_csv"].parent)).classes('text-xs text-gray-500 break-all')
+                    ui.button(t('photometry_open_csv'), icon='table_view',
+                              on_click=lambda _e=None, p=res["curve_csv"]: wcs_mosaic.open_file(p)).props('flat dense no-caps')
+                    ui.button(t('wcs_mosaic_open_folder'), icon='folder_open',
+                              on_click=lambda _e=None, p=res["curve_csv"]: wcs_mosaic.show_in_folder(p)) \
+                        .props('flat dense no-caps')
+        self.tab_photometry.set_visibility(True)
 
     def _open_fixed_preview(self):
         """The Image Fix tab's preview (the JPEG next to the fixed FITS) in the

@@ -359,6 +359,20 @@ run with **🚀 Build Sessions**:
    in `findcompstars`' list: the candidates are uncatalogued ones, or a bad
    comparison star.
 
+The results are then archived at the root of the archive — the backup's
+Astronomy folder, the level of `RESTACKED` — in `_PHOTOMETRY/<session folder>/`
+(as `_FIXED_FOREGROUND`), so two copies of a session in different sub-folders
+share them: the light curve, the
+field survey and the comparison stars of each star measured
+(`light_curve_<star>.csv/.png`, `stars_variability_<star>.csv/.png`,
+`comparison_stars_<star>.csv`), with the `.ssf` script and
+`build_sessions.log`. In **Explore**, the session then has a **Photometry** tab
+showing them (a click on a plot opens it, the CSV and the folder in one click).
+`_FIXED_FOREGROUND` and `_WCS_MOSAIC` are at the root too (a leading `_` so as
+not to meet a folder of yours). **Analyze all** first moves there the
+`FIXED_FOREGROUND`, `PHOTOMETRY` and `MOSAIC_WCS` folders earlier versions made
+next to the sessions, under the new names (merged, each move logged).
+
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the
 exposure time in the copied lights, so the times are the middle of each

@@ -71,6 +71,10 @@ nouveau aux fichiers.
 - Le journal est aussi écrit dans un fichier, `logs/analyze_all_<date>.log` dans le dossier de
   l'application (les 20 derniers gardés), avec l'heure de chaque ligne : **{t:analyze_all_open_log}**
   l'ouvre, pour une analyse fine.
+- Avant chaque analyse, les dossiers `FIXED_FOREGROUND`, `PHOTOMETRY` et `MOSAIC_WCS` créés à côté des
+  sessions par les versions précédentes sont déplacés à la racine du dossier analysé (au niveau de
+  `RESTACKED`) sous les noms `_FIXED_FOREGROUND`, `_PHOTOMETRY` et `_WCS_MOSAIC`, fusionnés avec ceux déjà présents (un même fichier gardé une fois, un différent renommé
+  `_1`) ; chaque déplacement est dans le journal.
 ''',
     },
     '/RecommendTonight': {
@@ -359,7 +363,7 @@ Les actions sont affichées en icônes : survolez-en une pour voir son nom (sur 
 - **{t:megastack_title_short}** (mode Dwarf) — voir ci-dessous
 - **{t:frames_title}** — voir ci-dessous
 - **{t:wcs_mosaic_btn}** (mode Sauvegarde, session d'une tuile de mosaïque) — l'onglet **{t:milky_way_mode}** de la page Mosaïque, sur la mosaïque de cette tuile
-- **{t:fg_fix_btn}** (mode Sauvegarde, session grand champ prise avant DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, poses brutes conservées) — le décor filé réparé : à partir des poses brutes, le ciel empilé sur les étoiles sans le décor (le sol tourne de 15° par heure par rapport au ciel), le décor empilé sur lui-même, puis les deux fusionnés, quel que soit le suivi (la rotation de chaque pose - rotation de champ, mise en station - est dans son recalage). Dans `FIXED_FOREGROUND` à côté des sessions : un FITS, un aperçu, le ciel seul et le décor seul en TIFF 16 bits avec transparence (Affinity, Photoshop, GIMP). Environ 1 à 2 minutes ; la réparation continue si la fenêtre est fermée ou la page quittée, chaque page est prévenue à la fin
+- **{t:fg_fix_btn}** (mode Sauvegarde, session grand champ prise avant DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, poses brutes conservées) — le décor filé réparé : à partir des poses brutes, le ciel empilé sur les étoiles sans le décor (le sol tourne de 15° par heure par rapport au ciel), le décor empilé sur lui-même, puis les deux fusionnés, quel que soit le suivi (la rotation de chaque pose - rotation de champ, mise en station - est dans son recalage). Dans `_FIXED_FOREGROUND` à la racine de l'archive (le dossier Astronomy du backup, au niveau de `RESTACKED`) : un FITS, un aperçu, le ciel seul et le décor seul en TIFF 16 bits avec transparence (Affinity, Photoshop, GIMP). Environ 1 à 2 minutes ; la réparation continue si la fenêtre est fermée ou la page quittée, chaque page est prévenue à la fin
   Une fois réparée, la session montre un onglet **{t:explore_tab_fixed}** à côté d'**{t:explore_tab_image}** : l'aperçu réparé - un clic l'ouvre dans votre visionneuse d'images -, et le dossier avec le FITS réparé sélectionné
 - Sous les détails, la ligne qui dit que la session est aussi sur le Dwarf (mode Sauvegarde) ou sur un disque de
   sauvegarde (mode Dwarf) : **{t:explore_view_copy}** l'ouvre là-bas dans Explorer
@@ -739,12 +743,12 @@ empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_
   brillantes avec la distorsion de l'objectif ;
 - l'avant-plan (toit, arbres) est écarté, la luminosité et la couleur de chaque tuile accordées à ses
   voisines, et dans les recouvrements la tuile vue plus près de son centre l'emporte (étoiles plus fines) ;
-- le résultat, dans un dossier `MOSAIC_WCS` à côté des sessions : un FITS linéaire avec son WCS - à traiter
+- le résultat, dans un dossier `_WCS_MOSAIC` à la racine de l'archive (le dossier Astronomy du backup, au niveau de `RESTACKED`) : un FITS linéaire avec son WCS - à traiter
   dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - un aperçu étiré, et le
   ciel seul, étiré, en TIFF 16 bits avec le décor transparent (`_sky.tif`) : à poser sur une photo du décor (un
   panorama à l'heure bleue par exemple) dans Affinity Photo, Photoshop ou GIMP, sans détourage à la main.
 
-**{t:wcs_mosaic_open_folder}** (à côté de la sortie, et avec le résultat) ouvre le dossier `MOSAIC_WCS`.
+**{t:wcs_mosaic_open_folder}** (à côté de la sortie, et avec le résultat) ouvre le dossier `_WCS_MOSAIC`.
 Les zones du ciel qu'aucune tuile ne couvre restent noires. Environ 2 minutes et 1 Go de mémoire pour 5 tuiles.
 L'assemblage continue si vous changez de page : de retour sur l'onglet, un bandeau l'indique en cours (durée,
 étape) au-dessus de ses étapes (résolution, étoiles du catalogue, ciel gardé, accord des luminosités...), puis son

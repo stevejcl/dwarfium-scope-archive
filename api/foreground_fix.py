@@ -20,7 +20,7 @@ From the session's raw subs:
 5. both blended in the first sub's geometry, the borders not every sub saw
    cropped.
 
-Output, in a FIXED_FOREGROUND folder next to the sessions: a linear FITS with
+Output, in a _FIXED_FOREGROUND folder at the root of the archive (api/archive_paths.py): a linear FITS with
 its WCS, a preview, and two stretched 16-bit TIFFs with transparency - the
 sky alone and the foreground alone - for an image editor.
 
@@ -44,7 +44,7 @@ import numpy as np
 
 from api.dwarf_backup_fct import print_log
 
-OUTPUT_DIR = "FIXED_FOREGROUND"
+from api.archive_paths import FIXED_FOREGROUND_DIR as OUTPUT_DIR
 MAX_SUBS = 40           # subs used, evenly spread over the session
 MIN_SUBS = 5
 BLOCK_ROWS = 96         # rows stacked at once
@@ -126,10 +126,25 @@ def can_repair(session_dir) -> bool:
 
 
 def default_output(session_dir) -> Path:
-    """FIXED_FOREGROUND/<session folder>_fixed.fits next to the session."""
+    """_FIXED_FOREGROUND/<session folder>_fixed.fits at the root of the
+    session's archive, the same level as RESTACKED (api/archive_paths.py) -
+    user-requested Oct 2026: was next to the session."""
+    from api.archive_paths import astronomy_root
     session_dir = Path(session_dir)
     name = re.sub(r"[^\w.-]+", "_", session_dir.name) or "session"
-    return session_dir.parent / OUTPUT_DIR / f"{name}_fixed.fits"
+    return astronomy_root(session_dir) / OUTPUT_DIR / f"{name}_fixed.fits"
+
+
+def existing_output(session_dir) -> Path | None:
+    """The session's fixed FITS when it was repaired: at the archive's root,
+    else next to the session (where repairs before Oct 2026 put it)."""
+    session_dir = Path(session_dir)
+    new = default_output(session_dir)
+    if new.is_file():
+        return new
+    name = re.sub(r"[^\w.-]+", "_", session_dir.name) or "session"
+    legacy = session_dir.parent / "FIXED_FOREGROUND" / f"{name}_fixed.fits"   # until Analyze all moves it
+    return legacy if legacy.is_file() else None
 
 
 def _load(path):

@@ -13,6 +13,7 @@ import json
 
 from api.dwarf_backup_fct import print_log, parse_shots_info, compute_md5, normalize_dwarf_name
 from api.dwarf_backup_fct import identify_dwarf_device, is_mosaic_root, dwarf_type_vote_result, STACKED_JPG_NAMES
+from api.archive_paths import RESULT_DIRS
 
 DWARF2_FTP_PATH = "/DWARF_II/Astronomy"
 DWARF3_FTP_PATH = "/Astronomy"
@@ -349,7 +350,7 @@ def ftp_sync_dwarf_sessions(ftp, dwarf_id, source_root="/DWARF/Sessions", local_
 
     sessions = []
 
-    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS"}
+    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS", *RESULT_DIRS}
     # List sessions directly under source_root
     sessions += list_ftp_dirs_only(ftp, source_root, excluded_dirs)
 

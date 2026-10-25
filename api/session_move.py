@@ -28,12 +28,13 @@ import shutil
 from typing import Optional
 
 from api.dwarf_backup_db import connect_db, close_db
+from api.archive_paths import RESULT_DIRS
 from api.dwarf_backup_fct import (
     scan_backup_folder, extract_astro_name_from_folder, print_log,
 )
 
 # Same folders the backup scan ignores
-SKIP_DIRS = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed"}
+SKIP_DIRS = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed", *RESULT_DIRS}
 
 
 def _data_root(location: str, astronomy_dir: Optional[str]) -> str:
