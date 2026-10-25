@@ -43,6 +43,16 @@ def session_folders(session_dir) -> list[Path]:
     return folders
 
 
+def _combined_count(star_dir: Path) -> int:
+    """How many sessions the star's combined curve has - from every drive
+    (combined_sessions.csv), else those of this drive."""
+    try:
+        with open(star_dir / "combined_sessions.csv", encoding="utf-8") as f:
+            return max(sum(1 for line in f if line.strip()) - 1, 1)
+    except OSError:
+        return sum(1 for d in star_dir.iterdir() if d.is_dir())
+
+
 def find_results(session_dir) -> list[dict]:
     """The stars measured in the session: [{"star", "curve_png", "curve_csv",
     "survey_png", "survey_csv", "combined_png", "combined_csv", "sessions"}]
@@ -65,7 +75,7 @@ def find_results(session_dir) -> list[dict]:
             results.append({
                 "combined_png": combined if combined and combined.is_file() else None,
                 "combined_csv": (star_dir / "combined_light_curve.csv") if combined and combined.is_file() else None,
-                "sessions": sum(1 for d in star_dir.iterdir() if (d / csv_path.name).is_file()) if star_dir else 1,
+                "sessions": _combined_count(star_dir) if star_dir else 1,
                 "star": star.replace("_", " "),
                 "curve_csv": csv_path,
                 "curve_png": _file(f"light_curve_{star}.png"),

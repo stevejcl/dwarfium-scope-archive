@@ -22,17 +22,18 @@ from pathlib import Path
 # Folders of an Astronomy root that hold sessions one level down
 _SESSION_GROUPS = {"RESTACKED", "STARTRAILS", "ARCHIVE"}
 
-_cache = {"roots": [], "at": 0.0}
+_cache = {"roots": [], "original": [], "at": 0.0}
 _lock = threading.Lock()
 _CACHE_S = 60.0
 
 
-def _backup_roots() -> list[str]:
+def _backup_roots(original=False) -> list[str]:
     """The Astronomy roots of the backup drives in the database (location +
-    astronomy_dir), longest first; kept 60 s."""
+    astronomy_dir), longest first, normcased (`original`: as written); kept
+    60 s."""
     with _lock:
         if time.time() - _cache["at"] < _CACHE_S:
-            return _cache["roots"]
+            return _cache["original" if original else "roots"]
     roots = []
     try:
         from api.dwarf_backup_db import DB_NAME, connect_db, close_db
@@ -41,15 +42,22 @@ def _backup_roots() -> list[str]:
             for location, astro_dir in conn.cursor().execute(
                     "SELECT location, astronomy_dir FROM BackupDrive WHERE location IS NOT NULL").fetchall():
                 if location:
-                    roots.append(os.path.normcase(os.path.normpath(os.path.join(location, astro_dir or ""))))
+                    roots.append(os.path.normpath(os.path.join(location, astro_dir or "")))
         finally:
             close_db(conn)
     except Exception:
         pass
-    roots.sort(key=len, reverse=True)
+    roots = sorted(set(roots), key=len, reverse=True)
     with _lock:
-        _cache.update(roots=roots, at=time.time())
-    return roots
+        _cache.update(roots=[os.path.normcase(r) for r in roots], original=roots, at=time.time())
+    return _cache["original" if original else "roots"]
+
+
+def all_astronomy_roots() -> list[str]:
+    """Every backup drive's Astronomy root the database knows, reachable or
+    not (user-requested Oct 2026: one DWARF, one drive - a star's sessions
+    from several DWARFs put together across them)."""
+    return list(_backup_roots(original=True))
 
 
 def astronomy_root(session_dir) -> Path:

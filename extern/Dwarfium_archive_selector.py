@@ -773,7 +773,7 @@ def _read_photometry_csv(path):
     return meta, header or [], rows
 
 
-def combine_star_sessions(star_dir, max_sep_arcsec=3.0):
+def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
     """The sessions of one star (_PHOTOMETRY/<star>/<session>/, user-requested
     Oct 2026) put together in star_dir: each session's magnitudes shifted by
     its offset to the reference session (the one with most points) - the
@@ -781,17 +781,34 @@ def combine_star_sessions(star_dir, max_sep_arcsec=3.0):
     by position (findcompstars numbers them differently from one session to
     the next), 3-sigma clipped. Writes combined_light_curve.csv (every point,
     its session and the offset applied), combined_sessions.csv and
-    combined_light_curve.png. Returns the summary lines; [] with fewer than
-    two sessions."""
+    combined_light_curve.png. other_roots: the other backup drives' Astronomy
+    roots (user-requested Oct 2026: one DWARF, one drive) - their
+    _PHOTOMETRY/<star>/ sessions taken too, the results written in each of
+    these star folders (Explore shows the same curve from any of them); a
+    session on two drives counted once (its newer copy). Returns the summary
+    lines; [] with fewer than two sessions."""
     import math
     import numpy as np
-    star = os.path.basename(os.path.normpath(star_dir))
+    star_dir = os.path.normpath(star_dir)
+    star = os.path.basename(star_dir)
+    star_dirs, unreachable = [star_dir], []
+    for root in other_roots:
+        other = os.path.normpath(os.path.join(root, PHOTOMETRY_DIR, star))
+        if not os.path.isdir(root):
+            unreachable.append(root)
+        elif os.path.isdir(other) and os.path.normcase(other) not in {os.path.normcase(d) for d in star_dirs}:
+            star_dirs.append(other)
+    found = {}
+    for directory in star_dirs:
+        for name in os.listdir(directory):
+            curve = os.path.join(directory, name, f"light_curve_{star}.csv")
+            if os.path.isfile(curve) and (name not in found or
+                                          os.path.getmtime(curve) > os.path.getmtime(found[name][1])):
+                found[name] = (directory, curve)
     sessions = []
-    for name in sorted(os.listdir(star_dir)):
-        folder = os.path.join(star_dir, name)
-        curve = os.path.join(folder, f"light_curve_{star}.csv")
-        if not os.path.isfile(curve):
-            continue
+    for name in sorted(found):
+        directory, curve = found[name]
+        folder = os.path.dirname(curve)
         meta, _, rows = _read_photometry_csv(curve)
         points = []
         for r in rows:
@@ -809,7 +826,8 @@ def combine_star_sessions(star_dir, max_sep_arcsec=3.0):
                 except (KeyError, ValueError):
                     continue
         if points:
-            sessions.append({"name": name, "meta": meta, "points": points, "comps": comps})
+            sessions.append({"name": name, "meta": meta, "points": points, "comps": comps,
+                             "drive": os.path.dirname(os.path.dirname(directory))})
     if len(sessions) < 2:
         return []
 
@@ -852,15 +870,17 @@ def combine_star_sessions(star_dir, max_sep_arcsec=3.0):
     with open(os.path.join(star_dir, "combined_sessions.csv"), "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["session", "instrument", "filter", "exposure_s", "site", "points", "HJD_start", "HJD_end",
-                         "mean_mag", "offset", "common_comparison_stars", "reference"])
+                         "mean_mag", "offset", "common_comparison_stars", "reference", "drive"])
         for s in sessions:
             times, mags = [p[0] for p in s["points"]], [p[1] for p in s["points"]]
             writer.writerow([s["name"], s["meta"].get("instrument", ""), s["meta"].get("filter", ""),
                              s["meta"].get("exposure_s", ""), s["meta"].get("site", ""), len(times),
                              f"{min(times):.6f}", f"{max(times):.6f}", f"{np.mean(mags) - s['offset']:.4f}",
-                             f"{s['offset']:+.4f}", s["n_common"], "yes" if s is ref else ""])
+                             f"{s['offset']:+.4f}", s["n_common"], "yes" if s is ref else "", s["drive"]])
 
-    summary = [f"Sessions of {star.replace('_', ' ')} put together: {len(sessions)} -> {out_csv}"]
+    summary = [f"Sessions of {star.replace('_', ' ')} put together: {len(sessions)} from {len(star_dirs)} drive(s) "
+               f"-> {out_csv}"]
+    summary += [f"  drive not reachable, its sessions not counted: {root}" for root in unreachable]
     for s in sessions:
         mags = np.array([p[1] for p in s["points"]]) - s["offset"]
         summary.append(f"  {_label(s)}: {len(mags)} points, mean {mags.mean():.3f}, "
@@ -899,6 +919,15 @@ def combine_star_sessions(star_dir, max_sep_arcsec=3.0):
         summary.append(f"  plot -> {png}")
     except Exception as e:
         summary.append(f"  combined plot not drawn: {e}")
+    # The same results in the star's folder of each other drive
+    for other in star_dirs[1:]:
+        for name in ("combined_light_curve.csv", "combined_sessions.csv", "combined_light_curve.png"):
+            try:
+                if os.path.isfile(os.path.join(star_dir, name)):
+                    shutil.copy2(os.path.join(star_dir, name), os.path.join(other, name))
+            except OSError as e:
+                summary.append(f"  not copied to {other}: {e}")
+                break
     return summary
 
 
@@ -2728,6 +2757,12 @@ class PreprocessingInterface(QMainWindow):
                         ran_ok = False
                         break
                     continue
+                if line.startswith("# PYTHON_PHOTOMETRY_ROOTS"):   # the other drives, for combine_star_sessions
+                    try:
+                        self._photometry_roots = json.loads(line[len("# PYTHON_PHOTOMETRY_ROOTS"):].strip() or "[]")
+                    except ValueError:
+                        self._photometry_roots = []
+                    continue
                 if line.startswith("# PYTHON_PHOTOMETRY"):
                     self._build_log(line)
                     fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
@@ -2776,7 +2811,8 @@ class PreprocessingInterface(QMainWindow):
                         if archived:
                             summary.append(f"  archived with the session -> {archived}")
                             try:   # with the star's other sessions
-                                summary += combine_star_sessions(os.path.dirname(archived))
+                                summary += combine_star_sessions(os.path.dirname(archived),
+                                                                 getattr(self, "_photometry_roots", []))
                             except Exception as e:
                                 summary.append(f"  sessions not put together: {e}")
                         elif session_dir:
@@ -3220,7 +3256,9 @@ class PreprocessingInterface(QMainWindow):
             "# mid-exposure in JD, HJD and BJD"
             + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
             f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
-            "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/",
+            "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/,",
+            "# and the star's sessions put together with those of the other drives:",
+            f"# PYTHON_PHOTOMETRY_ROOTS {json.dumps(data.get('photometry_roots') or [])}",
             f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
             f"|{data.get('astronomy_root') or ''}"
             + (f"|{site['lat']}|{site['lon']}|{(site.get('name') or '').replace('|', ' ')}" if site else ""),
