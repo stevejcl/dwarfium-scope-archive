@@ -490,6 +490,10 @@ class ExploreApp(DbPageMixin):
                         # its photometry (the Siril script's 📈 Photometry, api/photometry_results.py), once done
                         self.tab_photometry = ui.tab('photometry', label=t('explore_tab_photometry'), icon='show_chart')
                         self.tab_photometry.set_visibility(False)
+                        # Read again on each click: a run of the Siril script after
+                        # the session was selected showed the previous plots (user-
+                        # reported Oct 2026)
+                        self.tab_photometry.on('click', lambda _e=None: self._show_photometry_tab())
                     with ui.tab_panels(self.view_tabs, value=tab_infos) \
                             .props('animated swipeable transition-prev=slide-right transition-next=slide-left') \
                             .classes('w-full bg-transparent'):
@@ -3868,6 +3872,8 @@ class ExploreApp(DbPageMixin):
                     ui.button(t('wcs_mosaic_open_folder'), icon='folder_open',
                               on_click=lambda _e=None, p=res["curve_csv"]: wcs_mosaic.show_in_folder(p)) \
                         .props('flat dense no-caps')
+                    ui.button(t('photometry_refresh'), icon='refresh',
+                              on_click=lambda _e=None: self._show_photometry_tab()).props('flat dense no-caps')
         self.tab_photometry.set_visibility(True)
 
     def _open_fixed_preview(self):

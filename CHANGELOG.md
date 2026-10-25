@@ -3,6 +3,8 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, Photometry tab read again on each click and a Refresh button (user-reported Oct 2026: a run of the Siril
+    script after the session was selected kept showing the previous plots).
     Photometry: saturation level of the DWARF's 12-bit data 3300 ADU instead of 3700 (user's HD 216964 test, Oct
     2026: the target 0.04 mag fainter with its peak at 3300 - 3700 ADU than under 3000 - not linear). Also the level
     of the exposure check.
