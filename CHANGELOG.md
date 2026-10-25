@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry CSV ready for several sessions of a star (user-requested Oct 2026): header lines "# key: value" with
+    the session, instrument (TELESCOP, CAMERA), filter, exposure, gain, site, target and check star (name, RA, Dec,
+    V), and an airmass column (Pickering 2002) - the site is the session's location in the archive, else the default
+    one (siril_session.json "site", the DWARF's FITS has none). Columns before it unchanged.
     _FIXED_FOREGROUND, _PHOTOMETRY and _WCS_MOSAIC (were FIXED_FOREGROUND, PHOTOMETRY, MOSAIC_WCS: a leading _ not to
     meet a user's folder, not _MOSAIC_WCS - "_MOSAIC_" makes a mosaic session) at the root of the archive - the backup's Astronomy folder (BackupDrive location +
     astronomy_dir), the level of RESTACKED - instead of next to the session (user-requested Oct 2026: two copies of a
