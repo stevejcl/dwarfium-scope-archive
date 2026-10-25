@@ -3,6 +3,12 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, "Photometry" tab (user-requested Oct 2026: the light curve kept with the session in the archive): the
+    Siril script's photometry results are archived in PHOTOMETRY/<session folder>/ next to the sessions, as
+    FIXED_FOREGROUND - light_curve_<star>.csv/.png, stars_variability_<star>.csv/.png, comparison_stars_<star>.csv,
+    the .ssf script and build_sessions.log, several stars of one session side by side. The session's Photometry tab
+    shows the plots (a click opens one in the system's viewer), opens the CSV and the folder; hidden when the session
+    has none (api/photometry_results.py).
     Photometry, variability survey of the field (user-requested Oct 2026: the stars found in a session measured too):
     every comparison star measured in each image from the zero point of the others (leave-one-out); a scatter twice
     that of the stars within 0.5 mag and twice its own errors (chi2) makes it a candidate variable. stars_variability.csv
