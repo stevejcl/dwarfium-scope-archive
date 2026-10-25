@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry archive: a result file open in another program (Excel, an image viewer: WinError 32, user-reported Oct
+    2026) is named in the summary and left as it was, the others archived and the sessions still put together - it
+    stopped the archive, then said the session folder wasn't reachable.
     Photometry, a star's sessions put together across the backup drives (user-requested Oct 2026: one DWARF, one
     drive): siril_session.json "photometry_roots" lists every drive's Astronomy root, the sessions of the star found on
     the drives plugged in are combined (a session on two drives once, its newer copy), the result written in the star's

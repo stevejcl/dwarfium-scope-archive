@@ -719,13 +719,15 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
 PHOTOMETRY_DIR = "_PHOTOMETRY"   # api/archive_paths.py's
 
 
-def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root=""):
+def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root="", failed=None):
     """The light curve, the field survey and the comparison stars copied from
     the process folder to _PHOTOMETRY/<star>/<session folder>/ at the archive's root
     (`root`; without it, the session's parent folder - its grandparent when
     that is RESTACKED, STARTRAILS or Archive, as Scope Archive's
     astronomy_root()), named after the target too. Returns the folder, None
-    when the session folder isn't reachable."""
+    when the session folder isn't reachable; a file that can't be written
+    (open in Excel or an image viewer on Windows, user-reported Oct 2026)
+    is left as it was and added to `failed` (name, error), the others copied."""
     if not session_dir or not os.path.isdir(session_dir):
         return None
     session_dir = os.path.normpath(session_dir)
@@ -744,12 +746,16 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
         "stars_variability.png": f"stars_variability_{star}.png",
         "comparison_stars.csv": f"comparison_stars_{star}.csv",
     }
-    for src, dst in copies.items():
-        if os.path.isfile(os.path.join(folder, src)):
-            shutil.copy2(os.path.join(folder, src), os.path.join(out, dst))
-    for path in extra:   # the .ssf script, build_sessions.log
-        if path and os.path.isfile(path):
-            shutil.copy2(path, os.path.join(out, os.path.basename(path)))
+    pairs = [(os.path.join(folder, src), os.path.join(out, dst)) for src, dst in copies.items()]
+    pairs += [(path, os.path.join(out, os.path.basename(path))) for path in extra if path]   # .ssf, build log
+    for src, dst in pairs:
+        if not os.path.isfile(src):
+            continue
+        try:
+            shutil.copy2(src, dst)
+        except OSError as e:
+            if failed is not None:
+                failed.append((os.path.basename(dst), e))
     return out
 
 
@@ -2800,22 +2806,29 @@ class PreprocessingInterface(QMainWindow):
                         )
                         stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
                         self._build_log("\n".join(summary))
+                        failed, archive_error = [], None
                         try:
                             archived = archive_photometry(folder, seq_name, session_dir,
                                                           stars[0]["name"] if stars else "target",
                                                           extra=(ssf_path, self._build_log_path),
-                                                          root=astronomy_root)
+                                                          root=astronomy_root, failed=failed)
                         except OSError as e:
-                            archived = None
+                            archived, archive_error = None, e
                             summary.append(f"  results not archived: {e}")
+                        for name, e in failed:
+                            summary.append(f"  {name} not updated - open in another program (Excel, an image "
+                                           f"viewer)? Close it and run again ({e})")
                         if archived:
                             summary.append(f"  archived with the session -> {archived}")
                             try:   # with the star's other sessions
                                 summary += combine_star_sessions(os.path.dirname(archived),
                                                                  getattr(self, "_photometry_roots", []))
+                            except OSError as e:
+                                summary.append(f"  sessions not put together - a combined_* file open in another "
+                                               f"program (Excel, an image viewer)? Close it and run again ({e})")
                             except Exception as e:
                                 summary.append(f"  sessions not put together: {e}")
-                        elif session_dir:
+                        elif session_dir and archive_error is None:
                             summary.append(f"  not archived: session folder not reachable ({session_dir})")
                         for text in summary:
                             self.siril.log(text, LogColor.GREEN)
