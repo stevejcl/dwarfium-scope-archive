@@ -291,23 +291,58 @@ def fits_data_max(path):
     return float(data.max()) + bzero if data.size else None
 
 
-def vsx_star(name, timeout=10):
+_VSX_URL = "https://www.aavso.org/vsx/index.php"
+_VSX_HEADERS = {"User-Agent": "Dwarfium-Archive-Selector (Siril script)", "Accept": "application/json"}
+
+
+def _vsx_object(name, timeout):
+    """VSX's "VSXObject" for the star ({} when unknown). requests when
+    Siril's Python has it, else urllib with a User-Agent and certifi's
+    certificates when there (user-reported Oct 2026: "Not found in VSX" from
+    Siril while Astro Dwarf Session - requests - found DY Peg). Raises on a
+    network / HTTP error."""
+    import json as _json
+    params = {"view": "api.object", "format": "json", "ident": name}
+    try:
+        import requests
+    except ImportError:
+        requests = None
+    if requests is not None:
+        response = requests.get(_VSX_URL, params=params, headers=_VSX_HEADERS, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json() if response.content.strip() else {}
+    else:
+        import ssl
+        import urllib.parse
+        import urllib.request
+        try:
+            import certifi
+            context = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            context = ssl.create_default_context()
+        request = urllib.request.Request(_VSX_URL + "?" + urllib.parse.urlencode(params), headers=_VSX_HEADERS)
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            body = response.read().decode("utf-8", "replace").strip()
+        payload = _json.loads(body) if body else {}
+    return (payload.get("VSXObject") if isinstance(payload, dict) else None) or {}
+
+
+def vsx_star(name, timeout=10, errors=None):
     """{"type", "max", "min", "amplitude"} of a variable star from AAVSO's VSX
     (user-requested Oct 2026: the exposure check's amplitude was an eclipse
     depth of 1 mag, DY Peg - a pulsating star - varies by about 0.6), None
     when not found or offline. "amplitude" in the same band as max/min, None
-    when min is itself an amplitude ("(0.6)") or missing."""
-    import json as _json
-    import urllib.parse
-    import urllib.request
-    url = ("https://www.aavso.org/vsx/index.php?view=api.object&format=json&ident="
-           + urllib.parse.quote(name))
+    when min is itself an amplitude ("(0.6)") or missing. errors: why it
+    failed appended to it ("not in VSX", or the network error)."""
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            obj = _json.loads(response.read().decode("utf-8", "replace")).get("VSXObject") or {}
-    except Exception:
+        obj = _vsx_object(name, timeout)
+    except Exception as e:
+        if errors is not None:
+            errors.append(f"{type(e).__name__}: {e}"[:200])
         return None
     if not obj:
+        if errors is not None:
+            errors.append("not in VSX")
         return None
 
     def _mag(text):
@@ -943,7 +978,9 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
 
     summary = [f"Sessions of {star.replace('_', ' ')} put together: {len(sessions)} from {len(star_dirs)} drive(s) "
                f"-> {out_csv}"]
-    summary += [f"  drive not reachable, its sessions not counted: {root}" for root in unreachable]
+    if unreachable:   # one line: a user's database knew 10 drives, most unplugged (Oct 2026)
+        summary.append(f"  {len(unreachable)} drive(s) not plugged in, their sessions not counted: "
+                       + ", ".join(unreachable))
     for s in sessions:
         mags = np.array([p[1] for p in s["points"]]) - s["offset"]
         summary.append(f"  {_label(s)}: {len(mags)} points, mean {mags.mean():.3f}, "
@@ -3070,11 +3107,14 @@ class PreprocessingInterface(QMainWindow):
         if not ok or not star:
             return
         # Its amplitude from VSX when known (an eclipse depth or a pulsation's range)
-        vsx = vsx_star(star)
+        vsx_errors = []
+        vsx = vsx_star(star, errors=vsx_errors)
+        if vsx_errors:
+            self.siril.log(f"[check exposure] VSX: {star}: {vsx_errors[0]}", LogColor.SALMON)
         default = round(vsx["amplitude"], 2) if vsx and vsx["amplitude"] else 1.0
         known = (f"VSX: {vsx['type']}, {vsx['max']:g} - {vsx['min']:g} mag\n" if vsx and vsx["amplitude"]
                  and vsx["max"] is not None and vsx["min"] is not None else
-                 (f"VSX: {vsx['type']}\n" if vsx else "Not found in VSX (offline?)\n"))
+                 (f"VSX: {vsx['type']}\n" if vsx else f"Not found in VSX ({(vsx_errors or ['?'])[0]})\n"))
         depth, ok = QInputDialog.getDouble(
             self, "Check exposure",
             known + "Amplitude (mag) - eclipse depth or range of the variation - for the S/N at the faintest:",
