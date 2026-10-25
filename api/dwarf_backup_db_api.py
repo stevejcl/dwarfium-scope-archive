@@ -3082,6 +3082,14 @@ def find_matching_bias_flat(location, cam_name, ir_filter, gain):
             "bias_dir": bias_dir, "flat_dir": flat_dir}
 
 
+def _astronomy_root(session_dir):
+    from api.archive_paths import astronomy_root
+    try:
+        return str(astronomy_root(session_dir)) if session_dir else ""
+    except Exception:
+        return ""
+
+
 async def generate_siril_session_json(conn, row, backup_location, session_full_dir=""):
     """Generate siril_session.json from a session row."""
     import os
@@ -3211,6 +3219,9 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
             "ra": float(ra) if ra else None, "dec": float(dec) if dec else None,
             "path_accessible": path_accessible,
         },
+        # Where results computed from the session are kept (the Siril
+        # script's photometry): the archive's root (api/archive_paths.py)
+        "astronomy_root": _astronomy_root(full_session_dir),
         "lights": lights,
         "darks": {"status": dark_result["status"], "files": dark_result["files"],
                   "count": dark_result["count"], "temp_match": dark_result["temp_match"],

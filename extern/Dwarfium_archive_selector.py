@@ -637,21 +637,30 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
 
 # Where the photometry's results are archived with the session (user-requested
 # Oct 2026: shown in Dwarfium Scope Archive's Explore, kept with the archive):
-# PHOTOMETRY/<session folder>/ next to the sessions, as FIXED_FOREGROUND - the
-# same convention as Scope Archive's api/photometry_results.py
+# PHOTOMETRY/<session folder>/ at the root of the archive - the backup's
+# Astronomy folder, the level of RESTACKED, given by Scope Archive in
+# siril_session.json ("astronomy_root") - the same convention as its
+# api/photometry_results.py and api/archive_paths.py
 PHOTOMETRY_DIR = "PHOTOMETRY"
 
 
-def archive_photometry(folder, seq_name, session_dir, target_name, extra=()):
+def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root=""):
     """The light curve, the field survey and the comparison stars copied from
-    the process folder to PHOTOMETRY/<session folder>/ next to the session,
-    named after the target (several stars of one session kept side by side).
-    Returns the folder, None when the session folder isn't reachable."""
+    the process folder to PHOTOMETRY/<session folder>/ at the archive's root
+    (`root`; without it, the session's parent folder - its grandparent when
+    that is RESTACKED, STARTRAILS or Archive, as Scope Archive's
+    astronomy_root()), named after the target (several stars of one session
+    kept side by side). Returns the folder, None when the session folder isn't
+    reachable."""
     if not session_dir or not os.path.isdir(session_dir):
         return None
     session_dir = os.path.normpath(session_dir)
     name = re.sub(r"[^\w.-]+", "_", os.path.basename(session_dir)) or "session"
-    out = os.path.join(os.path.dirname(session_dir), PHOTOMETRY_DIR, name)
+    if not root or not os.path.isdir(root):
+        root = os.path.dirname(session_dir)
+        if os.path.basename(root).upper() in ("RESTACKED", "STARTRAILS", "ARCHIVE"):
+            root = os.path.dirname(root)
+    out = os.path.join(root, PHOTOMETRY_DIR, name)
     os.makedirs(out, exist_ok=True)
     star = re.sub(r"[^\w.-]+", "_", target_name) or "target"
     copies = {
@@ -2482,6 +2491,7 @@ class PreprocessingInterface(QMainWindow):
                     folder, seq_name, saturation = fields[:3]
                     utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
                     session_dir = fields[4] if len(fields) > 4 else ""
+                    astronomy_root = fields[5] if len(fields) > 5 else ""
                     try:
                         s.ensure_installed(["astropy", "matplotlib"])
                         frames = sorted(
@@ -2510,7 +2520,8 @@ class PreprocessingInterface(QMainWindow):
                         try:
                             archived = archive_photometry(folder, seq_name, session_dir,
                                                           stars[0]["name"] if stars else "target",
-                                                          extra=(ssf_path, self._build_log_path))
+                                                          extra=(ssf_path, self._build_log_path),
+                                                          root=astronomy_root)
                         except OSError as e:
                             archived = None
                             summary.append(f"  results not archived: {e}")
@@ -2956,8 +2967,9 @@ class PreprocessingInterface(QMainWindow):
             "# mid-exposure in JD, HJD and BJD"
             + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
             f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
-            "# Results then archived next to the session: PHOTOMETRY/<session folder>/",
-            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}",
+            "# Results then archived at the archive's root: PHOTOMETRY/<session folder>/",
+            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
+            f"|{data.get('astronomy_root') or ''}",
             "",
             f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
             "cd ..",

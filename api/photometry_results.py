@@ -3,7 +3,8 @@ shown in Explore and kept with the archive).
 
 The Dwarfium Archive Selector Siril script (extern/Dwarfium_archive_selector.py,
 its "📈 Photometry" option) copies its results to PHOTOMETRY/<session folder>/
-next to the sessions, as FIXED_FOREGROUND - the same convention as its
+at the root of the archive, as FIXED_FOREGROUND (api/archive_paths.py: the
+backup's Astronomy folder, the level of RESTACKED) - the same convention as its
 archive_photometry(): per target star,
   light_curve_<star>.csv / .png        its light curve
   stars_variability_<star>.csv / .png  the variability survey of the field
@@ -18,10 +19,11 @@ OUTPUT_DIR = "PHOTOMETRY"
 
 
 def results_dir(session_dir) -> Path:
-    """PHOTOMETRY/<session folder>/ next to the session."""
+    """PHOTOMETRY/<session folder>/ at the root of the session's archive."""
+    from api.archive_paths import astronomy_root
     session_dir = Path(session_dir)
     name = re.sub(r"[^\w.-]+", "_", session_dir.name) or "session"
-    return session_dir.parent / OUTPUT_DIR / name
+    return astronomy_root(session_dir) / OUTPUT_DIR / name
 
 
 def find_results(session_dir) -> list[dict]:
@@ -31,6 +33,8 @@ def find_results(session_dir) -> list[dict]:
     if not session_dir:
         return []
     folder = results_dir(session_dir)
+    if not folder.is_dir():   # a first version of the script put it next to the session
+        folder = Path(session_dir).parent / OUTPUT_DIR / folder.name
     if not folder.is_dir():
         return []
     results = []

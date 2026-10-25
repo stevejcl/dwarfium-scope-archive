@@ -359,8 +359,10 @@ run with **🚀 Build Sessions**:
    in `findcompstars`' list: the candidates are uncatalogued ones, or a bad
    comparison star.
 
-The results are then archived next to the session, in
-`PHOTOMETRY/<session folder>/` (as `FIXED_FOREGROUND`): the light curve, the
+The results are then archived at the root of the archive — the backup's
+Astronomy folder, the level of `RESTACKED` — in `PHOTOMETRY/<session folder>/`
+(as `FIXED_FOREGROUND`), so two copies of a session in different sub-folders
+share them: the light curve, the
 field survey and the comparison stars of each star measured
 (`light_curve_<star>.csv/.png`, `stars_variability_<star>.csv/.png`,
 `comparison_stars_<star>.csv`), with the `.ssf` script and

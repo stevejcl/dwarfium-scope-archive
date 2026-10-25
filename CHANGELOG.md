@@ -3,8 +3,14 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    FIXED_FOREGROUND and PHOTOMETRY at the root of the archive - the backup's Astronomy folder (BackupDrive location +
+    astronomy_dir), the level of RESTACKED - instead of next to the session (user-requested Oct 2026: two copies of a
+    session in different sub-folders then share the same results, and a result from several sessions has one place).
+    Found from the session's path (api/archive_paths.py: the backup whose Astronomy folder holds it, else its parent -
+    the grandparent under RESTACKED / STARTRAILS / Archive); siril_session.json gives it to the Siril script
+    ("astronomy_root"). Foreground repairs made before stay shown from next to the session.
     Explore, "Photometry" tab (user-requested Oct 2026: the light curve kept with the session in the archive): the
-    Siril script's photometry results are archived in PHOTOMETRY/<session folder>/ next to the sessions, as
+    Siril script's photometry results are archived in PHOTOMETRY/<session folder>/ at the root of the archive, as
     FIXED_FOREGROUND - light_curve_<star>.csv/.png, stars_variability_<star>.csv/.png, comparison_stars_<star>.csv,
     the .ssf script and build_sessions.log, several stars of one session side by side. The session's Photometry tab
     shows the plots (a click opens one in the system's viewer), opens the CSV and the folder; hidden when the session
