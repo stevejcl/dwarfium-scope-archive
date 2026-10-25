@@ -350,7 +350,11 @@ run with **🚀 Build Sessions**:
    HJD UTC and BJD TDB. A check star (the comparison star closest to the
    target's magnitude, left out of the zero point) is measured too, and
    `light_curve_<sequence>.png` plots both against HJD, with means of 3 points
-   beyond 15 images.
+   beyond 15 images. The CSV's header lines (`# key: value`) give the session,
+   the instrument, filter, exposure and gain, the site, the target and the
+   check star with their coordinates, and each point has its `airmass` - from
+   the session's location in the archive (the DWARF's FITS has no site), so
+   that several sessions of one star can be put together.
 6. a variability survey of the field: every comparison star measured in each
    image from the zero point of the others; one whose scatter is twice that of
    the stars of similar brightness, and twice its own errors, is a candidate

@@ -364,7 +364,27 @@ def read_compstars_csv(path):
     return sorted(stars, key=lambda st: st["type"].lower() != "target")
 
 
-def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None):
+def _airmass(coord, when, observer):
+    """The star's airmass at `when` from `observer` (Pickering 2002, good
+    down to the horizon); None without a site, or below the horizon."""
+    if observer is None:
+        return None
+    try:
+        import math
+        import warnings
+        from astropy.coordinates import AltAz
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")   # UT1 from the bundled IERS values: arcseconds
+            alt = float(coord.transform_to(AltAz(obstime=when, location=observer)).alt.deg)
+    except Exception:
+        return None
+    if alt <= 0:
+        return None
+    return 1.0 / math.sin(math.radians(alt + 244.0 / (165.0 + 47.0 * alt ** 1.1)))
+
+
+def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None,
+                             site=None, session_name=""):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -384,7 +404,12 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     summer time on the same DWARF 3). Writes out_csv; returns the summary
     lines. progress(done, total): called after each image (user-reported
     Oct 2026: Siril stopped on a 141-image session, nothing in its log while
-    the measurement ran)."""
+    the measurement ran).
+    site: (latitude, longitude[, name]) of the observation (the DWARF's FITS
+    has none: the session's location in the archive) - each point's airmass;
+    session_name, the instrument (first image's header) and the site in the
+    CSV's header lines (user-requested Oct 2026: several sessions of a star
+    put together later)."""
     import math
     import warnings
     import numpy as np
@@ -406,6 +431,10 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     target, comps = stars[0], [st for st in stars[1:] if st["mag"] is not None]
     coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
     geocentre = EarthLocation.from_geocentric(0, 0, 0, unit=u.m)
+    observer = None
+    if site and site[0] is not None and site[1] is not None:
+        observer = EarthLocation(lat=float(site[0]) * u.deg, lon=float(site[1]) * u.deg, height=0 * u.m)
+    instrument = {}
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -428,6 +457,9 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             start = (Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
                      - (utc_offset_h or 0.0) * u.hour)
             mid = start + float(header.get("EXPTIME", 0) or 0) / 2 * u.s
+            if not instrument:
+                instrument = {key: str(header.get(key, "")).strip()
+                              for key in ("TELESCOP", "CAMERA", "FILTER", "EXPTIME", "GAIN")}
         except Exception as e:
             skipped.append(f"{name}: {e}")
             continue
@@ -496,7 +528,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             hjd = bjd = None
             if not any(line.startswith("HJD / BJD not computed") for line in skipped):
                 skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
-        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err))
+        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
+                     _airmass(coord, mid, observer)))
     rows.sort(key=lambda r: r[1])
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
@@ -504,13 +537,27 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
                          f"{len(comps)} comparison stars (findcompstars), times at mid-exposure in UTC "
                          f"(DATE-OBS taken as UTC{utc_offset_h:+g} h)"])
+        # One "# key: value" line each, for the sessions put together later
+        meta = [("session", session_name),
+                ("instrument", " ".join(v for v in (instrument.get("TELESCOP"), instrument.get("CAMERA")) if v)),
+                ("filter", instrument.get("FILTER", "")),
+                ("exposure_s", instrument.get("EXPTIME", "")), ("gain", instrument.get("GAIN", "")),
+                ("site", "" if observer is None else
+                 f"{float(site[0]):.5f} {float(site[1]):.5f}" + (f" {site[2]}" if len(site) > 2 and site[2] else "")),
+                ("target", f"{target['name']} {target['ra']:.6f} {target['dec']:.6f}"),
+                ("check_star", "" if check is None else
+                 f"{comps[check]['name']} {comps[check]['ra']:.6f} {comps[check]['dec']:.6f} V {comps[check]['mag']}")]
+        for key, value in meta:
+            if value:
+                writer.writerow([f"# {key}: {value}"])
         check_label = f"check_{comps[check]['name']}" if check is not None else "check"
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
-                         f"{check_label}_mag", f"{check_label}_err"])
-        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr in rows:
+                         f"{check_label}_mag", f"{check_label}_err", "airmass"])
+        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass in rows:
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
                              f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
-                             "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}"])
+                             "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}",
+                             "" if airmass is None else f"{airmass:.3f}"])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
                f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
@@ -532,7 +579,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         png = os.path.splitext(out_csv)[0] + ".png"
         try:
             plot_light_curve(rows, png, target["name"],
-                             f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None)
+                             f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None,
+                             target_v=target.get("mag"), check_v=comps[check]["mag"] if check is not None else None)
             summary.append(f"  plot -> {png}")
         except Exception as e:
             summary.append(f"  plot not drawn: {e}")
@@ -679,11 +727,14 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
     return out
 
 
-def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
+def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, target_v=None, check_v=None):
     """The light curve as a PNG, as in V. Lecomte's DY Peg procedure (user-
     requested Oct 2026): the target's magnitude against HJD (JD when not
     computed) with its error bars, the check star's, magnitudes growing
-    downwards; beyond 15 points, means of bin_size points over them."""
+    downwards; beyond 15 points, means of bin_size points over them. The
+    mean magnitudes (weighted by the errors) as dashed lines, with the
+    catalogue's V when known (target_v, check_v), and the target's scatter
+    and range under the title (user-requested Oct 2026)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -695,14 +746,30 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
     x = times - origin
     mags, errs = np.array([r[4] for r in rows]), np.array([r[5] for r in rows])
 
+    def _mean(values, errors):
+        weights = 1.0 / np.maximum(errors, 1e-4) ** 2
+        return float(np.average(values, weights=weights)), float(1.0 / np.sqrt(weights.sum()))
+
+    def _v(value):
+        return "" if value is None else f", V {float(value):.2f}"
+
     fig, ax = plt.subplots(figsize=(10, 5.5), dpi=110)
     ax.errorbar(x, mags, yerr=errs, fmt="o", ms=3, lw=0.8, color="#1f5fbf", alpha=0.55, label=target_name)
+    mean, mean_err = _mean(mags, errs)
+    ax.axhline(mean, color="#1f5fbf", ls="--", lw=1,
+               label=f"{target_name} mean {mean:.3f} ± {mean_err:.3f}{_v(target_v)}")
+    stats = [f"{len(rows)} points", f"mean {mean:.3f}", f"std {mags.std():.3f}",
+             f"range {mags.min():.3f} – {mags.max():.3f}"]
     if check_label:
         cx = np.array([xi for xi, r in zip(x, rows) if r[8] is not None])
         cm = np.array([r[8] for r in rows if r[8] is not None])
         ce = np.array([r[9] for r in rows if r[8] is not None])
         if cm.size:
             ax.errorbar(cx, cm, yerr=ce, fmt="s", ms=3, lw=0.8, color="#c03030", alpha=0.45, label=check_label)
+            check_mean, _ = _mean(cm, ce)
+            ax.axhline(check_mean, color="#c03030", ls="--", lw=1,
+                       label=f"check mean {check_mean:.3f}{_v(check_v)}")
+            stats.append(f"check std {cm.std():.3f}")
     if len(rows) > 15 and bin_size > 1:
         n = len(rows) // bin_size * bin_size
         bx = x[:n].reshape(-1, bin_size).mean(axis=1)
@@ -712,7 +779,8 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
     ax.invert_yaxis()
     ax.set_xlabel(f"{label_time} - {origin:.0f}")
     ax.set_ylabel("Magnitude (TG, green channel)")
-    ax.set_title(f"{target_name} - differential photometry")
+    # The statistics under the title: in the plot they hid points
+    ax.set_title(f"{target_name} - differential photometry\n" + "  ·  ".join(stats), fontsize=10)
     ax.grid(alpha=0.3)
     ax.legend(loc="best", fontsize=9)
     fig.tight_layout()
@@ -2492,6 +2560,10 @@ class PreprocessingInterface(QMainWindow):
                     utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
                     session_dir = fields[4] if len(fields) > 4 else ""
                     astronomy_root = fields[5] if len(fields) > 5 else ""
+                    try:   # the session's site, for the airmass
+                        site = (float(fields[6]), float(fields[7]), fields[8] if len(fields) > 8 else "")
+                    except (IndexError, ValueError):
+                        site = None
                     try:
                         s.ensure_installed(["astropy", "matplotlib"])
                         frames = sorted(
@@ -2513,7 +2585,8 @@ class PreprocessingInterface(QMainWindow):
                             frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
                             os.path.join(folder, f"light_curve_{seq_name}.csv"),
                             saturation=float(saturation) or None, utc_offset_h=utc_offset,
-                            progress=_progress,
+                            progress=_progress, site=site,
+                            session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
                         )
                         stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
                         self._build_log("\n".join(summary))
@@ -2868,6 +2941,7 @@ class PreprocessingInterface(QMainWindow):
             return None
 
         session = data.get("session", {})
+        site = data.get("site") if isinstance(data.get("site"), dict) and data["site"].get("lat") is not None else None
         star, ok = QInputDialog.getText(
             self, "Photometry",
             "Variable star (name known to Siril / SIMBAD, e.g. RZ Cas):",
@@ -2969,7 +3043,8 @@ class PreprocessingInterface(QMainWindow):
             f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
             "# Results then archived at the archive's root: _PHOTOMETRY/<session folder>/",
             f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
-            f"|{data.get('astronomy_root') or ''}",
+            f"|{data.get('astronomy_root') or ''}"
+            + (f"|{site['lat']}|{site['lon']}|{(site.get('name') or '').replace('|', ' ')}" if site else ""),
             "",
             f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
             "cd ..",

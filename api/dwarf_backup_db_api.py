@@ -3082,6 +3082,22 @@ def find_matching_bias_flat(location, cam_name, ir_filter, gain):
             "bias_dir": bias_dir, "flat_dir": flat_dir}
 
 
+def _session_site(conn, dwarf_data_id):
+    """The session's observation site {"name", "lat", "lon"} (its location in
+    the archive, else the default one), or None - the Siril script's airmass."""
+    try:
+        r = conn.cursor().execute("""
+            SELECT l.name, l.latitude, l.longitude FROM ObservationLocation l
+            WHERE l.id = COALESCE((SELECT location_id FROM DwarfData WHERE id = ?),
+                                  (SELECT id FROM ObservationLocation WHERE is_default = 1 LIMIT 1))
+        """, (dwarf_data_id,)).fetchone()
+    except Exception:
+        return None
+    if not r or r[1] is None or r[2] is None:
+        return None
+    return {"name": r[0] or "", "lat": float(r[1]), "lon": float(r[2])}
+
+
 def _astronomy_root(session_dir):
     from api.archive_paths import astronomy_root
     try:
@@ -3222,6 +3238,8 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
         # Where results computed from the session are kept (the Siril
         # script's photometry): the archive's root (api/archive_paths.py)
         "astronomy_root": _astronomy_root(full_session_dir),
+        # Where it was observed (the DWARF's FITS has no site): the airmass
+        "site": _session_site(conn, row[0]),
         "lights": lights,
         "darks": {"status": dark_result["status"], "files": dark_result["files"],
                   "count": dark_result["count"], "temp_match": dark_result["temp_match"],
