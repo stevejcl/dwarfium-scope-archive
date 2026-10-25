@@ -3,6 +3,8 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Prepare for Siril (one session and Megastack): the frames the Dwarf rejected (failed_*.fits) left out of the
+    lights (user-asked Oct 2026), as the frame counts, the foreground repair and the mosaics do.
     Photometry: the target's name without SIMBAD's prefix ("V* DY Peg" -> "DY Peg", "* ", "NAME "), findcompstars
     writing SIMBAD's identifier - the star was archived as _PHOTOMETRY/V_DY_Peg/, its sessions under another name not
     put together (user's DY Peg test, Oct 2026).
