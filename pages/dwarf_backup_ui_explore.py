@@ -3858,7 +3858,11 @@ class ExploreApp(DbPageMixin):
         with self.photometry_box:
             for res in results:
                 ui.label(res["star"]).classes('text-md font-semibold px-2')
-                for key in ("curve_png", "survey_png"):
+                keys = ["curve_png", "survey_png"]
+                if res["combined_png"]:   # all the star's sessions put together, first
+                    ui.label(t('photometry_combined', count=res["sessions"])).classes('text-sm text-gray-600 px-2')
+                    keys.insert(0, "combined_png")
+                for key in keys:
                     src = _png(res[key]) if res[key] else None
                     if src:
                         # A click opens it in the system's viewer

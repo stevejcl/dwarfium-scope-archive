@@ -1293,6 +1293,7 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_open_image":      "Open the image",
     "photometry_open_csv":        "Open the CSV",
     "photometry_refresh":         "Refresh",
+    "photometry_combined":        "All {count} sessions of the star, put together:",
     "explore_no_image":           "Pick a session to see its image",
     "explore_image_missing":        "This session has no image to show",
     "explore_image_unreachable":    "Image not available: path not found: {path}",

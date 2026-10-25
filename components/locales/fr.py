@@ -1295,6 +1295,7 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_open_image":      "Ouvrir l'image",
     "photometry_open_csv":        "Ouvrir le CSV",
     "photometry_refresh":         "Actualiser",
+    "photometry_combined":        "Les {count} sessions de l'étoile, réunies :",
     "explore_no_image":           "Choisissez une session pour voir son image",
     "explore_image_missing":        "Cette session n'a pas d'image à afficher",
     "explore_image_unreachable":    "Image non disponible : chemin introuvable : {path}",

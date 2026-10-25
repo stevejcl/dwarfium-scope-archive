@@ -371,7 +371,12 @@ sub-folders share them: the light curve, the
 field survey and the comparison stars of each star measured
 (`light_curve_<star>.csv/.png`, `stars_variability_<star>.csv/.png`,
 `comparison_stars_<star>.csv`), with the `.ssf` script and
-`build_sessions.log`. In **Explore**, the session then has a **Photometry** tab
+`build_sessions.log`. With two sessions of the star or more, they are put
+together in `_PHOTOMETRY/<star>/` (`combined_light_curve.csv/.png`,
+`combined_sessions.csv`): each session shifted to the one with most points by
+the comparison stars both measured, matched by position (their numbers change
+from one session to the next), one colour per session. The light curve CSV
+also gives the target's `x`, `y` in each image. In **Explore**, the session then has a **Photometry** tab
 showing them (a click on a plot opens it, the CSV and the folder in one click).
 `_FIXED_FOREGROUND` and `_WCS_MOSAIC` are at the root too (a leading `_` so as
 not to meet a folder of yours). **Analyze all** first moves there the
