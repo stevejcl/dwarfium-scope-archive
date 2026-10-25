@@ -3,6 +3,15 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry, a star's sessions put together across the backup drives (user-requested Oct 2026: one DWARF, one
+    drive): siril_session.json "photometry_roots" lists every drive's Astronomy root, the sessions of the star found on
+    the drives plugged in are combined (a session on two drives once, its newer copy), the result written in the star's
+    folder of each, the drives not reachable named in the summary, combined_sessions.csv giving each session's drive.
+    Photometry, a star's sessions put together (user-requested Oct 2026): after each run, in _PHOTOMETRY/<star>/,
+    combined_light_curve.csv / .png and combined_sessions.csv - each session shifted to the one with most points by
+    the comparison stars both measured, matched by position (findcompstars numbers them differently each time), 3-sigma
+    clipped. Explore's Photometry tab shows it first. The user's two DWARF 3 on HD 216964 at once: offset -0.003 from
+    38 stars in common. The light curve CSV gives the target's x, y in each image too.
     Photometry results by star (user-requested Oct 2026: a star's sessions side by side, to be put together):
     _PHOTOMETRY/<star>/<session folder>/ instead of _PHOTOMETRY/<session folder>/. Analyze all moves the earlier
     ones (each star's files to its folder, build_sessions.log to every one); Explore finds both until then.

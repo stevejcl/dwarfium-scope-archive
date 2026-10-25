@@ -3098,6 +3098,14 @@ def _session_site(conn, dwarf_data_id):
     return {"name": r[0] or "", "lat": float(r[1]), "lon": float(r[2])}
 
 
+def _photometry_roots():
+    from api.archive_paths import all_astronomy_roots
+    try:
+        return all_astronomy_roots()
+    except Exception:
+        return []
+
+
 def _astronomy_root(session_dir):
     from api.archive_paths import astronomy_root
     try:
@@ -3238,6 +3246,9 @@ async def generate_siril_session_json(conn, row, backup_location, session_full_d
         # Where results computed from the session are kept (the Siril
         # script's photometry): the archive's root (api/archive_paths.py)
         "astronomy_root": _astronomy_root(full_session_dir),
+        # Every backup drive's root: a star's sessions from other DWARFs (each
+        # its drive) put together with this one's
+        "photometry_roots": _photometry_roots(),
         # Where it was observed (the DWARF's FITS has no site): the airmass
         "site": _session_site(conn, row[0]),
         "lights": lights,

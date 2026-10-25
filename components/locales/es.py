@@ -1296,6 +1296,7 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_open_image":      "Open the image", # TODO
     "photometry_open_csv":        "Open the CSV", # TODO
     "photometry_refresh":         "Refresh",  # TODO
+    "photometry_combined":        "All {count} sessions of the star, put together:",  # TODO
     "explore_no_image":           "Pick a session to see its image", # TODO
     "explore_image_missing":        "This session has no image to show", # TODO
     "explore_image_unreachable":    "Image not available: path not found: {path}", # TODO

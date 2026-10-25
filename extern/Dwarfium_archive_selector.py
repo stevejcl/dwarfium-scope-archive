@@ -439,6 +439,9 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         observer = EarthLocation(lat=float(site[0]) * u.deg, lon=float(site[1]) * u.deg, height=0 * u.m)
     instrument = {}
     blended = None   # comparison stars with another star in their aperture (first image)
+    # The target's place in each image (user's two DWARF 3 at once, Oct 2026: 0.04 mag
+    # apart on one of them only - a dust shadow, no flat?): x, y in the CSV
+    positions = {}
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -483,6 +486,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                 skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
                                f"another star within {2 * aperture_r} px, left out")
         t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=aperture_r)
+        positions[name] = tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"]))
         if t is None or t[2] <= 0:
             skipped.append(f"{name}: target not measured")
             continue
@@ -549,7 +553,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if not any(line.startswith("HJD / BJD not computed") for line in skipped):
                 skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
         rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
-                     _airmass(coord, mid, observer)))
+                     _airmass(coord, mid, observer), positions.get(name)))
     rows.sort(key=lambda r: r[1])
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
@@ -572,12 +576,13 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                 writer.writerow([f"# {key}: {value}"])
         check_label = f"check_{comps[check]['name']}" if check is not None else "check"
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
-                         f"{check_label}_mag", f"{check_label}_err", "airmass"])
-        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass in rows:
+                         f"{check_label}_mag", f"{check_label}_err", "airmass", "x", "y"])
+        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass, xy in rows:
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
                              f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
                              "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}",
-                             "" if airmass is None else f"{airmass:.3f}"])
+                             "" if airmass is None else f"{airmass:.3f}",
+                             "" if xy is None else f"{xy[0]:.1f}", "" if xy is None else f"{xy[1]:.1f}"])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
                f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
@@ -746,6 +751,184 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
         if path and os.path.isfile(path):
             shutil.copy2(path, os.path.join(out, os.path.basename(path)))
     return out
+
+
+def _read_photometry_csv(path):
+    """(meta {"key": "value"} of its "# key: value" lines, header, rows) of a
+    light curve or field survey CSV."""
+    meta, header, rows = {}, None, []
+    with open(path, encoding="utf-8", newline="") as f:
+        for row in csv.reader(f):
+            if not row:
+                continue
+            if row[0].startswith("#"):
+                key, sep, value = row[0][1:].partition(":")
+                if sep and len(row) == 1 and " " not in key.strip():
+                    meta[key.strip()] = value.strip()
+                continue
+            if header is None:
+                header = row
+            else:
+                rows.append(dict(zip(header, row)))
+    return meta, header or [], rows
+
+
+def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
+    """The sessions of one star (_PHOTOMETRY/<star>/<session>/, user-requested
+    Oct 2026) put together in star_dir: each session's magnitudes shifted by
+    its offset to the reference session (the one with most points) - the
+    weighted mean difference of the comparison stars both measured, matched
+    by position (findcompstars numbers them differently from one session to
+    the next), 3-sigma clipped. Writes combined_light_curve.csv (every point,
+    its session and the offset applied), combined_sessions.csv and
+    combined_light_curve.png. other_roots: the other backup drives' Astronomy
+    roots (user-requested Oct 2026: one DWARF, one drive) - their
+    _PHOTOMETRY/<star>/ sessions taken too, the results written in each of
+    these star folders (Explore shows the same curve from any of them); a
+    session on two drives counted once (its newer copy). Returns the summary
+    lines; [] with fewer than two sessions."""
+    import math
+    import numpy as np
+    star_dir = os.path.normpath(star_dir)
+    star = os.path.basename(star_dir)
+    star_dirs, unreachable = [star_dir], []
+    for root in other_roots:
+        other = os.path.normpath(os.path.join(root, PHOTOMETRY_DIR, star))
+        if not os.path.isdir(root):
+            unreachable.append(root)
+        elif os.path.isdir(other) and os.path.normcase(other) not in {os.path.normcase(d) for d in star_dirs}:
+            star_dirs.append(other)
+    found = {}
+    for directory in star_dirs:
+        for name in os.listdir(directory):
+            curve = os.path.join(directory, name, f"light_curve_{star}.csv")
+            if os.path.isfile(curve) and (name not in found or
+                                          os.path.getmtime(curve) > os.path.getmtime(found[name][1])):
+                found[name] = (directory, curve)
+    sessions = []
+    for name in sorted(found):
+        directory, curve = found[name]
+        folder = os.path.dirname(curve)
+        meta, _, rows = _read_photometry_csv(curve)
+        points = []
+        for r in rows:
+            try:
+                t = float(r.get("HJD_UTC") or r["JD_UTC"])
+                points.append((t, float(r["mag"]), float(r["err"]), r.get("airmass", "")))
+            except (KeyError, ValueError):
+                continue
+        comps = []
+        survey = os.path.join(folder, f"stars_variability_{star}.csv")
+        if os.path.isfile(survey):
+            for r in _read_photometry_csv(survey)[2]:
+                try:
+                    comps.append((float(r["ra"]), float(r["dec"]), float(r["mag"]), max(float(r["std"]), 1e-3)))
+                except (KeyError, ValueError):
+                    continue
+        if points:
+            sessions.append({"name": name, "meta": meta, "points": points, "comps": comps,
+                             "drive": os.path.dirname(os.path.dirname(directory))})
+    if len(sessions) < 2:
+        return []
+
+    ref = max(sessions, key=lambda s: len(s["points"]))
+    ref_comps = np.array([c[:2] for c in ref["comps"]]) if ref["comps"] else np.zeros((0, 2))
+    for s in sessions:
+        s["offset"], s["n_common"] = 0.0, 0
+        if s is ref:
+            s["n_common"] = len(ref["comps"])
+            continue
+        diffs, weights = [], []
+        for ra, dec, mag, std in s["comps"]:
+            if not len(ref_comps):
+                break
+            sep = np.hypot((ref_comps[:, 0] - ra) * math.cos(math.radians(dec)), ref_comps[:, 1] - dec) * 3600
+            i = int(np.argmin(sep))
+            if sep[i] <= max_sep_arcsec:
+                diffs.append(mag - ref["comps"][i][2])
+                weights.append(1.0 / (std ** 2 + ref["comps"][i][3] ** 2))
+        if len(diffs) >= 3:
+            d, w = np.array(diffs), np.array(weights)
+            keep = np.abs(d - np.median(d)) <= 3 * max(np.std(d), 1e-3)
+            s["offset"] = float(np.average(d[keep], weights=w[keep]))
+            s["n_common"] = int(keep.sum())
+
+    def _label(s):
+        date = s["name"].rsplit("_", 1)[-1][:16] if "_" in s["name"] else s["name"]
+        return f"{s['meta'].get('instrument', '')} {date}".strip()
+
+    out_csv = os.path.join(star_dir, "combined_light_curve.csv")
+    with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([f"# {star.replace('_', ' ')}: {len(sessions)} sessions, magnitudes shifted to the "
+                         f"reference session {ref['name']} by the comparison stars both measured"])
+        writer.writerow(["session", "instrument", "HJD_UTC", "mag", "mag_raw", "err", "offset", "airmass"])
+        for s in sessions:
+            for t, mag, err, airmass in s["points"]:
+                writer.writerow([s["name"], s["meta"].get("instrument", ""), f"{t:.6f}", f"{mag - s['offset']:.4f}",
+                                 f"{mag:.4f}", f"{err:.4f}", f"{s['offset']:+.4f}", airmass])
+    with open(os.path.join(star_dir, "combined_sessions.csv"), "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["session", "instrument", "filter", "exposure_s", "site", "points", "HJD_start", "HJD_end",
+                         "mean_mag", "offset", "common_comparison_stars", "reference", "drive"])
+        for s in sessions:
+            times, mags = [p[0] for p in s["points"]], [p[1] for p in s["points"]]
+            writer.writerow([s["name"], s["meta"].get("instrument", ""), s["meta"].get("filter", ""),
+                             s["meta"].get("exposure_s", ""), s["meta"].get("site", ""), len(times),
+                             f"{min(times):.6f}", f"{max(times):.6f}", f"{np.mean(mags) - s['offset']:.4f}",
+                             f"{s['offset']:+.4f}", s["n_common"], "yes" if s is ref else "", s["drive"]])
+
+    summary = [f"Sessions of {star.replace('_', ' ')} put together: {len(sessions)} from {len(star_dirs)} drive(s) "
+               f"-> {out_csv}"]
+    summary += [f"  drive not reachable, its sessions not counted: {root}" for root in unreachable]
+    for s in sessions:
+        mags = np.array([p[1] for p in s["points"]]) - s["offset"]
+        summary.append(f"  {_label(s)}: {len(mags)} points, mean {mags.mean():.3f}, "
+                       + ("reference" if s is ref else
+                          f"offset {s['offset']:+.3f} ({s['n_common']} comparison stars in common)"
+                          if s["n_common"] >= 3 else "not aligned (fewer than 3 comparison stars in common)"))
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        origin = math.floor(min(p[0] for s in sessions for p in s["points"]))
+        fig, ax = plt.subplots(figsize=(10, 5.5), dpi=110)
+        colours = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        all_mags = []
+        for k, s in enumerate(sessions):
+            t = np.array([p[0] for p in s["points"]]) - origin
+            m = np.array([p[1] for p in s["points"]]) - s["offset"]
+            e = np.array([p[2] for p in s["points"]])
+            all_mags.extend(m)
+            ax.errorbar(t, m, yerr=e, fmt="o", ms=3, lw=0.7, alpha=0.6, color=colours[k % len(colours)],
+                        label=f"{_label(s)} ({len(m)} pts, offset {s['offset']:+.3f})")
+        all_mags = np.array(all_mags)
+        ax.axhline(all_mags.mean(), color="#444444", ls="--", lw=1, label=f"mean {all_mags.mean():.3f}")
+        ax.invert_yaxis()
+        ax.set_xlabel(f"HJD (UTC) - {origin}")
+        ax.set_ylabel("Magnitude (TG, green channel)")
+        ax.set_title(f"{star.replace('_', ' ')} - {len(sessions)} sessions combined\n"
+                     f"{len(all_mags)} points  ·  mean {all_mags.mean():.3f}  ·  std {all_mags.std():.3f}  ·  "
+                     f"range {all_mags.min():.3f} – {all_mags.max():.3f}", fontsize=10)
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best", fontsize=8)
+        fig.tight_layout()
+        png = os.path.join(star_dir, "combined_light_curve.png")
+        fig.savefig(png)
+        plt.close(fig)
+        summary.append(f"  plot -> {png}")
+    except Exception as e:
+        summary.append(f"  combined plot not drawn: {e}")
+    # The same results in the star's folder of each other drive
+    for other in star_dirs[1:]:
+        for name in ("combined_light_curve.csv", "combined_sessions.csv", "combined_light_curve.png"):
+            try:
+                if os.path.isfile(os.path.join(star_dir, name)):
+                    shutil.copy2(os.path.join(star_dir, name), os.path.join(other, name))
+            except OSError as e:
+                summary.append(f"  not copied to {other}: {e}")
+                break
+    return summary
 
 
 def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, target_v=None, check_v=None):
@@ -2574,6 +2757,12 @@ class PreprocessingInterface(QMainWindow):
                         ran_ok = False
                         break
                     continue
+                if line.startswith("# PYTHON_PHOTOMETRY_ROOTS"):   # the other drives, for combine_star_sessions
+                    try:
+                        self._photometry_roots = json.loads(line[len("# PYTHON_PHOTOMETRY_ROOTS"):].strip() or "[]")
+                    except ValueError:
+                        self._photometry_roots = []
+                    continue
                 if line.startswith("# PYTHON_PHOTOMETRY"):
                     self._build_log(line)
                     fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
@@ -2621,6 +2810,11 @@ class PreprocessingInterface(QMainWindow):
                             summary.append(f"  results not archived: {e}")
                         if archived:
                             summary.append(f"  archived with the session -> {archived}")
+                            try:   # with the star's other sessions
+                                summary += combine_star_sessions(os.path.dirname(archived),
+                                                                 getattr(self, "_photometry_roots", []))
+                            except Exception as e:
+                                summary.append(f"  sessions not put together: {e}")
                         elif session_dir:
                             summary.append(f"  not archived: session folder not reachable ({session_dir})")
                         for text in summary:
@@ -3062,7 +3256,9 @@ class PreprocessingInterface(QMainWindow):
             "# mid-exposure in JD, HJD and BJD"
             + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
             f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
-            "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/",
+            "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/,",
+            "# and the star's sessions put together with those of the other drives:",
+            f"# PYTHON_PHOTOMETRY_ROOTS {json.dumps(data.get('photometry_roots') or [])}",
             f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
             f"|{data.get('astronomy_root') or ''}"
             + (f"|{site['lat']}|{site['lon']}|{(site.get('name') or '').replace('|', ' ')}" if site else ""),
