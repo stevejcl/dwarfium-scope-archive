@@ -579,7 +579,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         png = os.path.splitext(out_csv)[0] + ".png"
         try:
             plot_light_curve(rows, png, target["name"],
-                             f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None)
+                             f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None,
+                             target_v=target.get("mag"), check_v=comps[check]["mag"] if check is not None else None)
             summary.append(f"  plot -> {png}")
         except Exception as e:
             summary.append(f"  plot not drawn: {e}")
@@ -726,11 +727,14 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
     return out
 
 
-def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
+def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, target_v=None, check_v=None):
     """The light curve as a PNG, as in V. Lecomte's DY Peg procedure (user-
     requested Oct 2026): the target's magnitude against HJD (JD when not
     computed) with its error bars, the check star's, magnitudes growing
-    downwards; beyond 15 points, means of bin_size points over them."""
+    downwards; beyond 15 points, means of bin_size points over them. The
+    mean magnitudes (weighted by the errors) as dashed lines, with the
+    catalogue's V when known (target_v, check_v), and the target's scatter
+    and range under the title (user-requested Oct 2026)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -742,14 +746,30 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
     x = times - origin
     mags, errs = np.array([r[4] for r in rows]), np.array([r[5] for r in rows])
 
+    def _mean(values, errors):
+        weights = 1.0 / np.maximum(errors, 1e-4) ** 2
+        return float(np.average(values, weights=weights)), float(1.0 / np.sqrt(weights.sum()))
+
+    def _v(value):
+        return "" if value is None else f", V {float(value):.2f}"
+
     fig, ax = plt.subplots(figsize=(10, 5.5), dpi=110)
     ax.errorbar(x, mags, yerr=errs, fmt="o", ms=3, lw=0.8, color="#1f5fbf", alpha=0.55, label=target_name)
+    mean, mean_err = _mean(mags, errs)
+    ax.axhline(mean, color="#1f5fbf", ls="--", lw=1,
+               label=f"{target_name} mean {mean:.3f} ± {mean_err:.3f}{_v(target_v)}")
+    stats = [f"{len(rows)} points", f"mean {mean:.3f}", f"std {mags.std():.3f}",
+             f"range {mags.min():.3f} – {mags.max():.3f}"]
     if check_label:
         cx = np.array([xi for xi, r in zip(x, rows) if r[8] is not None])
         cm = np.array([r[8] for r in rows if r[8] is not None])
         ce = np.array([r[9] for r in rows if r[8] is not None])
         if cm.size:
             ax.errorbar(cx, cm, yerr=ce, fmt="s", ms=3, lw=0.8, color="#c03030", alpha=0.45, label=check_label)
+            check_mean, _ = _mean(cm, ce)
+            ax.axhline(check_mean, color="#c03030", ls="--", lw=1,
+                       label=f"check mean {check_mean:.3f}{_v(check_v)}")
+            stats.append(f"check std {cm.std():.3f}")
     if len(rows) > 15 and bin_size > 1:
         n = len(rows) // bin_size * bin_size
         bx = x[:n].reshape(-1, bin_size).mean(axis=1)
@@ -759,7 +779,8 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
     ax.invert_yaxis()
     ax.set_xlabel(f"{label_time} - {origin:.0f}")
     ax.set_ylabel("Magnitude (TG, green channel)")
-    ax.set_title(f"{target_name} - differential photometry")
+    # The statistics under the title: in the plot they hid points
+    ax.set_title(f"{target_name} - differential photometry\n" + "  ·  ".join(stats), fontsize=10)
     ax.grid(alpha=0.3)
     ax.legend(loc="best", fontsize=9)
     fig.tight_layout()

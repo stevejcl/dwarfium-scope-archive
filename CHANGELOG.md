@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Light curve plot: the mean magnitudes of the target and the check star (weighted) as dashed lines, with their
+    catalogue V, and the target's points, mean, std and range plus the check star's std under the title (user-requested
+    Oct 2026).
     Photometry CSV ready for several sessions of a star (user-requested Oct 2026): header lines "# key: value" with
     the session, instrument (TELESCOP, CAMERA), filter, exposure, gain, site, target and check star (name, RA, Dec,
     V), and an airmass column (Pickering 2002) - the site is the session's location in the archive, else the default
