@@ -327,6 +327,16 @@ def _vsx_object(name, timeout):
     return (payload.get("VSXObject") if isinstance(payload, dict) else None) or {}
 
 
+def _header_center(cards):
+    """(ra, dec) of the header's pointing in degrees, None when missing or
+    0, 0 (a session without a target)."""
+    try:
+        ra, dec = float(cards.get("RA") or 0), float(cards.get("DEC") or 0)
+    except (TypeError, ValueError):
+        return None
+    return None if ra == 0 and dec == 0 else (ra, dec)
+
+
 def vsx_star(name, timeout=10, errors=None):
     """{"type", "max", "min", "amplitude"} of a variable star from AAVSO's VSX
     (user-requested Oct 2026: the exposure check's amplitude was an eclipse
@@ -349,13 +359,18 @@ def vsx_star(name, timeout=10, errors=None):
         m = re.match(r"\s*([\d.]+)", str(text or ""))
         return float(m.group(1)) if m else None
 
+    def _signed(text):
+        m = re.match(r"\s*([+-]?[\d.]+)", str(text or ""))
+        return float(m.group(1)) if m else None
+
     max_mag, min_text = _mag(obj.get("MaxMag")), str(obj.get("MinMag") or "")
     min_mag = None if min_text.strip().startswith("(") else _mag(min_text)
     amplitude = (min_mag - max_mag) if max_mag is not None and min_mag is not None else None
     if amplitude is None and min_text.strip().startswith("("):
         amplitude = _mag(min_text.strip()[1:])   # "(0.6)": given as an amplitude
     return {"type": obj.get("VariabilityType") or "", "max": max_mag, "min": min_mag,
-            "amplitude": amplitude if amplitude and amplitude > 0 else None}
+            "amplitude": amplitude if amplitude and amplitude > 0 else None,
+            "ra": _mag(obj.get("RA2000")), "dec": _signed(obj.get("Declination2000"))}
 
 
 def moon_at(when_utc, ra, dec):
@@ -3109,6 +3124,9 @@ class PreprocessingInterface(QMainWindow):
         # Its amplitude from VSX when known (an eclipse depth or a pulsation's range)
         vsx_errors = []
         vsx = vsx_star(star, errors=vsx_errors)
+        # Frames without a target (RA = DEC = 0): the plate solve starts at the star's
+        self._check_center = (vsx["ra"], vsx["dec"]) if vsx and vsx.get("ra") is not None \
+            and vsx.get("dec") is not None else None
         if vsx_errors:
             self.siril.log(f"[check exposure] VSX: {star}: {vsx_errors[0]}", LogColor.SALMON)
         default = round(vsx["amplitude"], 2) if vsx and vsx["amplitude"] else 1.0
@@ -3195,6 +3213,9 @@ class PreprocessingInterface(QMainWindow):
             self.siril.cmd("extract_Green")
             self.siril.cmd("load", "Green_" + base)
             solve = dwarf_platesolve_args(path)
+            center = getattr(self, "_check_center", None)
+            if center and _header_center(cards) is None:
+                solve.insert(0, f"{center[0]:.5f},{center[1]:+.5f}")
             self.siril.cmd("platesolve", *solve)
             csv_name = f"check_{base}.csv"
             self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
@@ -3376,7 +3397,24 @@ class PreprocessingInterface(QMainWindow):
         # frozen through its minutes, the session looked stopped (user-
         # reported Oct 2026) - now its progress is shown between images.
         # -noflip: each image saved as it is, its solution with it
-        solve_args = " ".join(["-noflip"] + dwarf_platesolve_args(lights[0]))
+        solve_args = ["-noflip"] + dwarf_platesolve_args(lights[0])
+        # A session without a target (manual pointing: "Unknown", RA = DEC = 0
+        # in the header - the user's DY Peg data, Oct 2026): Siril starts its
+        # plate solve from the header's coordinates, so the star's are given -
+        # VSX's, in degrees (the archive's may be in hours)
+        center = _header_center(first)
+        if center is None:
+            found = vsx_star(star) or {}
+            ra, dec = found.get("ra"), found.get("dec")
+            if ra is not None and dec is not None:
+                solve_args.insert(0, f"{float(ra):.5f},{float(dec):+.5f}")
+            else:
+                QMessageBox.warning(
+                    self, "Photometry",
+                    f"No coordinates in the FITS header and {star} not found (VSX): the plate solve will "
+                    "likely fail. Point the session at the star, or check its name.",
+                )
+        solve_args = " ".join(solve_args)
         data_max = fits_data_max(lights[0])
         saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
         lines += [

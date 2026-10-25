@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry and Check exposure: a session without a target (manual pointing, "Unknown", RA = DEC = 0 in the FITS
+    header - a user's DY Peg data, Oct 2026) plate solved from the star's coordinates (VSX), Siril starting from the
+    header's; a warning when neither is known.
     Check exposure, VSX: requests when Siril's Python has it, else urllib with a User-Agent and certifi's
     certificates; the reason shown and logged when it fails (user-reported Oct 2026: "Not found in VSX" for DY Peg
     from Siril, found by Astro Dwarf Session).
