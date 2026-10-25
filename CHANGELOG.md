@@ -3,6 +3,8 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry: a comparison star with another catalogue star (or the target) within twice the aperture is left out
+    (user's HD 216964 test, Oct 2026: two V 12.20 stars 4 px apart each measured 0.7 mag brighter, in the zero point).
     Light curve plot: the mean magnitudes of the target and the check star (weighted) as dashed lines, with their
     catalogue V, and the target's points, mean, std and range plus the check star's std under the title (user-requested
     Oct 2026).

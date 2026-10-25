@@ -435,6 +435,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     if site and site[0] is not None and site[1] is not None:
         observer = EarthLocation(lat=float(site[0]) * u.deg, lon=float(site[1]) * u.deg, height=0 * u.m)
     instrument = {}
+    blended = None   # comparison stars with another star in their aperture (first image)
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -464,6 +465,20 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             skipped.append(f"{name}: {e}")
             continue
 
+        if blended is None:
+            # Left out: a comparison star with another catalogue star (or the
+            # target) within twice the aperture - both in its aperture, it is
+            # measured too bright (user's HD 216964 test, Oct 2026: comparisons
+            # 1 and 2, V 12.20, 4 px apart, each measured 0.7 mag brighter)
+            xy = np.array([wcs.world_to_pixel_values(st["ra"], st["dec"]) for st in [target] + comps], dtype=float)
+            blended = set()
+            for i in range(len(comps)):
+                others = np.delete(xy, i + 1, axis=0)
+                if (np.hypot(*(others - xy[i + 1]).T) < 2 * aperture_r).any():
+                    blended.add(i)
+            if blended:
+                skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
+                               f"another star within {2 * aperture_r} px, left out")
         t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=aperture_r)
         if t is None or t[2] <= 0:
             skipped.append(f"{name}: target not measured")
@@ -473,6 +488,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             continue
         measured = {}
         for i, st in enumerate(comps):
+            if i in blended:
+                continue
             m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=aperture_r)
             if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
                 measured[i] = m
