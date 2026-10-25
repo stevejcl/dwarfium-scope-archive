@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry: the target's name without SIMBAD's prefix ("V* DY Peg" -> "DY Peg", "* ", "NAME "), findcompstars
+    writing SIMBAD's identifier - the star was archived as _PHOTOMETRY/V_DY_Peg/, its sessions under another name not
+    put together (user's DY Peg test, Oct 2026).
     Check exposure (user's DY Peg test at full Moon in clouds, Oct 2026): the amplitude asked is VSX's by default (an
     eclipse depth or a pulsation's range - DY Peg 0.67 mag, 1.00 before for every star) with its type in the report;
     the Moon's phase and distance from the star, a warning when more than half lit within 60 degrees; a failed plate

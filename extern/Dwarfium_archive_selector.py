@@ -400,15 +400,23 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     return peak, background, flux, noise
 
 
+def simbad_name(name):
+    """A star's name without SIMBAD's prefix ("V* DY Peg" -> "DY Peg", "* bet
+    Per", "NAME Algol"): findcompstars writes SIMBAD's main identifier, so the
+    same star was archived as V_DY_Peg here and DY_Peg there (user's DY Peg
+    test, Oct 2026) - its sessions no longer put together."""
+    return re.sub(r"^(V\*|\*\*?|NAME)\s+", "", (name or "").strip())
+
+
 def read_compstars_csv(path):
     """The stars of a findcompstars CSV: list of dict (type, name, ra, dec,
-    mag), the target first."""
+    mag), the target first, its name without SIMBAD's prefix (simbad_name)."""
     stars = []
     with open(path, encoding="utf-8") as f:
         for row in csv.DictReader(line for line in f if line.strip() and not line.startswith("#")):
             row = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
             try:
-                stars.append({"type": row.get("type", ""), "name": row.get("name", ""),
+                stars.append({"type": row.get("type", ""), "name": simbad_name(row.get("name", "")),
                               "ra": float(row["ra"]), "dec": float(row["dec"]),
                               "mag": float(row["mag"]) if row.get("mag") else None})
             except (KeyError, ValueError):
