@@ -169,7 +169,9 @@ def _photometry_by_star(base: Path, log=None) -> int:
     _PHOTOMETRY/<star>/<session>/ (user-requested Oct 2026: a star's sessions
     side by side) - a session folder is one with a light_curve_<star>.csv in
     it. Each star's files (named after it) go to its folder, the others (the
-    run's build_sessions.log) to every star's. Returns the files moved."""
+    run's build_sessions.log) to every star's; a file already there is kept
+    when it is the newer (the session measured again since). Returns the
+    files moved."""
     import shutil
     if not base.is_dir():
         return 0
@@ -185,13 +187,13 @@ def _photometry_by_star(base: Path, log=None) -> int:
             for star in stars:
                 target = base / star / old.name
                 target.mkdir(parents=True, exist_ok=True)
-                for path in shared:
-                    shutil.copy2(path, target / path.name)
-                for path in own[star]:
-                    moved += _merge_move(path, target / path.name, log)
-            for path in shared:
-                path.unlink()
-            shutil.rmtree(old) if not any(old.iterdir()) else None
+                for path in shared + own[star]:
+                    dst = target / path.name
+                    if dst.exists() and dst.stat().st_mtime >= path.stat().st_mtime:
+                        continue   # measured again since: the newer kept
+                    shutil.copy2(path, dst)
+                    moved += path not in shared
+            shutil.rmtree(old)
         except OSError as e:
             if log:
                 log(f"⚠️ {old}: not moved ({e})")
