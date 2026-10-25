@@ -3,6 +3,16 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry: the target's name without SIMBAD's prefix ("V* DY Peg" -> "DY Peg", "* ", "NAME "), findcompstars
+    writing SIMBAD's identifier - the star was archived as _PHOTOMETRY/V_DY_Peg/, its sessions under another name not
+    put together (user's DY Peg test, Oct 2026).
+    Check exposure (user's DY Peg test at full Moon in clouds, Oct 2026): the amplitude asked is VSX's by default (an
+    eclipse depth or a pulsation's range - DY Peg 0.67 mag, 1.00 before for every star) with its type in the report;
+    the Moon's phase and distance from the star, a warning when more than half lit within 60 degrees; a failed plate
+    solve says why it likely failed (no or too few stars: clouds, mist, the focus) instead of Siril's "Generic error".
+    Photometry archive: a result file open in another program (Excel, an image viewer: WinError 32, user-reported Oct
+    2026) is named in the summary and left as it was, the others archived and the sessions still put together - it
+    stopped the archive, then said the session folder wasn't reachable.
     Photometry, a star's sessions put together across the backup drives (user-requested Oct 2026: one DWARF, one
     drive): siril_session.json "photometry_roots" lists every drive's Astronomy root, the sessions of the star found on
     the drives plugged in are combined (a session on two drives once, its newer copy), the result written in the star's
