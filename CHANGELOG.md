@@ -3,6 +3,12 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry, variability survey of the field (user-requested Oct 2026: the stars found in a session measured too):
+    every comparison star measured in each image from the zero point of the others (leave-one-out); a scatter twice
+    that of the stars within 0.5 mag and twice its own errors (chi2) makes it a candidate variable. stars_variability.csv
+    (coordinates, V, magnitude, scatter, chi2, ratio) and stars_variability.png (scatter against magnitude), the top 5
+    in the summary. On 60 frames built from a real DWARF 3 frame, a comparison star made variable (0.3 mag) is the
+    only candidate found.
     Dwarfium Archive Selector: build_sessions.log in Siril's working directory, each command written and flushed
     before it runs (user-reported Oct 2026: Siril closed on a 141-image photometry session, its log gone with it) -
     its last line is where it stopped. The photometry logs its progress every 10 images, moves the progress bar,

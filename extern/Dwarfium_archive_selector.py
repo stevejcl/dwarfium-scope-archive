@@ -405,7 +405,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     target, comps = stars[0], [st for st in stars[1:] if st["mag"] is not None]
     coord = SkyCoord(target["ra"] * u.deg, target["dec"] * u.deg)
     geocentre = EarthLocation.from_geocentric(0, 0, 0, unit=u.m)
-    rows, skipped, frames = [], [], []
+    rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
             progress(index - 1, len(files))
@@ -470,11 +470,16 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         if len(used) < 2:
             skipped.append(f"{name}: fewer than 2 comparison stars measured")
             continue
+        ids = list(used)
         zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
         weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
         keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
         zps, weights = zps[keep], weights[keep]
         zp = float(np.average(zps, weights=weights))
+        # Field survey: the zero point's terms kept, for each star's own
+        # magnitude from the others (field_variability())
+        zp_terms = {i: (z, w) for i, z, w in zip([i for i, k in zip(ids, keep) if k], zps, weights)}
+        frame_info.append((mid, measured, zp_terms, float(weights.sum()), float((zps * weights).sum())))
         zp_err = float(np.std(zps) / math.sqrt(len(zps)))
         mag = -2.5 * math.log10(t[2]) + zp
         err = math.hypot(1.0857 * t[3] / t[2], zp_err)
@@ -518,6 +523,10 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         if cmags.size:
             summary.append(f"  check star (comparison {comps[check]['name']}, V {comps[check]['mag']:.2f}): "
                            f"std {cmags.std():.3f}")
+    try:
+        summary += field_variability(comps, frame_info, os.path.dirname(out_csv) or ".", target)
+    except Exception as e:
+        summary.append(f"  field survey not done: {e}")
     if rows:
         png = os.path.splitext(out_csv)[0] + ".png"
         try:
@@ -528,6 +537,101 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             summary.append(f"  plot not drawn: {e}")
     summary += [f"  {line}" if line.startswith("HJD") else f"  skipped {line}" for line in skipped]
     return summary
+
+
+def field_variability(comps, frame_info, folder, target, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
+    """Variability survey of the field (user-requested Oct 2026: the stars
+    found in a session measured too): each comparison star's magnitude in
+    each image from the zero point of the others (leave-one-out), then its
+    scatter against that of the stars of similar brightness (median within
+    0.5 mag): a ratio of flag_ratio or more, and a scatter flag_chi2 times
+    its own errors (chi2) - a faint star's noise alone isn't one -, makes it a
+    candidate variable.
+    Known variables are not in findcompstars' list, the candidates are
+    uncatalogued ones (or a bad comparison star). Writes stars_variability.csv
+    and .png in folder; returns the summary lines."""
+    import math
+    import numpy as np
+    series = {}
+    for mid, measured, zp_terms, w_sum, wz_sum in frame_info:
+        for i, m in measured.items():
+            if m[2] <= 0:
+                continue
+            if i in zp_terms:   # the star itself left out of its zero point
+                z_i, w_i = zp_terms[i]
+                if w_sum - w_i <= 0:
+                    continue
+                zp = (wz_sum - z_i * w_i) / (w_sum - w_i)
+            else:
+                zp = wz_sum / w_sum
+            series.setdefault(i, []).append((-2.5 * math.log10(m[2]) + zp, 1.0857 * m[3] / m[2]))
+    stats = []
+    for i, values in series.items():
+        if len(values) < min_frames:
+            continue
+        mags = np.array([v[0] for v in values])
+        errs = np.array([v[1] for v in values])
+        stats.append({"i": i, "n": len(mags), "mag": float(np.median(mags)), "std": float(np.std(mags)),
+                      "err": float(np.median(errs)),
+                      "chi2": float(np.mean(((mags - mags.mean()) / np.maximum(errs, 1e-4)) ** 2))})
+    if len(stats) < 5:
+        return ["  field survey: fewer than 5 stars measured in enough images"]
+    for st in stats:   # the scatter expected at its brightness: the others'
+        similar = [o["std"] for o in stats if o is not st and abs(o["mag"] - st["mag"]) <= 0.5]
+        if len(similar) < 3:
+            similar = sorted((o for o in stats if o is not st), key=lambda o: abs(o["mag"] - st["mag"]))[:5]
+            similar = [o["std"] for o in similar]
+        st["ratio"] = st["std"] / max(float(np.median(similar)), 1e-4)
+    stats.sort(key=lambda st: st["ratio"], reverse=True)
+    for st in stats:
+        st["candidate"] = st["ratio"] >= flag_ratio and st["chi2"] >= flag_chi2
+
+    out_csv = os.path.join(folder, "stars_variability.csv")
+    with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([f"# Field of {target['name']}: comparison stars, each from the zero point of the others; "
+                         f"ratio = its scatter / the median scatter of stars within 0.5 mag"])
+        writer.writerow(["name", "ra", "dec", "V_catalogue", "n", "mag", "std", "median_err", "chi2", "ratio", "candidate"])
+        for st in stats:
+            c = comps[st["i"]]
+            writer.writerow([c["name"], f"{c['ra']:.6f}", f"{c['dec']:.6f}", c["mag"], st["n"], f"{st['mag']:.4f}",
+                             f"{st['std']:.4f}", f"{st['err']:.4f}", f"{st['chi2']:.2f}", f"{st['ratio']:.2f}",
+                             "yes" if st["candidate"] else ""])
+    candidates = [st for st in stats if st["candidate"]]
+    lines = [f"Field survey: {len(stats)} stars -> {out_csv}",
+             f"  {len(candidates)} candidate variable(s) (scatter {flag_ratio:g} x that of similar stars, chi2 >= {flag_chi2:g})"]
+    for st in candidates[:5]:
+        c = comps[st["i"]]
+        lines.append(f"    star {c['name']}: RA {c['ra']:.5f} Dec {c['dec']:+.5f}, V {c['mag']}, "
+                     f"std {st['std']:.3f} ({st['ratio']:.1f} x, chi2 {st['chi2']:.1f})")
+
+    png = os.path.join(folder, "stars_variability.png")
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9, 5.5), dpi=110)
+        mags = [st["mag"] for st in stats]
+        ax.scatter(mags, [st["std"] for st in stats], s=18, color="#1f5fbf", label="comparison stars")
+        ax.scatter([st["mag"] for st in candidates], [st["std"] for st in candidates], s=40, facecolors="none",
+                   edgecolors="#c03030", linewidths=1.5, label=f"candidates ({flag_ratio:g} x the scatter)")
+        for st in candidates[:10]:
+            ax.annotate(comps[st["i"]]["name"], (st["mag"], st["std"]), textcoords="offset points", xytext=(4, 4),
+                        fontsize=8, color="#c03030")
+        ax.scatter([st["mag"] for st in stats], [st["err"] for st in stats], s=8, color="#999999", marker="_",
+                   label="median error")
+        ax.set_xlabel("Magnitude (TG)")
+        ax.set_ylabel("Scatter over the session (mag)")
+        ax.set_title(f"Field of {target['name']} - scatter against magnitude")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=9)
+        fig.tight_layout()
+        fig.savefig(png)
+        plt.close(fig)
+        lines.append(f"  plot -> {png}")
+    except Exception as e:
+        lines.append(f"  survey plot not drawn: {e}")
+    return lines
 
 
 def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3):
