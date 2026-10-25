@@ -161,4 +161,41 @@ def migrate_results(root, log=None) -> int:
         moved += n
         if log:
             log(f"📁 {old.relative_to(root)} -> {new_name} ({n} file(s))")
+    return moved + _photometry_by_star(root / PHOTOMETRY_DIR, log)
+
+
+def _photometry_by_star(base: Path, log=None) -> int:
+    """_PHOTOMETRY/<session>/ (the Siril script before Oct 2026) moved to
+    _PHOTOMETRY/<star>/<session>/ (user-requested Oct 2026: a star's sessions
+    side by side) - a session folder is one with a light_curve_<star>.csv in
+    it. Each star's files (named after it) go to its folder, the others (the
+    run's build_sessions.log) to every star's. Returns the files moved."""
+    import shutil
+    if not base.is_dir():
+        return 0
+    moved = 0
+    for old in sorted(d for d in base.iterdir() if d.is_dir()):
+        stars = [p.stem[len("light_curve_"):] for p in old.glob("light_curve_*.csv")]
+        if not stars:
+            continue   # a star's folder already
+        files = [p for p in old.iterdir() if p.is_file()]
+        own = {star: [p for p in files if p.stem.endswith("_" + star)] for star in stars}
+        shared = [p for p in files if not any(p in paths for paths in own.values())]
+        try:
+            for star in stars:
+                target = base / star / old.name
+                target.mkdir(parents=True, exist_ok=True)
+                for path in shared:
+                    shutil.copy2(path, target / path.name)
+                for path in own[star]:
+                    moved += _merge_move(path, target / path.name, log)
+            for path in shared:
+                path.unlink()
+            shutil.rmtree(old) if not any(old.iterdir()) else None
+        except OSError as e:
+            if log:
+                log(f"⚠️ {old}: not moved ({e})")
+            continue
+        if log:
+            log(f"📁 {PHOTOMETRY_DIR}/{old.name} -> " + ", ".join(f"{PHOTOMETRY_DIR}/{s}/{old.name}" for s in stars))
     return moved
