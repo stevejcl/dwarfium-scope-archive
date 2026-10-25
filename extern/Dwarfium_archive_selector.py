@@ -291,6 +291,55 @@ def fits_data_max(path):
     return float(data.max()) + bzero if data.size else None
 
 
+def vsx_star(name, timeout=10):
+    """{"type", "max", "min", "amplitude"} of a variable star from AAVSO's VSX
+    (user-requested Oct 2026: the exposure check's amplitude was an eclipse
+    depth of 1 mag, DY Peg - a pulsating star - varies by about 0.6), None
+    when not found or offline. "amplitude" in the same band as max/min, None
+    when min is itself an amplitude ("(0.6)") or missing."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    url = ("https://www.aavso.org/vsx/index.php?view=api.object&format=json&ident="
+           + urllib.parse.quote(name))
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            obj = _json.loads(response.read().decode("utf-8", "replace")).get("VSXObject") or {}
+    except Exception:
+        return None
+    if not obj:
+        return None
+
+    def _mag(text):
+        m = re.match(r"\s*([\d.]+)", str(text or ""))
+        return float(m.group(1)) if m else None
+
+    max_mag, min_text = _mag(obj.get("MaxMag")), str(obj.get("MinMag") or "")
+    min_mag = None if min_text.strip().startswith("(") else _mag(min_text)
+    amplitude = (min_mag - max_mag) if max_mag is not None and min_mag is not None else None
+    if amplitude is None and min_text.strip().startswith("("):
+        amplitude = _mag(min_text.strip()[1:])   # "(0.6)": given as an amplitude
+    return {"type": obj.get("VariabilityType") or "", "max": max_mag, "min": min_mag,
+            "amplitude": amplitude if amplitude and amplitude > 0 else None}
+
+
+def moon_at(when_utc, ra, dec):
+    """(illuminated fraction 0-1, separation from ra/dec in degrees) of the
+    Moon at an astropy Time (geocentric: a degree off at most) - its light
+    raises the sky background (user's DY Peg test at full Moon, Oct 2026)."""
+    import math
+    import warnings
+    from astropy.coordinates import SkyCoord, get_body
+    import astropy.units as u
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        moon = get_body("moon", when_utc)
+        sun = get_body("sun", when_utc)
+        elongation = sun.separation(moon).rad
+        separation = moon.separation(SkyCoord(ra * u.deg, dec * u.deg)).deg
+    return (1 - math.cos(elongation)) / 2, float(separation)
+
+
 def measure_star(data, wcs, ra, dec, **kwargs):
     """(peak, background, S/N) of the star at ra/dec, None when not found -
     see _star_measure()."""
@@ -2993,8 +3042,8 @@ class PreprocessingInterface(QMainWindow):
         comparison stars from findcompstars, Siril's PSF of the stars found.
         Reports the star's peak against the 12-bit saturation level, its S/N,
         the comparison stars saturated, the longest exposure at that gain
-        (the signal is proportional to the exposure) and the S/N at the
-        minimum for a given eclipse depth."""
+        (the signal is proportional to the exposure), the S/N at the faintest
+        for its amplitude (VSX's by default) and the Moon."""
         files, _ = QFileDialog.getOpenFileNames(
             self, "Test frames of the variable star", "",
             "FITS files (*.fits *.fit *.fts);;All files (*.*)",
@@ -3012,8 +3061,16 @@ class PreprocessingInterface(QMainWindow):
         star = " ".join(star.split())
         if not ok or not star:
             return
+        # Its amplitude from VSX when known (an eclipse depth or a pulsation's range)
+        vsx = vsx_star(star)
+        default = round(vsx["amplitude"], 2) if vsx and vsx["amplitude"] else 1.0
+        known = (f"VSX: {vsx['type']}, {vsx['max']:g} - {vsx['min']:g} mag\n" if vsx and vsx["amplitude"]
+                 and vsx["max"] is not None and vsx["min"] is not None else
+                 (f"VSX: {vsx['type']}\n" if vsx else "Not found in VSX (offline?)\n"))
         depth, ok = QInputDialog.getDouble(
-            self, "Check exposure", "Eclipse depth (mag), for the S/N at the minimum:", 1.0, 0.0, 5.0, 2,
+            self, "Check exposure",
+            known + "Amplitude (mag) - eclipse depth or range of the variation - for the S/N at the faintest:",
+            default, 0.0, 5.0, 2,
         )
         if not ok:
             return
@@ -3021,8 +3078,11 @@ class PreprocessingInterface(QMainWindow):
         work = os.path.join(self.current_working_directory, "exposure_check")
         os.makedirs(work, exist_ok=True)
         margin_level = 0.8 * _DWARF_12BIT_PHOT_MAX
-        report = [f"Exposure check — {star} — eclipse depth {depth:.2f} mag",
-                  f"Saturation level {_DWARF_12BIT_PHOT_MAX} ADU (12-bit data), longest exposure for a peak at 80 % of it", ""]
+        kind = f" ({vsx['type']})" if vsx and vsx.get("type") else ""
+        report = [f"Exposure check — {star}{kind} — amplitude {depth:.2f} mag",
+                  f"Saturation level {_DWARF_12BIT_PHOT_MAX} ADU (12-bit data), longest exposure for a peak at 80 % of it"]
+        report += self._moon_lines(first)
+        report.append("")
         self.exposure_btn.setDisabled(True)
         longest_by_frame = []
         try:
@@ -3054,6 +3114,21 @@ class PreprocessingInterface(QMainWindow):
                 self.siril.log(line, LogColor.BLUE)
         QMessageBox.information(self, "Check exposure", text + f"\n\nSaved in {work}")
 
+    @staticmethod
+    def _moon_lines(cards):
+        """The Moon at the first frame (its DATE-OBS, the DWARF's local time:
+        an hour or two off, no matter here) seen from the target in its header."""
+        try:
+            from astropy.time import Time
+            when = Time(str(cards["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
+            lit, sep = moon_at(when, float(cards["RA"]), float(cards["DEC"]))
+        except Exception:
+            return []
+        line = f"Moon: {100 * lit:.0f} % lit, {sep:.0f}° from the star"
+        if lit > 0.5 and sep < 60:
+            line += " - a brighter sky: more noise; longer exposures, or a night without it"
+        return [line]
+
     def _check_exposure_frame(self, path, star, depth, work, margin_level):
         """(report lines, longest exposure in s or None) of one test frame (see
         check_exposure())."""
@@ -3078,6 +3153,8 @@ class PreprocessingInterface(QMainWindow):
             # The plate solved green image, measured with astropy (measure_star)
             self.siril.cmd("save", "solved_" + base)
         except (s.SirilError, OSError) as e:
+            if "platesolve" in str(e):   # Siril's "Generic error": no or too few stars found
+                return [title, "  plate solve failed: no stars or too few found - clouds, mist, the focus?"], None
             return [title, f"  failed: {e}"], None
         solved = next((os.path.join(work, f) for f in sorted(os.listdir(work))
                        if os.path.splitext(f)[0] == "solved_" + base), None)
@@ -3142,7 +3219,7 @@ class PreprocessingInterface(QMainWindow):
                              " raise the gain for more signal")
             else:
                 lines.append(f"  longest exposure at this gain: {longest:.0f} s")
-        lines.append(f"  S/N at the minimum (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
+        lines.append(f"  S/N at the faintest (-{depth:.2f} mag): about {snr * 10 ** (-0.4 * depth):.0f}")
         comp_peaks = [m for m in (_measure(ra, dec) for ra, dec in comps) if m]
         saturated = sum(1 for m in comp_peaks if m[0] >= _DWARF_12BIT_PHOT_MAX)
         lines.append(f"  comparison stars: {len(comps)} listed, {len(comp_peaks)} measured, {saturated} saturated")

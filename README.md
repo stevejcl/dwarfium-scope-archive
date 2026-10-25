@@ -398,7 +398,8 @@ Python the first time). The time of minimum (and O–C) is then measured from th
 
 Before the session, take a few test frames of the variable star (at one or
 several exposures / gains) and give them to **🔆 Check exposure** with the
-star's name and the eclipse depth. For each frame, on its green channel and
+star's name and its amplitude (VSX's by default: an eclipse depth or the
+range of a pulsating star). For each frame, on its green channel and
 after a plate solve, the script finds the star and its comparison stars
 (`findcompstars`) and reports:
 
@@ -406,8 +407,13 @@ after a plate solve, the script finds the star and its comparison stars
   background and S/N;
 - the longest exposure at that gain, for a peak at 80 % of the saturation
   level (the signal is proportional to the exposure);
-- the S/N at the minimum for the eclipse depth given;
-- how many comparison stars are saturated.
+- the S/N at the faintest for that amplitude;
+- how many comparison stars are saturated;
+- the Moon's phase and distance from the star, with a warning when it is more
+  than half lit within 60° (a brighter sky, more noise).
+
+A frame whose plate solve fails had no or too few stars (clouds, mist, the
+focus).
 
 The report is shown, logged and saved in `exposure_check/exposure_check.txt`
 in the Siril working folder. The measurement reads the plate solved image with
