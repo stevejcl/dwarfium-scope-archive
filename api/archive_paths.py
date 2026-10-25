@@ -70,8 +70,22 @@ def astronomy_root(session_dir) -> Path:
 # analyses (api/dwarf_backup_fct.py's scans) and moved to the root by
 # migrate_results()
 RESULT_DIRS = ("FIXED_FOREGROUND", "PHOTOMETRY", "MOSAIC_WCS")
-# Levels below the root searched for them (root/sub/RESTACKED/<here>)
-_MIGRATE_DEPTH = 4
+
+
+def _is_session(folder: Path) -> bool:
+    """A session's folder: a Dwarf's shotsInfo.json or stacked image in it
+    (process_dwarf_folder's), or a mosaic's."""
+    if "_MOSAIC_" in folder.name:
+        return True
+    try:
+        for entry in os.scandir(folder):
+            name = entry.name.lower()
+            if entry.is_file() and (name == "shotsinfo.json" or (
+                    "stacked" in name and name.endswith((".jpg", ".jpeg", ".png", ".fits", ".fit")))):
+                return True
+    except OSError:
+        pass
+    return False
 
 
 def _merge_move(src: Path, dst: Path, log=None) -> int:
@@ -115,14 +129,14 @@ def migrate_results(root, log=None) -> int:
     found = []
     for dirpath, dirnames, _ in os.walk(root):
         here = Path(dirpath)
-        if len(here.relative_to(root).parts) >= _MIGRATE_DEPTH:
-            dirnames[:] = []   # they were next to session folders: not inside them
-            continue
         for name in list(dirnames):
             if name in RESULT_DIRS:
                 dirnames.remove(name)   # not walked into
                 if here != root:
                     found.append(here / name)
+        # A branch ends at its session (sessions hold no sub-level of
+        # sessions, user-stated): the results were next to it, not inside
+        dirnames[:] = [name for name in dirnames if not _is_session(here / name)]
     moved = 0
     for old in found:
         try:
