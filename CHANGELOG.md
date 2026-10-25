@@ -3,6 +3,7 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry, sessions put together: the drives not plugged in named in one line (a user's database knew 10).
     Prepare for Siril (one session and Megastack): the frames the Dwarf rejected (failed_*.fits) left out of the
     lights (user-asked Oct 2026), as the frame counts, the foreground repair and the mosaics do.
     Photometry: the target's name without SIMBAD's prefix ("V* DY Peg" -> "DY Peg", "* ", "NAME "), findcompstars

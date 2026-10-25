@@ -943,7 +943,9 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
 
     summary = [f"Sessions of {star.replace('_', ' ')} put together: {len(sessions)} from {len(star_dirs)} drive(s) "
                f"-> {out_csv}"]
-    summary += [f"  drive not reachable, its sessions not counted: {root}" for root in unreachable]
+    if unreachable:   # one line: a user's database knew 10 drives, most unplugged (Oct 2026)
+        summary.append(f"  {len(unreachable)} drive(s) not plugged in, their sessions not counted: "
+                       + ", ".join(unreachable))
     for s in sessions:
         mags = np.array([p[1] for p in s["points"]]) - s["offset"]
         summary.append(f"  {_label(s)}: {len(mags)} points, mean {mags.mean():.3f}, "
