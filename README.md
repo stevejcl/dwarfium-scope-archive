@@ -351,6 +351,13 @@ run with **🚀 Build Sessions**:
    target's magnitude, left out of the zero point) is measured too, and
    `light_curve_<sequence>.png` plots both against HJD, with means of 3 points
    beyond 15 images.
+6. a variability survey of the field: every comparison star measured in each
+   image from the zero point of the others; one whose scatter is twice that of
+   the stars of similar brightness, and twice its own errors, is a candidate
+   variable — `stars_variability.csv` (coordinates, magnitude, scatter) and
+   `stars_variability.png` (scatter against magnitude). Known variables are not
+   in `findcompstars`' list: the candidates are uncatalogued ones, or a bad
+   comparison star.
 
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the
