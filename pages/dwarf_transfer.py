@@ -17,6 +17,7 @@ from api.dwarf_backup_fct_sftp import asyncssh_sftp_session, async_sftp_upload, 
 from api.dwarf_backup_fct import safe_copy2, scan_backup_folder, win_long_path, sync_dwarf_sessions, create_local_dwarf_dir, get_local_dwarf_dir, without_frame_trash
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from api.archive_paths import RESULT_DIRS
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
 
@@ -1175,7 +1176,7 @@ class TransferApp:
             # ── Pre-count top-level dirs for both scan roots ──────────────────
             # Gives a stable grand_total before any scan starts so the progress
             # bar is accurate even when the two scans run sequentially.
-            _skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed"}
+            _skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed", *RESULT_DIRS}
 
             def _count_scan_dirs(root, astro_sub=""):
                 """Count eligible top-level directories in a scan root."""

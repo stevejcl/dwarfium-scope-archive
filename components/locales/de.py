@@ -780,7 +780,7 @@ TRANSLATIONS: dict[str, str] = {
     "wcs_mosaic_steps":             "Steps",  # TODO
     "wcs_mosaic_busy":              "A mosaic is already being assembled: wait for it to end.",  # TODO
     "milky_way_mode":               "Milky Way",  # TODO
-    "milky_way_desc":               "Tiles of a mosaic (Astro Dwarf Session's Milky Way planner: MW Tile R1C1, R1C2...) assembled by astrometry. Result in a MOSAIC_WCS folder next to the sessions.",  # TODO
+    "milky_way_desc":               "Tiles of a mosaic (Astro Dwarf Session's Milky Way planner: MW Tile R1C1, R1C2...) assembled by astrometry. Result in a MOSAIC_WCS folder at the root of the archive (the level of RESTACKED).",  # TODO
     "wcs_mosaic_found":             "Mosaics found on this backup drive",  # TODO
     "wcs_mosaic_add_folder":        "Choose a folder...",  # TODO
     "wcs_mosaic_group":             "{name} - {date} - {n} tile(s)",  # TODO

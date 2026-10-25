@@ -5,9 +5,11 @@ session folder (user-requested Oct 2026: two copies of a session in different
 sub-folders of a backup then share the same results, and a result built from
 several sessions has one place).
 
-Used for FIXED_FOREGROUND (api/foreground_fix.py) and PHOTOMETRY
+Used for FIXED_FOREGROUND (api/foreground_fix.py), PHOTOMETRY
 (api/photometry_results.py; the Siril script gets the root in
-siril_session.json's "astronomy_root")."""
+siril_session.json's "astronomy_root") and MOSAIC_WCS (components/wcs_mosaic.py).
+api/dwarf_backup_fct.py has none: get_basefolder_from_db_path() gives the
+drive's location, get_effective_parent() a folder name only."""
 from __future__ import annotations
 
 import os
@@ -62,3 +64,74 @@ def astronomy_root(session_dir) -> Path:
     if parent.name.upper() in _SESSION_GROUPS:
         parent = parent.parent
     return parent
+
+
+# The results' folders at an archive's root - never sessions: left out of the
+# analyses (api/dwarf_backup_fct.py's scans) and moved to the root by
+# migrate_results()
+RESULT_DIRS = ("FIXED_FOREGROUND", "PHOTOMETRY", "MOSAIC_WCS")
+# Levels below the root searched for them (root/sub/RESTACKED/<here>)
+_MIGRATE_DEPTH = 4
+
+
+def _merge_move(src: Path, dst: Path, log=None) -> int:
+    """src moved to dst, merged into it when dst exists: a file already there
+    with the same size is the same one (src's removed), a different one keeps
+    src's under a _1, _2... name. Returns the number of files moved."""
+    import shutil
+    if not dst.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dst))
+        return sum(1 for _ in dst.rglob("*") if _.is_file()) if dst.is_dir() else 1
+    if src.is_dir() and dst.is_dir():
+        moved = sum(_merge_move(child, dst / child.name, log) for child in list(src.iterdir()))
+        try:
+            src.rmdir()
+        except OSError:
+            pass
+        return moved
+    if src.is_file() and dst.is_file() and src.stat().st_size == dst.stat().st_size:
+        src.unlink()
+        return 0
+    n = 1
+    while (dst.parent / f"{dst.stem}_{n}{dst.suffix}").exists():
+        n += 1
+    target = dst.parent / f"{dst.stem}_{n}{dst.suffix}"
+    shutil.move(str(src), str(target))
+    if log:
+        log(f"  {dst.name} already at the root and different: kept as {target.name}")
+    return 1
+
+
+def migrate_results(root, log=None) -> int:
+    """FIXED_FOREGROUND, PHOTOMETRY and MOSAIC_WCS folders found below `root`
+    (where they were made next to the sessions before Oct 2026) moved to
+    `root`, merged with those already there (user-requested Oct 2026, run by
+    the "Analyze all" page before each folder's analysis). Returns the number
+    of files moved; log(text) is told each folder moved."""
+    root = Path(root)
+    if not root.is_dir():
+        return 0
+    found = []
+    for dirpath, dirnames, _ in os.walk(root):
+        here = Path(dirpath)
+        if len(here.relative_to(root).parts) >= _MIGRATE_DEPTH:
+            dirnames[:] = []   # they were next to session folders: not inside them
+            continue
+        for name in list(dirnames):
+            if name in RESULT_DIRS:
+                dirnames.remove(name)   # not walked into
+                if here != root:
+                    found.append(here / name)
+    moved = 0
+    for old in found:
+        try:
+            n = _merge_move(old, root / old.name, log)
+        except OSError as e:
+            if log:
+                log(f"⚠️ {old}: not moved ({e})")
+            continue
+        moved += n
+        if log:
+            log(f"📁 {old.relative_to(root)} -> {old.name} ({n} file(s))")
+    return moved

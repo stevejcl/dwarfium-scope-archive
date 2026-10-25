@@ -31,6 +31,7 @@ from astropy.io.fits import VerifyError
 import astropy.units as u
 
 from api.dso_catalog_files import CATALOG_FILE, load_catalog_entries, latest_mtime
+from api.archive_paths import RESULT_DIRS
 SKY_CATALOG_FILE = os.path.join("db","dso_sky_search_catalog.json")
 UNKNOWN = "unknown"
 MOSAIC_UNKNOWN = "mosaic_unknown"
@@ -1801,7 +1802,7 @@ def sync_dwarf_sessions(dwarf_id, source_root, local_root="./Dwarf_Local", sessi
     os.makedirs(archive_dir, exist_ok=True)
     safe_print(f"source_root: {source_root}")
 
-    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS"}
+    excluded_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS", *RESULT_DIRS}
     session_dirs = [
         d for d in os.listdir(source_root) 
         if os.path.isdir(os.path.join(source_root, d)) and d not in excluded_dirs
@@ -1979,7 +1980,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     deleted = 0
 
     # Pre-count eligible top-level dirs so callers can show a progress bar
-    skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed"}
+    skip_dirs = {"Archive", "CALI_FRAME", "DWARF_DARK", "Solving_Failed", *RESULT_DIRS}
     all_astro_dirs = [
         d for d in os.listdir(data_root)
         if d not in skip_dirs and os.path.isdir(os.path.join(data_root, d))

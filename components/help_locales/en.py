@@ -70,6 +70,10 @@ matches the files again.
   (+ new sessions, - entries removed) and the log follows the analyses.
 - The log is also written to a file, `logs/analyze_all_<date>.log` in the application's folder (the
   last 20 kept), each line with its time: **{t:analyze_all_open_log}** opens it, for a close look.
+- Before each analysis, the `FIXED_FOREGROUND`, `PHOTOMETRY` and `MOSAIC_WCS` folders made next to the
+  sessions by earlier versions are moved to the root of the folder analyzed (the level of `RESTACKED`),
+  merged with those already there (the same file twice kept once, a different one renamed `_1`); each
+  move is in the log.
 ''',
     },
     '/RecommendTonight': {
@@ -732,7 +736,7 @@ takes the FITS of a folder (its own, and the stacked FITS of its subfolders). Un
   read it); then refit on the bright stars with the lens distortion;
 - the foreground (roof, trees) is left out, each tile's brightness and colour levelled to its neighbours, and
   in the overlaps the tile seen nearer its centre wins (sharper stars);
-- the result, in a `MOSAIC_WCS` folder next to the sessions: a linear FITS with its WCS - to process in Siril
+- the result, in a `MOSAIC_WCS` folder at the root of the archive (the backup's Astronomy folder, the level of `RESTACKED`): a linear FITS with its WCS - to process in Siril
   (background extraction, photometric colour calibration, stretch) - a stretched preview, and the sky alone,
   stretched, as a 16-bit TIFF with the foreground transparent (`_sky.tif`): laid over a foreground shot (a
   panorama at blue hour, for instance) in Affinity Photo, Photoshop or GIMP, without cutting it out by hand.

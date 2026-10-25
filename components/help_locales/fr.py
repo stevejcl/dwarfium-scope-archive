@@ -71,6 +71,10 @@ nouveau aux fichiers.
 - Le journal est aussi écrit dans un fichier, `logs/analyze_all_<date>.log` dans le dossier de
   l'application (les 20 derniers gardés), avec l'heure de chaque ligne : **{t:analyze_all_open_log}**
   l'ouvre, pour une analyse fine.
+- Avant chaque analyse, les dossiers `FIXED_FOREGROUND`, `PHOTOMETRY` et `MOSAIC_WCS` créés à côté des
+  sessions par les versions précédentes sont déplacés à la racine du dossier analysé (au niveau de
+  `RESTACKED`), fusionnés avec ceux déjà présents (un même fichier gardé une fois, un différent renommé
+  `_1`) ; chaque déplacement est dans le journal.
 ''',
     },
     '/RecommendTonight': {
@@ -739,7 +743,7 @@ empilés de ses sous-dossiers). Décochez les tuiles à écarter, puis **{t:wcs_
   brillantes avec la distorsion de l'objectif ;
 - l'avant-plan (toit, arbres) est écarté, la luminosité et la couleur de chaque tuile accordées à ses
   voisines, et dans les recouvrements la tuile vue plus près de son centre l'emporte (étoiles plus fines) ;
-- le résultat, dans un dossier `MOSAIC_WCS` à côté des sessions : un FITS linéaire avec son WCS - à traiter
+- le résultat, dans un dossier `MOSAIC_WCS` à la racine de l'archive (le dossier Astronomy du backup, au niveau de `RESTACKED`) : un FITS linéaire avec son WCS - à traiter
   dans Siril (extraction du fond, calibration photométrique des couleurs, étirement) - un aperçu étiré, et le
   ciel seul, étiré, en TIFF 16 bits avec le décor transparent (`_sky.tif`) : à poser sur une photo du décor (un
   panorama à l'heure bleue par exemple) dans Affinity Photo, Photoshop ou GIMP, sans détourage à la main.

@@ -368,6 +368,9 @@ field survey and the comparison stars of each star measured
 `comparison_stars_<star>.csv`), with the `.ssf` script and
 `build_sessions.log`. In **Explore**, the session then has a **Photometry** tab
 showing them (a click on a plot opens it, the CSV and the folder in one click).
+`FIXED_FOREGROUND` and `MOSAIC_WCS` are at the root too; **Analyze all** moves
+the ones earlier versions made next to the sessions there first (merged, each
+move logged).
 
 The DWARF writes `DATE-OBS` as the **end** of the exposure (its FITS comment
 says so) while Siril takes it as the start: the script moves it back by the

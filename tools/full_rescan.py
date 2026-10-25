@@ -22,6 +22,8 @@ from datetime import datetime
 
 from api.dwarf_backup_db_api import get_backupDrive_list, get_dwarf_Names
 from api.dwarf_backup_fct import get_local_dwarf_dir, scan_backup_folder
+from api.dwarf_backup_fct import print_log
+from api.archive_paths import migrate_results
 
 DWARF, BACKUP = "dwarf", "backup"
 
@@ -64,6 +66,14 @@ def list_targets(conn) -> list[Target]:
 def analyze(db_name: str, target: Target, log=None, progress_callback=None) -> tuple[int, int]:
     """Blocking. (sessions found, entries removed) - as the Dwarf / Backup
     pages' analyses."""
+    # Results made next to the sessions before Oct 2026 moved to the root
+    # first (user-requested: api/archive_paths.py's migrate_results)
+    try:
+        moved = migrate_results(target.path, log=lambda text: print_log(text, log))
+        if moved:
+            print_log(f"📁 {moved} result file(s) moved to {target.path}", log)
+    except Exception as e:
+        print_log(f"⚠️ results not moved: {e}", log)
     if target.kind == DWARF:
         result = scan_backup_folder(db_name, target.path, None, target.dwarf_id, None, None,
                                     log, progress_callback)

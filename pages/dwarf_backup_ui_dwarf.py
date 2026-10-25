@@ -35,6 +35,7 @@ from components.batched_log import BatchedLog
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
 from components.action_icon import ActionIcon
+from api.archive_paths import RESULT_DIRS
 
 
 @ui.page('/Dwarf')
@@ -851,7 +852,7 @@ class ConfigApp(DbPageMixin):
                 ui.notify(t("starting_sync"))
 
                 # ── Shared progress state: sync sessions + scan dirs ──────────
-                _skip_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS"}
+                _skip_dirs = {"Archive", "CALI_FRAME", "Solving_Failed", "DWARF_DARK", "RESTACKED", "STARTRAILS", *RESULT_DIRS}
 
                 def _count_sessions(root):
                     """Count top-level session dirs (excluding special folders)."""
