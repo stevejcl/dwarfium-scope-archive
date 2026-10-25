@@ -257,7 +257,10 @@ _DWARF_12BIT_MAX = 4095
 # Longest exposure a model allows, when shorter than what the star could take
 # (user-reported Oct 2026: 15 s at most on a DWARF II)
 _MAX_EXPOSURE_BY_TELESCOP = {"DWARFII": 15.0}
-_DWARF_12BIT_PHOT_MAX = 3700
+# Not linear well before 4095: on the user's HD 216964 session (Oct 2026) the
+# target came out 0.04 mag fainter with its peak at 3300 - 3700 ADU than
+# under 3000 (3700 before)
+_DWARF_12BIT_PHOT_MAX = 3300
 
 
 def fits_data_max(path):

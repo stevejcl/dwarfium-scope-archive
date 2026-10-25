@@ -383,7 +383,7 @@ exposure time in the copied lights, so the times are the middle of each
 exposure. The DWARF also writes its **local time** there, not UTC: the
 script asks for its UTC offset (this PC's at the session's date by default,
 daylight saving included) and converts the times to UTC. Their data is 12-bit (saturated at 4095) in a 16-bit file: stars
-above 3700 ADU are left out.
+above 3300 ADU are left out (the sensor isn't linear above it).
 Requires Siril **1.4.0+** (`findcompstars`), Internet (the star's
 name, the APASS catalogue), astropy and matplotlib (installed in Siril's
 Python the first time). The time of minimum (and O–C) is then measured from the CSV.
@@ -396,7 +396,7 @@ star's name and the eclipse depth. For each frame, on its green channel and
 after a plate solve, the script finds the star and its comparison stars
 (`findcompstars`) and reports:
 
-- the star's peak against the saturation level (3700 ADU: 12-bit data), its
+- the star's peak against the saturation level (3300 ADU: 12-bit data, not linear above), its
   background and S/N;
 - the longest exposure at that gain, for a peak at 80 % of the saturation
   level (the signal is proportional to the exposure);

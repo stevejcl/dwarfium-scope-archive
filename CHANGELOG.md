@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry: saturation level of the DWARF's 12-bit data 3300 ADU instead of 3700 (user's HD 216964 test, Oct
+    2026: the target 0.04 mag fainter with its peak at 3300 - 3700 ADU than under 3000 - not linear). Also the level
+    of the exposure check.
     Photometry: a comparison star with another catalogue star (or the target) within twice the aperture is left out
     (user's HD 216964 test, Oct 2026: two V 12.20 stars 4 px apart each measured 0.7 mag brighter, in the zero point).
     Light curve plot: the mean magnitudes of the target and the check star (weighted) as dashed lines, with their
