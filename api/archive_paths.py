@@ -73,9 +73,12 @@ RESULT_DIRS = ("FIXED_FOREGROUND", "PHOTOMETRY", "MOSAIC_WCS")
 
 
 def _is_session(folder: Path) -> bool:
-    """A session's folder: a Dwarf's shotsInfo.json or stacked image in it
-    (process_dwarf_folder's), or a mosaic's."""
-    if "_MOSAIC_" in folder.name:
+    """A session's folder, as the analysis sees it (api/dwarf_backup_fct.py's
+    scan_backup_folder / check_dir_session): named DWARF_RAW_..., a mosaic's,
+    or with a Dwarf's shotsInfo.json or stacked image in it. Above sessions
+    any number of plain folders (Summer_sky/Galaxies/<sessions>)."""
+    from api.dwarf_backup_fct import extract_astro_name_from_folder
+    if "_MOSAIC_" in folder.name or extract_astro_name_from_folder(folder.name):
         return True
     try:
         for entry in os.scandir(folder):
