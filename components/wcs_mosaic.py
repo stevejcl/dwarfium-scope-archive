@@ -8,7 +8,7 @@ The panel lists the mosaics found on the selected backup drive - its
 sessions named alike (same prefix, R<row>C<col>), grouped by night - or
 the FITS of a folder the user chooses; the tiles ticked are assembled by
 api/mosaic_wcs.py (plate solved when their header has no WCS) into a
-linear FITS and a preview, in a MOSAIC_WCS folder at the root of the archive.
+linear FITS and a preview, in a _WCS_MOSAIC folder at the root of the archive.
 Explore's button on a tile's session opens it on that tile's mosaic.
 
 An assembly belongs to the app, not to the page (user-asked Oct 2026: it
@@ -36,7 +36,7 @@ from components.i18n import t
 
 TILE_RE = re.compile(r"^(?P<prefix>.*?)[\s_-]*R(?P<row>\d+)[\s_-]*C(?P<col>\d+)(?:\b|_|$)", re.IGNORECASE)
 NIGHT_HOURS = 18            # a gap longer than this between tiles: another night
-OUTPUT_DIR = "MOSAIC_WCS"
+from api.archive_paths import WCS_MOSAIC_DIR as OUTPUT_DIR
 FITS_GLOBS = ("*.fits", "*.fit", "*.fts")
 
 
@@ -185,7 +185,7 @@ def open_file(path):
 
 
 def default_output(tiles) -> str:
-    """MOSAIC_WCS/<prefix>_<date>.fits at the root of the first tile's archive
+    """_WCS_MOSAIC/<prefix>_<date>.fits at the root of the first tile's archive
     (api/archive_paths.py, the level of RESTACKED - user-requested Oct 2026:
     was next to its session)."""
     from api.archive_paths import astronomy_root
@@ -400,7 +400,7 @@ class MilkyWayPanel:
         self.shown_version = job["version"]
 
     def _open_output_folder(self):
-        """The output's folder (MOSAIC_WCS) in the system's file manager."""
+        """The output's folder (_WCS_MOSAIC) in the system's file manager."""
         folder = Path((self.output.value or "").strip()).parent
         if not str(folder) or str(folder) == "." or not folder.is_dir():
             ui.notify(t("wcs_mosaic_folder_missing", path=str(folder)), color="warning")

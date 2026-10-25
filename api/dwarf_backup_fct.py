@@ -1708,7 +1708,7 @@ def check_dir_session (root, dirs, files, session_dir_main_dir, session_dir):
     parts = os.path.normpath(root).replace("\\", "/").split("/")
     if FRAME_TRASH_DIR in parts:
         return False
-    # Nor the results' folders (FIXED_FOREGROUND, PHOTOMETRY/<session>, MOSAIC_WCS)
+    # Nor the results' folders (_FIXED_FOREGROUND, _PHOTOMETRY/<session>, _WCS_MOSAIC, old names)
     if any(part in RESULT_DIRS for part in parts[-2:]):
         return False
     dirs = without_frame_trash(dirs)

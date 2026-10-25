@@ -3809,7 +3809,7 @@ class ExploreApp(DbPageMixin):
 
     def _show_fixed_tab(self, session_dir="", select=False):
         """The "Fixed" tab: the session's repaired foreground's preview, when it
-        was repaired (FIXED_FOREGROUND at the archive's root, or next to the
+        was repaired (_FIXED_FOREGROUND at the archive's root, or next to the
         session for older repairs), hidden otherwise."""
         import base64
         session_dir = self.selected_path if session_dir == "" else session_dir
@@ -3833,7 +3833,7 @@ class ExploreApp(DbPageMixin):
 
     def _show_photometry_tab(self, session_dir=""):
         """The "Photometry" tab: the session's light curves and field surveys,
-        as the Siril script archived them (PHOTOMETRY at the archive's root,
+        as the Siril script archived them (_PHOTOMETRY at the archive's root,
         api/photometry_results.py), hidden when there are none."""
         import base64
         session_dir = self.selected_path if session_dir == "" else session_dir

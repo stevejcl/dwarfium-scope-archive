@@ -5,9 +5,11 @@ session folder (user-requested Oct 2026: two copies of a session in different
 sub-folders of a backup then share the same results, and a result built from
 several sessions has one place).
 
-Used for FIXED_FOREGROUND (api/foreground_fix.py), PHOTOMETRY
+Used for _FIXED_FOREGROUND (api/foreground_fix.py), _PHOTOMETRY
 (api/photometry_results.py; the Siril script gets the root in
-siril_session.json's "astronomy_root") and MOSAIC_WCS (components/wcs_mosaic.py).
+siril_session.json's "astronomy_root") and _WCS_MOSAIC (components/wcs_mosaic.py)
+- named with a leading _ so as not to meet a user's folder (user-requested),
+and _WCS_MOSAIC rather than _MOSAIC_WCS: "_MOSAIC_" makes a mosaic session.
 api/dwarf_backup_fct.py has none: get_basefolder_from_db_path() gives the
 drive's location, get_effective_parent() a folder name only."""
 from __future__ import annotations
@@ -66,10 +68,16 @@ def astronomy_root(session_dir) -> Path:
     return parent
 
 
-# The results' folders at an archive's root - never sessions: left out of the
-# analyses (api/dwarf_backup_fct.py's scans) and moved to the root by
-# migrate_results()
-RESULT_DIRS = ("FIXED_FOREGROUND", "PHOTOMETRY", "MOSAIC_WCS")
+# The results' folders at an archive's root
+FIXED_FOREGROUND_DIR = "_FIXED_FOREGROUND"
+PHOTOMETRY_DIR = "_PHOTOMETRY"
+WCS_MOSAIC_DIR = "_WCS_MOSAIC"
+# Their names before Oct 2026 (next to the sessions), renamed by migrate_results()
+LEGACY_RESULT_DIRS = {"FIXED_FOREGROUND": FIXED_FOREGROUND_DIR, "PHOTOMETRY": PHOTOMETRY_DIR,
+                      "MOSAIC_WCS": WCS_MOSAIC_DIR}
+# Never sessions: left out of the analyses (api/dwarf_backup_fct.py's scans),
+# session moves and transfers
+RESULT_DIRS = (FIXED_FOREGROUND_DIR, PHOTOMETRY_DIR, WCS_MOSAIC_DIR, *LEGACY_RESULT_DIRS)
 
 
 def _is_session(folder: Path) -> bool:
@@ -122,8 +130,9 @@ def _merge_move(src: Path, dst: Path, log=None) -> int:
 
 def migrate_results(root, log=None) -> int:
     """FIXED_FOREGROUND, PHOTOMETRY and MOSAIC_WCS folders found below `root`
-    (where they were made next to the sessions before Oct 2026) moved to
-    `root`, merged with those already there (user-requested Oct 2026, run by
+    (where they were made next to the sessions before Oct 2026), or at it,
+    moved to `root` under their new names (_FIXED_FOREGROUND, _PHOTOMETRY,
+    _WCS_MOSAIC), merged with those already there (user-requested Oct 2026, run by
     the "Analyze all" page before each folder's analysis). Returns the number
     of files moved; log(text) is told each folder moved."""
     root = Path(root)
@@ -135,7 +144,7 @@ def migrate_results(root, log=None) -> int:
         for name in list(dirnames):
             if name in RESULT_DIRS:
                 dirnames.remove(name)   # not walked into
-                if here != root:
+                if here != root or name in LEGACY_RESULT_DIRS:
                     found.append(here / name)
         # A branch ends at its session (sessions hold no sub-level of
         # sessions, user-stated): the results were next to it, not inside
@@ -143,12 +152,13 @@ def migrate_results(root, log=None) -> int:
     moved = 0
     for old in found:
         try:
-            n = _merge_move(old, root / old.name, log)
+            new_name = LEGACY_RESULT_DIRS.get(old.name, old.name)
+            n = _merge_move(old, root / new_name, log)
         except OSError as e:
             if log:
                 log(f"⚠️ {old}: not moved ({e})")
             continue
         moved += n
         if log:
-            log(f"📁 {old.relative_to(root)} -> {old.name} ({n} file(s))")
+            log(f"📁 {old.relative_to(root)} -> {new_name} ({n} file(s))")
     return moved

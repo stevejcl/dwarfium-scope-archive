@@ -3,17 +3,18 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
-    FIXED_FOREGROUND, PHOTOMETRY and MOSAIC_WCS at the root of the archive - the backup's Astronomy folder (BackupDrive location +
+    _FIXED_FOREGROUND, _PHOTOMETRY and _WCS_MOSAIC (were FIXED_FOREGROUND, PHOTOMETRY, MOSAIC_WCS: a leading _ not to
+    meet a user's folder, not _MOSAIC_WCS - "_MOSAIC_" makes a mosaic session) at the root of the archive - the backup's Astronomy folder (BackupDrive location +
     astronomy_dir), the level of RESTACKED - instead of next to the session (user-requested Oct 2026: two copies of a
     session in different sub-folders then share the same results, and a result from several sessions has one place).
     Found from the session's path (api/archive_paths.py: the backup whose Astronomy folder holds it, else its parent -
     the grandparent under RESTACKED / STARTRAILS / Archive); siril_session.json gives it to the Siril script
-    ("astronomy_root"). Analyze all moves the ones made before next to the sessions to the root first, merged with
+    ("astronomy_root"). Analyze all moves the ones made before next to the sessions (old names) to the root first, renamed, merged with
     those there (same file once, a different one kept as _1; each move logged; api/archive_paths.migrate_results);
     the analyses and session moves skip these folders.
     Explore, "Photometry" tab (user-requested Oct 2026: the light curve kept with the session in the archive): the
-    Siril script's photometry results are archived in PHOTOMETRY/<session folder>/ at the root of the archive, as
-    FIXED_FOREGROUND - light_curve_<star>.csv/.png, stars_variability_<star>.csv/.png, comparison_stars_<star>.csv,
+    Siril script's photometry results are archived in _PHOTOMETRY/<session folder>/ at the root of the archive, as
+    _FIXED_FOREGROUND - light_curve_<star>.csv/.png, stars_variability_<star>.csv/.png, comparison_stars_<star>.csv,
     the .ssf script and build_sessions.log, several stars of one session side by side. The session's Photometry tab
     shows the plots (a click opens one in the system's viewer), opens the CSV and the folder; hidden when the session
     has none (api/photometry_results.py).

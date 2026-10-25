@@ -71,7 +71,8 @@ matches the files again.
 - The log is also written to a file, `logs/analyze_all_<date>.log` in the application's folder (the
   last 20 kept), each line with its time: **{t:analyze_all_open_log}** opens it, for a close look.
 - Before each analysis, the `FIXED_FOREGROUND`, `PHOTOMETRY` and `MOSAIC_WCS` folders made next to the
-  sessions by earlier versions are moved to the root of the folder analyzed (the level of `RESTACKED`),
+  sessions by earlier versions are moved to the root of the folder analyzed (the level of `RESTACKED`) as
+  `_FIXED_FOREGROUND`, `_PHOTOMETRY` and `_WCS_MOSAIC`,
   merged with those already there (the same file twice kept once, a different one renamed `_1`); each
   move is in the log.
 ''',
@@ -362,7 +363,7 @@ The actions are shown as icons: hover one for its name (on a phone or tablet, th
 - **{t:megastack_title_short}** (Dwarf mode) — see below
 - **{t:frames_title}** — see below
 - **{t:wcs_mosaic_btn}** (Backup mode, a mosaic tile's session) — the Mosaic page's **{t:milky_way_mode}** tab on that tile's mosaic
-- **{t:fg_fix_btn}** (Backup mode, a wide session shot before DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, raw frames kept) — the smeared foreground fixed: from the raw frames, the sky stacked on the stars without the foreground (the ground turns 15° an hour against the sky), the foreground stacked on itself, both blended, whatever the tracking (each frame's turn - field rotation, polar alignment - in its registration). Into `FIXED_FOREGROUND` at the root of the archive (the backup's Astronomy folder, the level of `RESTACKED`): a FITS, a preview, the sky alone and the foreground alone as 16-bit TIFFs with transparency (Affinity, Photoshop, GIMP). About 1-2 minutes; it goes on if the dialog is closed or the page left, every page is told when it ends
+- **{t:fg_fix_btn}** (Backup mode, a wide session shot before DWARF 3 V1.5.3.9 / DWARF mini V1.1.4.4, raw frames kept) — the smeared foreground fixed: from the raw frames, the sky stacked on the stars without the foreground (the ground turns 15° an hour against the sky), the foreground stacked on itself, both blended, whatever the tracking (each frame's turn - field rotation, polar alignment - in its registration). Into `_FIXED_FOREGROUND` at the root of the archive (the backup's Astronomy folder, the level of `RESTACKED`): a FITS, a preview, the sky alone and the foreground alone as 16-bit TIFFs with transparency (Affinity, Photoshop, GIMP). About 1-2 minutes; it goes on if the dialog is closed or the page left, every page is told when it ends
   Once fixed, the session shows an **{t:explore_tab_fixed}** tab next to **{t:explore_tab_image}**: the fixed preview - a click opens it in your image viewer -, and the folder with the fixed FITS selected
 - Under the details, the line saying the session is also on the Dwarf (Backup mode) or on a backup drive
   (Dwarf mode): **{t:explore_view_copy}** opens it there in Explore
@@ -736,12 +737,12 @@ takes the FITS of a folder (its own, and the stacked FITS of its subfolders). Un
   read it); then refit on the bright stars with the lens distortion;
 - the foreground (roof, trees) is left out, each tile's brightness and colour levelled to its neighbours, and
   in the overlaps the tile seen nearer its centre wins (sharper stars);
-- the result, in a `MOSAIC_WCS` folder at the root of the archive (the backup's Astronomy folder, the level of `RESTACKED`): a linear FITS with its WCS - to process in Siril
+- the result, in a `_WCS_MOSAIC` folder at the root of the archive (the backup's Astronomy folder, the level of `RESTACKED`): a linear FITS with its WCS - to process in Siril
   (background extraction, photometric colour calibration, stretch) - a stretched preview, and the sky alone,
   stretched, as a 16-bit TIFF with the foreground transparent (`_sky.tif`): laid over a foreground shot (a
   panorama at blue hour, for instance) in Affinity Photo, Photoshop or GIMP, without cutting it out by hand.
 
-**{t:wcs_mosaic_open_folder}** (next to the output, and with the result) opens the `MOSAIC_WCS` folder.
+**{t:wcs_mosaic_open_folder}** (next to the output, and with the result) opens the `_WCS_MOSAIC` folder.
 Parts of the sky no tile covers stay black. About 2 minutes and 1 GB of memory for 5 tiles.
 The assembly carries on if you go to another page: back on the tab, a banner shows it running (time, current
 step) above its steps (plate solving, catalogue stars, sky kept, levelling...), then its result; every open page is

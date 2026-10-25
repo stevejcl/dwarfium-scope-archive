@@ -637,16 +637,16 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
 
 # Where the photometry's results are archived with the session (user-requested
 # Oct 2026: shown in Dwarfium Scope Archive's Explore, kept with the archive):
-# PHOTOMETRY/<session folder>/ at the root of the archive - the backup's
+# _PHOTOMETRY/<session folder>/ at the root of the archive - the backup's
 # Astronomy folder, the level of RESTACKED, given by Scope Archive in
 # siril_session.json ("astronomy_root") - the same convention as its
 # api/photometry_results.py and api/archive_paths.py
-PHOTOMETRY_DIR = "PHOTOMETRY"
+PHOTOMETRY_DIR = "_PHOTOMETRY"   # api/archive_paths.py's
 
 
 def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root=""):
     """The light curve, the field survey and the comparison stars copied from
-    the process folder to PHOTOMETRY/<session folder>/ at the archive's root
+    the process folder to _PHOTOMETRY/<session folder>/ at the archive's root
     (`root`; without it, the session's parent folder - its grandparent when
     that is RESTACKED, STARTRAILS or Archive, as Scope Archive's
     astronomy_root()), named after the target (several stars of one session
@@ -2967,7 +2967,7 @@ class PreprocessingInterface(QMainWindow):
             "# mid-exposure in JD, HJD and BJD"
             + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
             f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
-            "# Results then archived at the archive's root: PHOTOMETRY/<session folder>/",
+            "# Results then archived at the archive's root: _PHOTOMETRY/<session folder>/",
             f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
             f"|{data.get('astronomy_root') or ''}",
             "",
