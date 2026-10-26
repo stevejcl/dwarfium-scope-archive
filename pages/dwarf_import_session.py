@@ -77,7 +77,7 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
     try:
         rows = conn.execute(
             """
-            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir, dd.file_path
+            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir, dd.file_path, be.id
             FROM BackupEntry be JOIN BackupDrive bd ON bd.id = be.backup_drive_id
             LEFT JOIN DwarfData dd ON dd.id = be.dwarf_data_id
             WHERE be.dwarf_id = ? AND (be.session_dir = ? OR be.session_dir LIKE ? OR be.session_dir LIKE ?)
@@ -90,7 +90,7 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
         close_db(conn)
     out = []
     seen = {}
-    for drive_id, name, location, astro_dir, session_dir, file_path in rows:
+    for drive_id, name, location, astro_dir, session_dir, file_path, entry_id in rows:
         # session_dir is the folder's name only: the session may sit in a
         # subfolder of the drive (user-reported Oct 2026: "folder not found
         # on the drive" for a session in a target's folder) - its stacked
@@ -101,13 +101,15 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
             folders.insert(0, os.path.dirname(os.path.join(location or "", file_path)))
         present = bool(location) and any(os.path.isdir(f) for f in folders)
         if drive_id in seen:
-            seen[drive_id]["present"] = seen[drive_id]["present"] or present
+            if present and not seen[drive_id]["present"]:
+                seen[drive_id].update(present=True, entry_id=entry_id)
             continue
         seen[drive_id] = {
             "drive_id": drive_id,
             "name": name or location or "?",
             "location": location or "",
             "present": present,
+            "entry_id": entry_id,
         }
         out.append(seen[drive_id])
     return out
@@ -238,8 +240,10 @@ async def import_session_page(DwarfId: int = None, session: str = None, DwarfIp:
             with ui.row().classes("gap-2 mt-1"):
                 ui.button(
                     t("import_session_see_backups"),
-                    on_click=lambda: ui.navigate.to(
-                        f"/Explore/?DwarfId={DwarfId}&BackupDriveId={backups[0]['drive_id']}"
+                    # The session selected (user-reported Oct 2026: the
+                    # Explorer opened without it) - on a drive holding it
+                    on_click=lambda b=next((b for b in backups if b["present"]), backups[0]): ui.navigate.to(
+                        f"/Explore/?BackupDriveId={b['drive_id']}&SessionId={b['entry_id']}&mode=backup"
                     ),
                 ).props("flat color=primary")
 
