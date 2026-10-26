@@ -2865,6 +2865,14 @@ class PreprocessingInterface(QMainWindow):
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
                 # Python-side plate solve, image by image: # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
+                if line.startswith("# PYTHON_CLEANUP"):
+                    # A step's intermediate files deleted once the next one is made
+                    folder, prefix = line[len("# PYTHON_CLEANUP"):].strip().split("|")
+                    self._build_log(line)
+                    removed, size, failed = self._remove_sequence_files(folder, prefix)
+                    self._build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
+                                    + (f", {failed} still in use" if failed else ""))
+                    continue
                 if line.startswith("# PYTHON_PLATESOLVE"):
                     self._build_log(line)
                     folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
@@ -3049,6 +3057,35 @@ class PreprocessingInterface(QMainWindow):
             # The next step (findcompstars) needs a plate solved image loaded
             self.siril.cmd("load", first_solved)
         return solved > 0
+
+    def _remove_sequence_files(self, folder, prefix):
+        """The images of the sequence `prefix` (prefix + number .fit/.fits/.fz;
+        a link only removes the link) deleted from folder, its .seq kept -
+        after the next step used them (Naztronomy's clean_up, user-shared Oct
+        2026: 509 images took about 40 GB). Siril's sequence closed first, a
+        file still held tried again. (removed, bytes freed, failed)."""
+        import time
+        try:
+            self.siril.cmd("close")
+        except s.SirilError:
+            pass
+        pattern = re.compile(re.escape(prefix) + r"\d+\.(fit|fits|fts)(\.fz)?$", re.IGNORECASE)
+        removed = size = failed = 0
+        for name in os.listdir(folder):
+            if not pattern.match(name):
+                continue
+            path = os.path.join(folder, name)
+            for attempt in range(3):
+                try:
+                    freed = 0 if os.path.islink(path) else os.path.getsize(path)
+                    os.remove(path)
+                    removed, size = removed + 1, size + freed
+                    break
+                except OSError:
+                    time.sleep(0.3)
+            else:
+                failed += 1
+        return removed, size, failed
 
     def _siril_cmd(self, *args):
         """self.siril.cmd(*args) in a background thread, this window kept alive
@@ -3398,7 +3435,10 @@ class PreprocessingInterface(QMainWindow):
             "",
             "# Convert light frames",
             "cd lights",
-            "convert light -out=../process",
+            # link, not convert: the lights not copied once more (Naztronomy's
+            # Smart Telescope script, user-shared Oct 2026: 509 images took
+            # about 40 GB) - Siril copies when it can't link
+            "link light -out=../process",
             "cd ..",
             "",
         ]
@@ -3419,15 +3459,18 @@ class PreprocessingInterface(QMainWindow):
             lines += [
                 "# Dark calibration, kept as CFA",
                 "calibrate light -dark=master_dark -cc=dark -cfa",
+                f"# PYTHON_CLEANUP {proc}|light_",
                 "",
                 "# Green channel of the CFA images (AAVSO TG band)",
                 "seqextract_Green pp_light",
+                f"# PYTHON_CLEANUP {proc}|pp_light_",
                 "",
             ]
         else:
             lines += [
                 "# No dark found: green channel of the raw CFA images (AAVSO TG band)",
                 "seqextract_Green light",
+                f"# PYTHON_CLEANUP {proc}|light_",
                 "",
             ]
         # One image after the other from Python (# PYTHON_PLATESOLVE), not

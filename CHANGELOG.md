@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry script, long sessions (after Naztronomy's Smart Telescope script, user-shared Oct 2026: 509 images
+    took about 40 GB): the lights linked (Siril's link) instead of converted - not copied once more -, and each step's
+    intermediate images deleted once the next one is made (light_ after the calibration, pp_light_ after the green
+    channel; their .seq kept) - only the green images left, the space freed in build_sessions.log.
     Analyze: a drive (or a Dwarf's local copy) read through with no session left has its entries removed from the
     database (user-reported Oct 2026: the only session of a test drive deleted, it stayed in the database, the analysis
     ending with "False" - nothing was removed when none was found); and a session's data kept while the Dwarf's copy
