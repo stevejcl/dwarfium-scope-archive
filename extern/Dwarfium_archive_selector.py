@@ -2841,6 +2841,17 @@ class PreprocessingInterface(QMainWindow):
                 line = raw_line.strip()
                 if not line:
                     continue
+                # A sequence's images deleted once the next step made its own:
+                # # PYTHON_CLEANUP_SEQ <folder>|<prefix> - before PYTHON_CLEANUP
+                # (paths / globs, the stacking scripts'), which took these lines
+                # and found nothing (user's 509-image run, Oct 2026)
+                if line.startswith("# PYTHON_CLEANUP_SEQ"):
+                    folder, prefix = line[len("# PYTHON_CLEANUP_SEQ"):].strip().split("|")
+                    self._build_log(line)
+                    removed, size, failed = self._remove_sequence_files(folder, prefix)
+                    self._build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
+                                    + (f", {failed} still in use" if failed else ""))
+                    continue
                 # Python-side cleanup: # PYTHON_CLEANUP <path_or_glob>
                 # Executed by Python (not sent to Siril) to free disk space
                 # as processing progresses. Supports glob patterns (*) and
@@ -2865,14 +2876,6 @@ class PreprocessingInterface(QMainWindow):
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
                 # Python-side plate solve, image by image: # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
-                if line.startswith("# PYTHON_CLEANUP"):
-                    # A step's intermediate files deleted once the next one is made
-                    folder, prefix = line[len("# PYTHON_CLEANUP"):].strip().split("|")
-                    self._build_log(line)
-                    removed, size, failed = self._remove_sequence_files(folder, prefix)
-                    self._build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
-                                    + (f", {failed} still in use" if failed else ""))
-                    continue
                 if line.startswith("# PYTHON_PLATESOLVE"):
                     self._build_log(line)
                     folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
@@ -3459,18 +3462,18 @@ class PreprocessingInterface(QMainWindow):
             lines += [
                 "# Dark calibration, kept as CFA",
                 "calibrate light -dark=master_dark -cc=dark -cfa",
-                f"# PYTHON_CLEANUP {proc}|light_",
+                f"# PYTHON_CLEANUP_SEQ {proc}|light_",
                 "",
                 "# Green channel of the CFA images (AAVSO TG band)",
                 "seqextract_Green pp_light",
-                f"# PYTHON_CLEANUP {proc}|pp_light_",
+                f"# PYTHON_CLEANUP_SEQ {proc}|pp_light_",
                 "",
             ]
         else:
             lines += [
                 "# No dark found: green channel of the raw CFA images (AAVSO TG band)",
                 "seqextract_Green light",
-                f"# PYTHON_CLEANUP {proc}|light_",
+                f"# PYTHON_CLEANUP_SEQ {proc}|light_",
                 "",
             ]
         # One image after the other from Python (# PYTHON_PLATESOLVE), not

@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry script: its intermediate images now really deleted - its cleanup lines were taken by the stacking
+    scripts' PYTHON_CLEANUP (paths, globs), which found nothing to delete (user's 509-image run, Oct 2026); now
+    PYTHON_CLEANUP_SEQ, handled first.
     Backup drive given to another Dwarf: its sessions (backup and manual entries) move with it (user-reported Oct 2026:
     they stayed on the first Dwarf, an analysis only adding new ones) - one the new Dwarf already had merged into it,
     how many said; the "still in use" messages of a drive's deletion translated.
