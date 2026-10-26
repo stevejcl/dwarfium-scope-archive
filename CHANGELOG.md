@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Load Dwarfium JSON, photometry: with the session's lights and the green images of an earlier run already in the
+    working directory (a run stopped at image 95 of 509, Oct 2026), it offers to resume without copying again - the
+    copy deleted process/ first, so the plate solve couldn't be resumed.
     Siril script: an unexpected Python error no longer kills it - PyQt6's default (qFatal) closed it without a word
     (user-reported Oct 2026: a 509-image run stopped at image 95, Windows reporting python.exe / Qt6Core.dll, c0000409
     code 7); now written to Siril's log, build_sessions.log and a message. The plate solve loop leaves out an image on

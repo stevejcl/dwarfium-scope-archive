@@ -1869,19 +1869,51 @@ class PreprocessingInterface(QMainWindow):
             f"  lights/  darks/  bias/  flat/"
         )
 
-        reply = QMessageBox.question(
-            self, "Load Dwarfium Session", msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Yes,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+        # An earlier photometry run of this session stopped (user-reported Oct
+        # 2026: at image 95 of 509): its lights and green images kept, the
+        # script made again - the copy would delete process/ first
+        if self.photometry_checkbox.isChecked() and self._earlier_photometry_run(len(lights)):
+            box = QMessageBox(self)
+            box.setWindowTitle("Load Dwarfium Session")
+            box.setText(msg + "\n\nThe working directory already holds these lights and the green images of an "
+                        "earlier photometry run (process/). Resume it, without copying again?")
+            resume_btn = box.addButton("Resume (keep the files)", QMessageBox.ButtonRole.AcceptRole)
+            copy_btn = box.addButton("Copy again", QMessageBox.ButtonRole.DestructiveRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(resume_btn)
+            box.exec()
+            if box.clickedButton() is resume_btn:
+                self._copy_from_json_done(0)
+                return
+            if box.clickedButton() is not copy_btn:
+                return
+        else:
+            reply = QMessageBox.question(
+                self, "Load Dwarfium Session", msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
         self._start_copy_from_json(
             lights, darks, bias_dir, flat_dir,
             bias_file=data.get("bias_file"),
             flat_file=data.get("flat_file"),
         )
+
+    def _earlier_photometry_run(self, n_lights):
+        """The working directory holds the lights of a session (at least
+        n_lights) and as many green images in process/ - a photometry run to
+        resume (_generate_photometry_script then offers the plate solve)."""
+        cwd = self.current_working_directory
+        lights_dir, proc = os.path.join(cwd, "lights"), os.path.join(cwd, "process")
+        if not n_lights or not os.path.isdir(lights_dir) or not os.path.isdir(proc):
+            return False
+        fits_ext = (".fit", ".fits", ".fts")
+        here = sum(1 for f in os.listdir(lights_dir) if f.lower().endswith(fits_ext))
+        green = sum(1 for f in os.listdir(proc) if f.startswith("Green_") and f.lower().endswith(fits_ext))
+        return here >= n_lights and green >= n_lights
 
     def _start_copy_from_json(self, lights, darks, bias_dir, flat_dir, bias_file=None, flat_file=None):
         """Copy lights, darks, bias and flat into Siril working directories."""
