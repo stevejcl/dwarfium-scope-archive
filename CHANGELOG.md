@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Backup drive given to another Dwarf: its sessions (backup and manual entries) move with it (user-reported Oct 2026:
+    they stayed on the first Dwarf, an analysis only adding new ones) - one the new Dwarf already had merged into it,
+    how many said; the "still in use" messages of a drive's deletion translated.
     Photometry script, long sessions (after Naztronomy's Smart Telescope script, user-shared Oct 2026: 509 images
     took about 40 GB): the lights linked (Siril's link) instead of converted - not copied once more -, and each step's
     intermediate images deleted once the next one is made (light_ after the calibration, pp_light_ after the green

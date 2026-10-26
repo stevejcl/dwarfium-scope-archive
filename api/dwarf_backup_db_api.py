@@ -337,9 +337,49 @@ def get_backupDrive_list_dwarfId(conn: sqlite3.Connection, dwarf_id = None):
         print(f"[DB ERROR] Failed to fetch backupDrive list dwarfId: {e}")
         return []
 
+def reassign_backup_drive_dwarf(conn: sqlite3.Connection, location, dwarf_id) -> int:
+    """The sessions of the drive at `location` (backup and manual entries)
+    moved to the drive's new Dwarf (user-reported Oct 2026: a drive given to
+    another Dwarf kept its sessions on the first one - an analysis only adds
+    the new ones). Returns how many moved; 0 when the Dwarf is unchanged."""
+    if not location or not dwarf_id:
+        return 0
+    try:
+        row = conn.execute("SELECT id, dwarf_id FROM BackupDrive WHERE location = ?", (location,)).fetchone()
+        if not row:
+            return 0
+        drive_id = row[0]
+        cursor = conn.cursor()
+        # OR IGNORE: a session already there for the new Dwarf is kept as it is
+        cursor.execute("UPDATE OR IGNORE BackupEntry SET dwarf_id = ? WHERE backup_drive_id = ? AND dwarf_id IS NOT ?",
+                       (dwarf_id, drive_id, dwarf_id))
+        moved = cursor.rowcount
+        # Left behind: a session the new Dwarf already had - the old copy merged
+        # into it (its manual entries pointed at the one kept, then removed)
+        twins = cursor.execute("""
+            SELECT old.id, new.id FROM BackupEntry old JOIN BackupEntry new
+              ON new.backup_drive_id = old.backup_drive_id AND new.dwarf_data_id = old.dwarf_data_id
+             AND new.dwarf_id = ?
+            WHERE old.backup_drive_id = ? AND old.dwarf_id IS NOT ?
+        """, (dwarf_id, drive_id, dwarf_id)).fetchall()
+        for old_id, new_id in twins:
+            cursor.execute("UPDATE ManualSessionEntry SET backup_entry_id = ? WHERE backup_entry_id = ?", (new_id, old_id))
+            cursor.execute("DELETE FROM BackupEntry WHERE id = ?", (old_id,))
+        moved += len(twins)
+        cursor.execute("UPDATE OR IGNORE ManualSessionEntry SET dwarf_id = ? "
+                       "WHERE backup_drive_id = ? AND dwarf_id IS NOT ?", (dwarf_id, drive_id, dwarf_id))
+        moved += cursor.rowcount
+        commit_db(conn)
+        return max(moved, 0)
+    except Exception as e:
+        print(f"[DB ERROR] Failed to move the sessions of {location} to Dwarf {dwarf_id}: {e}")
+        return 0
+
+
 def set_backupDrive_detail(conn: sqlite3.Connection, name, desc, astroDir, dwarf_id, location=None):
     try:
         if location:
+            reassign_backup_drive_dwarf(conn, location, dwarf_id)   # its sessions follow its Dwarf
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE BackupDrive SET name=?, description=?, astronomy_dir=?, dwarf_id=? WHERE location=?

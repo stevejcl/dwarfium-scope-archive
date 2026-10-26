@@ -346,6 +346,9 @@ TRANSLATIONS: dict[str, str] = {
     "drive_in_use_backup":          "This Backup Drive is still in use by one or more backup entries. Please delete them first.",  # TODO
     "drive_in_use_manual":          "This Backup Drive is still in use by one or more manual entries. Please delete them first.",  # TODO
     "backup_info_updated":          "BackupDrive info updated",  # TODO
+    "backup_drive_used_manual":     "Dieses Sicherungslaufwerk wird noch von manuellen Sitzungen verwendet: zuerst entfernen.",
+    "backup_drive_used_entries":    "Dieses Sicherungslaufwerk hat noch Sitzungen in der Datenbank: zuerst seine Einträge löschen, dann das Laufwerk.",
+    "backup_sessions_moved":        "{count} Sitzung(en) dieses Laufwerks seinem neuen Dwarf zugeordnet.",
     "no_backup_drive_sel":          "No backup drive selected.",  # TODO
     "dest_already_exists":          "The destination:\n'{dest_path}' already exists.\nAre you sure you want to continue?",  # TODO
     "notify_dest_already_exists":   "The destination: '{dest_path}' already exists!",  # TODO

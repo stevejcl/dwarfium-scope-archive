@@ -11,7 +11,7 @@ from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_fct import scan_backup_folder, insert_or_get_backup_drive, list_error_integrity  
 
 from api.dwarf_backup_db_api import get_dwarf_Names, get_sessions_backup
-from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
+from api.dwarf_backup_db_api import get_backupDrive_detail, set_backupDrive_detail, reassign_backup_drive_dwarf, get_backupDrive_list, get_backupDrive_id_from_location, add_backupDrive_detail, del_backupDrive
 from api.dwarf_backup_db_api import get_session_present_in_backupDrive
 from api.dwarf_backup_db_api import has_related_backup_entries, has_related_manual_entries, delete_backup_entries_and_dwarf_data, delete_manual_entries
 from tools.quality_scan import get_sessions_to_score, score_entry_ids
@@ -405,9 +405,13 @@ class ConfigApp(DbPageMixin):
         astroDir = self.backupDrive_astroDir.value or ""
         dwarf_id = self.get_selected_dwarf_id()
 
+        # Its sessions moved to its new Dwarf first: said how many
+        moved = reassign_backup_drive_dwarf(self.conn, location, dwarf_id)
         set_backupDrive_detail(self.conn, name, desc, astroDir, dwarf_id, location)
         self.refresh_backupDrive_list()
         ui.notify(t("backup_info_updated"), type="positive")
+        if moved:
+            ui.notify(t("backup_sessions_moved", count=moved), type="info")
 
     def save_backup_drive(self):
         name = self.backupDrive_name.value
@@ -444,9 +448,13 @@ class ConfigApp(DbPageMixin):
             ui.notify(t("no_backup_drive_loc"), type="negative")
             return
 
+        # Its sessions moved to its new Dwarf first: said how many
+        moved = reassign_backup_drive_dwarf(self.conn, location, dwarf_id)
         set_backupDrive_detail(self.conn, name, desc, astroDir, dwarf_id, location)
         self.refresh_backupDrive_list()
         ui.notify(t("backup_info_updated"), type="positive")
+        if moved:
+            ui.notify(t("backup_sessions_moved", count=moved), type="info")
 
     async def analyze_drive(self):
         location = self.backupDrive_location.value
@@ -617,13 +625,13 @@ class ConfigApp(DbPageMixin):
 
         if has_related_manual_entries(self.conn, self.backupDrive_id):
             ui.notify(
-                "This Backup Drive is still in use by one or more manual entries. Please remove them first.",
+                t("backup_drive_used_manual"),
                 type="negative")
             return
 
         if has_related_backup_entries(self.conn, self.backupDrive_id):
             ui.notify(
-                "This Backup Drive is still in use by one or more backup entries. Please remove them first.",
+                t("backup_drive_used_entries"),
                 type="negative")
             return
 
