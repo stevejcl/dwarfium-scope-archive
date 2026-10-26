@@ -2975,7 +2975,7 @@ class PreprocessingInterface(QMainWindow):
                                 self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
-                # Python-side plate solve, image by image: # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
+                # Python-side plate solve (the sequence, then image by image): # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
                 if line.startswith("# PYTHON_PLATESOLVE"):
                     self._build_log(line)
                     folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
@@ -3142,6 +3142,20 @@ class PreprocessingInterface(QMainWindow):
             if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
         )
         solved, failed, first_solved = 0, [], None
+        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+        # The whole sequence first, by Siril itself (user-tested Oct 2026: 509
+        # images in 1 min 41 s, none failed - image by image took half an
+        # hour, and Siril's window crashed at the 177th, redrawing each
+        # image). It writes the solution in each image's header, read below:
+        # what it left unsolved is then tried image by image.
+        try:
+            self._build_log(f"seqplatesolve {seq_name} {' '.join(solve_args)}")
+            self._siril_cmd("seqplatesolve", seq_name, *solve_args)
+        except s.SirilError as e:
+            if _siril_gone(e):
+                raise SirilGone("Plate solve of the sequence stopped.") from e
+            self._build_log(f"  seqplatesolve: {e} - image by image")
+            self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
         self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
         skipped = errors_in_a_row = 0
         for index, frame in enumerate(frames, 1):
@@ -3626,10 +3640,10 @@ class PreprocessingInterface(QMainWindow):
             start = lines.index("# Convert light frames")
             lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
                                      "cd process", ""]
-        # One image after the other from Python (# PYTHON_PLATESOLVE), not
-        # seqplatesolve: on a 141-image session the script's window stayed
-        # frozen through its minutes, the session looked stopped (user-
-        # reported Oct 2026) - now its progress is shown between images.
+        # From Python (# PYTHON_PLATESOLVE): seqplatesolve first, run by
+        # _siril_cmd - the script's window kept alive, the time shown (it
+        # stayed frozen through its minutes on a 141-image session, user-
+        # reported Oct 2026) -, then image by image what it left unsolved.
         # -noflip: each image saved as it is, its solution with it
         solve_args = ["-noflip"] + dwarf_platesolve_args(lights[0])
         # A session without a target (manual pointing: "Unknown", RA = DEC = 0

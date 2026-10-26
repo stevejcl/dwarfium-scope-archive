@@ -263,6 +263,9 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Siril script, photometry: the plate solve of the whole sequence by Siril (seqplatesolve - user-tested Oct 2026:
+    509 images in 1 min 41 s, none failed; image by image took half an hour and crashed Siril's window at the 177th),
+    then image by image only what it left unsolved. The script's window kept alive meanwhile, the time shown.
     Siril script, Siril gone (closed, or crashed - user-reported Oct 2026: Siril with its window, a GTK/pixman drawing
     error at image 177 of a 509-image plate solve): said so - where the plate solve stopped, the files kept, how to
     resume (Siril started again, Load Dwarfium JSON, "Resume (keep the files)", Build Sessions) - instead of
