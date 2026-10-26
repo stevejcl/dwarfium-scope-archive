@@ -3166,6 +3166,11 @@ class PreprocessingInterface(QMainWindow):
                 first_solved = first_solved or base
                 errors_in_a_row = 0
             except s.SirilError as e:
+                if _siril_gone(e):
+                    self._build_log(f"platesolve: Siril gone at image {index} / {len(frames)} "
+                                    f"({solved} solved so far)")
+                    raise SirilGone(f"Plate solve stopped at image {index} / {len(frames)}, "
+                                    f"{solved} solved so far.") from e
                 failed.append(frame)
                 self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
             except Exception as e:   # not Siril's: an image left out, not the whole run
@@ -4075,6 +4080,30 @@ class PreprocessingInterface(QMainWindow):
         self.target_listbox.addItems(self.target_list)
 
 
+class SirilGone(Exception):
+    """Siril closed the connection - closed, or crashed (user-reported Oct
+    2026: Siril with its window gone at image 175 of a 509-image plate
+    solve). Nothing more can be done from this script."""
+
+
+def _siril_gone(error) -> bool:
+    """error, or one of its causes, is Siril's connection lost."""
+    while error is not None:
+        if isinstance(error, (SirilGone, s.SirilConnectionError)):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
+SIRIL_GONE_TEXT = (
+    "Siril closed the connection: Siril was closed, or crashed.\n\n"
+    "{where}The files made so far are kept. To pick up from there:\n"
+    "1. close this window and start Siril again (long series: as last time, Siril started from the terminal),\n"
+    "2. run this script, Load Dwarfium JSON, \"Resume (keep the files)\",\n"
+    "3. Build Sessions: the images already plate solved are skipped.\n\n"
+    "Details in build_sessions.log.")
+
+
 def _install_excepthook(window):
     """An unhandled Python error in a button's handler written to Siril's
     log, build_sessions.log and a message, instead of PyQt6's default: qFatal,
@@ -4096,9 +4125,13 @@ def _install_excepthook(window):
         except Exception:
             pass
         try:
-            QMessageBox.critical(window, "Dwarfium Archive Selector",
-                                 f"Unexpected error - the script goes on:\n\n{kind.__name__}: {value}\n\n"
-                                 "Details in Siril's log and build_sessions.log.")
+            if _siril_gone(value):
+                QMessageBox.critical(window, "Dwarfium Archive Selector",
+                                     SIRIL_GONE_TEXT.format(where=f"{value}\n\n" if isinstance(value, SirilGone) else ""))
+            else:
+                QMessageBox.critical(window, "Dwarfium Archive Selector",
+                                     f"Unexpected error - the script goes on:\n\n{kind.__name__}: {value}\n\n"
+                                     "Details in Siril's log and build_sessions.log.")
         except Exception:
             pass
 
