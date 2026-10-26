@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry script, resumed after a stop (user-reported Oct 2026: Siril closed at image 95 of 509, after 15 minutes
+    of calibration and green channel): with the green images of an earlier run all in process/, it offers to start at
+    the plate solve, which skips the images already solved; Siril's image closed every 25 plate solves.
     Photometry script: its intermediate images now really deleted - its cleanup lines were taken by the stacking
     scripts' PYTHON_CLEANUP (paths, globs), which found nothing to delete (user's 509-image run, Oct 2026); now
     PYTHON_CLEANUP_SEQ, handled first.
