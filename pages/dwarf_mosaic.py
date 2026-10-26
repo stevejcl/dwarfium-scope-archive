@@ -1,5 +1,4 @@
 from components.i18n import t
-import webview
 from nicegui import ui, app, run, Client, background_tasks
 
 import os
@@ -625,22 +624,17 @@ class MosaicApp(DbPageMixin):
     # ------------------------------------------------------------------ #
 
     async def _pick_folder(self, initial_path: str, root_dir: str, label_name: str) -> str | None:
-        """Generic native folder picker with root restriction."""
-        if hasattr(webview, 'FileDialog'):
-            folder_mode = webview.FileDialog.FOLDER
-        else:
-            folder_mode = webview.FOLDER_DIALOG
+        """A folder, never above root_dir: the system dialog in the app's
+        window, the in-page picker in a browser - a phone (user-reported Oct
+        2026: the system dialog opened on the PC, or not at all)."""
+        from components.folder_picker import choose_folder
 
         directory = os.path.abspath(initial_path) if initial_path else None
-        if directory:
-            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False, directory=directory)
-        else:
-            folder = await app.native.main_window.create_file_dialog(folder_mode, allow_multiple=False)
-
+        folder = await choose_folder(self.client, directory, root_dir or None)
         if not folder:
             return None
 
-        chosen = os.path.normpath(folder[0])
+        chosen = os.path.normpath(folder)
 
         if root_dir and not chosen.startswith(root_dir):
             ui.notify(t("access_denied_outside", path=label_name), type="negative")
