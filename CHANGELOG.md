@@ -3,6 +3,17 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Backup drive given to another Dwarf: its sessions (backup and manual entries) move with it (user-reported Oct 2026:
+    they stayed on the first Dwarf, an analysis only adding new ones) - one the new Dwarf already had merged into it,
+    how many said; the "still in use" messages of a drive's deletion translated.
+    Photometry script, long sessions (after Naztronomy's Smart Telescope script, user-shared Oct 2026: 509 images
+    took about 40 GB): the lights linked (Siril's link) instead of converted - not copied once more -, and each step's
+    intermediate images deleted once the next one is made (light_ after the calibration, pp_light_ after the green
+    channel; their .seq kept) - only the green images left, the space freed in build_sessions.log.
+    Analyze: a drive (or a Dwarf's local copy) read through with no session left has its entries removed from the
+    database (user-reported Oct 2026: the only session of a test drive deleted, it stayed in the database, the analysis
+    ending with "False" - nothing was removed when none was found); and a session's data kept while the Dwarf's copy
+    or a backup still uses it (only one table was checked: the foreign key stopped the whole cleanup).
     Build Sessions: each Siril command run in the background, the script's window kept alive - the command and its
     elapsed time shown, the long ones' in build_sessions.log (user-reported Oct 2026: on 509 images, calibrate ran for
     minutes with the window frozen, Windows calling it not responding - it looked crashed); Siril no longer answering

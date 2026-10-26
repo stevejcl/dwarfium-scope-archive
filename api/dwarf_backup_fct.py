@@ -2207,7 +2207,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
     else:
         # delete data that are not more present
         if not backup_drive_id:
-            deleted = delete_notpresent_dwarf_entries_and_dwarf_data(conn, dwarf_id, valid_ids)
+            deleted = delete_notpresent_dwarf_entries_and_dwarf_data(conn, dwarf_id, valid_ids, all_gone=True)   # data_root read through: an empty one is empty
             if deleted == 1:
                 print_log(f"📂 Deleted 1 entry in DB not more present",log)
             elif deleted and deleted > 1:
@@ -2215,7 +2215,7 @@ def scan_backup_folder(db_name, backup_root, astronomy_dir, dwarf_id, backup_dri
             # a full analysis: its date, even when it found nothing new
             set_dwarf_scan_date(conn, dwarf_id)
         else:
-            deleted = delete_notpresent_backup_entries_and_dwarf_data(conn, backup_drive_id, valid_ids)
+            deleted = delete_notpresent_backup_entries_and_dwarf_data(conn, backup_drive_id, valid_ids, all_gone=True)   # data_root read through: an empty one is empty
             if deleted == 1:
                 print_log(f"📂 Deleted 1 entry in DB not more present",log)
             elif deleted and deleted > 1:
