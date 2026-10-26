@@ -2841,6 +2841,17 @@ class PreprocessingInterface(QMainWindow):
                 line = raw_line.strip()
                 if not line:
                     continue
+                # A sequence's images deleted once the next step made its own:
+                # # PYTHON_CLEANUP_SEQ <folder>|<prefix> - before PYTHON_CLEANUP
+                # (paths / globs, the stacking scripts'), which took these lines
+                # and found nothing (user's 509-image run, Oct 2026)
+                if line.startswith("# PYTHON_CLEANUP_SEQ"):
+                    folder, prefix = line[len("# PYTHON_CLEANUP_SEQ"):].strip().split("|")
+                    self._build_log(line)
+                    removed, size, failed = self._remove_sequence_files(folder, prefix)
+                    self._build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
+                                    + (f", {failed} still in use" if failed else ""))
+                    continue
                 # Python-side cleanup: # PYTHON_CLEANUP <path_or_glob>
                 # Executed by Python (not sent to Siril) to free disk space
                 # as processing progresses. Supports glob patterns (*) and
@@ -2865,14 +2876,6 @@ class PreprocessingInterface(QMainWindow):
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
                 # Python-side plate solve, image by image: # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
-                if line.startswith("# PYTHON_CLEANUP"):
-                    # A step's intermediate files deleted once the next one is made
-                    folder, prefix = line[len("# PYTHON_CLEANUP"):].strip().split("|")
-                    self._build_log(line)
-                    removed, size, failed = self._remove_sequence_files(folder, prefix)
-                    self._build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
-                                    + (f", {failed} still in use" if failed else ""))
-                    continue
                 if line.startswith("# PYTHON_PLATESOLVE"):
                     self._build_log(line)
                     folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
@@ -3033,8 +3036,21 @@ class PreprocessingInterface(QMainWindow):
         )
         solved, failed, first_solved = 0, [], None
         self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+        skipped = 0
         for index, frame in enumerate(frames, 1):
             base = os.path.splitext(frame)[0]
+            # Solved by an earlier run (resumed after a stop): kept as it is
+            cards = {key for _, key, _, _ in read_fits_cards(os.path.join(folder, frame))}
+            if "CTYPE1" in cards and ("CD1_1" in cards or "CDELT1" in cards):
+                solved, skipped = solved + 1, skipped + 1
+                first_solved = first_solved or base
+                continue
+            # Siril's image closed now and then (a 509-image run stopped at the 95th)
+            if (index - skipped) % 25 == 0:
+                try:
+                    self.siril.cmd("close")
+                except s.SirilError:
+                    pass
             try:
                 self.siril.cmd("load", base)
                 self.siril.cmd("platesolve", *solve_args)
@@ -3048,7 +3064,8 @@ class PreprocessingInterface(QMainWindow):
             self.progressbar.setValue(index)
             self.progress_label.setText(f"{index} / {len(frames)}")
             if index == len(frames) or index % 10 == 0:
-                self._build_log(f"platesolve: {index} / {len(frames)} images ({len(failed)} failed)")
+                self._build_log(f"platesolve: {index} / {len(frames)} images ({len(failed)} failed"
+                                + (f", {skipped} already solved" if skipped else "") + ")")
                 self.siril.log(f"[platesolve] {index} / {len(frames)} images ({len(failed)} failed)", LogColor.BLUE)
             QApplication.processEvents()
         if failed:
@@ -3459,20 +3476,34 @@ class PreprocessingInterface(QMainWindow):
             lines += [
                 "# Dark calibration, kept as CFA",
                 "calibrate light -dark=master_dark -cc=dark -cfa",
-                f"# PYTHON_CLEANUP {proc}|light_",
+                f"# PYTHON_CLEANUP_SEQ {proc}|light_",
                 "",
                 "# Green channel of the CFA images (AAVSO TG band)",
                 "seqextract_Green pp_light",
-                f"# PYTHON_CLEANUP {proc}|pp_light_",
+                f"# PYTHON_CLEANUP_SEQ {proc}|pp_light_",
                 "",
             ]
         else:
             lines += [
                 "# No dark found: green channel of the raw CFA images (AAVSO TG band)",
                 "seqextract_Green light",
-                f"# PYTHON_CLEANUP {proc}|light_",
+                f"# PYTHON_CLEANUP_SEQ {proc}|light_",
                 "",
             ]
+        # Resumed after a stop (user-reported Oct 2026: Siril closed at image 95
+        # of 509, after 15 minutes of calibration and green channel): the
+        # green images all there, those steps skipped - the plate solve skips
+        # the images already solved
+        green = [f for f in os.listdir(proc) if f.startswith("Green_pp_light_" if n_darks else "Green_light_")
+                 and f.lower().endswith((".fit", ".fits"))] if os.path.isdir(proc) else []
+        if len(green) >= len(lights) and QMessageBox.question(
+                self, "Photometry",
+                f"process/ already holds the {len(green)} green images of an earlier run.\n"
+                "Resume from the plate solve (calibration and green channel not done again)?",
+        ) == QMessageBox.StandardButton.Yes:
+            start = lines.index("# Convert light frames")
+            lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
+                                     "cd process", ""]
         # One image after the other from Python (# PYTHON_PLATESOLVE), not
         # seqplatesolve: on a 141-image session the script's window stayed
         # frozen through its minutes, the session looked stopped (user-
