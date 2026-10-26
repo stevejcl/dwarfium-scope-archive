@@ -1065,6 +1065,7 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_stopping":           "Arrêt au prochain dossier d'objet…",
     "analyze_all_stopped_folder":     "arrêté - ce qui a été trouvé est gardé, rien n'est retiré",
     "analyze_all_stopped":            "⏹ Arrêté : {done} dossier(s) sur {n} analysé(s) entièrement - {total} nouvelle(s) session(s), {deleted} supprimée(s).",
+    "analyze_all_running":            "Une analyse est déjà en cours.",
     "analyze_all_open_log":         "Ouvrir le journal",
     "analyze_all_open_folder":      "Son dossier",
     "analyze_all_lines_skipped":    "… {n} ligne(s) de plus - dans le fichier journal",

@@ -1066,6 +1066,7 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_stopping":           "Stopping at the next object's folder…",  # TODO
     "analyze_all_stopped_folder":     "stopped - what was found kept, nothing removed",  # TODO
     "analyze_all_stopped":            "⏹ Stopped: {done} of {n} folder(s) analyzed in full - {total} new session(s), {deleted} removed.",  # TODO
+    "analyze_all_running":            "An analysis is already running.",  # TODO
     "analyze_all_open_log":         "Open the log",  # TODO
     "analyze_all_open_folder":      "Its folder",  # TODO
     "analyze_all_lines_skipped":    "… {n} more line(s) - in the log file",  # TODO
