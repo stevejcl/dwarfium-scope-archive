@@ -57,6 +57,7 @@ from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
+from components.folder_picker import desktop_only
 from tools.quality_scan import score_entry_ids, scan_folder_sizes, scan_dwarf_session_sizes
 
 ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
@@ -3516,6 +3517,9 @@ class ExploreApp(DbPageMixin):
         default_name = f"siril_{target}_{date}.json"
 
         # Ask user where to save
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             save_mode = webview.FileDialog.SAVE
         else:
@@ -3606,6 +3610,9 @@ class ExploreApp(DbPageMixin):
         filters  = "_".join(data.get("filters", []))
         default_name = f"siril_megastack_{target}_{filters}.json"
 
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             save_mode = webview.FileDialog.SAVE
         else:

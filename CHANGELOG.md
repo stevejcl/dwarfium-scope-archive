@@ -267,6 +267,9 @@
     the next one (user-reported Oct 2026) - the list no longer shrinks its lines, a little room between them.
     Mosaic page from a phone: its folder buttons (primary, secondary session, output) open the in-page folder picker,
     as the Transfer page - the system dialog opened on the PC, or not at all (still used in the app's window).
+    From a phone, the actions that only Windows' folder / file dialog does (Settings and backup drive folders, the
+    Dwarf's folder, darks library, manual session, USB / MTP transfer, a JSON saved for Siril) say to use Scope
+    Archive's window on the PC (user-asked Oct 2026) instead of doing nothing; unchanged in the app's window.
     Siril script, photometry: the plate solve of the whole sequence by Siril (seqplatesolve - user-tested Oct 2026:
     509 images in 1 min 41 s, none failed; image by image took half an hour and crashed Siril's window at the 177th),
     then image by image only what it left unsolved. The script's window kept alive meanwhile, the time shown.

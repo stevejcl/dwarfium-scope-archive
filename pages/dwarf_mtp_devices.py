@@ -11,6 +11,7 @@ from api.dwarf_backup_db_api import device_exists_in_db, get_mtp_devices, add_mt
 from api.dwarf_backup_mtp_handler import MTPManager 
 
 from components.menu import menu
+from components.folder_picker import desktop_only
 
 @ui.page("/MtpDevice")
 async def mtp_page(client: Client):
@@ -107,6 +108,9 @@ class TransferApp(DbPageMixin):
     
     async def select_local_folder(self):
         """Open folder selection dialog."""
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:
