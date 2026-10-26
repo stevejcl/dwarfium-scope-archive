@@ -263,6 +263,8 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Folder picker (Transfer page's "Choose a folder", ...) on a phone: a long folder name on two lines no longer over
+    the next one (user-reported Oct 2026) - the list no longer shrinks its lines, a little room between them.
     Siril script, photometry: the plate solve of the whole sequence by Siril (seqplatesolve - user-tested Oct 2026:
     509 images in 1 min 41 s, none failed; image by image took half an hour and crashed Siril's window at the 177th),
     then image by image only what it left unsolved. The script's window kept alive meanwhile, the time shown.
