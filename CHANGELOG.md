@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Siril script: an unexpected Python error no longer kills it - PyQt6's default (qFatal) closed it without a word
+    (user-reported Oct 2026: a 509-image run stopped at image 95, Windows reporting python.exe / Qt6Core.dll, c0000409
+    code 7); now written to Siril's log, build_sessions.log and a message. The plate solve loop leaves out an image on
+    any error, stopping after 5 in a row.
     Photometry script, resumed after a stop (user-reported Oct 2026: Siril closed at image 95 of 509, after 15 minutes
     of calibration and green channel): with the green images of an earlier run all in process/, it offers to start at
     the plate solve, which skips the images already solved; Siril's image closed every 25 plate solves.
