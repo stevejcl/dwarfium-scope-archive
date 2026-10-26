@@ -3674,9 +3674,9 @@ class PreprocessingInterface(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
         ) == QMessageBox.StandardButton.Yes
         lines += [
-            "# Plate solve of every image (saved with its solution), one after the",
-            "# other: each one measured with its own solution - no registration,",
-            "# the dithering doesn't matter",
+            "# Plate solve of every image (saved with its solution): the sequence by",
+            "# seqplatesolve, then one by one what it left unsolved - each image",
+            "# measured with its own solution, no registration: the dithering doesn't matter",
             f"# PYTHON_PLATESOLVE {proc}|{seq}|{solve_args}",
             "",
             "# Comparison stars (APASS catalog, Internet), on the first solved image",
