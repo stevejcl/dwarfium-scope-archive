@@ -228,6 +228,11 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
        recent when the session's date is unknown; undated sets last);
     5. on a tie, the CALI_FRAME master.
 
+    The raw frames of the chosen set's folder at the other temperatures
+    kept in step 2 join it (merge_folder_temps): one dark session whose
+    temperature drifted a degree (user-asked Oct 2026: darks at 19 and
+    20 C, only the 20 C ones taken).
+
     (set, temperature matched: within the session's range widened by
     TEMP_MARGIN_C)."""
     if not sets:
@@ -264,6 +269,40 @@ def pick_dark_set(sets: list[dict], min_temp: int | None, max_temp: int | None,
         return n if n is not None else UNKNOWN_FRAMES
 
     chosen = min(pool, key=lambda s: (-frames(s), distance(s), s.get("legacy", False)))
+    chosen = merge_folder_temps(chosen, pool)
+    temps = chosen.get("temps") or [chosen["temp_c"]]
     temp_ok = (min_temp is not None and max_temp is not None and chosen["temp_c"] is not None
-               and min_temp - TEMP_MARGIN_C <= chosen["temp_c"] <= max_temp + TEMP_MARGIN_C)
+               and any(min_temp - TEMP_MARGIN_C <= tc <= max_temp + TEMP_MARGIN_C for tc in temps))
     return chosen, temp_ok
+
+
+def _raw_of(s: dict) -> dict | None:
+    """A set's raw frames: itself for DWARF_DARK frames, a master's raws."""
+    return s if s.get("legacy") else s.get("raw")
+
+
+def merge_folder_temps(chosen: dict, pool: list[dict]) -> dict:
+    """chosen with the raw frames of the same DWARF_DARK folder at the other
+    temperatures of the pool, within TEMP_SLACK_C of its own: a raw set of
+    them all (Siril stacks the frames - a master can't be mixed with raw
+    frames), temps = their temperatures. chosen itself when it has no such
+    sibling, or no raw frames of its own (a master without its session)."""
+    base = _raw_of(chosen)
+    if base is None or chosen["temp_c"] is None:
+        return chosen
+    raws, seen = [], set()
+    for s in pool:
+        raw = _raw_of(s)
+        if (raw is None or id(raw) in seen or raw.get("folder") != base.get("folder")
+                or raw["temp_c"] is None or abs(raw["temp_c"] - chosen["temp_c"]) > TEMP_SLACK_C):
+            continue
+        seen.add(id(raw))
+        raws.append(raw)
+    if id(base) not in seen:
+        raws.append(base)
+    if len(raws) < 2:
+        return chosen
+    raws.sort(key=lambda r: r["temp_c"])
+    files = [f for r in raws for f in r["files"]]
+    return {**base, "files": files, "count": len(files), "frames": len(files),
+            "temp_c": chosen["temp_c"], "temps": [r["temp_c"] for r in raws], "legacy": True}
