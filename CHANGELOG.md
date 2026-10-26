@@ -268,6 +268,8 @@
     under the Astronomy folder.
     Import a Session, "See it in the backups": the session selected in the Explorer, on a drive holding it (it opened
     the Explorer without it - user-reported Oct 2026).
+    Explore on a phone in portrait: a session opened from a link (Import's "See it in the backups", ...) stays shown,
+    no longer sent back to the list by the page's delayed layout set-up (user-reported Oct 2026; fine in landscape).
     Explore, Fix the foreground: on a session with little foreground (user-found Oct 2026), a starless disc of sky
     in the middle of the result - the darker half of the sky's own gradient passed for foreground and got the
     foreground stack. A dark patch where the first frames (stars still sharp) show stars over most of it is now sky -
