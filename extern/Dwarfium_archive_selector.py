@@ -494,7 +494,7 @@ def _airmass(coord, when, observer):
 
 
 def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None,
-                             site=None, session_name=""):
+                             site=None, session_name="", keep_saturated=False):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -597,9 +597,12 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         if t is None or t[2] <= 0:
             skipped.append(f"{name}: target not measured")
             continue
-        if saturation and t[0] >= saturation:
+        if saturation and t[0] >= saturation and not keep_saturated:
             skipped.append(f"{name}: target saturated (peak {t[0]:.0f})")
             continue
+        # keep_saturated (user-asked Oct 2026: DY Peg at gain 110, saturated at its
+        # maximum, compared with another software's curve that kept it): measured,
+        # flagged - the comparison stars still left out above the level
         measured = {}
         for i, st in enumerate(comps):
             if i in blended:
@@ -660,7 +663,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if not any(line.startswith("HJD / BJD not computed") for line in skipped):
                 skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
         rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
-                     _airmass(coord, mid, observer), positions.get(name)))
+                     _airmass(coord, mid, observer), positions.get(name),
+                     bool(saturation and t[0] >= saturation)))
     rows.sort(key=lambda r: r[1])
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
@@ -683,18 +687,20 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                 writer.writerow([f"# {key}: {value}"])
         check_label = f"check_{comps[check]['name']}" if check is not None else "check"
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
-                         f"{check_label}_mag", f"{check_label}_err", "airmass", "x", "y"])
-        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass, xy in rows:
+                         f"{check_label}_mag", f"{check_label}_err", "airmass", "x", "y", "target_saturated"])
+        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass, xy, sat in rows:
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
                              f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
                              "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}",
                              "" if airmass is None else f"{airmass:.3f}",
-                             "" if xy is None else f"{xy[0]:.1f}", "" if xy is None else f"{xy[1]:.1f}"])
+                             "" if xy is None else f"{xy[0]:.1f}", "" if xy is None else f"{xy[1]:.1f}",
+                             "yes" if sat else ""])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
                f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
     if rows:
-        mags = np.array([r[4] for r in rows])
+        unsaturated = [r for r in rows if not r[12]] or rows
+        mags = np.array([r[4] for r in unsaturated])
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
                        f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
                        + (f" (the same {len(fixed)} in every image)" if fixed else ""))
@@ -716,7 +722,10 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             summary.append(f"  plot -> {png}")
         except Exception as e:
             summary.append(f"  plot not drawn: {e}")
-    saturated = sum(1 for line in skipped if ": target saturated" in line)
+    saturated = sum(1 for line in skipped if ": target saturated" in line) + sum(1 for r in rows if r[12])
+    if keep_saturated and any(r[12] for r in rows):
+        summary.append(f"  {sum(1 for r in rows if r[12])} saturated image(s) kept on request, flagged "
+                       "(target_saturated): measured too faint, out of the mean")
     if files and saturated >= 0.3 * len(files):
         summary.append(f"  WARNING: the target saturated in {saturated} of {len(files)} images - its brightest phases "
                        "left out: a lower gain or a shorter exposure next time (Check exposure)")
@@ -1098,6 +1107,9 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, targe
     origin = float(np.floor(times.min()))
     x = times - origin
     mags, errs = np.array([r[4] for r in rows]), np.array([r[5] for r in rows])
+    # Saturated target (kept on request): drawn apart, out of the mean and the statistics
+    sat = np.array([bool(r[12]) if len(r) > 12 else False for r in rows])
+    good = ~sat if (~sat).any() else np.ones(len(rows), dtype=bool)
 
     def _mean(values, errors):
         weights = 1.0 / np.maximum(errors, 1e-4) ** 2
@@ -1107,12 +1119,17 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, targe
         return "" if value is None else f", V {float(value):.2f}"
 
     fig, ax = plt.subplots(figsize=(10, 5.5), dpi=110)
-    ax.errorbar(x, mags, yerr=errs, fmt="o", ms=3, lw=0.8, color="#1f5fbf", alpha=0.55, label=target_name)
-    mean, mean_err = _mean(mags, errs)
+    ax.errorbar(x[good], mags[good], yerr=errs[good], fmt="o", ms=3, lw=0.8, color="#1f5fbf", alpha=0.55,
+                label=target_name)
+    if sat.any():
+        ax.errorbar(x[sat], mags[sat], yerr=errs[sat], fmt="o", ms=4, lw=0.6, mfc="none", color="#e08a00",
+                    alpha=0.8, label=f"{target_name}, saturated ({int(sat.sum())}: too faint)")
+    mean, mean_err = _mean(mags[good], errs[good])
     ax.axhline(mean, color="#1f5fbf", ls="--", lw=1,
                label=f"{target_name} mean {mean:.3f} ± {mean_err:.3f}{_v(target_v)}")
-    stats = [f"{len(rows)} points", f"mean {mean:.3f}", f"std {mags.std():.3f}",
-             f"range {mags.min():.3f} – {mags.max():.3f}"]
+    stats = [f"{int(good.sum())} points" + (f" + {int(sat.sum())} saturated" if sat.any() else ""),
+             f"mean {mean:.3f}", f"std {mags[good].std():.3f}",
+             f"range {mags[good].min():.3f} – {mags[good].max():.3f}"]
     if check_label:
         cx = np.array([xi for xi, r in zip(x, rows) if r[8] is not None])
         cm = np.array([r[8] for r in rows if r[8] is not None])
@@ -1123,11 +1140,12 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, targe
             ax.axhline(check_mean, color="#c03030", ls="--", lw=1,
                        label=f"check mean {check_mean:.3f}{_v(check_v)}")
             stats.append(f"check std {cm.std():.3f}")
-    if len(rows) > 15 and bin_size > 1:
-        n = len(rows) // bin_size * bin_size
-        bx = x[:n].reshape(-1, bin_size).mean(axis=1)
-        bm = mags[:n].reshape(-1, bin_size).mean(axis=1)
-        be = mags[:n].reshape(-1, bin_size).std(axis=1) / np.sqrt(bin_size)
+    if good.sum() > 15 and bin_size > 1:
+        gx, gm = x[good], mags[good]
+        n = len(gx) // bin_size * bin_size
+        bx = gx[:n].reshape(-1, bin_size).mean(axis=1)
+        bm = gm[:n].reshape(-1, bin_size).mean(axis=1)
+        be = gm[:n].reshape(-1, bin_size).std(axis=1) / np.sqrt(bin_size)
         ax.errorbar(bx, bm, yerr=be, fmt="o", ms=5, lw=1.2, color="#0b2f6b", label=f"{target_name}, mean of {bin_size}")
     ax.invert_yaxis()
     ax.set_xlabel(f"{label_time} - {origin:.0f}")
@@ -2949,6 +2967,12 @@ class PreprocessingInterface(QMainWindow):
                         ran_ok = False
                         break
                     continue
+                if line.startswith("# PYTHON_PHOTOMETRY_OPTIONS"):   # {"keep_saturated": ...}
+                    try:
+                        self._photometry_options = json.loads(line[len("# PYTHON_PHOTOMETRY_OPTIONS"):].strip() or "{}")
+                    except ValueError:
+                        self._photometry_options = {}
+                    continue
                 if line.startswith("# PYTHON_PHOTOMETRY_ROOTS"):   # the other drives, for combine_star_sessions
                     try:
                         self._photometry_roots = json.loads(line[len("# PYTHON_PHOTOMETRY_ROOTS"):].strip() or "[]")
@@ -2988,6 +3012,7 @@ class PreprocessingInterface(QMainWindow):
                             os.path.join(folder, f"light_curve_{seq_name}.csv"),
                             saturation=float(saturation) or None, utc_offset_h=utc_offset,
                             progress=_progress, site=site,
+                            keep_saturated=bool(getattr(self, "_photometry_options", {}).get("keep_saturated")),
                             session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
                         )
                         stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
@@ -3603,6 +3628,14 @@ class PreprocessingInterface(QMainWindow):
         solve_args = " ".join(solve_args)
         data_max = fits_data_max(lights[0])
         saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
+        keep_saturated = bool(saturation) and QMessageBox.question(
+            self, "Photometry",
+            f"Keep the target's saturated images (peak above {saturation} ADU)?\n\n"
+            "No (recommended): left out - a saturated star is measured too faint.\n"
+            "Yes: kept and flagged (drawn apart, target_saturated in the CSV), e.g. to compare with "
+            "another software's curve; the comparison stars are still left out above it.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
         lines += [
             "# Plate solve of every image (saved with its solution), one after the",
             "# other: each one measured with its own solution - no registration,",
@@ -3621,6 +3654,7 @@ class PreprocessingInterface(QMainWindow):
             "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/,",
             "# and the star's sessions put together with those of the other drives:",
             f"# PYTHON_PHOTOMETRY_ROOTS {json.dumps(data.get('photometry_roots') or [])}",
+            f"# PYTHON_PHOTOMETRY_OPTIONS {json.dumps({'keep_saturated': keep_saturated})}",
             f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
             f"|{data.get('astronomy_root') or ''}"
             + (f"|{site['lat']}|{site['lon']}|{(site.get('name') or '').replace('|', ' ')}" if site else ""),

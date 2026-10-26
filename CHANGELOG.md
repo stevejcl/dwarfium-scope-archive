@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry: the target's saturated images can be kept, flagged (user-asked Oct 2026: DY Peg at gain 110, saturated
+    at its maximum, compared with AstroImageJ's curve that kept it) - asked when the script is made (No by default);
+    drawn apart (open orange circles), target_saturated in the CSV, out of the mean, the statistics and the means of 3;
+    the comparison stars still left out above the level.
     Photometry summary: the images left out grouped by reason, one line each with a few names (a saturated target's
     peaks as their range) - 425 "target saturated" lines buried it (user's 509-image DY Peg run, Oct 2026) - and a
     warning when the target saturated in 30 % of the images or more: its brightest phases are missing.
