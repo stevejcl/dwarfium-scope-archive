@@ -3,6 +3,8 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Sessions put together: a saturated target kept on request drawn apart (open circles), out of the means, flagged
+    in combined_light_curve.csv; the saturation warning says "measured too faint" when they were kept.
     Load Dwarfium JSON, "Resume (keep the files)": the photometry's plate solve resumed without asking again (asked
     twice, user-reported Oct 2026).
     Photometry: the target's saturated images can be kept, flagged (user-asked Oct 2026: DY Peg at gain 110, saturated
