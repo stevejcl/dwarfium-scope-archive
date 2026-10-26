@@ -3,6 +3,7 @@ every backup drive of the database, ticked ones only, one after the
 other - a line per folder with its result, and the analyses' log."""
 from __future__ import annotations
 
+import threading
 import traceback
 
 from nicegui import run, ui
@@ -29,6 +30,7 @@ class AnalyzeAllApp(DbPageMixin):
         self.selected: dict[str, bool] = {}
         self.results: dict[str, str] = {}      # key -> "running" / "+12 -3" / "error: ..."
         self.running = False
+        self.stop = threading.Event()    # Stop: at the next object's folder (R.AnalysisStopped)
         self.tee: R.TeeLog | None = None
         self.build_ui()
 
@@ -43,6 +45,9 @@ class AnalyzeAllApp(DbPageMixin):
             with ui.row().classes("items-center gap-3"):
                 self.start_btn = ui.button(t("analyze_all_start"), icon="manage_search",
                                            on_click=self.start).props("no-caps")
+                self.stop_btn = ui.button(t("analyze_all_stop"), icon="stop", color="negative",
+                                          on_click=self._ask_stop).props("no-caps")
+                self.stop_btn.set_visibility(False)
                 self.summary = ui.label("").classes("text-sm")
             self.log = ui.log(max_lines=200).classes("w-full").style("height: 300px")
             with ui.row().classes("items-center gap-2 text-xs text-gray-500") as self.log_row:
@@ -56,6 +61,15 @@ class AnalyzeAllApp(DbPageMixin):
             self.log_row.set_visibility(False)
         # The analyses' lines reach the screen in batches (see R.TeeLog)
         ui.timer(0.5, self._drain_log)
+
+    def _ask_stop(self):
+        """The folder being read stops at its next object's folder (what was
+        found kept, nothing removed), the next ones are not started."""
+        self.stop.set()
+        self.stop_btn.disable()
+        self.stop_btn.set_text(t("analyze_all_stopping"))
+        if self.tee:
+            self.tee.push(t("analyze_all_stopping"))
 
     def _drain_log(self):
         if self.tee is None:
@@ -94,6 +108,8 @@ class AnalyzeAllApp(DbPageMixin):
         with ui.element("div").classes("w-24 shrink-0 text-right text-xs"):
             if result == "running":
                 ui.spinner(size="sm")
+            elif result == "stopped":
+                ui.icon("stop_circle", color="warning").tooltip(t("analyze_all_stopped_folder"))
             elif result.startswith("error"):
                 ui.icon("error", color="negative").tooltip(result)
             elif result:
@@ -105,7 +121,12 @@ class AnalyzeAllApp(DbPageMixin):
             ui.notify(t("analyze_all_none"), type="warning")
             return
         self.running = True
+        self.stop.clear()
         self.start_btn.disable()
+        self.stop_btn.set_text(t("analyze_all_stop"))
+        self.stop_btn.enable()
+        self.stop_btn.set_visibility(True)
+        stopped, done = False, 0
         self.results = {}
         found = removed = 0
         log = R.TeeLog()        # every line in a file, the screen fed by _drain_log
@@ -118,20 +139,31 @@ class AnalyzeAllApp(DbPageMixin):
                      + ("" if x.reachable else " (not reachable)"))
         try:
             for i, x in enumerate(chosen, 1):
+                if self.stop.is_set():
+                    stopped = True
+                    break
                 self.results[x.key] = "running"
                 self.summary.set_text(t("analyze_all_progress", i=i, n=len(chosen), name=x.name))
                 self.list_view.refresh()
                 log.push(f"── {x.name} ({x.path})")
                 try:
-                    total, deleted = await run.io_bound(R.analyze, self.database, x, log)
+                    total, deleted = await run.io_bound(R.analyze, self.database, x, log, None, self.stop)
                     self.results[x.key] = f"+{total} -{deleted}"
                     log.push(f"   => {x.name}: +{total} new, -{deleted} removed")
                     found += total
                     removed += deleted
+                    done += 1
+                except R.AnalysisStopped:
+                    stopped = True
+                    self.results[x.key] = "stopped"
+                    log.push(f"⏹ {x.name}: {t('analyze_all_stopped_folder')}")
+                    break
                 except Exception as e:
                     self.results[x.key] = f"error: {e}"
                     log.push(f"❌ {x.name}: {e}")
-            log.push(t("analyze_all_done", n=len(chosen), total=found, deleted=removed))
+                    done += 1
+            log.push(t("analyze_all_stopped" if stopped else "analyze_all_done",
+                       n=len(chosen), done=done, total=found, deleted=removed))
         finally:
             log.close()
             self._drain_log()       # the last lines
@@ -139,9 +171,11 @@ class AnalyzeAllApp(DbPageMixin):
             # new dates left the spinner and "Analyzing 9/9" (user-reported)
             self.running = False
             self.start_btn.enable()
+            self.stop_btn.set_visibility(False)
             if self.results.get(chosen[-1].key) == "running":
                 self.results.pop(chosen[-1].key)
-        self.summary.set_text(t("analyze_all_done", n=len(chosen), total=found, deleted=removed))
+        done_key = "analyze_all_stopped" if stopped else "analyze_all_done"
+        self.summary.set_text(t(done_key, n=len(chosen), done=done, total=found, deleted=removed))
         try:
             dates = await run.io_bound(self._read_dates)     # the new scan dates
             for x in self.targets:
@@ -150,7 +184,8 @@ class AnalyzeAllApp(DbPageMixin):
             traceback.print_exc()
             ui.notify(t("error_generic", error=e), type="warning", multi_line=True)
         self.list_view.refresh()
-        ui.notify(t("analyze_all_done", n=len(chosen), total=found, deleted=removed), type="positive")
+        ui.notify(t(done_key, n=len(chosen), done=done, total=found, deleted=removed),
+                  type="warning" if stopped else "positive")
 
     def _read_dates(self) -> dict[str, str]:
         """Blocking, on its own connection (the page's may have been closed

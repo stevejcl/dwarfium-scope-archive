@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Analyze all: a Stop button (user-asked Oct 2026). The folder being read stops at its next object's folder - what
+    was found kept, nothing removed (its end, which removes the entries not seen, skipped) -, the next ones not
+    started; that folder marked stopped, the summary saying how many were analyzed in full.
     Sessions put together: a saturated target kept on request drawn apart (open circles), out of the means, flagged
     in combined_light_curve.csv; the saturation warning says "measured too faint" when they were kept.
     Load Dwarfium JSON, "Resume (keep the files)": the photometry's plate solve resumed without asking again (asked
@@ -263,6 +266,7 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    From a phone, the PC-only actions' notification on one line: "Available on Desktop only." (user-asked Oct 2026).
     From a phone, "open the folder / the file" (Explore's folder icons and results, Home, Dwarf page, Manual Explore,
     Analyze all's log, Settings' report, WCS mosaic, Fix the foreground) says it opens on the PC instead of opening
     Windows Explorer there unseen (user-asked Oct 2026); from the PC (its window or a browser on it) unchanged. On

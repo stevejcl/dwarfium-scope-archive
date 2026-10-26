@@ -1061,6 +1061,10 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_none":              "Rien de coché (ou de joignable) à analyser.",
     "analyze_all_progress":          "Analyse {i}/{n} : {name}…",
     "analyze_all_done":              "✅ {n} dossier(s) analysé(s) : {total} nouvelle(s) session(s), {deleted} supprimée(s).",
+    "analyze_all_stop":               "Arrêter",
+    "analyze_all_stopping":           "Arrêt au prochain dossier d'objet…",
+    "analyze_all_stopped_folder":     "arrêté - ce qui a été trouvé est gardé, rien n'est retiré",
+    "analyze_all_stopped":            "⏹ Arrêté : {done} dossier(s) sur {n} analysé(s) entièrement - {total} nouvelle(s) session(s), {deleted} supprimée(s).",
     "analyze_all_open_log":         "Ouvrir le journal",
     "analyze_all_open_folder":      "Son dossier",
     "analyze_all_lines_skipped":    "… {n} ligne(s) de plus - dans le fichier journal",
@@ -1339,8 +1343,8 @@ TRANSLATIONS: dict[str, str] = {
     # ── Folder picker (pages shown in a browser) ──
     "folder_picker_title":          "Choisir un dossier",
     "folder_picker_choose":         "Choisir ce dossier",
-    "desktop_only":                 "À faire dans la fenêtre de Scope Archive sur le PC (la fenêtre de dossiers ou de fichiers de Windows s'y ouvre).",
-    "pc_only":                      "S'ouvre sur le PC (dans l'Explorateur Windows ou sa visionneuse), pas sur cet appareil.",
+    "desktop_only":                 "Disponible sur ordinateur uniquement.",
+    "pc_only":                      "Disponible sur ordinateur uniquement.",
     "folder_picker_empty":          "Aucun sous-dossier",
 
 }

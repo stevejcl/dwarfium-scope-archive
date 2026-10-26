@@ -1062,6 +1062,10 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_none":              "Nothing ticked (or reachable) to analyze.",  # TODO
     "analyze_all_progress":          "Analyzing {i}/{n}: {name}…",  # TODO
     "analyze_all_done":              "✅ {n} folder(s) analyzed: {total} new session(s), {deleted} removed.",  # TODO
+    "analyze_all_stop":               "Stop",  # TODO
+    "analyze_all_stopping":           "Stopping at the next object's folder…",  # TODO
+    "analyze_all_stopped_folder":     "stopped - what was found kept, nothing removed",  # TODO
+    "analyze_all_stopped":            "⏹ Stopped: {done} of {n} folder(s) analyzed in full - {total} new session(s), {deleted} removed.",  # TODO
     "analyze_all_open_log":         "Open the log",  # TODO
     "analyze_all_open_folder":      "Its folder",  # TODO
     "analyze_all_lines_skipped":    "… {n} more line(s) - in the log file",  # TODO
@@ -1340,8 +1344,8 @@ TRANSLATIONS: dict[str, str] = {
     # ── Folder picker (pages shown in a browser) ──
     "folder_picker_title":          "Choose a folder",  # TODO
     "folder_picker_choose":         "Choose this folder",  # TODO
-    "desktop_only":                 "This is done in Scope Archive's window on the PC (it opens Windows' folder or file dialog there).",  # TODO
-    "pc_only":                      "This opens on the PC (Windows Explorer or its viewer there), not on this device.",  # TODO
+    "desktop_only":                 "Disponible solo en el ordenador.",
+    "pc_only":                      "Disponible solo en el ordenador.",
     "folder_picker_empty":          "No subfolder",  # TODO
 
 }

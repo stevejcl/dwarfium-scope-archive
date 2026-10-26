@@ -1059,6 +1059,10 @@ TRANSLATIONS: dict[str, str] = {
     "analyze_all_none":              "Nothing ticked (or reachable) to analyze.",
     "analyze_all_progress":          "Analyzing {i}/{n}: {name}…",
     "analyze_all_done":              "✅ {n} folder(s) analyzed: {total} new session(s), {deleted} removed.",
+    "analyze_all_stop":               "Stop",
+    "analyze_all_stopping":           "Stopping at the next object's folder…",
+    "analyze_all_stopped_folder":     "stopped - what was found kept, nothing removed",
+    "analyze_all_stopped":            "⏹ Stopped: {done} of {n} folder(s) analyzed in full - {total} new session(s), {deleted} removed.",
     "analyze_all_open_log":         "Open the log",
     "analyze_all_open_folder":      "Its folder",
     "analyze_all_lines_skipped":    "… {n} more line(s) - in the log file",
@@ -1337,8 +1341,8 @@ TRANSLATIONS: dict[str, str] = {
     # ── Folder picker (pages shown in a browser) ──
     "folder_picker_title":          "Choose a folder",
     "folder_picker_choose":         "Choose this folder",
-    "desktop_only":                 "This is done in Scope Archive's window on the PC (it opens Windows' folder or file dialog there).",
-    "pc_only":                      "This opens on the PC (Windows Explorer or its viewer there), not on this device.",
+    "desktop_only":                 "Available on Desktop only.",
+    "pc_only":                      "Available on Desktop only.",
     "folder_picker_empty":          "No subfolder",
 
 }
