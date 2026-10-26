@@ -263,6 +263,9 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Import a Session: a session backed up in a subfolder of the drive (a target's folder) no longer shown "folder not
+    found on the drive" (user-reported Oct 2026) - the folder found from the stacked image's path, not only its name
+    under the Astronomy folder.
     Explore, Fix the foreground: on a session with little foreground (user-found Oct 2026), a starless disc of sky
     in the middle of the result - the darker half of the sky's own gradient passed for foreground and got the
     foreground stack. A dark patch where the first frames (stars still sharp) show stars over most of it is now sky -
