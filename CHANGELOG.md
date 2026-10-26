@@ -6,6 +6,9 @@
     Analyze all: a Stop button (user-asked Oct 2026). The folder being read stops at its next object's folder - what
     was found kept, nothing removed (its end, which removes the entries not seen, skipped) -, the next ones not
     started; that folder marked stopped, the summary saying how many were analyzed in full.
+    Analyze all goes on with its page left, as before, and now shows on it again: back on the page (or from a phone),
+    the folders' results, the log since, Stop, and Start held while it runs - it no longer starts a second analysis
+    over the same drives (user-asked Oct 2026).
     Sessions put together: a saturated target kept on request drawn apart (open circles), out of the means, flagged
     in combined_light_curve.csv; the saturation warning says "measured too faint" when they were kept.
     Load Dwarfium JSON, "Resume (keep the files)": the photometry's plate solve resumed without asking again (asked
