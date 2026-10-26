@@ -2975,7 +2975,7 @@ class PreprocessingInterface(QMainWindow):
                                 self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
                     continue
                 # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
-                # Python-side plate solve, image by image: # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
+                # Python-side plate solve (the sequence, then image by image): # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
                 if line.startswith("# PYTHON_PLATESOLVE"):
                     self._build_log(line)
                     folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
@@ -3143,6 +3143,20 @@ class PreprocessingInterface(QMainWindow):
         )
         solved, failed, first_solved = 0, [], None
         self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+        # The whole sequence first, by Siril itself (user-tested Oct 2026: 509
+        # images in 1 min 41 s, none failed - image by image took half an
+        # hour, and Siril's window crashed at the 177th, redrawing each
+        # image). It writes the solution in each image's header, read below:
+        # what it left unsolved is then tried image by image.
+        try:
+            self._build_log(f"seqplatesolve {seq_name} {' '.join(solve_args)}")
+            self._siril_cmd("seqplatesolve", seq_name, *solve_args)
+        except s.SirilError as e:
+            if _siril_gone(e):
+                raise SirilGone("Plate solve of the sequence stopped.") from e
+            self._build_log(f"  seqplatesolve: {e} - image by image")
+            self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
+        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
         skipped = errors_in_a_row = 0
         for index, frame in enumerate(frames, 1):
             base = os.path.splitext(frame)[0]
@@ -3166,6 +3180,11 @@ class PreprocessingInterface(QMainWindow):
                 first_solved = first_solved or base
                 errors_in_a_row = 0
             except s.SirilError as e:
+                if _siril_gone(e):
+                    self._build_log(f"platesolve: Siril gone at image {index} / {len(frames)} "
+                                    f"({solved} solved so far)")
+                    raise SirilGone(f"Plate solve stopped at image {index} / {len(frames)}, "
+                                    f"{solved} solved so far.") from e
                 failed.append(frame)
                 self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
             except Exception as e:   # not Siril's: an image left out, not the whole run
@@ -3621,10 +3640,10 @@ class PreprocessingInterface(QMainWindow):
             start = lines.index("# Convert light frames")
             lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
                                      "cd process", ""]
-        # One image after the other from Python (# PYTHON_PLATESOLVE), not
-        # seqplatesolve: on a 141-image session the script's window stayed
-        # frozen through its minutes, the session looked stopped (user-
-        # reported Oct 2026) - now its progress is shown between images.
+        # From Python (# PYTHON_PLATESOLVE): seqplatesolve first, run by
+        # _siril_cmd - the script's window kept alive, the time shown (it
+        # stayed frozen through its minutes on a 141-image session, user-
+        # reported Oct 2026) -, then image by image what it left unsolved.
         # -noflip: each image saved as it is, its solution with it
         solve_args = ["-noflip"] + dwarf_platesolve_args(lights[0])
         # A session without a target (manual pointing: "Unknown", RA = DEC = 0
@@ -4075,6 +4094,30 @@ class PreprocessingInterface(QMainWindow):
         self.target_listbox.addItems(self.target_list)
 
 
+class SirilGone(Exception):
+    """Siril closed the connection - closed, or crashed (user-reported Oct
+    2026: Siril with its window gone at image 175 of a 509-image plate
+    solve). Nothing more can be done from this script."""
+
+
+def _siril_gone(error) -> bool:
+    """error, or one of its causes, is Siril's connection lost."""
+    while error is not None:
+        if isinstance(error, (SirilGone, s.SirilConnectionError)):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
+SIRIL_GONE_TEXT = (
+    "Siril closed the connection: Siril was closed, or crashed.\n\n"
+    "{where}The files made so far are kept. To pick up from there:\n"
+    "1. close this window and start Siril again (long series: as last time, Siril started from the terminal),\n"
+    "2. run this script, Load Dwarfium JSON, \"Resume (keep the files)\",\n"
+    "3. Build Sessions: the images already plate solved are skipped.\n\n"
+    "Details in build_sessions.log.")
+
+
 def _install_excepthook(window):
     """An unhandled Python error in a button's handler written to Siril's
     log, build_sessions.log and a message, instead of PyQt6's default: qFatal,
@@ -4096,9 +4139,13 @@ def _install_excepthook(window):
         except Exception:
             pass
         try:
-            QMessageBox.critical(window, "Dwarfium Archive Selector",
-                                 f"Unexpected error - the script goes on:\n\n{kind.__name__}: {value}\n\n"
-                                 "Details in Siril's log and build_sessions.log.")
+            if _siril_gone(value):
+                QMessageBox.critical(window, "Dwarfium Archive Selector",
+                                     SIRIL_GONE_TEXT.format(where=f"{value}\n\n" if isinstance(value, SirilGone) else ""))
+            else:
+                QMessageBox.critical(window, "Dwarfium Archive Selector",
+                                     f"Unexpected error - the script goes on:\n\n{kind.__name__}: {value}\n\n"
+                                     "Details in Siril's log and build_sessions.log.")
         except Exception:
             pass
 
