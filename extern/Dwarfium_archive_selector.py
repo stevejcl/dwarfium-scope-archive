@@ -3036,7 +3036,7 @@ class PreprocessingInterface(QMainWindow):
         )
         solved, failed, first_solved = 0, [], None
         self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
-        skipped = 0
+        skipped = errors_in_a_row = 0
         for index, frame in enumerate(frames, 1):
             base = os.path.splitext(frame)[0]
             # Solved by an earlier run (resumed after a stop): kept as it is
@@ -3057,9 +3057,17 @@ class PreprocessingInterface(QMainWindow):
                 self.siril.cmd("save", base)
                 solved += 1
                 first_solved = first_solved or base
+                errors_in_a_row = 0
             except s.SirilError as e:
                 failed.append(frame)
                 self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
+            except Exception as e:   # not Siril's: an image left out, not the whole run
+                failed.append(frame)
+                errors_in_a_row += 1
+                self._build_log(f"  {frame}: {type(e).__name__}: {e}")
+                if errors_in_a_row >= 5:
+                    self._build_log("platesolve stopped: 5 errors in a row")
+                    break
             self.progressbar.setMaximum(max(len(frames), 1))
             self.progressbar.setValue(index)
             self.progress_label.setText(f"{index} / {len(frames)}")
@@ -3949,10 +3957,41 @@ class PreprocessingInterface(QMainWindow):
         self.target_listbox.addItems(self.target_list)
 
 
+def _install_excepthook(window):
+    """An unhandled Python error in a button's handler written to Siril's
+    log, build_sessions.log and a message, instead of PyQt6's default: qFatal,
+    the script killed without a word (user-reported Oct 2026: a 509-image run
+    stopped at image 95, Windows reporting python.exe / Qt6Core.dll,
+    c0000409 code 7 - a fatal app exit). Setting sys.excepthook is what keeps
+    PyQt6 from aborting."""
+    import traceback
+
+    def _hook(kind, value, tb):
+        text = "".join(traceback.format_exception(kind, value, tb))
+        try:
+            window._build_log("UNEXPECTED ERROR\n" + text)
+        except Exception:
+            pass
+        try:
+            for line in text.rstrip().splitlines()[-12:]:
+                window.siril.log(line[:400] or " ", LogColor.RED)
+        except Exception:
+            pass
+        try:
+            QMessageBox.critical(window, "Dwarfium Archive Selector",
+                                 f"Unexpected error - the script goes on:\n\n{kind.__name__}: {value}\n\n"
+                                 "Details in Siril's log and build_sessions.log.")
+        except Exception:
+            pass
+
+    sys.excepthook = _hook
+
+
 def main():
     try:
         app = QApplication(sys.argv)
         window = PreprocessingInterface()
+        _install_excepthook(window)
         # Only show window if initialization was successful
         if window.initialization_successful:
             window.show()
