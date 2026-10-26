@@ -2070,33 +2070,45 @@ def delete_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwarf_id=None)
         print(f"[DB ERROR] Failed to delete dwarf entries and dwarf data for {dwarf_id}: {e}")
         return False
 
-def delete_notpresent_backup_entries_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id: int,  valid_ids: list[int]):
+def _dwarf_data_uses(cursor, dwarf_data_id) -> int:
+    """How many entries still use a DwarfData row: a backup's and the Dwarf's
+    (its local copy) - a session on both. Counting one table only, deleting
+    it failed on the other's foreign key, and with it the whole cleanup."""
+    return sum(cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE dwarf_data_id = ?",
+                              (dwarf_data_id,)).fetchone()[0] for table in ("BackupEntry", "DwarfEntry"))
+
+
+def delete_notpresent_backup_entries_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id: int, valid_ids: list[int], all_gone: bool = False):
+    """The BackupEntry rows of this backup_drive_id whose DwarfData isn't in valid_ids
+    deleted, their DwarfData too when no longer used. Returns how many.
+    Without valid_ids nothing is deleted - a scan that found nothing may
+    have read nothing - unless all_gone: the folder was read and holds
+    no session any more (user-reported Oct 2026: the only session of a
+    drive deleted, it stayed in the database, the analysis saying False)."""
     try:
         conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK rules
         cursor = conn.cursor()
 
-        if valid_ids:
+        if valid_ids or all_gone:
             placeholders = ",".join("?" for _ in valid_ids)
+            not_in = f"AND dwarf_data_id NOT IN ({placeholders})" if valid_ids else ""
 
             # Step 1: Get orphaned dwarf_data_id values for this backup_drive_id (not in valid_ids)
             cursor.execute(f"""
                 SELECT dwarf_data_id FROM BackupEntry
-                WHERE backup_drive_id = ? AND dwarf_data_id IS NOT NULL AND dwarf_data_id NOT IN ({placeholders})
+                WHERE backup_drive_id = ? AND dwarf_data_id IS NOT NULL {not_in}
             """, (backup_drive_id, *valid_ids))
             dwarf_data_ids = [row[0] for row in cursor.fetchall()]
 
             # Step 2: Delete obsolete BackupEntry rows for this backup_drive_id
             cursor.execute(f"""
                 DELETE FROM BackupEntry
-                WHERE backup_drive_id = ? AND dwarf_data_id IS NOT NULL AND dwarf_data_id NOT IN ({placeholders})
+                WHERE backup_drive_id = ? AND dwarf_data_id IS NOT NULL {not_in}
             """, (backup_drive_id, *valid_ids))
 
             # Step 3: Delete orphaned DwarfData rows (only if not referenced anymore)
             for dwarf_data_id in dwarf_data_ids:
-                cursor.execute("""
-                    SELECT COUNT(*) FROM BackupEntry WHERE dwarf_data_id = ?
-                """, (dwarf_data_id,))
-                count = cursor.fetchone()[0]
+                count = _dwarf_data_uses(cursor, dwarf_data_id)
                 print(f" COUNT(*) FROM BackupEntry {count}")
                 if count == 0:
                     cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
@@ -2107,11 +2119,11 @@ def delete_notpresent_backup_entries_and_dwarf_data(conn: sqlite3.Connection, ba
 
         else:
             print(f"no Deletion made, because valid_ids has not be set for {backup_drive_id}!")
-            return False
+            return 0
 
     except Exception as e:
         print(f"[DB ERROR] Failed to delete entries for backup_drive_id={backup_drive_id}: {e}")
-        return False
+        return 0
 
 def delete_backup_entry_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id: int,  dwarf_id: int, dwarf_data_id: int) -> bool:
     try:
@@ -2145,33 +2157,37 @@ def delete_backup_entry_and_dwarf_data(conn: sqlite3.Connection, backup_drive_id
         print(f"[DB ERROR] Failed to delete entries for backup_drive_id={backup_drive_id}: {e}")
         return False
 
-def delete_notpresent_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwarf_id: int, valid_ids: list[int]):
+def delete_notpresent_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwarf_id: int, valid_ids: list[int], all_gone: bool = False):
+    """The DwarfEntry rows of this dwarf_id whose DwarfData isn't in valid_ids
+    deleted, their DwarfData too when no longer used. Returns how many.
+    Without valid_ids nothing is deleted - a scan that found nothing may
+    have read nothing - unless all_gone: the folder was read and holds
+    no session any more (user-reported Oct 2026: the only session of a
+    drive deleted, it stayed in the database, the analysis saying False)."""
     try:
         conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK rules
         cursor = conn.cursor()
 
-        if valid_ids:
+        if valid_ids or all_gone:
             placeholders = ",".join("?" for _ in valid_ids)
+            not_in = f"AND dwarf_data_id NOT IN ({placeholders})" if valid_ids else ""
 
             # Step 1: Get orphaned dwarf_data_id values for this dwarf_id (not in valid_ids)
             cursor.execute(f"""
                 SELECT dwarf_data_id FROM DwarfEntry
-                WHERE dwarf_id = ? AND dwarf_data_id IS NOT NULL AND dwarf_data_id NOT IN ({placeholders})
+                WHERE dwarf_id = ? AND dwarf_data_id IS NOT NULL {not_in}
             """, (dwarf_id, *valid_ids))
             dwarf_data_ids = [row[0] for row in cursor.fetchall()]
 
             # Step 2: Delete obsolete DwarfEntry rows for this dwarf_id
             cursor.execute(f"""
                 DELETE FROM DwarfEntry
-                WHERE dwarf_id = ? AND dwarf_data_id IS NOT NULL AND dwarf_data_id NOT IN ({placeholders})
+                WHERE dwarf_id = ? AND dwarf_data_id IS NOT NULL {not_in}
             """, (dwarf_id, *valid_ids))
 
             # Step 3: Delete orphaned DwarfData rows (only if not referenced anymore)
             for dwarf_data_id in dwarf_data_ids:
-                cursor.execute("""
-                    SELECT COUNT(*) FROM DwarfEntry WHERE dwarf_data_id = ?
-                """, (dwarf_data_id,))
-                count = cursor.fetchone()[0]
+                count = _dwarf_data_uses(cursor, dwarf_data_id)
 
                 if count == 0:
                     cursor.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
@@ -2182,11 +2198,11 @@ def delete_notpresent_dwarf_entries_and_dwarf_data(conn: sqlite3.Connection, dwa
 
         else:
             print(f"no Deletion made, because valid_ids has not be set for {dwarf_id}!")
-            return False
-            
+            return 0
+
     except Exception as e:
         print(f"[DB ERROR] Failed to delete entries for dwarf_id={dwarf_id}: {e}")
-        return False
+        return 0
 
 #########################
 # Session data functions
