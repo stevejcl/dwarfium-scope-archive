@@ -263,6 +263,9 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Darks of one dark session at two temperatures (19 and 20 C - user-reported Oct 2026: only the 20 C ones taken):
+    the frames of the chosen set's folder at the other temperatures kept (within 1 C of it) join it, stacked together
+    in Siril; the darks of another folder (another date) still apart.
     Import a Session: a session backed up in a subfolder of the drive (a target's folder) no longer shown "folder not
     found on the drive" (user-reported Oct 2026) - the folder found from the stacked image's path, not only its name
     under the Astronomy folder.
