@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry summary: the images left out grouped by reason, one line each with a few names (a saturated target's
+    peaks as their range) - 425 "target saturated" lines buried it (user's 509-image DY Peg run, Oct 2026) - and a
+    warning when the target saturated in 30 % of the images or more: its brightest phases are missing.
     Load Dwarfium JSON, photometry: with the session's lights and the green images of an earlier run already in the
     working directory (a run stopped at image 95 of 509, Oct 2026), it offers to resume without copying again - the
     copy deleted process/ first, so the plate solve couldn't be resumed.

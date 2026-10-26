@@ -716,8 +716,42 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             summary.append(f"  plot -> {png}")
         except Exception as e:
             summary.append(f"  plot not drawn: {e}")
-    summary += [f"  {line}" if line.startswith("HJD") else f"  skipped {line}" for line in skipped]
+    saturated = sum(1 for line in skipped if ": target saturated" in line)
+    if files and saturated >= 0.3 * len(files):
+        summary.append(f"  WARNING: the target saturated in {saturated} of {len(files)} images - its brightest phases "
+                       "left out: a lower gain or a shorter exposure next time (Check exposure)")
+    summary += _skipped_summary(skipped)
     return summary
+
+
+def _skipped_summary(skipped, examples=3):
+    """The images left out, by reason: one line each with a few examples
+    (user's 509-image DY Peg run, Oct 2026: 425 "target saturated" lines
+    buried the summary) - a saturated target's peaks as their range."""
+    import re as _re
+    lines, groups = [], {}
+    for line in skipped:
+        if line.startswith("HJD") or ": " not in line:
+            lines.append(f"  {line}")
+            continue
+        if line.startswith("comparison star"):   # not an image
+            lines.append(f"  skipped {line}")
+            continue
+        name, reason = line.split(": ", 1)
+        peak = _re.match(r"target saturated \(peak (\d+)\)", reason)
+        key = "target saturated" if peak else reason
+        group = groups.setdefault(key, {"names": [], "peaks": []})
+        group["names"].append(name)
+        if peak:
+            group["peaks"].append(int(peak.group(1)))
+    for reason, group in groups.items():
+        names = group["names"]
+        text = f"  skipped {len(names)} image(s): {reason}"
+        if group["peaks"]:
+            text += f" (peak {min(group['peaks'])} - {max(group['peaks'])})"
+        text += " - " + ", ".join(names[:examples]) + (f"... (+{len(names) - examples})" if len(names) > examples else "")
+        lines.append(text)
+    return lines
 
 
 def field_variability(comps, frame_info, folder, target, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
