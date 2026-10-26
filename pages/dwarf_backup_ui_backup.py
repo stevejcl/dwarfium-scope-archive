@@ -20,6 +20,7 @@ from components.win_log import WinLog
 from components.menu import menu, setStyle
 from components.batched_log import BatchedLog
 from components.disk_space_widget import disk_space_widget
+from components.folder_picker import desktop_only
 
 @ui.page('/Backup')
 async def backup_settings(BackupId:int = None):
@@ -310,6 +311,9 @@ class ConfigApp(DbPageMixin):
     async def select_folder(self):
         ui.notify(t("please_backup_dir"), type="info")
         location = self.backupDrive_location.value
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:
@@ -329,6 +333,9 @@ class ConfigApp(DbPageMixin):
         location = self.backupDrive_location.value
         if not location:
             ui.notify(t("fill_location"), type="negative")
+            return
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
             return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER

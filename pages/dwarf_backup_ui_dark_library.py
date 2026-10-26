@@ -17,6 +17,7 @@ from api.dwarf_backup_db_api import (
 from api.dark_library_legacy import pair_masters, scan_legacy_darks
 from components.win_log import WinLog
 from components.menu import menu, setStyle
+from components.folder_picker import desktop_only
 
 
 @ui.page('/DarkLibrary')
@@ -258,6 +259,9 @@ class DarkLibraryApp(DbPageMixin):
     # =========================================================================
 
     async def select_folder(self):
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:

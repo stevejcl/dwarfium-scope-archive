@@ -12,6 +12,7 @@ from api.dwarf_backup_fct import scan_backup_folder, win_long_path, sync_dwarf_s
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, get_backupDrive_list_dwarfId
 from components.win_log import WinLog
+from components.folder_picker import desktop_only
 
 @ui.page('/TransferUSB/')
 async def transfer_page(DwarfId:int = None, session:str = None, mode:str = 'Archive'):
@@ -236,6 +237,9 @@ class TransferAppUSB:
 
     async def select_source_folder(self):
         """Open folder selection dialog."""
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:
@@ -255,6 +259,9 @@ class TransferAppUSB:
 
     async def select_destination_folder(self):
         """Open folder selection dialog."""
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:

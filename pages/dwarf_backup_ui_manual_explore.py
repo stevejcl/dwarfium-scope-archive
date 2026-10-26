@@ -60,6 +60,7 @@ from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
+from components.folder_picker import desktop_only
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL
 
@@ -1922,6 +1923,9 @@ class ManualExploreApp(DbPageMixin):
         filters  = "_".join(data.get("filters", []))
         default_name = f"siril_megastack_{target}_{filters}.json"
 
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             save_mode = webview.FileDialog.SAVE
         else:

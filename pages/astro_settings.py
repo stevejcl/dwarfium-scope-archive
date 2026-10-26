@@ -53,6 +53,7 @@ from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import set_setting_text, get_setting_text
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
+from components.folder_picker import desktop_only
 from datetime import datetime
 from api.db_backup import manual_backup_db, get_auto_backup_path, get_last_backup_path
 
@@ -74,6 +75,9 @@ class SettingsApp(DbPageMixin):
 
     async def choose_folder(self, target_input=None):
         """Open folder selection dialog."""
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:

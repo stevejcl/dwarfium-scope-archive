@@ -35,6 +35,7 @@ from components.batched_log import BatchedLog
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
 from components.action_icon import ActionIcon
+from components.folder_picker import desktop_only
 from api.archive_paths import RESULT_DIRS
 
 
@@ -574,6 +575,9 @@ class ConfigApp(DbPageMixin):
         """Open folder selection dialog."""
         ui.notify(t("please_astro_dir"), type="info")
         dwarf_location = self.dwarf_astroDir.value
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:

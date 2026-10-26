@@ -299,6 +299,10 @@ ui.add_css('''
     /* Folder picker (components/folder_picker.py): a long folder name wraps
        beside its icon instead of under it, over the next one */
     .folder-picker-item .q-btn__content { flex-wrap: nowrap; }
+    /* each name its full height: the list (a column of limited height,
+       scrolled) shrank the buttons, a name on two lines over the next one
+       (user-reported Oct 2026, phone) */
+    .folder-picker-item { flex-shrink: 0; padding-top: 4px; padding-bottom: 4px; }
     .folder-picker-item .q-btn__content > .block { white-space: normal; word-break: break-all; text-align: left; line-height: 1.3; }
     /* Desktop: always show both columns, hide mobile nav bar */
     @media (min-width: 769px) {

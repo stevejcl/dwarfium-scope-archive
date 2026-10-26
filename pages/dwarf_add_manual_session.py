@@ -30,6 +30,7 @@ from api.astrometry_resolver import auto_resolve, get_fits_center_coordinates
 
 from components.win_log import WinLog
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
+from components.folder_picker import desktop_only
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 
@@ -796,6 +797,9 @@ class AddManualSession(DbPageMixin):
 
     async def select_destination_folder(self):
         """Open folder selection dialog."""
+        # The system dialog: in Scope Archive's window only (not from a phone)
+        if not await desktop_only():
+            return
         if hasattr(webview, 'FileDialog'):
             folder_mode = webview.FileDialog.FOLDER
         else:

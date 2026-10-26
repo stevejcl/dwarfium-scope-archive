@@ -94,6 +94,21 @@ async def _page_folder(start_dir: str | None, root: str | None) -> str | None:
     return await dialog
 
 
+async def desktop_only() -> bool:
+    """True in the app's window. Elsewhere (a phone's browser - user-asked
+    Oct 2026) says this is done in Scope Archive's window on the PC, False:
+    for the actions that only the system dialog does (Settings, backup
+    drives, darks, USB / MTP transfer, a JSON saved for Siril)."""
+    try:
+        client = ui.context.client
+    except RuntimeError:   # no page to tell: as before, the dialog tried
+        return getattr(app.native, "main_window", None) is not None
+    if await _in_app_window(client):
+        return True
+    ui.notify(t("desktop_only"), type="warning", multi_line=True, timeout=8000)
+    return False
+
+
 async def choose_folder(client, start_dir: str | None = None, root: str | None = None) -> str | None:
     """A folder chosen by the user, or None (cancelled). The system dialog
     in the app's window, the in-page picker in a browser (never above
