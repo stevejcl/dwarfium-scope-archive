@@ -261,8 +261,12 @@ class ExploreApp(DbPageMixin):
 
         # Force initial mobile layout
         ui.run_javascript('''
+            // Not once a session was opened (user-reported Oct 2026: a session
+            // auto-selected from a link went back to the list in portrait -
+            // the delayed calls below came after it)
+            window.exploreOnSession = false;
             function initMobileLayout() {
-                if (window.innerWidth <= 768) {
+                if (window.innerWidth <= 768 && !window.exploreOnSession) {
                     document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
                     document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
                     document.querySelectorAll(".mobile-nav-bar").forEach(e => e.style.display="none");
@@ -1318,6 +1322,7 @@ class ExploreApp(DbPageMixin):
         """On mobile only: hide left column, show right column."""
         if self.mobile_left_col and self.mobile_right_col:
             ui.run_javascript('''
+                window.exploreOnSession = true;
                 if (window.innerWidth <= 768) {
                     document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="none");
                     document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="flex");
@@ -1329,6 +1334,7 @@ class ExploreApp(DbPageMixin):
         """On mobile only: show left column, hide right column."""
         if self.mobile_left_col and self.mobile_right_col:
             ui.run_javascript('''
+                window.exploreOnSession = false;
                 if (window.innerWidth <= 768) {
                     document.querySelectorAll(".mobile-left-col").forEach(e => e.style.display="flex");
                     document.querySelectorAll(".mobile-right-col").forEach(e => e.style.display="none");
