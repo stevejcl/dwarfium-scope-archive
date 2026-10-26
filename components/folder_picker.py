@@ -105,7 +105,7 @@ async def desktop_only() -> bool:
         return getattr(app.native, "main_window", None) is not None
     if await _in_app_window(client):
         return True
-    ui.notify(t("desktop_only"), type="warning", multi_line=True, timeout=8000)
+    ui.notify(t("desktop_only"), type="warning")
     return False
 
 
@@ -123,7 +123,7 @@ def on_this_pc() -> bool:
     host = request.client.host
     if host in ("127.0.0.1", "::1", "localhost") or host == (request.url.hostname or ""):
         return True
-    ui.notify(t("pc_only"), type="warning", multi_line=True, timeout=8000)
+    ui.notify(t("pc_only"), type="warning")
     return False
 
 

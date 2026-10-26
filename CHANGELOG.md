@@ -263,6 +263,7 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    From a phone, the PC-only actions' notification on one line: "Available on Desktop only." (user-asked Oct 2026).
     From a phone, "open the folder / the file" (Explore's folder icons and results, Home, Dwarf page, Manual Explore,
     Analyze all's log, Settings' report, WCS mosaic, Fix the foreground) says it opens on the PC instead of opening
     Windows Explorer there unseen (user-asked Oct 2026); from the PC (its window or a browser on it) unchanged. On
