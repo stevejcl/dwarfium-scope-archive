@@ -77,8 +77,9 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
     try:
         rows = conn.execute(
             """
-            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir
+            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir, dd.file_path
             FROM BackupEntry be JOIN BackupDrive bd ON bd.id = be.backup_drive_id
+            LEFT JOIN DwarfData dd ON dd.id = be.dwarf_data_id
             WHERE be.dwarf_id = ? AND (be.session_dir = ? OR be.session_dir LIKE ? OR be.session_dir LIKE ?)
             """,
             (dwarf_id, session, f"%/{session}", f"%\\{session}"),
@@ -88,14 +89,27 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
     finally:
         close_db(conn)
     out = []
-    for drive_id, name, location, astro_dir, session_dir in rows:
-        folder = os.path.join(location or "", astro_dir or "", session_dir or "")
-        out.append({
+    seen = {}
+    for drive_id, name, location, astro_dir, session_dir, file_path in rows:
+        # session_dir is the folder's name only: the session may sit in a
+        # subfolder of the drive (user-reported Oct 2026: "folder not found
+        # on the drive" for a session in a target's folder) - its stacked
+        # image's path, relative to the drive (as api/session_move.py reads
+        # it), gives the real folder
+        folders = [os.path.join(location or "", astro_dir or "", session_dir or "")]
+        if file_path:
+            folders.insert(0, os.path.dirname(os.path.join(location or "", file_path)))
+        present = bool(location) and any(os.path.isdir(f) for f in folders)
+        if drive_id in seen:
+            seen[drive_id]["present"] = seen[drive_id]["present"] or present
+            continue
+        seen[drive_id] = {
             "drive_id": drive_id,
             "name": name or location or "?",
             "location": location or "",
-            "present": bool(location) and os.path.isdir(folder),
-        })
+            "present": present,
+        }
+        out.append(seen[drive_id])
     return out
 
 
