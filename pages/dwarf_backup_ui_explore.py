@@ -57,7 +57,7 @@ from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
-from components.folder_picker import desktop_only
+from components.folder_picker import desktop_only, on_this_pc
 from tools.quality_scan import score_entry_ids, scan_folder_sizes, scan_dwarf_session_sizes
 
 ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
@@ -1648,6 +1648,8 @@ class ExploreApp(DbPageMixin):
                         ui.item(data_detail, on_click=lambda i=data_detail: self.file_list.set_value(i)).props('clickable').classes('cursor-pointer session-row')
 
     def open_folder(self, directory = None):
+        if not on_this_pc():   # it opens on the PC, not on a phone
+            return
         if not self.selected_path and not directory:
             print("No folder selected!")
             return

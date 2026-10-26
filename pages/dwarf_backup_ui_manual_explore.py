@@ -60,7 +60,7 @@ from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
-from components.folder_picker import desktop_only
+from components.folder_picker import desktop_only, on_this_pc
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL
 
@@ -1692,6 +1692,8 @@ class ManualExploreApp(DbPageMixin):
                 ui.notify(t("press_esc"), position="top", type="info")
 
     def open_folder(self):
+        if not on_this_pc():   # it opens on the PC, not on a phone
+            return
         folder = self.selected_path
         if not folder or not os.path.exists(folder):
             ui.notify(t("folder_not_found"), color="negative")

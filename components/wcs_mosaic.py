@@ -33,6 +33,7 @@ import time
 from nicegui import Client, background_tasks, run, ui
 
 from components.i18n import t
+from components.folder_picker import on_this_pc
 
 TILE_RE = re.compile(r"^(?P<prefix>.*?)[\s_-]*R(?P<row>\d+)[\s_-]*C(?P<col>\d+)(?:\b|_|$)", re.IGNORECASE)
 NIGHT_HOURS = 18            # a gap longer than this between tiles: another night
@@ -143,6 +144,8 @@ def folder_tiles(folder) -> list[dict]:
 def open_dir(folder):
     """A folder in the system's file manager - through explorer on Windows,
     as the other pages do."""
+    if not on_this_pc():   # it opens on the PC, not on a phone
+        return
     folder = os.path.normpath(str(folder))
     try:
         if platform.system() == "Windows":
@@ -158,6 +161,8 @@ def open_dir(folder):
 def show_in_folder(path):
     """A file's folder in the system's file manager, the file selected where
     the system can (Explorer, Finder) - the folder alone elsewhere."""
+    if not on_this_pc():   # it opens on the PC, not on a phone
+        return
     path = os.path.normpath(str(path))
     try:
         if platform.system() == "Windows":
@@ -172,6 +177,8 @@ def show_in_folder(path):
 
 def open_file(path):
     """A file in the system's own viewer for it (an image in Photos, ...)."""
+    if not on_this_pc():   # it opens on the PC, not on a phone
+        return
     path = os.path.normpath(str(path))
     try:
         if platform.system() == "Windows":

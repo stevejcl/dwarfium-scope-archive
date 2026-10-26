@@ -109,6 +109,24 @@ async def desktop_only() -> bool:
     return False
 
 
+def on_this_pc() -> bool:
+    """True when the click comes from this PC (the app's window, or a
+    browser on the PC: loopback, or its own address asked). From another
+    device (a phone - user-asked Oct 2026) says the folder or file would
+    open on the PC, False: for "open in Explorer" / "open the file"."""
+    try:
+        request = ui.context.client.request
+    except (AttributeError, RuntimeError):
+        return True
+    if request is None or request.client is None:
+        return True
+    host = request.client.host
+    if host in ("127.0.0.1", "::1", "localhost") or host == (request.url.hostname or ""):
+        return True
+    ui.notify(t("pc_only"), type="warning", multi_line=True, timeout=8000)
+    return False
+
+
 async def choose_folder(client, start_dir: str | None = None, root: str | None = None) -> str | None:
     """A folder chosen by the user, or None (cancelled). The system dialog
     in the app's window, the in-page picker in a browser (never above

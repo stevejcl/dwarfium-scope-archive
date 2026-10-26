@@ -53,7 +53,7 @@ from api.dwarf_backup_db import DB_NAME, connect_db, close_db
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db_api import set_setting_text, get_setting_text
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
-from components.folder_picker import desktop_only
+from components.folder_picker import desktop_only, on_this_pc
 from datetime import datetime
 from api.db_backup import manual_backup_db, get_auto_backup_path, get_last_backup_path
 
@@ -134,6 +134,8 @@ class SettingsApp(DbPageMixin):
                 export_status = ui.label("").classes("text-sm text-gray-500 mt-1")
 
                 def open_report():
+                    if not on_this_pc():   # it opens on the PC, not on a phone
+                        return
                     if not self._last_report_path or not os.path.exists(self._last_report_path):
                         ui.notify(t("no_report"), type="warning")
                         return
