@@ -2965,9 +2965,10 @@ class PreprocessingInterface(QMainWindow):
                 quoted_args = [f'"{a}"' if " " in a else a for a in args]
                 self._build_log(line)
                 try:
-                    self.siril.cmd(*quoted_args)
-                except s.CommandError as e:
+                    self._siril_cmd(*quoted_args)
+                except (s.CommandError, s.SirilError) as e:   # refused, or Siril no longer answering
                     self.siril.log(f"[build] Command '{line}' failed: {e}", LogColor.RED)
+                    self._build_log(f"  failed: {e}")
                     ran_ok = False
                     break
             if not ran_ok:
@@ -3048,6 +3049,43 @@ class PreprocessingInterface(QMainWindow):
             # The next step (findcompstars) needs a plate solved image loaded
             self.siril.cmd("load", first_solved)
         return solved > 0
+
+    def _siril_cmd(self, *args):
+        """self.siril.cmd(*args) in a background thread, this window kept alive
+        meanwhile - the command and its elapsed time shown (user-reported Oct
+        2026: on 509 images, calibrate ran for minutes with the window frozen,
+        Windows calling it not responding, it looked crashed). Raises the
+        command's error."""
+        import threading
+        import time
+        outcome = {}
+
+        def _run():
+            try:
+                self.siril.cmd(*args)
+            except BaseException as e:   # given back to the caller
+                outcome["error"] = e
+
+        worker = threading.Thread(target=_run, daemon=True)
+        start = time.monotonic()
+        maximum, value = self.progressbar.maximum(), self.progressbar.value()
+        worker.start()
+        worker.join(0.3)
+        if worker.is_alive():   # a long one: a busy bar and the time
+            self.progressbar.setMaximum(0)
+            while worker.is_alive():
+                elapsed = int(time.monotonic() - start)
+                self.progress_label.setText(f"{args[0]}: {elapsed // 60} min {elapsed % 60:02d} s"
+                                            if elapsed >= 60 else f"{args[0]}: {elapsed} s")
+                QApplication.processEvents()
+                worker.join(0.1)
+            self.progressbar.setMaximum(maximum)
+            self.progressbar.setValue(value)
+            elapsed = int(time.monotonic() - start)
+            if elapsed >= 30:
+                self._build_log(f"  ({args[0]}: {elapsed // 60} min {elapsed % 60:02d} s)")
+        if "error" in outcome:
+            raise outcome["error"]
 
     def _release_working_dir(self):
         """Siril out of its subfolders, its image / sequence closed, so that

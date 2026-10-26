@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Build Sessions: each Siril command run in the background, the script's window kept alive - the command and its
+    elapsed time shown, the long ones' in build_sessions.log (user-reported Oct 2026: on 509 images, calibrate ran for
+    minutes with the window frozen, Windows calling it not responding - it looked crashed); Siril no longer answering
+    reported as a failed command instead of stopping the script.
     Photometry and Check exposure: a session without a target (manual pointing, "Unknown", RA = DEC = 0 in the FITS
     header - a user's DY Peg data, Oct 2026) plate solved from the star's coordinates (VSX), Siril starting from the
     header's; a warning when neither is known.
