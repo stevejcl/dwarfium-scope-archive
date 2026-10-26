@@ -728,7 +728,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                        "(target_saturated): measured too faint, out of the mean")
     if files and saturated >= 0.3 * len(files):
         summary.append(f"  WARNING: the target saturated in {saturated} of {len(files)} images - its brightest phases "
-                       "left out: a lower gain or a shorter exposure next time (Check exposure)")
+                       + ("measured too faint (kept, flagged)" if keep_saturated else "left out")
+                       + ": a lower gain or a shorter exposure next time (Check exposure)")
     summary += _skipped_summary(skipped)
     return summary
 
@@ -970,7 +971,9 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
         for r in rows:
             try:
                 t = float(r.get("HJD_UTC") or r["JD_UTC"])
-                points.append((t, float(r["mag"]), float(r["err"]), r.get("airmass", "")))
+                # A saturated target kept on request (target_saturated): drawn apart, out of the means
+                points.append((t, float(r["mag"]), float(r["err"]), r.get("airmass", ""),
+                               (r.get("target_saturated") or "").strip().lower() == "yes"))
             except (KeyError, ValueError):
                 continue
         comps = []
@@ -1018,17 +1021,19 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
         writer = csv.writer(f)
         writer.writerow([f"# {star.replace('_', ' ')}: {len(sessions)} sessions, magnitudes shifted to the "
                          f"reference session {ref['name']} by the comparison stars both measured"])
-        writer.writerow(["session", "instrument", "HJD_UTC", "mag", "mag_raw", "err", "offset", "airmass"])
+        writer.writerow(["session", "instrument", "HJD_UTC", "mag", "mag_raw", "err", "offset", "airmass",
+                         "target_saturated"])
         for s in sessions:
-            for t, mag, err, airmass in s["points"]:
+            for t, mag, err, airmass, sat in s["points"]:
                 writer.writerow([s["name"], s["meta"].get("instrument", ""), f"{t:.6f}", f"{mag - s['offset']:.4f}",
-                                 f"{mag:.4f}", f"{err:.4f}", f"{s['offset']:+.4f}", airmass])
+                                 f"{mag:.4f}", f"{err:.4f}", f"{s['offset']:+.4f}", airmass, "yes" if sat else ""])
     with open(os.path.join(star_dir, "combined_sessions.csv"), "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["session", "instrument", "filter", "exposure_s", "site", "points", "HJD_start", "HJD_end",
                          "mean_mag", "offset", "common_comparison_stars", "reference", "drive"])
         for s in sessions:
-            times, mags = [p[0] for p in s["points"]], [p[1] for p in s["points"]]
+            times = [p[0] for p in s["points"]]
+            mags = [p[1] for p in s["points"] if not p[4]] or [p[1] for p in s["points"]]
             writer.writerow([s["name"], s["meta"].get("instrument", ""), s["meta"].get("filter", ""),
                              s["meta"].get("exposure_s", ""), s["meta"].get("site", ""), len(times),
                              f"{min(times):.6f}", f"{max(times):.6f}", f"{np.mean(mags) - s['offset']:.4f}",
@@ -1040,8 +1045,10 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
         summary.append(f"  {len(unreachable)} drive(s) not plugged in, their sessions not counted: "
                        + ", ".join(unreachable))
     for s in sessions:
-        mags = np.array([p[1] for p in s["points"]]) - s["offset"]
-        summary.append(f"  {_label(s)}: {len(mags)} points, mean {mags.mean():.3f}, "
+        mags = np.array([p[1] for p in s["points"] if not p[4]] or [p[1] for p in s["points"]]) - s["offset"]
+        n_sat = sum(1 for p in s["points"] if p[4])
+        summary.append(f"  {_label(s)}: {len(s['points'])} points" + (f" ({n_sat} saturated)" if n_sat else "")
+                       + f", mean {mags.mean():.3f}, "
                        + ("reference" if s is ref else
                           f"offset {s['offset']:+.3f} ({s['n_common']} comparison stars in common)"
                           if s["n_common"] >= 3 else "not aligned (fewer than 3 comparison stars in common)"))
@@ -1057,10 +1064,15 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
             t = np.array([p[0] for p in s["points"]]) - origin
             m = np.array([p[1] for p in s["points"]]) - s["offset"]
             e = np.array([p[2] for p in s["points"]])
-            all_mags.extend(m)
-            ax.errorbar(t, m, yerr=e, fmt="o", ms=3, lw=0.7, alpha=0.6, color=colours[k % len(colours)],
-                        label=f"{_label(s)} ({len(m)} pts, offset {s['offset']:+.3f})")
-        all_mags = np.array(all_mags)
+            sat = np.array([p[4] for p in s["points"]], dtype=bool)
+            all_mags.extend(m[~sat])
+            colour = colours[k % len(colours)]
+            ax.errorbar(t[~sat], m[~sat], yerr=e[~sat], fmt="o", ms=3, lw=0.7, alpha=0.6, color=colour,
+                        label=f"{_label(s)} ({int((~sat).sum())} pts, offset {s['offset']:+.3f})")
+            if sat.any():
+                ax.errorbar(t[sat], m[sat], yerr=e[sat], fmt="o", ms=4, lw=0.5, alpha=0.6, mfc="none", color=colour,
+                            label=f"{_label(s)}, saturated ({int(sat.sum())}: too faint)")
+        all_mags = np.array(all_mags) if all_mags else np.array([p[1] for s in sessions for p in s["points"]])
         ax.axhline(all_mags.mean(), color="#444444", ls="--", lw=1, label=f"mean {all_mags.mean():.3f}")
         ax.invert_yaxis()
         ax.set_xlabel(f"HJD (UTC) - {origin}")
@@ -1935,7 +1947,11 @@ class PreprocessingInterface(QMainWindow):
             box.setDefaultButton(resume_btn)
             box.exec()
             if box.clickedButton() is resume_btn:
-                self._copy_from_json_done(0)
+                self._resume_photometry = True   # its plate solve resumed without asking again
+                try:
+                    self._copy_from_json_done(0)
+                finally:
+                    self._resume_photometry = False
                 return
             if box.clickedButton() is not copy_btn:
                 return
@@ -3595,11 +3611,13 @@ class PreprocessingInterface(QMainWindow):
         # the images already solved
         green = [f for f in os.listdir(proc) if f.startswith("Green_pp_light_" if n_darks else "Green_light_")
                  and f.lower().endswith((".fit", ".fits"))] if os.path.isdir(proc) else []
-        if len(green) >= len(lights) and QMessageBox.question(
+        # Asked unless "Resume (keep the files)" was just chosen at the JSON's
+        # load (user-reported Oct 2026: asked twice)
+        if len(green) >= len(lights) and (getattr(self, "_resume_photometry", False) or QMessageBox.question(
                 self, "Photometry",
                 f"process/ already holds the {len(green)} green images of an earlier run.\n"
                 "Resume from the plate solve (calibration and green channel not done again)?",
-        ) == QMessageBox.StandardButton.Yes:
+        ) == QMessageBox.StandardButton.Yes):
             start = lines.index("# Convert light frames")
             lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
                                      "cd process", ""]
