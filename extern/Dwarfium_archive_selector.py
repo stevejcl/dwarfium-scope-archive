@@ -1935,7 +1935,11 @@ class PreprocessingInterface(QMainWindow):
             box.setDefaultButton(resume_btn)
             box.exec()
             if box.clickedButton() is resume_btn:
-                self._copy_from_json_done(0)
+                self._resume_photometry = True   # its plate solve resumed without asking again
+                try:
+                    self._copy_from_json_done(0)
+                finally:
+                    self._resume_photometry = False
                 return
             if box.clickedButton() is not copy_btn:
                 return
@@ -3595,11 +3599,13 @@ class PreprocessingInterface(QMainWindow):
         # the images already solved
         green = [f for f in os.listdir(proc) if f.startswith("Green_pp_light_" if n_darks else "Green_light_")
                  and f.lower().endswith((".fit", ".fits"))] if os.path.isdir(proc) else []
-        if len(green) >= len(lights) and QMessageBox.question(
+        # Asked unless "Resume (keep the files)" was just chosen at the JSON's
+        # load (user-reported Oct 2026: asked twice)
+        if len(green) >= len(lights) and (getattr(self, "_resume_photometry", False) or QMessageBox.question(
                 self, "Photometry",
                 f"process/ already holds the {len(green)} green images of an earlier run.\n"
                 "Resume from the plate solve (calibration and green channel not done again)?",
-        ) == QMessageBox.StandardButton.Yes:
+        ) == QMessageBox.StandardButton.Yes):
             start = lines.index("# Convert light frames")
             lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
                                      "cd process", ""]
