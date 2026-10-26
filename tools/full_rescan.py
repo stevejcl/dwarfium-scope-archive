@@ -63,9 +63,28 @@ def list_targets(conn) -> list[Target]:
     return targets
 
 
-def analyze(db_name: str, target: Target, log=None, progress_callback=None) -> tuple[int, int]:
+class AnalysisStopped(BaseException):
+    """Stop asked (Analyze all's Stop, user-asked Oct 2026). A BaseException:
+    raised from the progress callback, which scan_backup_folder calls before
+    each object's folder inside an `except Exception`, it stops the scan
+    there - before its end removes the entries it didn't see, which would
+    remove the folders not yet read. What was found stays, nothing removed."""
+
+
+def analyze(db_name: str, target: Target, log=None, progress_callback=None,
+            stop=None) -> tuple[int, int]:
     """Blocking. (sessions found, entries removed) - as the Dwarf / Backup
-    pages' analyses."""
+    pages' analyses. stop: a threading.Event - set, AnalysisStopped is
+    raised at the next object's folder."""
+    if stop is not None:
+        inner = progress_callback
+
+        def progress_callback(*args):
+            if stop.is_set():
+                raise AnalysisStopped()
+            if inner:
+                inner(*args)
+
     # Results made next to the sessions before Oct 2026 moved to the root
     # first (user-requested: api/archive_paths.py's migrate_results)
     try:
