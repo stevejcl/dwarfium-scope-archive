@@ -35,7 +35,7 @@ from components.batched_log import BatchedLog
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
 from components.action_icon import ActionIcon
-from components.folder_picker import desktop_only, on_this_pc
+from components.folder_picker import desktop_only, open_folder_on_pc
 from api.archive_paths import RESULT_DIRS
 
 
@@ -431,17 +431,12 @@ class ConfigApp(DbPageMixin):
 
     def _open_session_folder(self, session_dir: str):
         """Open the session folder in the OS file explorer (same logic as explore open_folder)."""
-        if not on_this_pc():   # it opens on the PC, not on a phone
-            return
         base = self.dwarf_astroDir.value.strip() if self.dwarf_astroDir.value else ""
         full_path = os.path.normpath(os.path.join(base, session_dir) if base else session_dir)
         if not os.path.exists(full_path):
             ui.notify(t("folder_not_found", path=full_path), type="warning")
             return
-        if os.name == "nt":  # Windows
-            subprocess.Popen(f'explorer "{full_path}"')
-        elif os.name == "posix":  # macOS or Linux
-            subprocess.Popen(["open", full_path])
+        open_folder_on_pc(full_path)
 
     def refresh_error_sessions_btn(self):
         """Show/hide the error sessions button depending on whether errors exist."""

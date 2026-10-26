@@ -127,6 +127,27 @@ def on_this_pc() -> bool:
     return False
 
 
+def open_folder_on_pc(folder: str) -> None:
+    """A folder in the PC's file manager, when the click comes from the PC
+    (on_this_pc): Explorer on Windows, Finder on macOS, xdg-open on Linux
+    (the pages ran macOS' "open" on Linux - user-asked Oct 2026)."""
+    import platform
+    import subprocess
+
+    if not on_this_pc():
+        return
+    folder = os.path.normpath(str(folder))
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(f'explorer "{folder}"')
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", folder])
+        else:
+            subprocess.Popen(["xdg-open", folder])
+    except OSError as e:   # no file manager to open it with
+        ui.notify(f"{folder}: {e}", color="warning")
+
+
 async def choose_folder(client, start_dir: str | None = None, root: str | None = None) -> str | None:
     """A folder chosen by the user, or None (cancelled). The system dialog
     in the app's window, the in-page picker in a browser (never above

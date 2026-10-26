@@ -265,7 +265,9 @@
 ### BugFix
     From a phone, "open the folder / the file" (Explore's folder icons and results, Home, Dwarf page, Manual Explore,
     Analyze all's log, Settings' report, WCS mosaic, Fix the foreground) says it opens on the PC instead of opening
-    Windows Explorer there unseen (user-asked Oct 2026); from the PC (its window or a browser on it) unchanged.
+    Windows Explorer there unseen (user-asked Oct 2026); from the PC (its window or a browser on it) unchanged. On
+    Linux, Home's, Explore's, Manual Explore's and the Dwarf page's folder buttons open the folder (xdg-open - they
+    ran macOS' "open").
     Folder picker (Transfer page's "Choose a folder", ...) on a phone: a long folder name on two lines no longer over
     the next one (user-reported Oct 2026) - the list no longer shrinks its lines, a little room between them.
     Mosaic page from a phone: its folder buttons (primary, secondary session, output) open the in-page folder picker,
