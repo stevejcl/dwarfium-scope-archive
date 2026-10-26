@@ -35,7 +35,7 @@ from components.batched_log import BatchedLog
 from components.help_system import open_help
 from components.disk_space_widget import disk_space_widget
 from components.action_icon import ActionIcon
-from components.folder_picker import desktop_only
+from components.folder_picker import desktop_only, open_folder_on_pc
 from api.archive_paths import RESULT_DIRS
 
 
@@ -436,10 +436,7 @@ class ConfigApp(DbPageMixin):
         if not os.path.exists(full_path):
             ui.notify(t("folder_not_found", path=full_path), type="warning")
             return
-        if os.name == "nt":  # Windows
-            subprocess.Popen(f'explorer "{full_path}"')
-        elif os.name == "posix":  # macOS or Linux
-            subprocess.Popen(["open", full_path])
+        open_folder_on_pc(full_path)
 
     def refresh_error_sessions_btn(self):
         """Show/hide the error sessions button depending on whether errors exist."""

@@ -57,7 +57,7 @@ from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
-from components.folder_picker import desktop_only
+from components.folder_picker import desktop_only, open_folder_on_pc
 from tools.quality_scan import score_entry_ids, scan_folder_sizes, scan_dwarf_session_sizes
 
 ALL_BACKUPS = "(All Backups)"  # internal key — translated in UI
@@ -1658,11 +1658,7 @@ class ExploreApp(DbPageMixin):
         else:
             folder_path = os.path.normpath(self.selected_path)
         if folder_path and os.path.exists(folder_path):
-            if os.name == 'nt':  # Windows
-                subprocess.Popen(f'explorer "{folder_path}"')
-            elif os.name == 'posix':  # macOS or Linux
-                subprocess.Popen(['open', folder_path])  # macOS
-                # or 'xdg-open' for Linux
+            open_folder_on_pc(folder_path)
         else:
             print("Folder does not exist!")
 

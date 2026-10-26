@@ -60,7 +60,7 @@ from api.image_preview import set_base_folder, build_preview_url
 from components.win_log import WinLog
 from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
-from components.folder_picker import desktop_only
+from components.folder_picker import desktop_only, open_folder_on_pc
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL
 
@@ -1697,10 +1697,7 @@ class ManualExploreApp(DbPageMixin):
             ui.notify(t("folder_not_found"), color="negative")
             return
         folder = os.path.normpath(folder)
-        if os.name == 'nt':
-            subprocess.Popen(f'explorer "{folder}"')
-        elif os.name == 'posix':
-            subprocess.Popen(['open', folder])
+        open_folder_on_pc(folder)
 
     def navigate_to_linked_session(self):
         """

@@ -19,6 +19,7 @@ from api.open_in_app import on_before_open, page_busy, page_ready
 
 from components.menu import menu
 from tools.video_export import VideoExportConfig, export_video, list_fonts, VIDEO_RESOLUTIONS, FONT_SIZES, get_music_files
+from components.folder_picker import open_folder_on_pc
 from api.db_backup import auto_backup_db
 
 init_task = None
@@ -414,11 +415,7 @@ class HomeApp(DbPageMixin):
         if directory:
             folder_path = os.path.normpath(directory)
         if folder_path and os.path.exists(folder_path):
-            if os.name == 'nt':  # Windows
-                subprocess.Popen(f'explorer "{folder_path}"')
-            elif os.name == 'posix':  # macOS or Linux
-                subprocess.Popen(['open', folder_path])  # macOS
-                # or 'xdg-open' for Linux
+            open_folder_on_pc(folder_path)
         else:
             print("Folder does not exist!")
 

@@ -109,6 +109,45 @@ async def desktop_only() -> bool:
     return False
 
 
+def on_this_pc() -> bool:
+    """True when the click comes from this PC (the app's window, or a
+    browser on the PC: loopback, or its own address asked). From another
+    device (a phone - user-asked Oct 2026) says the folder or file would
+    open on the PC, False: for "open in Explorer" / "open the file"."""
+    try:
+        request = ui.context.client.request
+    except (AttributeError, RuntimeError):
+        return True
+    if request is None or request.client is None:
+        return True
+    host = request.client.host
+    if host in ("127.0.0.1", "::1", "localhost") or host == (request.url.hostname or ""):
+        return True
+    ui.notify(t("pc_only"), type="warning", multi_line=True, timeout=8000)
+    return False
+
+
+def open_folder_on_pc(folder: str) -> None:
+    """A folder in the PC's file manager, when the click comes from the PC
+    (on_this_pc): Explorer on Windows, Finder on macOS, xdg-open on Linux
+    (the pages ran macOS' "open" on Linux - user-asked Oct 2026)."""
+    import platform
+    import subprocess
+
+    if not on_this_pc():
+        return
+    folder = os.path.normpath(str(folder))
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(f'explorer "{folder}"')
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", folder])
+        else:
+            subprocess.Popen(["xdg-open", folder])
+    except OSError as e:   # no file manager to open it with
+        ui.notify(f"{folder}: {e}", color="warning")
+
+
 async def choose_folder(client, start_dir: str | None = None, root: str | None = None) -> str | None:
     """A folder chosen by the user, or None (cancelled). The system dialog
     in the app's window, the in-page picker in a browser (never above

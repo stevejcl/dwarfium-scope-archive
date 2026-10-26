@@ -12,6 +12,7 @@ from components.db_page_mixin import DbPageMixin
 from components.i18n import t
 from components.menu import menu
 from tools import full_rescan as R
+from components.folder_picker import on_this_pc
 
 
 @ui.page('/AnalyzeAll')
@@ -48,9 +49,9 @@ class AnalyzeAllApp(DbPageMixin):
                 ui.icon("description", size="xs")
                 self.log_path = ui.label("").classes("font-mono break-all")
                 ui.button(t("analyze_all_open_log"), icon="open_in_new",
-                          on_click=lambda: R.open_path(self.log_path.text)).props("flat dense no-caps size=sm")
+                          on_click=lambda: on_this_pc() and R.open_path(self.log_path.text)).props("flat dense no-caps size=sm")
                 ui.button(t("analyze_all_open_folder"), icon="folder",
-                          on_click=lambda: R.show_in_folder(self.log_path.text)) \
+                          on_click=lambda: on_this_pc() and R.show_in_folder(self.log_path.text)) \
                     .props("flat dense no-caps size=sm")
             self.log_row.set_visibility(False)
         # The analyses' lines reach the screen in batches (see R.TeeLog)

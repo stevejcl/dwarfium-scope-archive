@@ -1338,6 +1338,7 @@ TRANSLATIONS: dict[str, str] = {
     "folder_picker_title":          "Choose a folder",
     "folder_picker_choose":         "Choose this folder",
     "desktop_only":                 "This is done in Scope Archive's window on the PC (it opens Windows' folder or file dialog there).",
+    "pc_only":                      "This opens on the PC (Windows Explorer or its viewer there), not on this device.",
     "folder_picker_empty":          "No subfolder",
 
 }
