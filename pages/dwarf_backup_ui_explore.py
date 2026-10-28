@@ -3867,6 +3867,15 @@ class ExploreApp(DbPageMixin):
         with self.photometry_box:
             for res in results:
                 ui.label(res["star"]).classes('text-md font-semibold px-2')
+                # Its times of maximum / minimum (the script's extrema_<star>.csv)
+                for ext in res.get("extrema") or []:
+                    kind = {"max": "photometry_extremum_max", "II": "photometry_extremum_min2"}.get(
+                        ext.get("type"), "photometry_extremum_min")
+                    text = t(kind, time=(ext.get("local") or "")[11:], hjd=ext.get("HJD_UTC", ""),
+                             err=ext.get("err_min") or "?", mag=ext.get("mag", ""))
+                    if ext.get("O_C_min"):
+                        text += " · " + t('photometry_o_c', o_c=ext["O_C_min"])
+                    ui.label(text).classes('text-sm px-2')
                 keys = ["curve_png", "survey_png"]
                 if res["combined_png"]:   # all the star's sessions put together, first
                     ui.label(t('photometry_combined', count=res["sessions"])).classes('text-sm text-gray-600 px-2')

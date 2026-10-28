@@ -3,6 +3,19 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry (Siril script): images hit by a cloud or a plane left out by themselves (user-requested Oct 2026,
+    issue #200: on DY Peg, 4 images measured with 6 to 10 comparison stars instead of 16, errors two to three times
+    larger) - fewer comparison stars than 0.75 x the session's median, or an error above 2 x its median. Kept in the
+    CSV (cloudy column), drawn apart (grey crosses), out of the means, the check star's scatter, the means of 3, the
+    fit and the sessions put together; counted in the summary.
+    Photometry: the time of each maximum (pulsating star) or minimum (eclipsing binary) inside the session, from
+    the star's VSX elements - a Fourier series with the period fixed (2 to 4 harmonics, weighted) for a pulsating
+    star, Kwee - van Woerden for a minimum, cross-checked by a local polynomial; errors by bootstrap. Its HJD and
+    BJD_TDB, UTC and local time, magnitude, the predicted time and the O-C in minutes - in the summary, on the plot
+    (the fitted curve, the time and its error) and in extrema_<star>.csv archived with the session; Explore's
+    Photometry tab shows them under the star's name. No period known: the session's own extremum (polynomial),
+    with a warning. On the user's DY Peg session of 2026-10-27: HJD 2461341.38110 +- 0.5 min, O-C -1.1 min, as
+    computed by hand.
     Analyze all: a Stop button (user-asked Oct 2026). The folder being read stops at its next object's folder - what
     was found kept, nothing removed (its end, which removes the entries not seen, skipped) -, the next ones not
     started; that folder marked stopped, the summary saying how many were analyzed in full.
