@@ -120,6 +120,14 @@ DIST_ASTROMETRY_DIR = DIST_DIR / "extern" / "linux" / "astrometry"
 DIST_ASTROMETRY_DIR.mkdir(parents=True, exist_ok=True)
 shutil.copy2("extern/linux/astrometry/install_astrometry.sh", DIST_ASTROMETRY_DIR / "install_astrometry.sh")
 
+# Copy the Siril script (Dwarfium Archive Selector: Prepare for Siril's
+# stacking, photometry) into dist/extern/ - it runs inside Siril, not in the
+# .exe: the user copies it into Siril's scripts folder (user-reported Oct
+# 2026: missing from the release, only in the source)
+DIST_EXTERN_DIR = DIST_DIR / "extern"
+DIST_EXTERN_DIR.mkdir(parents=True, exist_ok=True)
+shutil.copy2("extern/Dwarfium_archive_selector.py", DIST_EXTERN_DIR / "Dwarfium_archive_selector.py")
+
 # Copy assets/music/ into dist/assets/music/
 DIST_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 for music_file in Path("assets/music").glob("*"):

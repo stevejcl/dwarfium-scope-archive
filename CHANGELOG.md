@@ -286,6 +286,8 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    The Siril script (extern/Dwarfium_archive_selector.py) shipped in the release's zip, in extern/ (user-reported
+    Oct 2026: only in the source) - to copy into Siril's scripts folder.
     Siril script, Build Sessions: the .ssf read again from the disk - a line changed by hand counts (user-reported Oct
     2026: a findcompstars line commented out was run all the same). findcompstars failed (its APASS / NOMAD catalogs
     are only online - VizieR unreachable that night, Siril's local Gaia catalog doesn't serve it): the star's
