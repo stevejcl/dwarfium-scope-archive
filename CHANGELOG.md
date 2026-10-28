@@ -269,6 +269,11 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Siril script, Build Sessions: the .ssf read again from the disk - a line changed by hand counts (user-reported Oct
+    2026: a findcompstars line commented out was run all the same). findcompstars failed (its APASS / NOMAD catalogs
+    are only online - VizieR unreachable that night, Siril's local Gaia catalog doesn't serve it): the star's
+    comparison stars of an earlier run used, the newest under the archive's drives (_PHOTOMETRY/<star>/<session>/),
+    said in Siril's log and build_sessions.log; a star never measured stops there as before.
     From a phone, the PC-only actions' notification on one line: "Available on Desktop only." (user-asked Oct 2026).
     From a phone, "open the folder / the file" (Explore's folder icons and results, Home, Dwarf page, Manual Explore,
     Analyze all's log, Settings' report, WCS mosaic, Fix the foreground) says it opens on the PC instead of opening

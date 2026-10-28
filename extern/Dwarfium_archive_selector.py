@@ -870,6 +870,45 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
 PHOTOMETRY_DIR = "_PHOTOMETRY"   # api/archive_paths.py's
 
 
+def archived_compstars(target_name, roots):
+    """The newest comparison_stars_<star>.csv archived by an earlier run
+    (archive_photometry: _PHOTOMETRY/<star>/<session>/) under one of
+    `roots`, or None - findcompstars' stars when the catalog server can't
+    be reached (user-reported Oct 2026: VizieR down, a session measured
+    before left unfinished). The same field gives the same stars."""
+    star = re.sub(r"[^\w.-]+", "_", simbad_name(target_name)) or "target"
+    found = []
+    for root in dict.fromkeys(r for r in roots if r):
+        star_dir = os.path.join(root, PHOTOMETRY_DIR, star)
+        try:
+            sessions = os.listdir(star_dir)
+        except OSError:
+            continue
+        for session in sessions:
+            path = os.path.join(star_dir, session, f"comparison_stars_{star}.csv")
+            if os.path.isfile(path):
+                found.append((os.path.getmtime(path), path))
+    return max(found)[1] if found else None
+
+
+def _script_roots(lines):
+    """The archive roots a photometry script names: its # PYTHON_PHOTOMETRY
+    line's own (field 6) and # PYTHON_PHOTOMETRY_ROOTS' (the other drives)."""
+    roots = []
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith("# PYTHON_PHOTOMETRY_ROOTS"):
+            try:
+                roots += json.loads(line[len("# PYTHON_PHOTOMETRY_ROOTS"):].strip() or "[]")
+            except ValueError:
+                pass
+        elif line.startswith("# PYTHON_PHOTOMETRY ") or line == "# PYTHON_PHOTOMETRY":
+            fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
+            if len(fields) > 5:
+                roots.insert(0, fields[5])
+    return roots
+
+
 def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root="", failed=None):
     """The light curve, the field survey and the comparison stars copied from
     the process folder to _PHOTOMETRY/<star>/<session folder>/ at the archive's root
@@ -2936,6 +2975,14 @@ class PreprocessingInterface(QMainWindow):
                         + ", ".join(os.path.basename(p) for p, _ in scripts_to_run), new=True)
         for ssf_path, lines in scripts_to_run:
             ssf_name = os.path.basename(ssf_path)
+            # The script as it is on disk: a line changed by hand counts
+            # (user-reported Oct 2026: a findcompstars line commented out in
+            # the .ssf was run all the same - the lines of the load were)
+            try:
+                with open(ssf_path, encoding="utf-8") as script_file:
+                    lines = script_file.read().splitlines()
+            except OSError:
+                pass
             self.siril.log(f"[build] Running {ssf_name}…", LogColor.BLUE)
             for raw_line in lines:
                 line = raw_line.strip()
@@ -3085,6 +3132,24 @@ class PreprocessingInterface(QMainWindow):
                 try:
                     self._siril_cmd(*quoted_args)
                 except (s.CommandError, s.SirilError) as e:   # refused, or Siril no longer answering
+                    if args[0] == "findcompstars" and len(args) > 1 and not _siril_gone(e):
+                        # The catalog server unreachable (APASS / NOMAD are
+                        # only online): the star's list from an earlier run
+                        out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
+                                   "comparison_stars.csv")
+                        known = archived_compstars(args[1], _script_roots(lines))
+                        if known:
+                            folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                                           for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                                          os.path.join(self.current_working_directory, "process"))
+                            try:
+                                shutil.copyfile(known, out if os.path.isabs(out) else os.path.join(folder, out))
+                                self.siril.log(f"[build] findcompstars failed ({e}) - the comparison stars of an "
+                                               f"earlier run used: {known}", LogColor.SALMON)
+                                self._build_log(f"  failed: {e}\n  comparison stars of an earlier run used: {known}")
+                                continue
+                            except OSError as copy_error:
+                                self._build_log(f"  earlier comparison stars not copied: {copy_error}")
                     self.siril.log(f"[build] Command '{line}' failed: {e}", LogColor.RED)
                     self._build_log(f"  failed: {e}")
                     ran_ok = False
