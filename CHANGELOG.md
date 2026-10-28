@@ -16,6 +16,10 @@
     Photometry tab shows them under the star's name. No period known: the session's own extremum (polynomial),
     with a warning. On the user's DY Peg session of 2026-10-27: HJD 2461341.38110 +- 0.5 min, O-C -1.1 min, as
     computed by hand.
+    Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
+    calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
+    the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
+    with a line in Siril's log, when its size isn't the lights'.
     Analyze all: a Stop button (user-asked Oct 2026). The folder being read stops at its next object's folder - what
     was found kept, nothing removed (its end, which removes the entries not seen, skipped) -, the next ones not
     started; that folder marked stopped, the summary saying how many were analyzed in full.
