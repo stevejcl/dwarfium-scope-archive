@@ -338,7 +338,8 @@ def _header_center(cards):
 
 
 def vsx_star(name, timeout=10, errors=None):
-    """{"type", "max", "min", "amplitude"} of a variable star from AAVSO's VSX
+    """{"type", "max", "min", "amplitude", "ra", "dec", "period", "epoch"} of
+    a variable star from AAVSO's VSX
     (user-requested Oct 2026: the exposure check's amplitude was an eclipse
     depth of 1 mag, DY Peg - a pulsating star - varies by about 0.6), None
     when not found or offline. "amplitude" in the same band as max/min, None
@@ -370,7 +371,10 @@ def vsx_star(name, timeout=10, errors=None):
         amplitude = _mag(min_text.strip()[1:])   # "(0.6)": given as an amplitude
     return {"type": obj.get("VariabilityType") or "", "max": max_mag, "min": min_mag,
             "amplitude": amplitude if amplitude and amplitude > 0 else None,
-            "ra": _mag(obj.get("RA2000")), "dec": _signed(obj.get("Declination2000"))}
+            "ra": _mag(obj.get("RA2000")), "dec": _signed(obj.get("Declination2000")),
+            # its elements: the epoch of a maximum (pulsating star) or of a
+            # primary minimum (eclipsing binary), HJD
+            "period": _mag(obj.get("Period")), "epoch": _mag(obj.get("Epoch"))}
 
 
 def moon_at(when_utc, ra, dec):
@@ -494,7 +498,7 @@ def _airmass(coord, when, observer):
 
 
 def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None,
-                             site=None, session_name="", keep_saturated=False):
+                             site=None, session_name="", keep_saturated=False, elements=None):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -519,7 +523,12 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     has none: the session's location in the archive) - each point's airmass;
     session_name, the instrument (first image's header) and the site in the
     CSV's header lines (user-requested Oct 2026: several sessions of a star
-    put together later)."""
+    put together later).
+    Images hit by a cloud (flag_cloudy()) kept in the CSV, flagged (cloudy),
+    out of the means and the fit. elements: the star's {"period", "epoch",
+    "type", "source"} (VSX) - the time of each maximum / minimum inside the
+    session, and its O-C (find_extrema(), user-requested Oct 2026, issue
+    #200), in the summary, the plot and extrema_<sequence>.csv."""
     import math
     import warnings
     import numpy as np
@@ -666,6 +675,14 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                      _airmass(coord, mid, observer), positions.get(name),
                      bool(saturation and t[0] >= saturation)))
     rows.sort(key=lambda r: r[1])
+    # A cloud (or a plane): fewer comparison stars, larger errors - flagged
+    # among the unsaturated images (the saturated ones are apart already)
+    unsat = [i for i, r in enumerate(rows) if not r[12]]
+    cloudy = set()
+    if unsat:
+        flags = flag_cloudy([rows[i][6] for i in unsat], [rows[i][5] for i in unsat])
+        cloudy = {i for i, flag in zip(unsat, flags) if flag}
+    rows = [r + (i in cloudy,) for i, r in enumerate(rows)]
 
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
@@ -687,25 +704,26 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                 writer.writerow([f"# {key}: {value}"])
         check_label = f"check_{comps[check]['name']}" if check is not None else "check"
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
-                         f"{check_label}_mag", f"{check_label}_err", "airmass", "x", "y", "target_saturated"])
-        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass, xy, sat in rows:
+                         f"{check_label}_mag", f"{check_label}_err", "airmass", "x", "y", "target_saturated",
+                         "cloudy"])
+        for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass, xy, sat, cloud in rows:
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
                              f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
                              "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}",
                              "" if airmass is None else f"{airmass:.3f}",
                              "" if xy is None else f"{xy[0]:.1f}", "" if xy is None else f"{xy[1]:.1f}",
-                             "yes" if sat else ""])
+                             "yes" if sat else "", "yes" if cloud else ""])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
                f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
     if rows:
-        unsaturated = [r for r in rows if not r[12]] or rows
+        unsaturated = [r for r in rows if not r[12] and not r[13]] or rows
         mags = np.array([r[4] for r in unsaturated])
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
                        f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
                        + (f" (the same {len(fixed)} in every image)" if fixed else ""))
     if rows and check is not None:
-        cmags = np.array([r[8] for r in rows if r[8] is not None])
+        cmags = np.array([r[8] for r in rows if r[8] is not None and not r[13]])
         if cmags.size:
             summary.append(f"  check star (comparison {comps[check]['name']}, V {comps[check]['mag']:.2f}): "
                            f"std {cmags.std():.3f}")
@@ -713,12 +731,20 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         summary += field_variability(comps, frame_info, os.path.dirname(out_csv) or ".", target)
     except Exception as e:
         summary.append(f"  field survey not done: {e}")
+    if cloudy:
+        summary.append(f"  {len(cloudy)} image(s) left out of the means: clouds (fewer comparison stars, larger "
+                       "errors) - kept in the CSV, flagged (cloudy)")
+    extrema, curve = [], None
+    if rows:
+        extrema, curve, lines = _session_extrema(rows, target["name"], elements, out_csv, utc_offset_h)
+        summary += lines
     if rows:
         png = os.path.splitext(out_csv)[0] + ".png"
         try:
             plot_light_curve(rows, png, target["name"],
                              f"check: comparison {comps[check]['name']} (V {comps[check]['mag']:.2f})" if check is not None else None,
-                             target_v=target.get("mag"), check_v=comps[check]["mag"] if check is not None else None)
+                             target_v=target.get("mag"), check_v=comps[check]["mag"] if check is not None else None,
+                             extrema=extrema, curve=curve)
             summary.append(f"  plot -> {png}")
         except Exception as e:
             summary.append(f"  plot not drawn: {e}")
@@ -732,6 +758,53 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                        + ": a lower gain or a shorter exposure next time (Check exposure)")
     summary += _skipped_summary(skipped)
     return summary
+
+
+def _session_extrema(rows, star, elements, out_csv, utc_offset_h):
+    """(extrema, fitted curve, summary lines) of a light curve's rows - see
+    find_extrema(); extrema_<sequence>.csv next to out_csv when found."""
+    import numpy as np
+    elements = elements or {}
+    kind = extremum_kind(elements.get("type"))
+    period, epoch = elements.get("period"), elements.get("epoch")
+    kept = [r for r in rows if not r[12] and not r[13]]
+    if not kept:
+        return [], None, []
+    times = [r[2] if r[2] is not None else r[1] for r in kept]
+    hjd_to_jd = float(np.median([r[2] - r[1] for r in kept if r[2] is not None] or [0.0]))
+    hjd_to_bjd = float(np.median([r[3] - r[2] for r in kept if r[2] is not None and r[3] is not None] or [0.0]))
+    source = elements.get("source") or ""
+    try:
+        extrema, curve = find_extrema(times, [r[4] for r in kept], [r[5] for r in kept], kind, period, epoch)
+    except Exception as e:
+        return [], None, [f"  time of {'maximum' if kind == 'max' else 'minimum'} not computed: {e}"]
+    lines = extremum_header(kind, period, epoch, source, elements.get("error"))
+    lines += extrema_summary(extrema, kind, star, period, source, hjd_to_jd, hjd_to_bjd, utc_offset_h, len(kept))
+    if not extrema and any(r[12] for r in rows):
+        lines.append("    the saturated images are left out: the brightest phases are missing (Check exposure)")
+    path = os.path.join(os.path.dirname(out_csv) or ".",
+                        "extrema_" + os.path.basename(out_csv)[len("light_curve_"):])
+    if not extrema and os.path.isfile(path):   # an earlier run's
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    if extrema:
+        try:
+            write_extrema_csv(path, extrema, kind, star, period, epoch, source, hjd_to_jd, hjd_to_bjd, utc_offset_h)
+            lines.append(f"    -> {path}")
+        except OSError as e:
+            lines.append(f"    {os.path.basename(path)} not written: {e}")
+    return extrema, curve, lines
+
+
+def extremum_header(kind, period, epoch, source, error=None):
+    word = "maxima" if kind == "max" else "minima"
+    if period:
+        return [f"  times of {word}: P {period} d" + (f", epoch HJD {epoch}" if epoch else ", no epoch: no O-C")
+                + (f" ({source})" if source else "")]
+    return [f"  times of {word}: no period known" + (f" ({error})" if error else "")
+            + " - the session's own extremum only"]
 
 
 def _skipped_summary(skipped, examples=3):
@@ -932,6 +1005,7 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
     copies = {
         f"light_curve_{seq_name}.csv": f"light_curve_{star}.csv",
         f"light_curve_{seq_name}.png": f"light_curve_{star}.png",
+        f"extrema_{seq_name}.csv": f"extrema_{star}.csv",
         "stars_variability.csv": f"stars_variability_{star}.csv",
         "stars_variability.png": f"stars_variability_{star}.png",
         "comparison_stars.csv": f"comparison_stars_{star}.csv",
@@ -940,6 +1014,12 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
     pairs += [(path, os.path.join(out, os.path.basename(path))) for path in extra if path]   # .ssf, build log
     for src, dst in pairs:
         if not os.path.isfile(src):
+            # no extremum this time: an earlier run's is no longer this session's
+            if os.path.basename(dst) == f"extrema_{star}.csv" and os.path.isfile(dst):
+                try:
+                    os.remove(dst)
+                except OSError:
+                    pass
             continue
         try:
             shutil.copy2(src, dst)
@@ -1008,6 +1088,8 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
         meta, _, rows = _read_photometry_csv(curve)
         points = []
         for r in rows:
+            if (r.get("cloudy") or "").strip().lower() == "yes":   # a cloud: out of the combined curve
+                continue
             try:
                 t = float(r.get("HJD_UTC") or r["JD_UTC"])
                 # A saturated target kept on request (target_saturated): drawn apart, out of the means
@@ -1140,14 +1222,288 @@ def combine_star_sessions(star_dir, other_roots=(), max_sep_arcsec=3.0):
     return summary
 
 
-def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, target_v=None, check_v=None):
+def flag_cloudy(n_comps, errors, comp_ratio=0.75, err_ratio=2.0):
+    """The images hit by a cloud (or a plane), as booleans (user-requested
+    Oct 2026: on DY Peg, frames 57-63 measured with 6 to 10 comparison stars
+    instead of 16-17, errors two to three times larger, one check point 0.6
+    mag off): fewer comparison stars than comp_ratio x the session's median,
+    or an error above err_ratio x its median."""
+    import numpy as np
+    n = np.asarray(n_comps, dtype=float)
+    e = np.asarray(errors, dtype=float)
+    if n.size < 5:
+        return np.zeros(n.size, dtype=bool)
+    return (n < comp_ratio * np.median(n)) | (e > err_ratio * np.median(e))
+
+
+def extremum_kind(vsx_type):
+    """"min" for an eclipsing binary (VSX types E, EA, EB, EW, ELL...),
+    "max" for the others (pulsating stars)."""
+    return "min" if str(vsx_type or "").strip().upper().startswith(("E", "ELL")) else "max"
+
+
+def _running_median(values, size=7):
+    import numpy as np
+    half = size // 2
+    return np.array([np.median(values[max(0, i - half):i + half + 1]) for i in range(len(values))])
+
+
+def _fourier_matrix(x, period, harmonics):
+    import numpy as np
+    phase = 2 * np.pi * x / period
+    cols = [np.ones_like(x)]
+    for j in range(1, harmonics + 1):
+        cols += [np.cos(j * phase), np.sin(j * phase)]
+    return np.array(cols).T
+
+
+def _fit_fourier(x, m, w, period, harmonics):
+    import numpy as np
+    sw = np.sqrt(w)
+    coef, *_ = np.linalg.lstsq(_fourier_matrix(x, period, harmonics) * sw[:, None], m * sw, rcond=None)
+    return coef
+
+
+def _extreme_of(xs, ys, kind):
+    i = int(ys.argmin() if kind == "max" else ys.argmax())   # magnitudes: a maximum is the smallest
+    return float(xs[i]), float(ys[i]), i
+
+
+def _kwee_van_woerden(x, m, steps=None):
+    """Kwee & van Woerden (1956): the time of a minimum from the symmetry
+    of its branches, and its error. x, m: around the minimum, sorted."""
+    import numpy as np
+    n = steps or max(len(x), 11)
+    grid = np.linspace(x[0], x[-1], n)
+    mi = np.interp(grid, x, m)
+    dt = grid[1] - grid[0]
+
+    def s_of(k0):
+        pairs = min(k0, n - 1 - k0)
+        if pairs < 3:
+            return None, 0
+        d = mi[k0 + 1:k0 + 1 + pairs] - mi[k0 - pairs:k0][::-1]
+        return float((d ** 2).sum() / pairs), pairs
+
+    k0 = int(mi.argmax())   # faintest
+    values = [s_of(k) for k in (k0 - 1, k0, k0 + 1)]
+    if any(v[0] is None for v in values):
+        return None
+    s = np.array([v[0] for v in values])
+    t = grid[[k0 - 1, k0, k0 + 1]]
+    a, b, c = np.polyfit(t, s, 2)
+    if a <= 0:
+        return None
+    t0 = -b / (2 * a)
+    if abs(t0 - grid[k0]) > 2 * dt:
+        return None
+    z = max(values[1][1] / 2, 2)   # independent pairs (the interpolated points are not)
+    var = (4 * a * c - b * b) / (4 * a * a * (z - 1))
+    return float(t0), float(np.sqrt(var)) if var > 0 else float(dt / 2)
+
+
+def find_extrema(times, mags, errs, kind, period=None, epoch=None, boots=300, seed=1):
+    """The maxima ("max") or minima ("min") inside the session (user-requested
+    Oct 2026, issue #200, as done by hand on DY Peg 2026-10-27: Tmax HJD
+    2461341.38110 +- 0.00034, O-C -1.1 min). times (HJD), mags, errs: the
+    points kept (no saturated or cloudy image).
+
+    - With a period: a Fourier series of the light curve, period fixed, 2 to
+      4 harmonics, weighted by 1/err^2, for a pulsating star - every extremum
+      of the fit with points on both sides; for an eclipsing binary, the
+      faintest part near each predicted minimum (primary and secondary).
+    - Each one refined on its own part of the curve (the points beyond half
+      its depth): a degree 2-4 polynomial, and Kwee - van Woerden for a
+      minimum. Errors by bootstrap.
+    - With an epoch too: the predicted time (the nearest cycle; half a cycle
+      for a secondary minimum) and O-C in minutes.
+
+    Returns [{"time", "error", "mag", "method", "check", "cycle",
+    "predicted", "o_c_min", "n", "secondary"}] ([] when no extremum lies
+    inside the session), and the fitted curve for the plot (xs, ys) or
+    None."""
+    import numpy as np
+    t, m, e = (np.asarray(v, dtype=float) for v in (times, mags, errs))
+    order = np.argsort(t)
+    t, m, e = t[order], m[order], np.maximum(e[order], 1e-4)
+    if t.size < 15:
+        return [], None
+    origin = float(np.floor(t[0]))
+    x = t - origin
+    w = 1 / e ** 2
+    smooth = _running_median(m, 7)
+    span = x[-1] - x[0]
+    rng = np.random.default_rng(seed)
+    curve = None
+    candidates = []
+    fourier = None
+    if period and kind == "max" and span >= 0.4 * period:
+        harmonics = int(min(4, max(2, (t.size - 1) // 12)))
+        coef = _fit_fourier(x, m, w, period, harmonics)
+        xs = np.linspace(x[0], x[-1], 4000)
+        ys = _fourier_matrix(xs, period, harmonics) @ coef
+        curve = (xs + origin, ys)
+        fourier = harmonics
+        # its local maxima (smallest magnitudes) away from the ends
+        for i in range(1, len(xs) - 1):
+            if ys[i] < ys[i - 1] and ys[i] <= ys[i + 1]:
+                candidates.append(xs[i])
+    elif period and epoch and kind == "min":
+        first = np.ceil((t[0] - epoch) / period * 2) / 2
+        for cycle in np.arange(first, (t[-1] - epoch) / period + 1e-9, 0.5):
+            guess = epoch + cycle * period - origin
+            near = np.abs(x - guess) < 0.1 * period
+            if near.sum() >= 5:
+                candidates.append(float(x[near][smooth[near].argmax()]))
+    else:
+        candidates.append(_extreme_of(x, smooth, kind)[0])
+
+    amplitude = float(np.percentile(m, 95) - np.percentile(m, 5))
+    results = []
+    for guess in candidates:
+        i0 = int(np.abs(x - guess).argmin())
+        level = smooth[i0]
+        # its part of the curve: the points beyond half the depth, contiguous
+        half = level + (0.5 * amplitude if kind == "max" else -0.5 * amplitude)
+        inside = (smooth <= half) if kind == "max" else (smooth >= half)
+        lo = hi = i0
+        while lo > 0 and inside[lo - 1]:
+            lo -= 1
+        while hi < len(x) - 1 and inside[hi + 1]:
+            hi += 1
+        if period:   # not beyond a quarter of the cycle either side
+            lo = max(lo, int(np.searchsorted(x, x[i0] - 0.25 * period)))
+            hi = min(hi, int(np.searchsorted(x, x[i0] + 0.25 * period)) - 1)
+        # points on both sides, and not the session's first or last ones
+        if i0 - lo < 5 or hi - i0 < 5 or lo == 0 or hi == len(x) - 1:
+            continue
+        sel = slice(lo, hi + 1)
+        xs_, ms_, ws_ = x[sel], m[sel], w[sel]
+        degree = 4 if xs_.size >= 25 else 2
+
+        def poly_time(xx, mm, ww):
+            c = np.polyfit(xx - x[i0], mm, degree, w=np.sqrt(ww))
+            grid = np.linspace(xx.min(), xx.max(), 4000)
+            vals = np.polyval(c, grid - x[i0])
+            tt, mag, k = _extreme_of(grid, vals, kind)
+            return tt, mag, 0 < k < len(grid) - 1
+
+        tp, mp, inner = poly_time(xs_, ms_, ws_)
+        if not inner:
+            continue
+        idx = np.arange(xs_.size)
+        boot = []
+        for _ in range(boots):
+            j = np.sort(rng.choice(idx, idx.size))
+            if np.unique(xs_[j]).size > degree:
+                boot.append(poly_time(xs_[j], ms_[j], ws_[j])[0])
+        poly = (tp, float(np.std(boot)) if boot else None, mp)
+
+        best = check = None
+        if fourier:
+            def fourier_time(xx, mm, ww):
+                c = _fit_fourier(xx, mm, ww, period, fourier)
+                grid = np.linspace(x[i0] - 0.2 * period, x[i0] + 0.2 * period, 4000)
+                return _extreme_of(grid, _fourier_matrix(grid, period, fourier) @ c, kind)[:2]
+            tf, mf = fourier_time(x, m, w)
+            boot = []
+            all_idx = np.arange(x.size)
+            for _ in range(boots):
+                j = rng.choice(all_idx, all_idx.size)
+                boot.append(fourier_time(x[j], m[j], w[j])[0])
+            best = (tf, float(np.std(boot)), mf, f"Fourier series, P fixed, {fourier} harmonics")
+            check = (poly[0], poly[1], f"polynomial deg {degree}")
+        elif kind == "min":
+            kvw = _kwee_van_woerden(xs_, ms_)
+            if kvw:
+                best = (kvw[0], kvw[1], poly[2], "Kwee - van Woerden")
+                check = (poly[0], poly[1], f"polynomial deg {degree}")
+        if best is None:
+            best = (poly[0], poly[1], poly[2], f"polynomial deg {degree}")
+        time = best[0] + origin
+        result = {"time": time, "error": best[1], "mag": best[2], "method": best[3],
+                  "check": None if check is None else (check[0] + origin, check[1], check[2]),
+                  "n": int(xs_.size), "cycle": None, "predicted": None, "o_c_min": None, "secondary": False}
+        if period and epoch:
+            step = 0.5 if kind == "min" else 1.0
+            cycle = round((time - epoch) / period / step) * step
+            result["cycle"] = cycle
+            result["secondary"] = kind == "min" and cycle % 1 != 0
+            result["predicted"] = epoch + cycle * period
+            result["o_c_min"] = (time - result["predicted"]) * 1440
+        if not any(abs(r["time"] - time) < 0.1 * (period or span) for r in results):
+            results.append(result)
+    return results, curve
+
+
+def extrema_summary(results, kind, star, period=None, elements="", hjd_to_jd=0.0, hjd_to_bjd=0.0,
+                    utc_offset_h=0.0, curve_points=0):
+    """The extrema's lines for the log (see find_extrema())."""
+    from datetime import datetime as _dt, timedelta as _td
+    word = "maximum" if kind == "max" else "minimum"
+    if not results:
+        why = "fewer than 15 points" if curve_points < 15 else "none inside the session (on its edges or outside)"
+        return [f"  time of {word}: {why}"]
+    lines = []
+    for r in results:
+        utc = _dt(2000, 1, 1, 12) + _td(days=r["time"] - hjd_to_jd - 2451545.0)
+        local = utc + _td(hours=utc_offset_h or 0.0)
+        label = ("secondary " if r["secondary"] else "primary " if kind == "min" and r["cycle"] is not None else "") + word
+        err = "" if r["error"] is None else f" ± {r['error']:.5f} d (± {r['error'] * 1440:.1f} min)"
+        lines.append(f"  {label}: HJD {r['time']:.5f}{err}, BJD_TDB {r['time'] + hjd_to_bjd:.5f}, "
+                     f"{utc:%H:%M:%S} UTC ({local:%H:%M:%S} local), mag {r['mag']:.3f} - {r['method']}, {r['n']} points")
+        if r["check"]:
+            c = r["check"]
+            diff = (c[0] - r["time"]) * 86400
+            lines.append(f"    {c[2]}: HJD {c[0]:.5f}" + ("" if c[1] is None else f" ± {c[1]:.5f}")
+                         + f" ({diff:+.0f} s)")
+        if r["o_c_min"] is not None:
+            lines.append(f"    O-C {r['o_c_min']:+.1f} min (predicted HJD {r['predicted']:.5f}, cycle {r['cycle']:g}"
+                         + (f", {elements}" if elements else "") + ")")
+        elif not period:
+            lines.append("    no known period: local fit of the session's "
+                         + ("brightest" if kind == "max" else "faintest") + " part only")
+    return lines
+
+
+def write_extrema_csv(path, results, kind, star, period=None, epoch=None, elements="", hjd_to_jd=0.0,
+                      hjd_to_bjd=0.0, utc_offset_h=0.0):
+    from datetime import datetime as _dt, timedelta as _td
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([f"# {star}: times of {'maximum' if kind == 'max' else 'minimum'}, HJD UTC / BJD TDB"])
+        if period:
+            writer.writerow([f"# elements: P {period} d" + (f", epoch {epoch}" if epoch else "")
+                             + (f" ({elements})" if elements else "")])
+        writer.writerow(["type", "HJD_UTC", "HJD_err_d", "err_min", "BJD_TDB", "UTC", "local", "mag", "method",
+                         "points", "cycle", "predicted_HJD", "O_C_min", "check_method", "check_HJD", "check_err_d"])
+        for r in results:
+            utc = _dt(2000, 1, 1, 12) + _td(days=r["time"] - hjd_to_jd - 2451545.0)
+            c = r["check"] or (None, None, "")
+            writer.writerow([
+                ("II" if r["secondary"] else "I") if kind == "min" else "max",
+                f"{r['time']:.6f}", "" if r["error"] is None else f"{r['error']:.6f}",
+                "" if r["error"] is None else f"{r['error'] * 1440:.2f}",
+                f"{r['time'] + hjd_to_bjd:.6f}", f"{utc:%Y-%m-%d %H:%M:%S}",
+                f"{utc + _td(hours=utc_offset_h or 0.0):%Y-%m-%d %H:%M:%S}", f"{r['mag']:.4f}", r["method"], r["n"],
+                "" if r["cycle"] is None else f"{r['cycle']:g}",
+                "" if r["predicted"] is None else f"{r['predicted']:.6f}",
+                "" if r["o_c_min"] is None else f"{r['o_c_min']:+.2f}",
+                c[2], "" if c[0] is None else f"{c[0]:.6f}", "" if c[1] is None else f"{c[1]:.6f}"])
+
+
+def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, target_v=None, check_v=None,
+                     extrema=None, curve=None):
     """The light curve as a PNG, as in V. Lecomte's DY Peg procedure (user-
     requested Oct 2026): the target's magnitude against HJD (JD when not
     computed) with its error bars, the check star's, magnitudes growing
     downwards; beyond 15 points, means of bin_size points over them. The
     mean magnitudes (weighted by the errors) as dashed lines, with the
     catalogue's V when known (target_v, check_v), and the target's scatter
-    and range under the title (user-requested Oct 2026)."""
+    and range under the title (user-requested Oct 2026). Cloudy images
+    (rows[13]) drawn apart, out of the means; extrema / curve
+    (find_extrema()): the fitted curve and each time of maximum / minimum
+    with its error."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1160,7 +1516,10 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, targe
     mags, errs = np.array([r[4] for r in rows]), np.array([r[5] for r in rows])
     # Saturated target (kept on request): drawn apart, out of the mean and the statistics
     sat = np.array([bool(r[12]) if len(r) > 12 else False for r in rows])
-    good = ~sat if (~sat).any() else np.ones(len(rows), dtype=bool)
+    cloud = np.array([bool(r[13]) if len(r) > 13 else False for r in rows]) & ~sat
+    good = ~sat & ~cloud
+    if not good.any():
+        good = np.ones(len(rows), dtype=bool)
 
     def _mean(values, errors):
         weights = 1.0 / np.maximum(errors, 1e-4) ** 2
@@ -1175,16 +1534,21 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, targe
     if sat.any():
         ax.errorbar(x[sat], mags[sat], yerr=errs[sat], fmt="o", ms=4, lw=0.6, mfc="none", color="#e08a00",
                     alpha=0.8, label=f"{target_name}, saturated ({int(sat.sum())}: too faint)")
+    if cloud.any():
+        ax.errorbar(x[cloud], mags[cloud], yerr=errs[cloud], fmt="x", ms=5, lw=0.6, color="#808080",
+                    alpha=0.8, label=f"{target_name}, cloudy ({int(cloud.sum())}: left out)")
     mean, mean_err = _mean(mags[good], errs[good])
     ax.axhline(mean, color="#1f5fbf", ls="--", lw=1,
                label=f"{target_name} mean {mean:.3f} ± {mean_err:.3f}{_v(target_v)}")
-    stats = [f"{int(good.sum())} points" + (f" + {int(sat.sum())} saturated" if sat.any() else ""),
+    stats = [f"{int(good.sum())} points" + (f" + {int(sat.sum())} saturated" if sat.any() else "")
+             + (f" + {int(cloud.sum())} cloudy" if cloud.any() else ""),
              f"mean {mean:.3f}", f"std {mags[good].std():.3f}",
              f"range {mags[good].min():.3f} – {mags[good].max():.3f}"]
     if check_label:
-        cx = np.array([xi for xi, r in zip(x, rows) if r[8] is not None])
-        cm = np.array([r[8] for r in rows if r[8] is not None])
-        ce = np.array([r[9] for r in rows if r[8] is not None])
+        keep = [i for i, r in enumerate(rows) if r[8] is not None and not cloud[i]]
+        cx = np.array([x[i] for i in keep])
+        cm = np.array([rows[i][8] for i in keep])
+        ce = np.array([rows[i][9] for i in keep])
         if cm.size:
             ax.errorbar(cx, cm, yerr=ce, fmt="s", ms=3, lw=0.8, color="#c03030", alpha=0.45, label=check_label)
             check_mean, _ = _mean(cm, ce)
@@ -1198,6 +1562,16 @@ def plot_light_curve(rows, png, target_name, check_label=None, bin_size=3, targe
         bm = gm[:n].reshape(-1, bin_size).mean(axis=1)
         be = gm[:n].reshape(-1, bin_size).std(axis=1) / np.sqrt(bin_size)
         ax.errorbar(bx, bm, yerr=be, fmt="o", ms=5, lw=1.2, color="#0b2f6b", label=f"{target_name}, mean of {bin_size}")
+    if curve is not None:
+        ax.plot(np.asarray(curve[0]) - origin, curve[1], color="#2a9d4b", lw=1.4, label="fit")
+    for ext in extrema or []:
+        xt = ext["time"] - origin
+        if ext.get("error"):
+            ax.axvspan(xt - ext["error"], xt + ext["error"], color="#2a9d4b", alpha=0.15)
+        text = f"HJD {ext['time']:.5f}" + (f" ± {ext['error'] * 1440:.1f} min" if ext.get("error") else "")
+        if ext.get("o_c_min") is not None:
+            text += f", O-C {ext['o_c_min']:+.1f} min"
+        ax.axvline(xt, color="#2a9d4b", ls=":", lw=1.2, label=text)
     ax.invert_yaxis()
     ax.set_xlabel(f"{label_time} - {origin:.0f}")
     ax.set_ylabel("Magnitude (TG, green channel)")
@@ -3070,6 +3444,17 @@ class PreprocessingInterface(QMainWindow):
                             QApplication.processEvents()
 
                         self.siril.log(f"[photometry] {len(frames)} images to measure", LogColor.BLUE)
+                        # The star's elements for its times of maximum / minimum and O-C (VSX)
+                        target_stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
+                        elements, vsx_errors = None, []
+                        if target_stars:
+                            found = vsx_star(target_stars[0]["name"], errors=vsx_errors)
+                            if found:
+                                elements = {"period": found.get("period"), "epoch": found.get("epoch"),
+                                            "type": found.get("type"),
+                                            "source": f"VSX, {found.get('type') or 'type unknown'}"}
+                            else:
+                                elements = {"error": f"VSX: {vsx_errors[0] if vsx_errors else 'not found'}"}
                         summary = differential_light_curve(
                             frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
                             os.path.join(folder, f"light_curve_{seq_name}.csv"),
@@ -3077,6 +3462,7 @@ class PreprocessingInterface(QMainWindow):
                             progress=_progress, site=site,
                             keep_saturated=bool(getattr(self, "_photometry_options", {}).get("keep_saturated")),
                             session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
+                            elements=elements,
                         )
                         stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
                         self._build_log("\n".join(summary))

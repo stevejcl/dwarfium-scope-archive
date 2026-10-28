@@ -1304,6 +1304,10 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_open_image":      "Open the image", # TODO
     "photometry_open_csv":        "Open the CSV", # TODO
     "photometry_refresh":         "Refresh",  # TODO
+    "photometry_extremum_max":   "Maximum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
+    "photometry_extremum_min":   "Minimum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
+    "photometry_extremum_min2":  "Secondary minimum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
+    "photometry_o_c":            "O–C {o_c} min",  # TODO
     "photometry_combined":        "All {count} sessions of the star, put together:",  # TODO
     "explore_no_image":           "Pick a session to see its image", # TODO
     "explore_image_missing":        "This session has no image to show", # TODO

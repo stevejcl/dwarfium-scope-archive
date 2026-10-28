@@ -9,6 +9,7 @@ level of RESTACKED) - by star (user-requested Oct 2026: a star's sessions side
 by side, to be put together) - the same convention as its
 archive_photometry(): per target star,
   light_curve_<star>.csv / .png        its light curve
+  extrema_<star>.csv                   its times of maximum / minimum and O-C
   stars_variability_<star>.csv / .png  the variability survey of the field
   comparison_stars_<star>.csv          the comparison stars (findcompstars)
 plus the .ssf script and build_sessions.log of the run; and in
@@ -53,9 +54,23 @@ def _combined_count(star_dir: Path) -> int:
         return sum(1 for d in star_dir.iterdir() if d.is_dir())
 
 
+def read_extrema(path) -> list[dict]:
+    """The rows of an extrema_<star>.csv (the script's write_extrema_csv()):
+    [{"type", "HJD_UTC", "err_min", "local", "mag", "O_C_min", ...}], [] when
+    missing or unreadable."""
+    import csv
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            lines = [line for line in f if not line.lstrip('"').startswith("#")]
+        return list(csv.DictReader(lines))
+    except (OSError, csv.Error):
+        return []
+
+
 def find_results(session_dir) -> list[dict]:
     """The stars measured in the session: [{"star", "curve_png", "curve_csv",
-    "survey_png", "survey_csv", "combined_png", "combined_csv", "sessions"}]
+    "survey_png", "survey_csv", "combined_png", "combined_csv", "sessions",
+    "extrema"}]
     (paths, None when missing; the last three: all the star's sessions put
     together, and how many it has), sorted by star.
     [] when the session has no photometry."""
@@ -81,5 +96,6 @@ def find_results(session_dir) -> list[dict]:
                 "curve_png": _file(f"light_curve_{star}.png"),
                 "survey_csv": _file(f"stars_variability_{star}.csv"),
                 "survey_png": _file(f"stars_variability_{star}.png"),
+                "extrema": read_extrema(folder / f"extrema_{star}.csv"),
             })
     return sorted(results, key=lambda r: r["star"])
