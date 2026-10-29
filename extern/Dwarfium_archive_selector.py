@@ -1422,9 +1422,16 @@ def _extreme_of(xs, ys, kind):
 
 def _kwee_van_woerden(x, m, steps=None):
     """Kwee & van Woerden (1956): the time of a minimum from the symmetry
-    of its branches, and its error. x, m: around the minimum, sorted."""
+    of its branches, and its error. x, m: around the minimum, sorted. The
+    branches resampled on an even grid; S(T), the mean squared difference of
+    the magnitudes mirrored about T, for every trial T of the middle half,
+    its smallest value refined by a parabola through it and its neighbours
+    (user's RT And, Oct 2026: started from the faintest single point, noisy
+    data gave no answer)."""
     import numpy as np
-    n = steps or max(len(x), 11)
+    if len(x) < 15:
+        return None
+    n = steps or int(min(max(len(x) // 2, 21), 201))
     grid = np.linspace(x[0], x[-1], n)
     mi = np.interp(grid, x, m)
     dt = grid[1] - grid[0]
@@ -1432,23 +1439,24 @@ def _kwee_van_woerden(x, m, steps=None):
     def s_of(k0):
         pairs = min(k0, n - 1 - k0)
         if pairs < 3:
-            return None, 0
+            return None
         d = mi[k0 + 1:k0 + 1 + pairs] - mi[k0 - pairs:k0][::-1]
-        return float((d ** 2).sum() / pairs), pairs
+        return float((d ** 2).sum() / pairs)
 
-    k0 = int(mi.argmax())   # faintest
-    values = [s_of(k) for k in (k0 - 1, k0, k0 + 1)]
-    if any(v[0] is None for v in values):
+    trials = range(n // 4, 3 * n // 4 + 1)
+    values = {k: s_of(k) for k in trials}
+    values = {k: v for k, v in values.items() if v is not None}
+    if len(values) < 3:
         return None
-    s = np.array([v[0] for v in values])
+    k0 = min(values, key=values.get)
+    if k0 - 1 not in values or k0 + 1 not in values:
+        return None        # at the edge of the trials: no minimum inside
     t = grid[[k0 - 1, k0, k0 + 1]]
-    a, b, c = np.polyfit(t, s, 2)
+    a, b, c = np.polyfit(t, [values[k0 - 1], values[k0], values[k0 + 1]], 2)
     if a <= 0:
         return None
     t0 = -b / (2 * a)
-    if abs(t0 - grid[k0]) > 2 * dt:
-        return None
-    z = max(values[1][1] / 2, 2)   # independent pairs (the interpolated points are not)
+    z = max(len(x) / 4, 2)   # independent points (Kwee - van Woerden's Z)
     var = (4 * a * c - b * b) / (4 * a * a * (z - 1))
     return float(t0), float(np.sqrt(var)) if var > 0 else float(dt / 2)
 

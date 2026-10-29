@@ -23,7 +23,9 @@
     (the fitted curve, the time and its error) and in extrema_<star>.csv archived with the session; Explore's
     Photometry tab shows them under the star's name. No period known: the session's own extremum (polynomial),
     with a warning. On the user's DY Peg session of 2026-10-27: HJD 2461341.38110 +- 0.5 min, O-C -1.1 min, as
-    computed by hand.
+    computed by hand. Kwee - van Woerden made robust (user's RT And minimum, Oct 2026: it started from the faintest
+    single point and gave no answer on noisy data, the polynomial was used): S(T) over every trial time of the
+    window's middle half, its smallest value refined by a parabola.
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
