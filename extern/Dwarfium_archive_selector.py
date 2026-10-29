@@ -454,6 +454,69 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     return peak, background, flux, noise
 
 
+def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20)):
+    """(FWHM in px, roundness - minor / major axis, 1 round -, peak) of the
+    star at ra/dec from the second moments of its pixels well above the
+    background (3 sigma), None when not found or too faint (peak under 20
+    sigma: its shape is noise)."""
+    import numpy as np
+    height, width = data.shape
+    x, y = wcs.world_to_pixel_values(ra, dec)
+    cx, cy = int(round(float(x))), int(round(float(y)))
+    R = annulus[1]
+    if not (R <= cx < width - R and R <= cy < height - R):
+        return None
+    cut = data[cy - R:cy + R + 1, cx - R:cx + R + 1].astype("float64")
+    gy, gx = np.mgrid[-R:R + 1, -R:R + 1]
+    dist = np.hypot(gx, gy)
+    ring = cut[(dist >= annulus[0]) & (dist <= annulus[1])]
+    background = float(np.median(ring))
+    sigma = float(1.4826 * np.median(np.abs(ring - background)))
+    core = dist <= r
+    values = cut - background
+    peak = float(cut[dist <= 3].max())
+    if sigma <= 0 or peak - background < 20 * sigma:
+        return None
+    w = np.where(core & (values > 3 * sigma), values, 0.0)
+    total = w.sum()
+    if total <= 0:
+        return None
+    mx, my = (w * gx).sum() / total, (w * gy).sum() / total
+    sxx = (w * (gx - mx) ** 2).sum() / total
+    syy = (w * (gy - my) ** 2).sum() / total
+    sxy = (w * (gx - mx) * (gy - my)).sum() / total
+    half = (sxx + syy) / 2
+    root = ((sxx - syy) ** 2 / 4 + sxy ** 2) ** 0.5
+    major, minor = half + root, max(half - root, 1e-6)
+    return 2.3548 * ((major + minor) / 2) ** 0.5, float((minor / major) ** 0.5), peak
+
+
+# The measuring circle from the stars' size in each image (user-asked Oct
+# 2026: one DWARF 3 gives odd-shaped stars - a fixed 5 px radius lost part of
+# their light, not the same part from one image to the next)
+APERTURE_FWHM = 2.0          # radius = this x the median FWHM of the image,
+APERTURE_MIN, APERTURE_MAX = 3.0, 12.0     # within these px
+
+
+def frame_aperture(data, wcs, stars, saturation=None, default=5.0):
+    """(radius, background annulus, median FWHM, median roundness) for one
+    image, from the shapes of its comparison stars (bright, unsaturated);
+    the default radius when fewer than 3 could be measured (FWHM None)."""
+    import numpy as np
+    shapes = []
+    for st in stars:
+        shape = star_shape(data, wcs, st["ra"], st["dec"])
+        if shape is not None and not (saturation and shape[2] >= saturation):
+            shapes.append(shape)
+    if len(shapes) < 3:
+        return default, (12, 20), None, None
+    fwhm = float(np.median([sh[0] for sh in shapes]))
+    roundness = float(np.median([sh[1] for sh in shapes]))
+    radius = float(min(max(round(APERTURE_FWHM * fwhm, 1), APERTURE_MIN), APERTURE_MAX))
+    annulus = (int(max(12, radius + 5)), int(max(20, radius + 12)))
+    return radius, annulus, fwhm, roundness
+
+
 def simbad_name(name):
     """A star's name without SIMBAD's prefix ("V* DY Peg" -> "DY Peg", "* bet
     Per", "NAME Algol"): findcompstars writes SIMBAD's main identifier, so the
@@ -558,6 +621,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     # The target's place in each image (user's two DWARF 3 at once, Oct 2026: 0.04 mag
     # apart on one of them only - a dust shadow, no flat?): x, y in the CSV
     positions = {}
+    shapes = {}      # image -> (median FWHM px, roundness, the circle's radius)
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -601,7 +665,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if blended:
                 skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
                                f"another star within {2 * aperture_r} px, left out")
-        t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=aperture_r)
+        # One circle for every star of the image, sized on its stars
+        radius, annulus, fwhm, roundness = frame_aperture(
+            data, wcs, [st for i, st in enumerate(comps) if i not in blended], saturation, aperture_r)
+        shapes[name] = (fwhm, roundness, radius)
+        t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=radius, annulus=annulus)
         positions[name] = tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"]))
         if t is None or t[2] <= 0:
             skipped.append(f"{name}: target not measured")
@@ -616,7 +684,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         for i, st in enumerate(comps):
             if i in blended:
                 continue
-            m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=aperture_r)
+            m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=radius, annulus=annulus)
             if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
                 measured[i] = m
         frames.append((name, mid, t, measured))
@@ -705,17 +773,34 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         check_label = f"check_{comps[check]['name']}" if check is not None else "check"
         writer.writerow(["file", "JD_UTC", "HJD_UTC", "BJD_TDB", "mag", "err", "n_comp", "peak",
                          f"{check_label}_mag", f"{check_label}_err", "airmass", "x", "y", "target_saturated",
-                         "cloudy"])
+                         "cloudy", "fwhm_px", "roundness", "aperture_px"])
         for name, jd, hjd, bjd, mag, err, n, peak, cmag, cerr, airmass, xy, sat, cloud in rows:
+            fwhm, roundness, radius = shapes.get(name, (None, None, None))
             writer.writerow([name, f"{jd:.6f}", "" if hjd is None else f"{hjd:.6f}", "" if bjd is None else f"{bjd:.6f}",
                              f"{mag:.4f}", f"{err:.4f}", n, f"{peak:.0f}",
                              "" if cmag is None else f"{cmag:.4f}", "" if cerr is None else f"{cerr:.4f}",
                              "" if airmass is None else f"{airmass:.3f}",
                              "" if xy is None else f"{xy[0]:.1f}", "" if xy is None else f"{xy[1]:.1f}",
-                             "yes" if sat else "", "yes" if cloud else ""])
+                             "yes" if sat else "", "yes" if cloud else "",
+                             "" if fwhm is None else f"{fwhm:.2f}", "" if roundness is None else f"{roundness:.2f}",
+                             "" if radius is None else f"{radius:.1f}"])
 
     summary = [f"Light curve of {target['name']}: {len(rows)} of {len(files)} images measured -> {out_csv}",
                f"  DATE-OBS taken as UTC{utc_offset_h:+g} h (the DWARF's local time)"]
+    sized = [v for v in shapes.values() if v[0] is not None]
+    if sized:
+        f_med = float(np.median([v[0] for v in sized]))
+        scale = ""
+        try:
+            from astropy.wcs.utils import proj_plane_pixel_scales
+            scale = f" = {f_med * float(np.mean(proj_plane_pixel_scales(wcs))) * 3600:.1f}\""
+        except Exception:
+            pass
+        radii = [v[2] for v in sized]
+        summary.append(f"  stars: FWHM {f_med:.2f} px{scale} (median; {min(v[0] for v in sized):.2f} - "
+                       f"{max(v[0] for v in sized):.2f}), roundness {float(np.median([v[1] for v in sized])):.2f} "
+                       f"(1 = round); measuring circle {min(radii):g} - {max(radii):g} px "
+                       f"({APERTURE_FWHM:g} x FWHM)")
     if rows:
         unsaturated = [r for r in rows if not r[12] and not r[13]] or rows
         mags = np.array([r[4] for r in unsaturated])

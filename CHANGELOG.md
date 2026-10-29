@@ -26,6 +26,11 @@
     computed by hand. Kwee - van Woerden made robust (user's RT And minimum, Oct 2026: it started from the faintest
     single point and gave no answer on noisy data, the polynomial was used): S(T) over every trial time of the
     window's middle half, its smallest value refined by a parabola.
+    Photometry: the measuring circle sized on each image's stars (user-asked Oct 2026: one DWARF 3 gives odd-shaped
+    stars, a fixed 5 px radius lost part of their light, not the same part from one image to the next) - 2 x the
+    median FWHM of its bright unsaturated comparison stars (second moments), 3 to 12 px, the background annulus
+    beyond it; the same circle for every star of the image. The CSV gives each image's FWHM, roundness (minor /
+    major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments.
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
