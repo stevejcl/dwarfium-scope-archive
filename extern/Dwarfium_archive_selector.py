@@ -454,15 +454,14 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     return peak, background, flux, noise
 
 
-def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20)):
+def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
     """(FWHM in px, roundness - minor / major axis, 1 round -, peak) of the
-    star at ra/dec from the second moments of its pixels well above the
-    background (3 sigma), None when not found or too faint (peak under 20
-    sigma: its shape is noise)."""
+    star near pixel cx, cy from the second moments of its pixels 3 sigma
+    above the local background, None when too faint (peak under min_snr
+    sigma: its shape is noise) or too close to an edge."""
     import numpy as np
     height, width = data.shape
-    x, y = wcs.world_to_pixel_values(ra, dec)
-    cx, cy = int(round(float(x))), int(round(float(y)))
+    cx, cy = int(round(float(cx))), int(round(float(cy)))
     R = annulus[1]
     if not (R <= cx < width - R and R <= cy < height - R):
         return None
@@ -472,12 +471,11 @@ def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20)):
     ring = cut[(dist >= annulus[0]) & (dist <= annulus[1])]
     background = float(np.median(ring))
     sigma = float(1.4826 * np.median(np.abs(ring - background)))
-    core = dist <= r
     values = cut - background
     peak = float(cut[dist <= 3].max())
-    if sigma <= 0 or peak - background < 20 * sigma:
+    if sigma <= 0 or peak - background < min_snr * sigma:
         return None
-    w = np.where(core & (values > 3 * sigma), values, 0.0)
+    w = np.where((dist <= r) & (values > 3 * sigma), values, 0.0)
     total = w.sum()
     if total <= 0:
         return None
@@ -491,24 +489,77 @@ def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20)):
     return 2.3548 * ((major + minor) / 2) ** 0.5, float((minor / major) ** 0.5), peak
 
 
+def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20), min_snr=10):
+    """shape_at() of the star at ra/dec of a plate solved image."""
+    x, y = wcs.world_to_pixel_values(ra, dec)
+    return shape_at(data, x, y, r=r, annulus=annulus, min_snr=min_snr)
+
+
+def bright_stars(data, saturation=None, count=40, margin=25, isolation=12):
+    """(x, y) of up to `count` bright, unsaturated, isolated stars of the
+    image, brightest first: local maxima 15 sigma above the image's
+    background, nothing brighter than half of them within `isolation` px."""
+    import numpy as np
+    sample = data[::4, ::4]
+    background = float(np.median(sample))
+    sigma = float(1.4826 * np.median(np.abs(sample - background)))
+    if sigma <= 0:
+        return []
+    core = data[1:-1, 1:-1]
+    peak = core > background + 15 * sigma
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dx or dy:
+                peak &= core >= data[1 + dy:data.shape[0] - 1 + dy, 1 + dx:data.shape[1] - 1 + dx]
+    ys, xs = np.nonzero(peak)
+    ys, xs = ys + 1, xs + 1
+    height, width = data.shape
+    inside = (xs >= margin) & (xs < width - margin) & (ys >= margin) & (ys < height - margin)
+    ys, xs = ys[inside], xs[inside]
+    values = data[ys, xs]
+    if saturation:
+        keep = values < saturation
+        ys, xs, values = ys[keep], xs[keep], values[keep]
+    order = np.argsort(-values)[:count * 5]
+    ys, xs, values = ys[order], xs[order], values[order]
+    chosen = []
+    for i in range(len(xs)):
+        near = (np.abs(xs - xs[i]) < isolation) & (np.abs(ys - ys[i]) < isolation)
+        near[i] = False
+        if (values[near] > 0.5 * values[i]).any():
+            continue   # a neighbour in its circle: its shape isn't its own
+        chosen.append((int(xs[i]), int(ys[i])))
+        if len(chosen) >= count:
+            break
+    return chosen
+
+
 # The measuring circle from the stars' size in each image (user-asked Oct
 # 2026: one DWARF 3 gives odd-shaped stars - a fixed 5 px radius lost part of
 # their light, not the same part from one image to the next)
 APERTURE_FWHM = 2.0          # radius = this x the median FWHM of the image,
 APERTURE_MIN, APERTURE_MAX = 3.0, 12.0     # within these px
+_MIN_SHAPES = 5
 
 
 def frame_aperture(data, wcs, stars, saturation=None, default=5.0):
     """(radius, background annulus, median FWHM, median roundness) for one
-    image, from the shapes of its comparison stars (bright, unsaturated);
-    the default radius when fewer than 3 could be measured (FWHM None)."""
+    image, from the shapes of its bright isolated stars (bright_stars() -
+    user's DY Peg, Oct 2026: its few comparison stars sized 1 image out of
+    355), its comparison stars when too few are found; the default radius
+    when fewer than _MIN_SHAPES could be measured (FWHM None)."""
     import numpy as np
     shapes = []
-    for st in stars:
-        shape = star_shape(data, wcs, st["ra"], st["dec"])
+    for x, y in bright_stars(data, saturation):
+        shape = shape_at(data, x, y)
         if shape is not None and not (saturation and shape[2] >= saturation):
             shapes.append(shape)
-    if len(shapes) < 3:
+    if len(shapes) < _MIN_SHAPES:
+        for st in stars:
+            shape = star_shape(data, wcs, st["ra"], st["dec"])
+            if shape is not None and not (saturation and shape[2] >= saturation):
+                shapes.append(shape)
+    if len(shapes) < _MIN_SHAPES:
         return default, (12, 20), None, None
     fwhm = float(np.median([sh[0] for sh in shapes]))
     roundness = float(np.median([sh[1] for sh in shapes]))
@@ -622,6 +673,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     # apart on one of them only - a dust shadow, no flat?): x, y in the CSV
     positions = {}
     shapes = {}      # image -> (median FWHM px, roundness, the circle's radius)
+    last_circle = None
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -668,6 +720,10 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         # One circle for every star of the image, sized on its stars
         radius, annulus, fwhm, roundness = frame_aperture(
             data, wcs, [st for i, st in enumerate(comps) if i not in blended], saturation, aperture_r)
+        if fwhm is None and last_circle:      # not sized: the previous image's circle
+            radius, annulus = last_circle
+        elif fwhm is not None:
+            last_circle = (radius, annulus)
         shapes[name] = (fwhm, roundness, radius)
         t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=radius, annulus=annulus)
         positions[name] = tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"]))
@@ -799,8 +855,10 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         radii = [v[2] for v in sized]
         summary.append(f"  stars: FWHM {f_med:.2f} px{scale} (median; {min(v[0] for v in sized):.2f} - "
                        f"{max(v[0] for v in sized):.2f}), roundness {float(np.median([v[1] for v in sized])):.2f} "
-                       f"(1 = round); measuring circle {min(radii):g} - {max(radii):g} px "
-                       f"({APERTURE_FWHM:g} x FWHM)")
+                       f"(1 = round), sized in {len(sized)} of {len(shapes)} images; measuring circle "
+                       f"{min(radii):g} - {max(radii):g} px ({APERTURE_FWHM:g} x FWHM)")
+    elif shapes:
+        summary.append(f"  stars: not sized (too few bright isolated stars) - measuring circle {aperture_r:g} px")
     if rows:
         unsaturated = [r for r in rows if not r[12] and not r[13]] or rows
         mags = np.array([r[4] for r in unsaturated])
@@ -1143,7 +1201,7 @@ def aavso_vsp(star, errors=None):
     return center, comps
 
 
-def online_compstars(target_name, out_path):
+def online_compstars(target_name, out_path, sources=("apass", "vsp")):
     """Writes out_path as Siril's findcompstars does (type, name, ra, dec,
     mag; the target first) from APASS on a VizieR mirror, else the AAVSO's
     comparison stars. Returns the source ("APASS, vizier.cfa.harvard.edu" /
@@ -1154,12 +1212,12 @@ def online_compstars(target_name, out_path):
     found = vsx_star(star, timeout=15, errors=errors) or {}
     ra, dec, v = found.get("ra"), found.get("dec"), found.get("max")
     rows, source = [], None
-    if ra is not None and dec is not None:
+    if "apass" in sources and ra is not None and dec is not None:
         comps, mirror = apass_from_mirrors(float(ra), float(dec), v, errors)
         if comps:
             rows = [(str(i), cra, cdec, cv) for i, (cra, cdec, cv) in enumerate(comps, 1)]
             source = f"APASS, {mirror}"
-    if not rows:
+    if not rows and "vsp" in sources:
         center, comps = aavso_vsp(star, errors)
         if comps:
             ra, dec = (ra, dec) if ra is not None else (center or (None, None))
@@ -3775,13 +3833,17 @@ class PreprocessingInterface(QMainWindow):
                         out_path = out if os.path.isabs(out) else os.path.join(folder, out)
                         self._build_log(f"  failed: {e} - comparison stars asked elsewhere")
                         QApplication.processEvents()
-                        source, why = online_compstars(args[1], out_path)
+                        # APASS from a mirror; else the star's earlier list (the
+                        # same APASS stars, more of them than the AAVSO's - user's
+                        # DY Peg, Oct 2026: 17 against 4 - and common with its
+                        # other sessions); else the AAVSO's (VSP)
+                        source, why = online_compstars(args[1], out_path, sources=("apass",))
                         if source:
                             self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
                                            LogColor.SALMON)
                             self._build_log(f"  comparison stars from {source} -> {out_path}")
                             continue
-                        self._build_log(f"  not found online either: {why}")
+                        self._build_log(f"  APASS not found on the mirrors: {why}")
                         known = archived_compstars(args[1], _script_roots(lines))
                         if known:
                             try:
@@ -3792,6 +3854,13 @@ class PreprocessingInterface(QMainWindow):
                                 continue
                             except OSError as copy_error:
                                 self._build_log(f"  earlier comparison stars not copied: {copy_error}")
+                        source, why = online_compstars(args[1], out_path, sources=("vsp",))
+                        if source:
+                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                           LogColor.SALMON)
+                            self._build_log(f"  comparison stars from {source} -> {out_path}")
+                            continue
+                        self._build_log(f"  not found at the AAVSO either: {why}")
                     self.siril.log(f"[build] Command '{line}' failed: {e}", LogColor.RED)
                     self._build_log(f"  failed: {e}")
                     ran_ok = False

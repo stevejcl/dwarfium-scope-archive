@@ -6,8 +6,9 @@
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's
     findcompstars failing). When it fails, the script asks APASS DR9 (II/336) on VizieR's mirrors - Harvard, Japan,
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as
-    findcompstars), else the AAVSO's own comparison stars (VSP), else an earlier run's list as before; the CSV and
-    the build log say which. Check exposure too.
+    findcompstars), else an earlier run's list of the star (more stars than the AAVSO's - user's DY Peg: 17 against
+    4 - and common with its other sessions), else the AAVSO's own comparison stars (VSP); the CSV and the build
+    log say which, and why the mirrors didn't answer. Check exposure too.
     SIMBAD from Harvard when Strasbourg doesn't answer (user-reported Oct 2026: "RT And not found on SIMBAD" with the
     CDS down): Explore's sky search by name and Identify target ask simbad.cds.unistra.fr, then simbad.harvard.edu;
     a name neither finds is asked to the AAVSO's VSX (variable stars).
@@ -30,7 +31,10 @@
     stars, a fixed 5 px radius lost part of their light, not the same part from one image to the next) - 2 x the
     median FWHM of its bright unsaturated comparison stars (second moments), 3 to 12 px, the background annulus
     beyond it; the same circle for every star of the image. The CSV gives each image's FWHM, roundness (minor /
-    major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments.
+    major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments. Sized on the
+    image's own bright isolated stars (up to 40), not only its comparison stars (user's DY Peg: 1 image sized out of
+    355 with the AAVSO's few stars); an image not sized keeps the previous one's circle; the summary says how many
+    were sized.
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
