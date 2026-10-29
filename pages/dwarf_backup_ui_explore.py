@@ -3714,6 +3714,15 @@ class ExploreApp(DbPageMixin):
         if url:
             ui.navigate.to(url)
 
+    def _back_session_param(self) -> str:
+        """"&SessionId=<id>" of the session shown (BackupEntry.id in backup
+        mode, DwarfEntry.id in dwarf mode - get_ObjectSelect_*'s row[22] /
+        row[24]), for the Transfer page's Back to show it again (user-
+        reported Oct 2026: Back showed no session); "" when none."""
+        row = getattr(self, "current_session_row", None) or []
+        entry_id = (row[22] if len(row) > 22 else None) if self.mode == "backup" else (row[24] if len(row) > 24 else None)
+        return f"&SessionId={entry_id}" if entry_id else ""
+
     def get_backup_url(self):
         ui.notify(t("launch_backup"))
         explore_url = ""
@@ -3725,7 +3734,7 @@ class ExploreApp(DbPageMixin):
 
             elif self.selected_path:
                 session = os.path.basename(self.selected_path)
-                back = urllib.parse.quote(f"/Explore?DwarfId={dwarf_id}&mode=dwarf", safe='')
+                back = urllib.parse.quote(f"/Explore?DwarfId={dwarf_id}&mode=dwarf{self._back_session_param()}", safe='')
                 explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Archive&back_url={back}"
             else:
                 back = urllib.parse.quote(f"/Explore?DwarfId={dwarf_id}&mode=dwarf", safe='')
@@ -3743,7 +3752,8 @@ class ExploreApp(DbPageMixin):
 
                 elif self.selected_path:
                     session = self.selected_path
-                    back = urllib.parse.quote(f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={dwarf_id}&mode=backup", safe='')
+                    back = urllib.parse.quote(f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={dwarf_id}&mode=backup"
+                                              f"{self._back_session_param()}", safe='')
                     explore_url = f"/Transfer?DwarfId={dwarf_id}&session={session}&mode=Restore&BackupId={self.BackupDriveId}&back_url={back}"
                 else:
                     back = urllib.parse.quote(f"/Explore?BackupDriveId={self.BackupDriveId}&DwarfId={dwarf_id}&mode=backup", safe='')

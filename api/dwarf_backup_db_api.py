@@ -1340,7 +1340,8 @@ def get_ObjectSelect_dwarf(conn: sqlite3.Connection, object_id = None, dso_id = 
                 Null,
                 DwarfEntry.dwarf_id,
                 Null AS backup_entry_id,
-                Null AS quality_score
+                Null AS quality_score,
+                DwarfEntry.id AS dwarf_entry_id
             FROM DwarfEntry
             JOIN DwarfData ON DwarfEntry.dwarf_data_id = DwarfData.id
             JOIN Dwarf ON DwarfEntry.dwarf_id = Dwarf.id

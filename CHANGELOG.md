@@ -294,6 +294,8 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Transfer page: Back shows the session it was opened for again (user-reported Oct 2026: Explore came back with
+    no session shown) - its id passed back to Explore (SessionId), from the Dwarf or a backup drive.
     The Siril script (extern/Dwarfium_archive_selector.py) shipped in the release's zip, in extern/ (user-reported
     Oct 2026: only in the source) - to copy into Siril's scripts folder.
     Siril script, Build Sessions: the .ssf read again from the disk - a line changed by hand counts (user-reported Oct
