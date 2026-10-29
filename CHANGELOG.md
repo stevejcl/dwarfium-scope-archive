@@ -31,7 +31,10 @@
     stars, a fixed 5 px radius lost part of their light, not the same part from one image to the next) - 2 x the
     median FWHM of its bright unsaturated comparison stars (second moments), 3 to 12 px, the background annulus
     beyond it; the same circle for every star of the image. The CSV gives each image's FWHM, roundness (minor /
-    major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments.
+    major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments. Sized on the
+    image's own bright isolated stars (up to 40), not only its comparison stars (user's DY Peg: 1 image sized out of
+    355 with the AAVSO's few stars); an image not sized keeps the previous one's circle; the summary says how many
+    were sized.
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
