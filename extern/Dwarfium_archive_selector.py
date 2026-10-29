@@ -943,6 +943,157 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
 PHOTOMETRY_DIR = "_PHOTOMETRY"   # api/archive_paths.py's
 
 
+# Comparison stars when Siril's findcompstars can't reach its catalog server
+# (user-reported Oct 2026: VizieR at Strasbourg down two days running): APASS
+# from VizieR's mirrors, then the AAVSO's own comparison stars (VSP), then an
+# earlier run's list (archived_compstars())
+_VIZIER_MIRRORS = ("vizier.cfa.harvard.edu", "vizier.nao.ac.jp", "vizier.iucaa.in")
+_VSP_URL = "https://app.aavso.org/vsp/api/chart/"
+_COMP_RADIUS_DEG = 0.6       # a DWARF's field (the stars outside the images are not measured)
+_COMP_DV = 3.0               # as Siril's findcompstars: within 3 mag of the target,
+_COMP_MAX_ERR = 0.03         # a V error of 0.03 at most
+
+
+def _http_text(url, params, timeout=20):
+    """The answer's text: requests when Siril's Python has it, else urllib
+    (as _vsx_object()). Raises on a network / HTTP error."""
+    try:
+        import requests
+    except ImportError:
+        requests = None
+    if requests is not None:
+        response = requests.get(url, params=params, headers={"User-Agent": _VSX_HEADERS["User-Agent"]},
+                                timeout=timeout)
+        response.raise_for_status()
+        return response.text
+    import ssl
+    import urllib.parse
+    import urllib.request
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    request = urllib.request.Request(url + "?" + urllib.parse.urlencode(params),
+                                     headers={"User-Agent": _VSX_HEADERS["User-Agent"]})
+    with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+        return response.read().decode("utf-8", "replace")
+
+
+def _sexagesimal(text, hours):
+    parts = [float(p) for p in re.split(r"[:\s]+", str(text).strip().lstrip("+-")) if p]
+    value = parts[0] + (parts[1] if len(parts) > 1 else 0) / 60 + (parts[2] if len(parts) > 2 else 0) / 3600
+    value = -value if str(text).strip().startswith("-") else value
+    return value * 15 if hours else value
+
+
+def parse_vizier_tsv(text):
+    """Rows of a VizieR ASU-TSV answer as dicts (its column names): the
+    lines after the header's "---" line, "#" comments left out."""
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+    for i, line in enumerate(lines):
+        if line.startswith("-"):
+            header = [h.strip() for h in lines[i - 2].split("\t")] if i >= 2 else []
+            return [dict(zip(header, (v.strip() for v in row.split("\t")))) for row in lines[i + 1:]]
+    return []
+
+
+def apass_from_mirrors(ra, dec, v_target, errors=None):
+    """[(ra, dec, V)] of APASS DR9 (VizieR II/336) around ra/dec from the
+    first VizieR mirror answering - within _COMP_DV of the target's V,
+    e_V <= _COMP_MAX_ERR - and the mirror's name; ([], None) when none."""
+    params = {"-source": "II/336/apass9", "-c": f"{ra:.6f} {dec:+.6f}", "-c.rd": f"{_COMP_RADIUS_DEG}",
+              "-out": "RAJ2000 DEJ2000 Vmag e_Vmag", "-out.max": "3000"}
+    if v_target is not None:
+        params["Vmag"] = f"{v_target - _COMP_DV:.2f}..{v_target + _COMP_DV:.2f}"
+    for mirror in _VIZIER_MIRRORS:
+        try:
+            rows = parse_vizier_tsv(_http_text(f"https://{mirror}/viz-bin/asu-tsv", params))
+        except Exception as e:
+            if errors is not None:
+                errors.append(f"{mirror}: {type(e).__name__}: {e}"[:160])
+            continue
+        stars = []
+        for row in rows:
+            try:
+                v, err = float(row["Vmag"]), float(row.get("e_Vmag") or 0)
+                if err <= _COMP_MAX_ERR:
+                    stars.append((float(row["RAJ2000"]), float(row["DEJ2000"]), v))
+            except (KeyError, ValueError):
+                continue
+        if stars:
+            return stars, mirror
+        if errors is not None:
+            errors.append(f"{mirror}: no APASS star")
+    return [], None
+
+
+def aavso_vsp(star, errors=None):
+    """The AAVSO's comparison stars for a variable (Variable Star Plotter):
+    ((ra, dec) of the star, [(ra, dec, V, label)]) - (None, []) when not
+    found. Chosen and checked by the AAVSO: the observers' own reference."""
+    import json as _json
+    try:
+        data = _json.loads(_http_text(_VSP_URL, {"star": star, "fov": int(_COMP_RADIUS_DEG * 120),
+                                                 "maglimit": 15, "format": "json"}))
+    except Exception as e:
+        if errors is not None:
+            errors.append(f"AAVSO VSP: {type(e).__name__}: {e}"[:160])
+        return None, []
+    center = None
+    try:
+        center = (_sexagesimal(data["ra"], True), _sexagesimal(data["dec"], False))
+    except (KeyError, ValueError, TypeError):
+        pass
+    comps = []
+    for comp in data.get("photometry") or []:
+        v = next((b.get("mag") for b in comp.get("bands") or [] if b.get("band") == "V"), None)
+        try:
+            comps.append((_sexagesimal(comp["ra"], True), _sexagesimal(comp["dec"], False), float(v),
+                          str(comp.get("label") or comp.get("auid") or "")))
+        except (KeyError, ValueError, TypeError):
+            continue
+    if not comps and errors is not None:
+        errors.append("AAVSO VSP: no comparison star")
+    return center, comps
+
+
+def online_compstars(target_name, out_path):
+    """Writes out_path as Siril's findcompstars does (type, name, ra, dec,
+    mag; the target first) from APASS on a VizieR mirror, else the AAVSO's
+    comparison stars. Returns the source ("APASS, vizier.cfa.harvard.edu" /
+    "AAVSO VSP"), None when neither answered - `errors` then says why, in
+    the second item."""
+    errors = []
+    star = simbad_name(target_name)
+    found = vsx_star(star, timeout=15, errors=errors) or {}
+    ra, dec, v = found.get("ra"), found.get("dec"), found.get("max")
+    rows, source = [], None
+    if ra is not None and dec is not None:
+        comps, mirror = apass_from_mirrors(float(ra), float(dec), v, errors)
+        if comps:
+            rows = [(str(i), cra, cdec, cv) for i, (cra, cdec, cv) in enumerate(comps, 1)]
+            source = f"APASS, {mirror}"
+    if not rows:
+        center, comps = aavso_vsp(star, errors)
+        if comps:
+            ra, dec = (ra, dec) if ra is not None else (center or (None, None))
+            rows = [(label or str(i), cra, cdec, cv) for i, (cra, cdec, cv, label) in enumerate(comps, 1)]
+            source = "AAVSO VSP"
+    if not rows or ra is None or dec is None:
+        return None, "; ".join(errors) or "target not found"
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        f.write(f"# Comparison stars for {star} from {source} (findcompstars' server unreachable)\n")
+        f.write(f"# Dwarfium Archive Selector: {len(rows)} stars, within {_COMP_RADIUS_DEG} deg\n")
+        writer = csv.writer(f)
+        writer.writerow(["type", "name", "ra", "dec", "mag"])
+        writer.writerow(["Target", star, f"{float(ra):.6f}", f"{float(dec):.6f}", "" if v is None else v])
+        for name, cra, cdec, cv in rows:
+            writer.writerow(["Comp1", name, f"{cra:.6f}", f"{cdec:.6f}", f"{cv:.3f}"])
+    return source, ""
+
+
+
 def archived_compstars(target_name, roots):
     """The newest comparison_stars_<star>.csv archived by an earlier run
     (archive_photometry: _PHOTOMETRY/<star>/<session>/) under one of
@@ -3520,19 +3671,31 @@ class PreprocessingInterface(QMainWindow):
                 except (s.CommandError, s.SirilError) as e:   # refused, or Siril no longer answering
                     if args[0] == "findcompstars" and len(args) > 1 and not _siril_gone(e):
                         # The catalog server unreachable (APASS / NOMAD are
-                        # only online): the star's list from an earlier run
+                        # only online): APASS from a VizieR mirror, else the
+                        # AAVSO's comparison stars, else the star's list from
+                        # an earlier run
                         out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
                                    "comparison_stars.csv")
+                        folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                                       for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                                      os.path.join(self.current_working_directory, "process"))
+                        out_path = out if os.path.isabs(out) else os.path.join(folder, out)
+                        self._build_log(f"  failed: {e} - comparison stars asked elsewhere")
+                        QApplication.processEvents()
+                        source, why = online_compstars(args[1], out_path)
+                        if source:
+                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                           LogColor.SALMON)
+                            self._build_log(f"  comparison stars from {source} -> {out_path}")
+                            continue
+                        self._build_log(f"  not found online either: {why}")
                         known = archived_compstars(args[1], _script_roots(lines))
                         if known:
-                            folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
-                                           for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
-                                          os.path.join(self.current_working_directory, "process"))
                             try:
-                                shutil.copyfile(known, out if os.path.isabs(out) else os.path.join(folder, out))
+                                shutil.copyfile(known, out_path)
                                 self.siril.log(f"[build] findcompstars failed ({e}) - the comparison stars of an "
                                                f"earlier run used: {known}", LogColor.SALMON)
-                                self._build_log(f"  failed: {e}\n  comparison stars of an earlier run used: {known}")
+                                self._build_log(f"  comparison stars of an earlier run used: {known}")
                                 continue
                             except OSError as copy_error:
                                 self._build_log(f"  earlier comparison stars not copied: {copy_error}")
@@ -3895,7 +4058,13 @@ class PreprocessingInterface(QMainWindow):
                 solve.insert(0, f"{center[0]:.5f},{center[1]:+.5f}")
             self.siril.cmd("platesolve", *solve)
             csv_name = f"check_{base}.csv"
-            self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
+            try:
+                self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
+            except s.SirilError:
+                # Its catalog server unreachable: APASS from a VizieR mirror,
+                # else the AAVSO's comparison stars (online_compstars())
+                if not online_compstars(star, os.path.join(work, csv_name))[0]:
+                    raise
             # The plate solved green image, measured with astropy (measure_star)
             self.siril.cmd("save", "solved_" + base)
         except (s.SirilError, OSError) as e:
