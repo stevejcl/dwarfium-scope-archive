@@ -9,6 +9,11 @@
     findcompstars), else an earlier run's list of the star (more stars than the AAVSO's - user's DY Peg: 17 against
     4 - and common with its other sessions), else the AAVSO's own comparison stars (VSP); the CSV and the build
     log say which, and why the mirrors didn't answer. Check exposure too.
+    Comparison stars without any server (user-asked Oct 2026): from Siril's local Gaia DR3 extract (the one
+    installed for plate solving) - conesearch -cat=localgaia on the solved image, V from Gaia's G and Teff (BP-RP
+    from Teff, Mucciarelli & Bellazzini 2020; G - V, Riello et al. 2021), stars of colour 0.39 < BP-RP < 1.5,
+    within 3 mag of the star, the 70 nearest. Order when findcompstars fails: the star's earlier list, the local
+    Gaia catalog, APASS on a VizieR mirror, the AAVSO's stars.
     SIMBAD from Harvard when Strasbourg doesn't answer (user-reported Oct 2026: "RT And not found on SIMBAD" with the
     CDS down): Explore's sky search by name and Identify target ask simbad.cds.unistra.fr, then simbad.harvard.edu;
     a name neither finds is asked to the AAVSO's VSX (variable stars).

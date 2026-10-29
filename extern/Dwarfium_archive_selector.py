@@ -1237,6 +1237,72 @@ def online_compstars(target_name, out_path, sources=("apass", "vsp")):
 
 
 
+# Comparison stars from Siril's local Gaia DR3 extract (no server - user-
+# asked Oct 2026, Strasbourg down for days): its G magnitude and effective
+# temperature, the colour BP-RP from Teff (Mucciarelli & Bellazzini 2020,
+# dwarfs: 5040/Teff = 0.4929 + 0.5092 C - 0.0353 C^2), V = G - (G - V) with
+# Gaia's own transformation (Riello et al. 2021: G - V = -0.02704 +
+# 0.01424 C - 0.2156 C^2 + 0.01426 C^3) - a few hundredths of a magnitude,
+# within their valid colours 0.39 < BP-RP < 1.5
+_GAIA_MAX_COMPS = 70
+
+
+def bp_rp_from_teff(teff):
+    """BP-RP from Teff (K), None outside the relation's colours."""
+    import math
+    if not teff or teff <= 0:
+        return None
+    a, b, c = -0.0353, 0.5092, 0.4929 - 5040.0 / float(teff)
+    disc = b * b - 4 * a * c
+    if disc < 0:
+        return None
+    colour = (-b + math.sqrt(disc)) / (2 * a)
+    return colour if 0.39 < colour < 1.5 else None
+
+
+def v_from_gaia(g, bp_rp):
+    return g - (-0.02704 + 0.01424 * bp_rp - 0.2156 * bp_rp ** 2 + 0.01426 * bp_rp ** 3)
+
+
+def gaia_compstars(gaia_csv, star, ra, dec, v_target, out_path):
+    """Writes out_path as findcompstars does from a conesearch -cat=localgaia
+    CSV (ra, dec, mag = G, teff): the stars of known colour within _COMP_DV
+    of the target's V, not the target itself, the _GAIA_MAX_COMPS nearest it.
+    Returns how many."""
+    import math
+    rows = []
+    with open(gaia_csv, encoding="utf-8") as f:
+        for row in csv.DictReader(line for line in f if line.strip() and not line.startswith("#")):
+            try:
+                sra, sdec, g = float(row["ra"]), float(row["dec"]), float(row["mag"])
+                colour = bp_rp_from_teff(float(row.get("teff") or 0))
+            except (KeyError, ValueError):
+                continue
+            if colour is None:
+                continue
+            v = v_from_gaia(g, colour)
+            if v_target is not None and abs(v - v_target) > _COMP_DV:
+                continue
+            dist = math.hypot((sra - ra) * math.cos(math.radians(dec)), sdec - dec)
+            if dist < 10 / 3600:     # the target itself
+                continue
+            rows.append((dist, sra, sdec, v))
+    rows.sort()
+    rows = rows[:_GAIA_MAX_COMPS]
+    if not rows:
+        return 0
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        f.write(f"# Comparison stars for {star} from the local Gaia DR3 catalog (V from G and Teff, "
+                "Riello et al. 2021 - findcompstars' server unreachable)\n")
+        f.write(f"# Dwarfium Archive Selector: {len(rows)} stars\n")
+        writer = csv.writer(f)
+        writer.writerow(["type", "name", "ra", "dec", "mag"])
+        writer.writerow(["Target", star, f"{ra:.6f}", f"{dec:.6f}", "" if v_target is None else v_target])
+        for i, (_, sra, sdec, v) in enumerate(rows, 1):
+            writer.writerow(["Comp1", f"G{i}", f"{sra:.6f}", f"{sdec:.6f}", f"{v:.3f}"])
+    return len(rows)
+
+
 def archived_compstars(target_name, roots):
     """The newest comparison_stars_<star>.csv archived by an earlier run
     (archive_photometry: _PHOTOMETRY/<star>/<session>/) under one of
@@ -3833,17 +3899,11 @@ class PreprocessingInterface(QMainWindow):
                         out_path = out if os.path.isabs(out) else os.path.join(folder, out)
                         self._build_log(f"  failed: {e} - comparison stars asked elsewhere")
                         QApplication.processEvents()
-                        # APASS from a mirror; else the star's earlier list (the
-                        # same APASS stars, more of them than the AAVSO's - user's
-                        # DY Peg, Oct 2026: 17 against 4 - and common with its
-                        # other sessions); else the AAVSO's (VSP)
-                        source, why = online_compstars(args[1], out_path, sources=("apass",))
-                        if source:
-                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
-                                           LogColor.SALMON)
-                            self._build_log(f"  comparison stars from {source} -> {out_path}")
-                            continue
-                        self._build_log(f"  APASS not found on the mirrors: {why}")
+                        # The star's earlier list (the same stars as its other
+                        # sessions, more than the AAVSO's - user's DY Peg, Oct
+                        # 2026: 17 against 4); else the local Gaia DR3 extract
+                        # (no server); else APASS from a mirror; else the
+                        # AAVSO's (VSP)
                         known = archived_compstars(args[1], _script_roots(lines))
                         if known:
                             try:
@@ -3854,6 +3914,16 @@ class PreprocessingInterface(QMainWindow):
                                 continue
                             except OSError as copy_error:
                                 self._build_log(f"  earlier comparison stars not copied: {copy_error}")
+                        source = self._local_gaia_compstars(args[1], out_path)
+                        if not source:
+                            source, why = online_compstars(args[1], out_path, sources=("apass",))
+                            if not source:
+                                self._build_log(f"  APASS not found on the mirrors: {why}")
+                        if source:
+                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                           LogColor.SALMON)
+                            self._build_log(f"  comparison stars from {source} -> {out_path}")
+                            continue
                         source, why = online_compstars(args[1], out_path, sources=("vsp",))
                         if source:
                             self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
@@ -4013,6 +4083,26 @@ class PreprocessingInterface(QMainWindow):
             else:
                 failed += 1
         return removed, size, failed
+
+    def _local_gaia_compstars(self, target_name, out_path):
+        """Comparison stars from Siril's local Gaia DR3 extract
+        (gaia_compstars()), the plate solved image loaded: "local Gaia DR3
+        (N stars)", or None (no local catalog, the star not in VSX...)."""
+        star = simbad_name(target_name)
+        found = vsx_star(star, timeout=15) or {}
+        if found.get("ra") is None or found.get("dec") is None:
+            return None
+        v = found.get("max")
+        limit = (v if v is not None else 12.0) + _COMP_DV + 0.5
+        gaia_csv = os.path.join(os.path.dirname(out_path) or ".", "gaia_field.csv")
+        try:
+            self._siril_cmd("conesearch", f"{limit:.1f}", "-cat=localgaia",
+                            f'"-out={gaia_csv}"' if " " in gaia_csv else f"-out={gaia_csv}")
+            count = gaia_compstars(gaia_csv, star, float(found["ra"]), float(found["dec"]), v, out_path)
+        except Exception as e:      # no local catalog, or Siril refused
+            self._build_log(f"  local Gaia DR3 not used: {e}")
+            return None
+        return f"local Gaia DR3 ({count} stars)" if count else None
 
     def _siril_cmd(self, *args):
         """self.siril.cmd(*args) in a background thread, this window kept alive
@@ -4223,9 +4313,11 @@ class PreprocessingInterface(QMainWindow):
             try:
                 self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
             except s.SirilError:
-                # Its catalog server unreachable: APASS from a VizieR mirror,
-                # else the AAVSO's comparison stars (online_compstars())
-                if not online_compstars(star, os.path.join(work, csv_name))[0]:
+                # Its catalog server unreachable: the local Gaia DR3 extract,
+                # else APASS from a VizieR mirror, else the AAVSO's comparison
+                # stars (online_compstars())
+                out = os.path.join(work, csv_name)
+                if not self._local_gaia_compstars(star, out) and not online_compstars(star, out)[0]:
                     raise
             # The plate solved green image, measured with astropy (measure_star)
             self.siril.cmd("save", "solved_" + base)
