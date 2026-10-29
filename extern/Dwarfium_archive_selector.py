@@ -1143,7 +1143,7 @@ def aavso_vsp(star, errors=None):
     return center, comps
 
 
-def online_compstars(target_name, out_path):
+def online_compstars(target_name, out_path, sources=("apass", "vsp")):
     """Writes out_path as Siril's findcompstars does (type, name, ra, dec,
     mag; the target first) from APASS on a VizieR mirror, else the AAVSO's
     comparison stars. Returns the source ("APASS, vizier.cfa.harvard.edu" /
@@ -1154,12 +1154,12 @@ def online_compstars(target_name, out_path):
     found = vsx_star(star, timeout=15, errors=errors) or {}
     ra, dec, v = found.get("ra"), found.get("dec"), found.get("max")
     rows, source = [], None
-    if ra is not None and dec is not None:
+    if "apass" in sources and ra is not None and dec is not None:
         comps, mirror = apass_from_mirrors(float(ra), float(dec), v, errors)
         if comps:
             rows = [(str(i), cra, cdec, cv) for i, (cra, cdec, cv) in enumerate(comps, 1)]
             source = f"APASS, {mirror}"
-    if not rows:
+    if not rows and "vsp" in sources:
         center, comps = aavso_vsp(star, errors)
         if comps:
             ra, dec = (ra, dec) if ra is not None else (center or (None, None))
@@ -3775,13 +3775,17 @@ class PreprocessingInterface(QMainWindow):
                         out_path = out if os.path.isabs(out) else os.path.join(folder, out)
                         self._build_log(f"  failed: {e} - comparison stars asked elsewhere")
                         QApplication.processEvents()
-                        source, why = online_compstars(args[1], out_path)
+                        # APASS from a mirror; else the star's earlier list (the
+                        # same APASS stars, more of them than the AAVSO's - user's
+                        # DY Peg, Oct 2026: 17 against 4 - and common with its
+                        # other sessions); else the AAVSO's (VSP)
+                        source, why = online_compstars(args[1], out_path, sources=("apass",))
                         if source:
                             self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
                                            LogColor.SALMON)
                             self._build_log(f"  comparison stars from {source} -> {out_path}")
                             continue
-                        self._build_log(f"  not found online either: {why}")
+                        self._build_log(f"  APASS not found on the mirrors: {why}")
                         known = archived_compstars(args[1], _script_roots(lines))
                         if known:
                             try:
@@ -3792,6 +3796,13 @@ class PreprocessingInterface(QMainWindow):
                                 continue
                             except OSError as copy_error:
                                 self._build_log(f"  earlier comparison stars not copied: {copy_error}")
+                        source, why = online_compstars(args[1], out_path, sources=("vsp",))
+                        if source:
+                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                           LogColor.SALMON)
+                            self._build_log(f"  comparison stars from {source} -> {out_path}")
+                            continue
+                        self._build_log(f"  not found at the AAVSO either: {why}")
                     self.siril.log(f"[build] Command '{line}' failed: {e}", LogColor.RED)
                     self._build_log(f"  failed: {e}")
                     ran_ok = False
