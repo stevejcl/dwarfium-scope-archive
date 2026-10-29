@@ -50,9 +50,19 @@ def _simbad_resolve(name: str) -> Optional[dict]:
     or None on failure.
     Uses ra(d)/dec(d) votable fields to get coordinates directly in degrees.
     """
+    # SIMBAD at Strasbourg, else its Harvard mirror, else VSX for a variable
+    # star (api/name_resolver.py - user-reported Oct 2026: the CDS down,
+    # "RT And not found")
+    from api.name_resolver import simbad_clients, vsx_position
+    for server, custom_simbad in simbad_clients(TIMEOUT=20):
+        found = _query_one(custom_simbad, name, server)
+        if found:
+            return found
+    return vsx_position(name)
+
+
+def _query_one(custom_simbad, name: str, server: str) -> Optional[dict]:
     try:
-        from astroquery.simbad import Simbad
-        custom_simbad = Simbad()
         custom_simbad.reset_votable_fields()
         custom_simbad.add_votable_fields("ra(d)", "dec(d)")
         result = custom_simbad.query_object(name)
@@ -72,7 +82,7 @@ def _simbad_resolve(name: str) -> Optional[dict]:
             "dec_deg": dec_deg,
         }
     except Exception as e:
-        print(f"[Simbad] query failed for '{name}': {e}")
+        print(f"[Simbad] {server}: query failed for '{name}': {e}")
         return None
 
 
