@@ -8,6 +8,9 @@
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as
     findcompstars), else the AAVSO's own comparison stars (VSP), else an earlier run's list as before; the CSV and
     the build log say which. Check exposure too.
+    SIMBAD from Harvard when Strasbourg doesn't answer (user-reported Oct 2026: "RT And not found on SIMBAD" with the
+    CDS down): Explore's sky search by name and Identify target ask simbad.cds.unistra.fr, then simbad.harvard.edu;
+    a name neither finds is asked to the AAVSO's VSX (variable stars).
     Photometry (Siril script): images hit by a cloud or a plane left out by themselves (user-requested Oct 2026,
     issue #200: on DY Peg, 4 images measured with 6 to 10 comparison stars instead of 16, errors two to three times
     larger) - fewer comparison stars than 0.75 x the session's median, or an error above 2 x its median. Kept in the

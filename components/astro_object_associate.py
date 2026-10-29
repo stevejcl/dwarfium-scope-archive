@@ -65,12 +65,20 @@ def find_nearby_objects(dwarf_data_row, only_unknown=True, radius_deg=1.5, max_r
 
     coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
 
-    custom_simbad = Simbad()
-    custom_simbad.TIMEOUT = 30
-    custom_simbad.ROW_LIMIT = max_results
-    custom_simbad.add_votable_fields('otype', 'flux(V)', 'ra(d)', 'dec(d)')
-
-    result_table = custom_simbad.query_region(coord, radius=radius_deg*u.deg)
+    # SIMBAD at Strasbourg, else its Harvard mirror (api/name_resolver.py -
+    # user-reported Oct 2026: the CDS down two days)
+    from api.name_resolver import simbad_clients
+    result_table, error = None, None
+    for server, custom_simbad in simbad_clients(TIMEOUT=30, ROW_LIMIT=max_results):
+        try:
+            custom_simbad.add_votable_fields('otype', 'flux(V)', 'ra(d)', 'dec(d)')
+            result_table = custom_simbad.query_region(coord, radius=radius_deg*u.deg)
+            break
+        except Exception as e:
+            print(f"[Simbad] {server}: query_region failed: {e}")
+            error = e
+    if result_table is None and error is not None:
+        return [], f"❌ SIMBAD unreachable: {error}"
     if result_table is None:
         return [], "❌ No objects found nearby."
 
