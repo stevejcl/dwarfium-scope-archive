@@ -39,7 +39,9 @@
     major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments. Sized on the
     image's own bright isolated stars (up to 40), not only its comparison stars (user's DY Peg: 1 image sized out of
     355 with the AAVSO's few stars); an image not sized keeps the previous one's circle; the summary says how many
-    were sized.
+    were sized. Hot pixels and cosmic rays left by the dark no longer taken for stars (user's DY Peg: FWHM 0 - 0.9 px
+    in 46 images, the circle down to 3 px): a star's peak has 3 bright neighbours at least, covers 6 pixels and has
+    a FWHM over 1.2 px.
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,

@@ -454,6 +454,10 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     return peak, background, flux, noise
 
 
+_MIN_STAR_PIXELS = 6     # pixels 3 sigma above the background
+_MIN_STAR_FWHM = 1.2     # px: thinner is a hot pixel, not a star
+
+
 def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
     """(FWHM in px, roundness - minor / major axis, 1 round -, peak) of the
     star near pixel cx, cy from the second moments of its pixels 3 sigma
@@ -477,7 +481,10 @@ def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
         return None
     w = np.where((dist <= r) & (values > 3 * sigma), values, 0.0)
     total = w.sum()
-    if total <= 0:
+    # A star covers several pixels: a hot pixel or a cosmic ray left by the
+    # dark is one or two (user's DY Peg, Oct 2026: FWHM 0 - 0.9 px in 46
+    # images out of 355, the circle shrunk to 3 px)
+    if total <= 0 or np.count_nonzero(w) < _MIN_STAR_PIXELS:
         return None
     mx, my = (w * gx).sum() / total, (w * gy).sum() / total
     sxx = (w * (gx - mx) ** 2).sum() / total
@@ -486,7 +493,10 @@ def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
     half = (sxx + syy) / 2
     root = ((sxx - syy) ** 2 / 4 + sxy ** 2) ** 0.5
     major, minor = half + root, max(half - root, 1e-6)
-    return 2.3548 * ((major + minor) / 2) ** 0.5, float((minor / major) ** 0.5), peak
+    fwhm = 2.3548 * ((major + minor) / 2) ** 0.5
+    if fwhm < _MIN_STAR_FWHM:
+        return None
+    return fwhm, float((minor / major) ** 0.5), peak
 
 
 def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20), min_snr=10):
@@ -516,6 +526,12 @@ def bright_stars(data, saturation=None, count=40, margin=25, isolation=12):
     height, width = data.shape
     inside = (xs >= margin) & (xs < width - margin) & (ys >= margin) & (ys < height - margin)
     ys, xs = ys[inside], xs[inside]
+    # A star's peak has bright neighbours, a hot pixel none: 3 of its 8 at
+    # least 5 sigma above the background
+    bright = sum((data[ys + dy, xs + dx] > background + 5 * sigma).astype(int)
+                 for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy)
+    keep = bright >= 3
+    ys, xs = ys[keep], xs[keep]
     values = data[ys, xs]
     if saturation:
         keep = values < saturation
