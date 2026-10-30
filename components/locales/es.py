@@ -124,6 +124,13 @@ TRANSLATIONS: dict[str, str] = {
     "folder_not_found":             "Folder not found!",  # TODO
     "no_folder_selected":           "No folder selected!",  # TODO
     "no_session_error":             "No error session selected.",  # TODO
+    "session_repair_on_dwarf":       "Repair of a session: both sessions must be read on the Dwarf (USB or network)",  # TODO
+    "session_repair_title":          "Repair a failed session",  # TODO
+    "session_repair_plan":           "Failed session: {failed}\nNew session (2 images, same settings): {new}\n\n{removed} image(s) of the new session removed, {copied} file(s) of the failed one copied into it (images, thumbnails, shotsInfo.json), renamed to its name and date - their time kept. The failed session is left as it is.",  # TODO
+    "session_repair_start":          "Repair",  # TODO
+    "session_repair_running":        "Copying the failed session's images...",  # TODO
+    "session_repair_failed":         "Repair failed: {error}",  # TODO
+    "session_repair_done":           "Session repaired - reboot the Dwarf: the session appears in its Album and Megastack with all its images",  # TODO
     "no_location":                  "No location selected.",  # TODO
     "no_files_loaded":              "No files loaded",  # TODO
     "no_manual_entries":            "No manual entries found for this drive.",  # TODO

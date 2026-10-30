@@ -2312,6 +2312,17 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
                 safe_print(f"[ERROR SESSION] Registered Mosaic error session: {session_dir}")
         return added, data_ids
 
+    # --- Step 3b : a stacked image but no stacked FITS → capture ended badly ---
+    # (user's Lion Nebula, Oct 2026: the DWARF 3 hung, stacked.jpg and the
+    # stacked-16 PNG written, not the stacked-16 FITS - not in the Dwarf's
+    # Album). Registered as usual, and as an error session to repair
+    # (api/session_repair.py)
+    if "_MOSAIC_" not in dwarf_path.upper():
+        from api.session_repair import missing_stack
+        if missing_stack(dwarf_path):
+            if insert_dwarf_session_error(conn, dwarf_id, session_date, session_dir):
+                safe_print(f"[ERROR SESSION] Registered error session (no stacked FITS): {session_dir}")
+
     # --- Step 4 : stacked found → check repairInfo.json ---
     repair_info_path = os.path.join(dwarf_path, "repairInfo.json")
     if os.path.exists(repair_info_path):
@@ -2334,6 +2345,13 @@ def process_dwarf_folder (conn, backup_root, dwarf_path, astro_object_id, dwarf_
                     safe_print(f"[REPAIR] DwarfSessionsError updated: {source_session} repaired from {session_dir}")
                 safe_print(f"[REPAIR] Skipping repaired base session: {dwarf_path}")
                 return added, data_ids
+            elif repair_type == "SESSION_REPAIR":
+                # A new session filled with a failed one's images
+                # (api/session_repair.py): the real entry, registered below
+                source_session = repair_info.get("source_session", "")
+                if source_session:
+                    update_dwarf_session_error_repaired(conn, dwarf_id, source_session,
+                                                        os.path.basename(os.path.normpath(dwarf_path)))
         except Exception as e:
             safe_print(f"[WARN] repairInfo.json read error in {dwarf_path}: {e}")
 

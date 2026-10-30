@@ -899,6 +899,11 @@ class MosaicApp(DbPageMixin):
 
         primary_name = os.path.basename(os.path.normpath(primary))
         secondary_name = os.path.basename(os.path.normpath(secondary))
+        if self.mode == "Repair" and primary and secondary \
+                and "_MOSAIC_" not in (primary + secondary).upper():
+            # Not a mosaic: DwarfLab's repair of a failed session, on the Dwarf
+            self._open_session_repair(primary, secondary)
+            return
         if self.mode == "Repair":
             # Ignore the continue Button in this case
             # Set to empty the secondary_name to ignore this action
@@ -923,6 +928,56 @@ class MosaicApp(DbPageMixin):
         # If no history, on_proceed fires immediately via the timer above.
         # If history exists, the dialog handles routing — nothing more to do here.
         _ = already_shown
+
+    def _open_session_repair(self, new_dir: str, failed_dir: str) -> None:
+        """A failed session (secondary) put into a short new one taken with the
+        same settings (primary), both on the Dwarf - see api/session_repair.py.
+        What will be done shown first; the Dwarf to reboot after."""
+        from api.session_repair import plan_repair
+        if self.primary_source_toggle.value != "Dwarf" or self.secondary_source_toggle.value != "Dwarf":
+            ui.notify(t("session_repair_on_dwarf"), type="warning")
+            return
+        plan = plan_repair(failed_dir, new_dir)
+        with ui.dialog() as dialog, ui.card().classes("max-w-2xl"):
+            ui.label(t("session_repair_title")).classes("text-lg font-semibold")
+            if plan["error"]:
+                ui.label(plan["error"]).classes("text-negative")
+            else:
+                ui.label(t("session_repair_plan", failed=os.path.basename(os.path.normpath(failed_dir)),
+                           new=os.path.basename(os.path.normpath(new_dir)),
+                           removed=len(plan["remove"]), copied=len(plan["copy"]))).classes("text-sm whitespace-pre-line")
+                for warning in plan["warnings"]:
+                    ui.label(f"⚠️ {warning}").classes("text-sm text-orange-9")
+            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                ui.button(t("cancel"), on_click=dialog.close).props("flat")
+                if not plan["error"]:
+                    async def _go() -> None:
+                        dialog.close()
+                        await self._run_session_repair(new_dir, failed_dir)
+                    ui.button(t("session_repair_start"), icon="build", on_click=_go).props("color=primary")
+        dialog.open()
+
+    async def _run_session_repair(self, new_dir: str, failed_dir: str) -> None:
+        from api.session_repair import repair
+        from api.dwarf_backup_db_api import update_dwarf_session_error_repaired
+        self.log_ui.clear()
+        self.progress.value = 0
+        self.progress_label.set_text(t("session_repair_running"))
+        try:
+            await run.io_bound(repair, failed_dir, new_dir, lambda m: print_log(m, self.log_ui),
+                               lambda p: safe_progress(self.progress, p * 100))
+        except Exception as e:
+            traceback.print_exc()
+            self.progress_label.set_text(t("session_repair_failed", error=e))
+            self.notify_me.refresh(t("session_repair_failed", error=e), type="negative")
+            return
+        self.progress.value = 100
+        update_dwarf_session_error_repaired(self.conn, self.DwarfId, os.path.basename(os.path.normpath(failed_dir)),
+                                            os.path.basename(os.path.normpath(new_dir)))
+        self.refresh_error_sessions()
+        self.progress_label.set_text(t("session_repair_done"))
+        print_log(f"✅ {t('session_repair_done')}", self.log_ui)
+        self.notify_me.refresh(t("session_repair_done"), type="positive")
 
     async def _run_process(self, primary: str, secondary: str, output: str, primary_name: str, ignore_copy: bool = False ):
         """Core repair/merge logic, called both on first run and on Redo."""
