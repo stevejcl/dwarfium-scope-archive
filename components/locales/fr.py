@@ -125,7 +125,7 @@ TRANSLATIONS: dict[str, str] = {
     "no_session_error":             "Aucune session en erreur sélectionnée.",
     "session_repair_on_dwarf":       "Réparation d'une session : les deux sessions doivent être lues sur le Dwarf (USB ou réseau)",
     "session_repair_title":          "Réparer une session échouée",
-    "session_repair_plan":           "Session échouée : {failed}\nNouvelle session (2 images, mêmes réglages) : {new}\n\n{removed} image(s) de la nouvelle session supprimée(s), {copied} fichier(s) de la session échouée copié(s) dedans (images, miniatures, shotsInfo.json), renommés à son nom et sa date - leur heure gardée. La session échouée n'est pas modifiée.",
+    "session_repair_plan":           "Session échouée : {failed}\nNouvelle session (2 images, mêmes réglages) : {new}\n\n{removed} image(s) de la nouvelle session supprimée(s), {copied} fichier(s) de la session échouée copié(s) dedans (images, miniatures, shotsInfo.json, et son image stackée / PNG ou FITS stacked-16 s'ils existent), renommés à son nom et sa date - leur heure gardée. La session échouée n'est pas modifiée.",
     "session_repair_start":          "Réparer",
     "session_repair_running":        "Copie des images de la session échouée...",
     "session_repair_failed":         "Réparation échouée : {error}",

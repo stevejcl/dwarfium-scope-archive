@@ -9,7 +9,8 @@
     Album nor its Megastack. Such a session is now listed in Repair's sessions in error. Repair with a short new
     session of the same settings as primary (2 images - Astro Dwarf Session's "Repair session" takes it), both on the
     Dwarf: what will be done shown first, then the new session's images removed, the failed one's images,
-    thumbnails and shotsInfo.json copied into it, renamed to its name and date (their time kept), repairInfo.json
+    thumbnails and shotsInfo.json copied into it - its stacked.jpg, thumbnail, reference and stacked-16 PNG / FITS too
+    when there, in place of the new session's, under its names -, renamed to its name and date (their time kept), repairInfo.json
     (SESSION_REPAIR) written - the failed session left as it is; reboot the Dwarf: the session appears in its Album
     and Megastack with all the images. Also a way to megastack two sessions of one region under different names.
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's

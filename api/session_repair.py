@@ -7,7 +7,8 @@ Lion Nebula: no stacked-16_<...>.fits, no img_stacked_counter.png - its
 stacked.jpg and stacked-16_<...>.png were there): the session is in neither
 the Album nor the Megastack. DwarfLab's way: a short new session with the
 same settings (2 images - Astro Dwarf Session's "Repair session"), its FITS
-removed, the failed session's images and shotsInfo.json put in it, renamed
+removed, the failed session's images and shotsInfo.json put in it - and its
+stacked image / stacked-16 PNG / FITS when there - renamed
 to the new session's name and date (their time kept); after a reboot of the
 Dwarf the new session shows in the Album with all the images, for the
 Megastack. Also a way to megastack two sessions of one region under
@@ -29,6 +30,10 @@ FRAME_RE = re.compile(
     re.IGNORECASE,
 )
 THUMBNAIL_DIR = "Thumbnail"
+# The failed session's own results, kept (user-asked Oct 2026): fixed names,
+# put in place of the new session's
+RESULT_FILES = ("stacked.jpg", "stacked_thumbnail.jpg", "img_reference.png", "img_stacked_counter.png")
+STACK_PREFIX = "stacked-16_"
 SHOTS_INFO = "shotsInfo.json"
 REPAIR_INFO = "repairInfo.json"
 
@@ -77,6 +82,35 @@ def renamed(name: str, template: re.Match) -> str:
             f"{template['date']}-{m['time']}_{m['temp']}C.{m['ext']}")
 
 
+def _result_copies(failed_dir: str, new_dir: str, template: re.Match) -> list[tuple[str, str]]:
+    """The failed session's stacked image, thumbnail, reference... and its
+    stacked-16_<...>.png / .fits when there, under the new session's names
+    (user-asked Oct 2026: kept, with the small session's name): a stacked-16
+    file takes the name of the new session's stacked-16 file (its own
+    target, date and time), else the new target and date with its own time."""
+    try:
+        failed_names, new_names = os.listdir(failed_dir), os.listdir(new_dir)
+    except OSError:
+        return []
+    copies = [(os.path.join(failed_dir, n), os.path.join(new_dir, n))
+              for n in RESULT_FILES if n in failed_names]
+    new_stacks = [n for n in new_names if n.startswith(STACK_PREFIX)]
+    new_base = os.path.splitext(new_stacks[0])[0] if new_stacks else None
+    for name in failed_names:
+        if not name.startswith(STACK_PREFIX):
+            continue
+        ext = os.path.splitext(name)[1]
+        if new_base is not None:
+            dst = new_base + ext
+        else:
+            m = re.match(r"^stacked-16_(?P<target>.+)_(?P<rest>\d+(?:\.\d+)?s\d+_[^_]+)_(?P<date>\d{8})-(?P<time>\d{9})$",
+                         os.path.splitext(name)[0])
+            dst = (f"{STACK_PREFIX}{template['target']}_{m['rest']}_{template['date']}-{m['time']}{ext}"
+                   if m else name)
+        copies.append((os.path.join(failed_dir, name), os.path.join(new_dir, dst)))
+    return copies
+
+
 def plan_repair(failed_dir: str, new_dir: str) -> dict:
     """What repair() will do, nothing changed: {"remove": [paths], "copy":
     [(src, dst)], "warnings": [str], "error": str | None}."""
@@ -107,6 +141,7 @@ def plan_repair(failed_dir: str, new_dir: str) -> dict:
     thumbs = os.path.join(failed_dir, THUMBNAIL_DIR)
     plan["copy"] += [(os.path.join(thumbs, n), os.path.join(new_dir, THUMBNAIL_DIR, renamed(n, template)))
                      for n in _frames(thumbs) if n.lower().endswith(".jpg")]
+    plan["copy"] += _result_copies(failed_dir, new_dir, template)
     if os.path.isfile(os.path.join(failed_dir, SHOTS_INFO)):
         plan["copy"].append((os.path.join(failed_dir, SHOTS_INFO), os.path.join(new_dir, SHOTS_INFO)))
     else:
@@ -117,7 +152,9 @@ def plan_repair(failed_dir: str, new_dir: str) -> dict:
 def repair(failed_dir: str, new_dir: str, log=print, progress=None) -> dict:
     """Applies plan_repair(): the new session's own images removed, the failed
     session's copied in (the failed session left as it is), repairInfo.json
-    written. Returns the plan with "copied" (count); raises on its error."""
+    written. The new session's stacked-16 files, stacked.jpg... replaced by the
+failed session's when it has them, kept otherwise. Returns the plan with
+"copied" (count); raises on its error."""
     plan = plan_repair(failed_dir, new_dir)
     if plan["error"]:
         raise ValueError(plan["error"])
