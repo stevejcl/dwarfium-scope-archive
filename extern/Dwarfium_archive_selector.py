@@ -401,7 +401,7 @@ def measure_star(data, wcs, ra, dec, **kwargs):
     return None if m is None else (m[0], m[1], m[2] / m[3] if m[3] > 0 else 0.0)
 
 
-def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20)):
+def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20), radii=None):
     """(peak, background, flux, noise) in ADU of the star at ra/dec in a plate solved
     image (numpy array + astropy WCS), None when out of the field or not
     detected (peak under 5 sigma of the background, or a lone hot pixel). Measured here rather than
@@ -413,7 +413,9 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     the brightest pixel within peak_r of it (a fitted Gaussian is a third
     lower on these sharp stars); S/N of an aperture_r aperture, background
     from the annulus, a gain of 1 e-/ADU assumed for the star's own noise
-    (an estimate)."""
+    (an estimate). radii: several circles at once - {radius: (peak,
+    background, flux, noise)}, the same star and background for each
+    (choose_aperture())."""
     import numpy as np
     height, width = data.shape
     x, y = wcs.world_to_pixel_values(ra, dec)
@@ -448,10 +450,14 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     # A star: several pixels well above the background, not a lone hot pixel
     if sigma <= 0 or peak - background < 5 * sigma or (cut[dist <= 1.5] > background + 3 * sigma).sum() < 3:
         return None
-    aperture = cut[dist <= aperture_r]
-    flux = float((aperture - background).sum())
-    noise = (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
-    return peak, background, flux, noise
+    def _in(r):
+        aperture = cut[dist <= r]
+        flux = float((aperture - background).sum())
+        return peak, background, flux, (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
+
+    if radii is not None:
+        return {r: _in(r) for r in radii}
+    return _in(aperture_r)
 
 
 _MIN_STAR_PIXELS = 6     # pixels 3 sigma above the background
@@ -556,7 +562,71 @@ def bright_stars(data, saturation=None, count=40, margin=25, isolation=12):
 APERTURE_FWHM = 2.0          # radius = this x the median FWHM of the image,
 APERTURE_MIN, APERTURE_MAX = 3.0, 12.0     # within these px
 _MIN_SHAPES = 5
+# The circle chosen on the light curve itself (user-agreed Oct 2026: DY Peg's
+# check star 0.055 at 3 - 4.7 px, 0.070 at 2 x FWHM): each image measured with
+# these circles, the one giving the steadiest check star kept
+APERTURE_FACTORS = (1.0, 1.25, 1.5, 2.0)
 
+
+def aperture_circles(fwhm, default=5.0):
+    """{factor: radius px} of APERTURE_FACTORS for a FWHM (default for each
+    when not sized), and the background annulus beyond the largest - the
+    same background whatever the circle."""
+    radii = {f: default if fwhm is None else float(min(max(round(f * fwhm, 1), APERTURE_MIN), APERTURE_MAX))
+             for f in APERTURE_FACTORS}
+    largest = max(radii.values())
+    return radii, (int(max(12, largest + 5)), int(max(20, largest + 12)))
+
+
+
+def _clipped_std(values):
+    """Standard deviation after a 3-sigma clip around the median (a cloud or
+    a plane not counted), None under 5 values."""
+    import numpy as np
+    values = np.asarray(values, dtype=float)
+    if values.size < 5:
+        return None
+    for _ in range(3):
+        keep = np.abs(values - np.median(values)) <= 3 * max(float(np.std(values)), 1e-4)
+        if keep.all() or keep.sum() < 5:
+            break
+        values = values[keep]
+    return float(np.std(values))
+
+
+def choose_aperture(frames, comps, fixed, check):
+    """(factor, {factor: scatter}) - the circle of APERTURE_FACTORS giving
+    the steadiest light curve: the check star's std (its magnitude from the
+    other comparison stars' zero point), else the comparison stars' own
+    scatter around each image's zero point (median of the images). frames:
+    (name, mid, {factor: target}, {comp: {factor: measure}}). A small
+    circle loses a part of the star's light that changes with the seeing, a
+    large one adds the background's noise - the right one depends on the
+    stars and the night. 1.5 x FWHM when it can't be told (fewer than 5
+    images)."""
+    import math
+    import numpy as np
+    scatters = {}
+    for f in APERTURE_FACTORS:
+        check_mags, spreads = [], []
+        for _, _, _, measured in frames:
+            used = {i: m[f] for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
+            if len(used) < 2:
+                continue
+            zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
+            weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
+            keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
+            zp = float(np.average(zps[keep], weights=weights[keep]))
+            spreads.append(float(np.std(zps[keep])))
+            if check is not None and check in measured:
+                check_mags.append(-2.5 * math.log10(measured[check][f][2]) + zp)
+        value = _clipped_std(check_mags) if check is not None else (
+            float(np.median(spreads)) if len(spreads) >= 5 else None)
+        if value is not None:
+            scatters[f] = value
+    if len(scatters) < 2:
+        return 1.5, scatters
+    return min(scatters, key=scatters.get), scatters
 
 def frame_aperture(data, wcs, stars, saturation=None, default=5.0):
     """(radius, background annulus, median FWHM, median roundness) for one
@@ -688,8 +758,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     # The target's place in each image (user's two DWARF 3 at once, Oct 2026: 0.04 mag
     # apart on one of them only - a dust shadow, no flat?): x, y in the CSV
     positions = {}
-    shapes = {}      # image -> (median FWHM px, roundness, the circle's radius)
-    last_circle = None
+    shapes = {}      # image -> (median FWHM px, roundness, {factor: the circle's radius})
+    last_fwhm = None
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -733,21 +803,23 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if blended:
                 skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
                                f"another star within {2 * aperture_r} px, left out")
-        # One circle for every star of the image, sized on its stars
-        radius, annulus, fwhm, roundness = frame_aperture(
+        # The same circles for every star of the image, sized on its stars
+        _, _, fwhm, roundness = frame_aperture(
             data, wcs, [st for i, st in enumerate(comps) if i not in blended], saturation, aperture_r)
-        if fwhm is None and last_circle:      # not sized: the previous image's circle
-            radius, annulus = last_circle
-        elif fwhm is not None:
-            last_circle = (radius, annulus)
-        shapes[name] = (fwhm, roundness, radius)
-        t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=radius, annulus=annulus)
+        if fwhm is not None:
+            last_fwhm = fwhm
+        radii, annulus = aperture_circles(fwhm if fwhm is not None else last_fwhm, aperture_r)
+        shapes[name] = (fwhm, roundness, radii)
+        t = _star_measure(data, wcs, target["ra"], target["dec"], annulus=annulus, radii=set(radii.values()))
         positions[name] = tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"]))
-        if t is None or t[2] <= 0:
+        if t is not None:
+            t = {f: t[r] for f, r in radii.items()}
+        if t is None or min(m[2] for m in t.values()) <= 0:
             skipped.append(f"{name}: target not measured")
             continue
-        if saturation and t[0] >= saturation and not keep_saturated:
-            skipped.append(f"{name}: target saturated (peak {t[0]:.0f})")
+        peak = next(iter(t.values()))[0]
+        if saturation and peak >= saturation and not keep_saturated:
+            skipped.append(f"{name}: target saturated (peak {peak:.0f})")
             continue
         # keep_saturated (user-asked Oct 2026: DY Peg at gain 110, saturated at its
         # maximum, compared with another software's curve that kept it): measured,
@@ -756,8 +828,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         for i, st in enumerate(comps):
             if i in blended:
                 continue
-            m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=radius, annulus=annulus)
-            if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
+            m = _star_measure(data, wcs, st["ra"], st["dec"], annulus=annulus, radii=set(radii.values()))
+            if m is None:
+                continue
+            m = {f: m[r] for f, r in radii.items()}
+            if min(v[2] for v in m.values()) > 0 and not (saturation and next(iter(m.values()))[0] >= saturation):
                 measured[i] = m
         frames.append((name, mid, t, measured))
         del data
@@ -780,6 +855,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     check = None
     if len(candidates) >= 4:
         check = min(candidates, key=lambda i: abs(comps[i]["mag"] - (target_mag if target_mag is not None else comps[i]["mag"])))
+    # The circle: the one giving the steadiest check star (choose_aperture())
+    factor, scatters = choose_aperture(frames, comps, fixed, check)
+    frames = [(name, mid, t[factor], {i: m[factor] for i, m in measured.items()})
+              for name, mid, t, measured in frames]
+    shapes = {name: (fwhm, roundness, radii[factor]) for name, (fwhm, roundness, radii) in shapes.items()}
 
     for name, mid, t, measured in frames:
         used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
@@ -872,7 +952,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         summary.append(f"  stars: FWHM {f_med:.2f} px{scale} (median; {min(v[0] for v in sized):.2f} - "
                        f"{max(v[0] for v in sized):.2f}), roundness {float(np.median([v[1] for v in sized])):.2f} "
                        f"(1 = round), sized in {len(sized)} of {len(shapes)} images; measuring circle "
-                       f"{min(radii):g} - {max(radii):g} px ({APERTURE_FWHM:g} x FWHM)")
+                       f"{min(radii):g} - {max(radii):g} px ({factor:g} x FWHM)")
+        if scatters:
+            what = "check star std" if check is not None else "comparison stars' scatter"
+            summary.append(f"  circle chosen on the {what}: " + ", ".join(
+                f"{f:g} x FWHM {v:.3f}" + (" <-" if f == factor else "") for f, v in sorted(scatters.items())))
     elif shapes:
         summary.append(f"  stars: not sized (too few bright isolated stars) - measuring circle {aperture_r:g} px")
     if rows:
