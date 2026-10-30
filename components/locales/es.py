@@ -131,7 +131,7 @@ TRANSLATIONS: dict[str, str] = {
     "session_repair_start":          "Repair",  # TODO
     "session_repair_running":        "Copying the failed session's images...",  # TODO
     "session_repair_failed":         "Repair failed: {error}",  # TODO
-    "session_repair_done":           "Session repaired - reboot the Dwarf: the session appears in its Album and Megastack with all its images",  # TODO
+    "session_repair_done":           "Session repaired - reboot the Dwarf, then run a Megastack on this session in the Dwarf app: its Album keeps the small session's figures (images, exposure) saved by the Dwarf, the Megastack stacks all the images",  # TODO
     "no_location":                  "No location selected.",  # TODO
     "no_files_loaded":              "No files loaded",  # TODO
     "no_manual_entries":            "No manual entries found for this drive.",  # TODO

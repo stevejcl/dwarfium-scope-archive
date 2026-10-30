@@ -12,7 +12,9 @@
     thumbnails and shotsInfo.json copied into it - its stacked.jpg, thumbnail, reference and stacked-16 PNG / FITS too
     when there, in place of the new session's, under its names -, renamed to its name and date (their time kept), repairInfo.json
     (SESSION_REPAIR) written - the failed session left as it is; reboot the Dwarf: the session appears in its Album
-    and Megastack with all the images. Also a way to megastack two sessions of one region under different names.
+    and Megastack - then run a Megastack on it in the Dwarf app (user-tested on his Lion Nebula: 141 images seen): its Album
+    keeps the small session's figures saved by the Dwarf. Also a way to megastack two sessions of one region under
+    different names.
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's
     findcompstars failing). When it fails, the script asks APASS DR9 (II/336) on VizieR's mirrors - Harvard, Japan,
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as

@@ -130,7 +130,7 @@ TRANSLATIONS: dict[str, str] = {
     "session_repair_start":          "Réparer",
     "session_repair_running":        "Copie des images de la session échouée...",
     "session_repair_failed":         "Réparation échouée : {error}",
-    "session_repair_done":           "Session réparée - redémarrez le Dwarf : la session apparaît dans son Album et la Megastack avec toutes ses images",
+    "session_repair_done":           "Session réparée - redémarrez le Dwarf, puis lancez une Megastack sur cette session dans l'appli Dwarf : son Album garde les chiffres de la petite session (images, pose) enregistrés par le Dwarf, la Megastack empile toutes les images",
     "no_location":                  "Aucun emplacement sélectionné.",
     "no_files_loaded":              "Aucun fichier chargé",
     "no_manual_entries":            "Aucune entrée manuelle trouvée pour ce disque.",
