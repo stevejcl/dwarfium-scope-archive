@@ -1,5 +1,6 @@
 from components.i18n import t
 import os
+from urllib.parse import urlencode
 import mimetypes
 from astropy.io import fits
 from datetime import datetime
@@ -2089,6 +2090,20 @@ class ExploreApp(DbPageMixin):
                 # --- Repair badge ---
                 if dwarf_id:
                     repair_row = get_dwarf_session_error_by_dir(self.conn, dwarf_id, session_dir)
+                    # A capture that ended badly: its stacked.jpg but no stacked
+                    # FITS (user-asked Oct 2026: not in the Dwarf's Album though
+                    # shown here) - said, with the way to repair it
+                    from api.session_repair import missing_stack
+                    failed_capture = (repair_row["status"] == "ERROR") if repair_row else (
+                        "_MOSAIC_" not in session_dir.upper() and missing_stack(os.path.dirname(full_path)))
+                    if failed_capture:
+                        with ui.item():
+                            with ui.row().classes("items-center gap-2"):
+                                ui.badge(t("failed_capture_badge"), color="red").classes("text-sm")
+                                ui.label(t("failed_capture_hint")).classes("text-xs text-gray-500")
+                                ui.button(t("failed_capture_repair"), icon="build", on_click=lambda d=dwarf_id, sd=session_dir:
+                                          ui.navigate.to(f"/Mosaic?{urlencode({'DwarfId': d, 'mode': 'Repair', 'failed': sd})}")
+                                          ).props("dense flat no-caps size=sm")
                     if repair_row and repair_row["status"] == "REPAIRED":
                         with ui.item():
                             with ui.row().classes("items-center gap-2"):

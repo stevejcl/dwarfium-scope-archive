@@ -23,6 +23,9 @@
     images, stacked.jpg, stacked-16, shotsInfo.json) saved first in <work directory>/<session>_before_repair/ - a way
     back (user-asked Oct 2026); nothing changed on the Dwarf when that copy fails. Without a work directory, no backup
     (the dialog says so).
+    Explore: a failed capture (its stacked.jpg but no stacked FITS - user-asked Oct 2026: shown as a normal session
+    while missing from the Dwarf's Album) says so, a red FAILED CAPTURE badge, and its Repair button opens the Mosaic
+    page's Repair with it as the secondary session.
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's
     findcompstars failing). When it fails, the script asks APASS DR9 (II/336) on VizieR's mirrors - Harvard, Japan,
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as

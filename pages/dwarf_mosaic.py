@@ -52,6 +52,7 @@ async def mosaic_page(
     repair_exp: str = None,
     repair_gain: str = None,
     repair_camera: str = "TELE",
+    failed: str = None,
 ):
 
     menu(t("page_mosaic"))
@@ -65,6 +66,9 @@ async def mosaic_page(
     if mode == "Repair" and repair_failed and repair_new and repair_target:
         repair = {"failed": repair_failed, "new": repair_new, "target": repair_target, "exp": repair_exp,
                   "gain": repair_gain, "camera": repair_camera or "TELE"}
+    elif mode == "Repair" and failed:
+        # Explore's "Repair" on a failed capture: that session as secondary
+        repair = {"failed_dir": failed}
     ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId,
                                       Mode="MilkyWay" if mode == "MilkyWay" else "Repair" if repair else "Merge",
                                       Tile=(tile, tile_date) if tile else None, Repair=repair)
@@ -496,6 +500,17 @@ class MosaicApp(DbPageMixin):
             ui.notify(t("session_repair_dwarf_not_reachable"), type="warning", multi_line=True)
             return
         self.repair_request = None
+        if "failed_dir" in request:
+            path = os.path.join(self.dwarf_astroDir, request["failed_dir"])
+            if not os.path.isdir(path):
+                ui.notify(t("session_repair_not_on_dwarf", name=request["failed_dir"]), type="warning", multi_line=True)
+                return
+            self.secondary_source_toggle.value = "Dwarf"
+            self.secondary_session_dir = path
+            self.input_secondary_dir.set_options([path], value=path)
+            self.on_secondary_dir_change()
+            ui.notify(t("session_repair_secondary_set"), type="positive", multi_line=True)
+            return
         from datetime import datetime
         from api.session_repair import find_session_folder
         found = {}
