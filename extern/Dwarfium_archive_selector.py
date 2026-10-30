@@ -910,7 +910,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     _, first_info, _ = _zero_points(_at(frames, 1.5), set())
     zp_stars = {i for _, _, zp_terms, _, _ in first_info for i in zp_terms}
     first_stats = _variability_stats(first_info) or []
-    variables = {st["i"] for st in first_stats if st["candidate"]} & zp_stars
+    variables = {st["i"] for st in first_stats
+                 if st["ratio"] >= ZP_VARIABLE_RATIO and st["chi2"] >= ZP_VARIABLE_CHI2} & zp_stars
     if len(zp_stars - variables) < 3:
         variables = set()
     # The circle: the one giving the steadiest check star (choose_aperture())
@@ -1108,6 +1109,15 @@ def _skipped_summary(skipped, examples=3):
         text += " - " + ", ".join(names[:examples]) + (f"... (+{len(names) - examples})" if len(names) > examples else "")
         lines.append(text)
     return lines
+
+
+# A comparison star left out of the zero point: a scatter 1.5 x that of
+# similar stars and 5 x its own errors - looser than the survey's candidate
+# (2 x, chi2 2): user's DY Peg, Oct 2026, its star 24 (30" from a V 10.5 red
+# star) at 2.6 x / chi2 56 one night, 1.9 x / chi2 27 the next - the second
+# night kept in the zero point. No other star of the zero point beyond both.
+ZP_VARIABLE_RATIO = 1.5
+ZP_VARIABLE_CHI2 = 5.0
 
 
 def _variability_stats(frame_info, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):

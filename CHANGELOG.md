@@ -73,6 +73,8 @@
     the scatter of similar stars, measured 0.4 mag off its catalogue V - a V 10.5 star of B-V 1.9 30" away in
     Stellarium, too red for findcompstars' list): found on a first pass, then the circle chosen and the zero points
     computed without it; the summary names it, the field survey still lists it.
+    Its rule looser than the survey's candidate: 1.5 x the scatter of similar stars and a chi2 of 5 (user's DY Peg:
+    star 24 at 2.6 x one night, 1.9 x / chi2 27 the next - kept in the zero point that night).
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
