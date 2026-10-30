@@ -22,7 +22,7 @@ from api.dwarf_backup_mtp_handler import MTPManager
 DEBUG_FORCE_MISMATCH = False
 from api.dwarf_backup_db_api import get_dwarf_Names, get_dwarf_detail, set_dwarf_detail, add_dwarf_detail
 from api.dwarf_backup_db_api import get_dwarf_ble_id, set_dwarf_ble_id
-from api.dwarf_identity import identify_through_lite, lite_ble_id_for_ip, normalize_ble_id, read_device_identity
+from api.dwarf_identity import identify_through_lite, normalize_ble_id, read_device_identity
 from api.peer import peer_url
 from api.dwarf_identity_check import check_ip_identity, list_ftp_sessions, list_usb_sessions, sessions_owner
 from api.dwarf_backup_db_api import get_mtp_devices, device_exists_in_db, add_mtp_device_to_db
@@ -682,18 +682,6 @@ class ConfigApp(DbPageMixin):
         if not info or not info["ble_id"]:
             ui.notify(t("dwarf_ble_id_no_answer", ip=", ".join(dict.fromkeys(ips))), type="warning", multi_line=True)
             return
-        # Dwarfium Lite's UID (the Bluetooth name) when it knows this Dwarf:
-        # the HTTP name may differ (lite_ble_id_for_ip())
-        lite = peer_url()
-        if lite:
-            for ip in dict.fromkeys(ips):
-                lite_id = await run.io_bound(lite_ble_id_for_ip, lite, ip)
-                if lite_id:
-                    if lite_id != info["ble_id"]:
-                        ui.notify(t("dwarf_ble_id_lite_differs", http=info["name"], lite=lite_id),
-                                  type="warning", multi_line=True)
-                        info = dict(info, ble_id=lite_id)
-                    break
         previous = normalize_ble_id(self.dwarf_ble_id.value)
         self.dwarf_ble_id.value = info["ble_id"]
         ui.notify(t("dwarf_ble_id_read_ok", name=info["name"]), type="positive")

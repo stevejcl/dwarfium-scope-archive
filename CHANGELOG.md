@@ -330,10 +330,6 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
-    Dwarf page, "Read from the Dwarf": its identifier taken from Dwarfium Lite when Lite knows the Dwarf at that IP
-    (user-reported Oct 2026: a DWARF 3 answers DWARF3_3AD246 over the network but its Bluetooth name - Lite's UID - is
-    DWARF3_3AD946: Dwarfium-Hub showed two Dwarfs); the difference said. Read it again and save to fix a Dwarf
-    already saved with the network name.
     Transfer page: Back shows the session it was opened for again (user-reported Oct 2026: Explore came back with
     no session shown) - its id passed back to Explore (SessionId), from the Dwarf or a backup drive.
     The Siril script (extern/Dwarfium_archive_selector.py) shipped in the release's zip, in extern/ (user-reported

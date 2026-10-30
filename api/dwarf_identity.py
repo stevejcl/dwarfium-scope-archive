@@ -91,22 +91,3 @@ def read_device_identity(ip: str, timeout: float = 4) -> dict | None:
         "ble_id": normalize_ble_id(name),
         "type": int(device_id) if str(device_id).isdigit() else None,     # = Dwarf.type, no offset
     }
-
-
-def lite_ble_id_for_ip(lite_url: str, ip: str, timeout: float = 5) -> str:
-    """Blocking. The identifier Dwarfium Lite has for its Dwarf at ip (from
-    its Bluetooth name, its UID), "" when none or Lite doesn't answer.
-    Preferred to the HTTP deviceName (user-reported Oct 2026: a DWARF 3
-    answers DWARF3_3AD246 over HTTP while its Bluetooth name - Lite's UID -
-    is DWARF3_3AD946: Dwarfium-Hub saw two Dwarfs)."""
-    try:
-        response = requests.get(f"{lite_url.rstrip('/')}/api/dwarfs", timeout=timeout)
-        devices = response.json().get("devices") or []
-    except (requests.RequestException, ValueError, AttributeError):
-        return ""
-    for device in devices:
-        uid = str(device.get("dwarfUid") or "")
-        if not uid.startswith("auto:") and str(device.get("ip") or "").strip() == ip.strip():
-            return normalize_ble_id(uid)
-    return ""
-
