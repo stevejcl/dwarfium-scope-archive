@@ -125,6 +125,7 @@ TRANSLATIONS: dict[str, str] = {
     "no_folder_selected":           "No folder selected!",  # TODO
     "no_session_error":             "No error session selected.",  # TODO
     "session_repair_on_dwarf":       "Repair of a session: both sessions must be read on the Dwarf (USB or network)",  # TODO
+    "session_repair_mixed":         "One session is a mosaic, the other not: a mosaic is repaired with a mosaic, a capture with a capture",  # TODO
     "session_repair_title":          "Repair a failed session",  # TODO
     "session_repair_plan":           "Failed session: {failed}\nNew session (2 images, same settings): {new}\n\n{removed} image(s) of the new session removed, {copied} file(s) of the failed one copied into it (images, thumbnails, shotsInfo.json, and its stacked image / stacked-16 PNG or FITS when there), renamed to its name and date - their time kept. The failed session is left as it is.",  # TODO
     "session_repair_start":          "Repair",  # TODO

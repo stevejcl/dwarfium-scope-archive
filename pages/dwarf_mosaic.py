@@ -553,7 +553,7 @@ class MosaicApp(DbPageMixin):
 
     def on_primary_dir_change(self):
         self.primary_session_dir = self.input_primary_dir.value or ""
-        if self.primary_session_dir != self._root_for_source(self.primary_source) and "MOSAIC" not in self.primary_session_dir:
+        if self.mode != "Repair" and self.primary_session_dir != self._root_for_source(self.primary_source) and "MOSAIC" not in self.primary_session_dir:
             ui.notify(t("no_mosaic_dir"), type="warning")
 
         details_session = []
@@ -587,7 +587,7 @@ class MosaicApp(DbPageMixin):
 
     def on_secondary_dir_change(self):
         self.secondary_session_dir = self.input_secondary_dir.value or ""
-        if self.secondary_session_dir != self._root_for_source(self.secondary_source) and "MOSAIC" not in self.secondary_session_dir:
+        if self.mode != "Repair" and self.secondary_session_dir != self._root_for_source(self.secondary_source) and "MOSAIC" not in self.secondary_session_dir:
             ui.notify(t("no_mosaic_dir"), type="warning")
 
         details_session = []
@@ -722,11 +722,19 @@ class MosaicApp(DbPageMixin):
         if not secondary:
             ui.notify(t("no_secondary"), type="negative")
             return
-        if not output:
-            ui.notify(t("no_output_dir"), type="negative")
-            return
         if primary == secondary:
             ui.notify(t("sessions_different"), type="warning")
+            return
+        if self.mode == "Repair" and "_MOSAIC_" not in (primary + secondary).upper():
+            # A failed capture, not a mosaic: repaired in place on the Dwarf,
+            # no work directory (api/session_repair.py)
+            if "_MOSAIC_" in primary.upper() or "_MOSAIC_" in secondary.upper():
+                ui.notify(t("session_repair_mixed"), type="warning")
+                return
+            self._open_session_repair(primary, secondary)
+            return
+        if not output:
+            ui.notify(t("no_output_dir"), type="negative")
             return
         if "MOSAIC" not in primary:
             ui.notify(t("primary_not_mosaic"), type="warning")
