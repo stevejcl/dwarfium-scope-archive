@@ -180,6 +180,7 @@ TRANSLATIONS: dict[str, str] = {
     "session_ip_hint":              "Second FTP IP of this Dwarf, kept on this PC only (not in the database) - e.g. its IP on a remote site reached through Tailscale. The FTP pages use whichever of the two IPs answers.",
     "dwarf_ble_id":                 "Dwarf ID (end of its MAC)",
     "dwarf_ble_id_hint":            "The last 6 characters of the MAC address printed on the Dwarf - also the end of its Bluetooth name (DWARF3_A1B2C3). You can paste the whole MAC address. Dwarfium-Hub uses it to link this Dwarf to the same one in Dwarfium Lite.",
+    "dwarf_ble_id_lite_differs":    "The Dwarf calls itself {http} over the network, Dwarfium Lite knows it by its Bluetooth name ending in {lite}: {lite} kept, so Dwarfium-Hub links the two.",
     "dwarf_ble_id_invalid":         "6 hexadecimal characters (0-9, A-F), or the whole MAC address",
     "dwarf_ble_id_read":            "Read from the Dwarf",
     "dwarf_ble_id_read_hint":       "Asks the Dwarf at its IP (Wi-Fi on) for its name",
