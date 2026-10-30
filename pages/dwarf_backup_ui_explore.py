@@ -57,6 +57,7 @@ from api import photometry_results
 from components.tonight_plan import PlanTarget, TonightPlan
 
 from api.dwarf_backup_fct import CATALOG_FILE, SKY_CATALOG_FILE, UNKNOWN, MOSAIC_UNKNOWN, MANUAL, TAKEN, RESTACK
+from api.dwarf_backup_fct import _err_path
 from components.stitch_params_editor import StitchParamsEditor, get_stitch_params
 from components.folder_picker import desktop_only, open_folder_on_pc
 from tools.quality_scan import score_entry_ids, scan_folder_sizes, scan_dwarf_session_sizes
@@ -3199,13 +3200,16 @@ class ExploreApp(DbPageMixin):
             btn_close.classes(remove="hidden")
 
         def on_discard():
+            # The temporary images removed (_err_path() was never imported
+            # here: the NameError, silenced, left a failed stitch's images
+            # behind) - each on its own, one missing doesn't keep the other
             try:
-                actual_png = _err_path(pano_tmp_path_png) if failed else pano_tmp_path_png
-                actual_jpg = _err_path(pano_tmp_path_jpg) if failed else pano_tmp_path_jpg
-                os.remove(actual_png)
-                os.remove(actual_jpg)
-            except Exception:
-                pass
+                for tmp in (pano_tmp_path_png, pano_tmp_path_jpg):
+                    path = _err_path(tmp) if failed else tmp
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
             finally:
                 result_dialog.close()
                 ui.notify(t("mosaic_discarded"), type="warning")

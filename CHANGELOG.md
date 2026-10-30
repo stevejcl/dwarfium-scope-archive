@@ -343,6 +343,8 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Explore, stitching a mosaic: Discard left the temporary images of a failed stitch behind (a helper never
+    imported, its error silenced); each image is now removed on its own.
     Transfer page: Back shows the session it was opened for again (user-reported Oct 2026: Explore came back with
     no session shown) - its id passed back to Explore (SessionId), from the Dwarf or a backup drive.
     The Siril script (extern/Dwarfium_archive_selector.py) shipped in the release's zip, in extern/ (user-reported
