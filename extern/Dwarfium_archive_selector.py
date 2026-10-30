@@ -594,7 +594,7 @@ def _clipped_std(values):
     return float(np.std(values))
 
 
-def choose_aperture(frames, comps, fixed, check):
+def choose_aperture(frames, comps, fixed, check, excluded=()):
     """(factor, {factor: scatter}) - the circle of APERTURE_FACTORS giving
     the steadiest light curve: the check star's std (its magnitude from the
     other comparison stars' zero point), else the comparison stars' own
@@ -603,14 +603,16 @@ def choose_aperture(frames, comps, fixed, check):
     circle loses a part of the star's light that changes with the seeing, a
     large one adds the background's noise - the right one depends on the
     stars and the night. 1.5 x FWHM when it can't be told (fewer than 5
-    images)."""
+    images). excluded: comparison stars left out of the zero point (a
+    variable)."""
     import math
     import numpy as np
     scatters = {}
     for f in APERTURE_FACTORS:
         check_mags, spreads = [], []
         for _, _, _, measured in frames:
-            used = {i: m[f] for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
+            used = {i: m[f] for i, m in measured.items()
+                    if (fixed is None or i in fixed) and i != check and i not in excluded}
             if len(used) < 2:
                 continue
             zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
@@ -855,45 +857,68 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     check = None
     if len(candidates) >= 4:
         check = min(candidates, key=lambda i: abs(comps[i]["mag"] - (target_mag if target_mag is not None else comps[i]["mag"])))
-    # The circle: the one giving the steadiest check star (choose_aperture())
-    factor, scatters = choose_aperture(frames, comps, fixed, check)
-    frames = [(name, mid, t[factor], {i: m[factor] for i, m in measured.items()})
-              for name, mid, t, measured in frames]
-    shapes = {name: (fwhm, roundness, radii[factor]) for name, (fwhm, roundness, radii) in shapes.items()}
+    def _at(frames_all, f):
+        return [(name, mid, t[f], {i: m[f] for i, m in measured.items()}) for name, mid, t, measured in frames_all]
 
-    for name, mid, t, measured in frames:
-        used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
-        if len(used) < 2:
-            skipped.append(f"{name}: fewer than 2 comparison stars measured")
-            continue
-        ids = list(used)
-        zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
-        weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
-        keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
-        zps, weights = zps[keep], weights[keep]
-        zp = float(np.average(zps, weights=weights))
-        # Field survey: the zero point's terms kept, for each star's own
-        # magnitude from the others (field_variability())
-        zp_terms = {i: (z, w) for i, z, w in zip([i for i, k in zip(ids, keep) if k], zps, weights)}
-        frame_info.append((mid, measured, zp_terms, float(weights.sum()), float((zps * weights).sum())))
-        zp_err = float(np.std(zps) / math.sqrt(len(zps)))
-        mag = -2.5 * math.log10(t[2]) + zp
-        err = math.hypot(1.0857 * t[3] / t[2], zp_err)
-        check_mag = check_err = None
-        if check is not None and check in measured:
-            cm = measured[check]
-            check_mag = -2.5 * math.log10(cm[2]) + zp
-            check_err = math.hypot(1.0857 * cm[3] / cm[2], zp_err)
-        try:
-            hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
-            bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
-        except Exception as e:   # astropy's time tables: the magnitudes are kept
-            hjd = bjd = None
-            if not any(line.startswith("HJD / BJD not computed") for line in skipped):
-                skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
-        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
-                     _airmass(coord, mid, observer), positions.get(name),
-                     bool(saturation and t[0] >= saturation)))
+    def _zero_points(frames, excluded):
+        """The rows and frame_info (field_variability()) of the frames, the
+        comparison stars in `excluded` left out of the zero point; with the
+        lines to add to `skipped`."""
+        rows, frame_info, notes = [], [], []
+        for name, mid, t, measured in frames:
+            used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check
+                    and i not in excluded}
+            if len(used) < 2:
+                notes.append(f"{name}: fewer than 2 comparison stars measured")
+                continue
+            ids = list(used)
+            zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
+            weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
+            keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
+            zps, weights = zps[keep], weights[keep]
+            zp = float(np.average(zps, weights=weights))
+            # Field survey: the zero point's terms kept, for each star's own
+            # magnitude from the others (field_variability())
+            zp_terms = {i: (z, w) for i, z, w in zip([i for i, k in zip(ids, keep) if k], zps, weights)}
+            frame_info.append((mid, measured, zp_terms, float(weights.sum()), float((zps * weights).sum())))
+            zp_err = float(np.std(zps) / math.sqrt(len(zps)))
+            mag = -2.5 * math.log10(t[2]) + zp
+            err = math.hypot(1.0857 * t[3] / t[2], zp_err)
+            check_mag = check_err = None
+            if check is not None and check in measured:
+                cm = measured[check]
+                check_mag = -2.5 * math.log10(cm[2]) + zp
+                check_err = math.hypot(1.0857 * cm[3] / cm[2], zp_err)
+            try:
+                hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
+                bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
+            except Exception as e:   # astropy's time tables: the magnitudes are kept
+                hjd = bjd = None
+                if not any(line.startswith("HJD / BJD not computed") for line in notes):
+                    notes.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
+            rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
+                         _airmass(coord, mid, observer), positions.get(name),
+                         bool(saturation and t[0] >= saturation)))
+        return rows, frame_info, notes
+
+    # A variable among the comparison stars (user's DY Peg, Oct 2026: its star
+    # 24 at 2.6 x the scatter of similar stars, measured 0.4 mag off its
+    # catalogue V - a V 10.5 star of B-V 1.9 30" away in Stellarium, not in
+    # findcompstars' list): found on a first pass (1.5 x FWHM), out of the
+    # zero point from then on - the circle's choice included. Still in the
+    # field survey.
+    _, first_info, _ = _zero_points(_at(frames, 1.5), set())
+    zp_stars = {i for _, _, zp_terms, _, _ in first_info for i in zp_terms}
+    first_stats = _variability_stats(first_info) or []
+    variables = {st["i"] for st in first_stats if st["candidate"]} & zp_stars
+    if len(zp_stars - variables) < 3:
+        variables = set()
+    # The circle: the one giving the steadiest check star (choose_aperture())
+    factor, scatters = choose_aperture(frames, comps, fixed, check, variables)
+    frames = _at(frames, factor)
+    shapes = {name: (fwhm, roundness, radii[factor]) for name, (fwhm, roundness, radii) in shapes.items()}
+    rows, frame_info, notes = _zero_points(frames, variables)
+    skipped += notes
     rows.sort(key=lambda r: r[1])
     # A cloud (or a plane): fewer comparison stars, larger errors - flagged
     # among the unsaturated images (the saturated ones are apart already)
@@ -965,6 +990,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
                        f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
                        + (f" (the same {len(fixed)} in every image)" if fixed else ""))
+    if variables:
+        ratios = {st["i"]: st["ratio"] for st in first_stats}
+        summary.append("  left out of the zero point, variable: " + ", ".join(
+            f"comparison {comps[i]['name']} (V {comps[i]['mag']}, {ratios.get(i, 0):.1f} x the scatter of similar stars)"
+            for i in sorted(variables)))
     if rows and check is not None:
         cmags = np.array([r[8] for r in rows if r[8] is not None and not r[13]])
         if cmags.size:
@@ -1080,17 +1110,10 @@ def _skipped_summary(skipped, examples=3):
     return lines
 
 
-def field_variability(comps, frame_info, folder, target, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
-    """Variability survey of the field (user-requested Oct 2026: the stars
-    found in a session measured too): each comparison star's magnitude in
-    each image from the zero point of the others (leave-one-out), then its
-    scatter against that of the stars of similar brightness (median within
-    0.5 mag): a ratio of flag_ratio or more, and a scatter flag_chi2 times
-    its own errors (chi2) - a faint star's noise alone isn't one -, makes it a
-    candidate variable.
-    Known variables are not in findcompstars' list, the candidates are
-    uncatalogued ones (or a bad comparison star). Writes stars_variability.csv
-    and .png in folder; returns the summary lines."""
+def _variability_stats(frame_info, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
+    """Each comparison star's scatter from the zero point of the others
+    (field_variability()): [{"i", "n", "mag", "std", "err", "chi2", "ratio",
+    "candidate"}] by ratio, None under 5 stars measured enough."""
     import math
     import numpy as np
     series = {}
@@ -1116,7 +1139,7 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
                       "err": float(np.median(errs)),
                       "chi2": float(np.mean(((mags - mags.mean()) / np.maximum(errs, 1e-4)) ** 2))})
     if len(stats) < 5:
-        return ["  field survey: fewer than 5 stars measured in enough images"]
+        return None
     for st in stats:   # the scatter expected at its brightness: the others'
         similar = [o["std"] for o in stats if o is not st and abs(o["mag"] - st["mag"]) <= 0.5]
         if len(similar) < 3:
@@ -1126,6 +1149,24 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
     stats.sort(key=lambda st: st["ratio"], reverse=True)
     for st in stats:
         st["candidate"] = st["ratio"] >= flag_ratio and st["chi2"] >= flag_chi2
+
+    return stats
+
+
+def field_variability(comps, frame_info, folder, target, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
+    """Variability survey of the field (user-requested Oct 2026: the stars
+    found in a session measured too): each comparison star's magnitude in
+    each image from the zero point of the others (leave-one-out), then its
+    scatter against that of the stars of similar brightness (median within
+    0.5 mag): a ratio of flag_ratio or more, and a scatter flag_chi2 times
+    its own errors (chi2) - a faint star's noise alone isn't one -, makes it a
+    candidate variable.
+    Known variables are not in findcompstars' list, the candidates are
+    uncatalogued ones (or a bad comparison star). Writes stars_variability.csv
+    and .png in folder; returns the summary lines."""
+    stats = _variability_stats(frame_info, min_frames, flag_ratio, flag_chi2)
+    if stats is None:
+        return ["  field survey: fewer than 5 stars measured in enough images"]
 
     out_csv = os.path.join(folder, "stars_variability.csv")
     with open(out_csv, "w", encoding="utf-8", newline="") as f:

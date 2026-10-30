@@ -56,6 +56,10 @@
     0.055 with a 3 - 4.7 px circle, 0.070 at 2 x FWHM) - each star measured with 1, 1.25, 1.5 and 2 x the image's
     FWHM (the same star and background), the circle giving the steadiest check star kept (its std after a 3-sigma
     clip; the comparison stars' scatter when there is no check star). The summary compares the four.
+    Photometry: a variable comparison star left out of the zero point (user's DY Peg, Oct 2026: its star 24 at 2.6 x
+    the scatter of similar stars, measured 0.4 mag off its catalogue V - a V 10.5 star of B-V 1.9 30" away in
+    Stellarium, too red for findcompstars' list): found on a first pass, then the circle chosen and the zero points
+    computed without it; the summary names it, the field survey still lists it.
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
