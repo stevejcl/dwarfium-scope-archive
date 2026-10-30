@@ -15,6 +15,10 @@
     and Megastack - then run a Megastack on it in the Dwarf app (user-tested on his Lion Nebula: 141 images seen): its Album
     keeps the small session's figures saved by the Dwarf. Also a way to megastack two sessions of one region under
     different names.
+    Repair opened from Astro Dwarf Session (its finished Repair session's "Finish the repair in Scope Archive"): the
+    Mosaic page in Repair mode, the repair session (primary) and the failed capture (secondary) found on the Dwarf by
+    camera, target, exposure, gain and time - the first capture within 90 min of each program's start; said when one
+    isn't found. /Mosaic?mode=Repair no longer opens on Merge.
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's
     findcompstars failing). When it fails, the script asks APASS DR9 (II/336) on VizieR's mirrors - Harvard, Japan,
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as

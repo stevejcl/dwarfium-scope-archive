@@ -174,3 +174,46 @@ failed session's when it has them, kept otherwise. Returns the plan with
         json.dump({"type": "SESSION_REPAIR", "source_session": os.path.basename(os.path.normpath(failed_dir))}, f, indent=2)
     log(f"✅ {total} file(s) copied from {os.path.basename(os.path.normpath(failed_dir))}")
     return plan
+
+
+# A capture's folder on the Dwarf: DWARF_RAW_<TELE|WIDE>_<target>_EXP_<exposure>_GAIN_<gain>_<YYYY-MM-DD-HH-MM-SS-mmm>
+FOLDER_RE = re.compile(
+    r"^DWARF_RAW_(?P<camera>TELE|WIDE)_(?P<target>.+)_EXP_(?P<exp>\d+(?:\.\d+)?)_GAIN_(?P<gain>\d+)_"
+    r"(?P<ts>\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})-\d{1,6}$",
+    re.IGNORECASE,
+)
+# The capture starts after the program (goto, calibration, focus...)
+_BEFORE_MIN, _AFTER_MIN = 2, 90
+
+
+def _target_key(text: str) -> str:
+    return re.sub(r"[^0-9a-z]", "", (text or "").lower())
+
+
+def find_session_folder(astro_dir: str, camera: str, target: str, exposure, gain, start) -> str | None:
+    """The capture folder of a program run on the Dwarf (user-asked Oct 2026:
+    Astro Dwarf Session's Repair session opens the Repair here with both
+    captures): same camera, target (letters and digits), exposure and gain,
+    its time the first within _AFTER_MIN after the program's start
+    (start: datetime, the Dwarf's local time). None when not found."""
+    from datetime import datetime, timedelta
+    try:
+        exposure, gain = float(exposure), int(float(gain))
+        names = os.listdir(astro_dir)
+    except (TypeError, ValueError, OSError):
+        return None
+    best = None
+    for name in names:
+        m = FOLDER_RE.match(name)
+        if not m or m["camera"].upper() != (camera or "TELE").upper():
+            continue
+        if _target_key(m["target"]) != _target_key(target):
+            continue
+        if abs(float(m["exp"]) - exposure) > 1e-6 or int(m["gain"]) != gain:
+            continue
+        when = datetime.strptime(m["ts"], "%Y-%m-%d-%H-%M-%S")
+        if start - timedelta(minutes=_BEFORE_MIN) <= when <= start + timedelta(minutes=_AFTER_MIN):
+            if best is None or when < best[0]:
+                best = (when, name)
+    return os.path.join(astro_dir, best[1]) if best else None
+

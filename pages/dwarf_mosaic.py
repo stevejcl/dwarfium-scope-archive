@@ -46,20 +46,35 @@ async def mosaic_page(
     back_url: str = None,
     tile: str = None,
     tile_date: str = None,
+    repair_failed: str = None,
+    repair_new: str = None,
+    repair_target: str = None,
+    repair_exp: str = None,
+    repair_gain: str = None,
+    repair_camera: str = "TELE",
 ):
 
     menu(t("page_mosaic"))
     await ui.context.client.connected(timeout=10.0)
     # mode=MilkyWay (Explore, a mosaic tile's session): the Milky Way tab on
-    # that tile's mosaic - the other modes keep opening on Merge, as before
+    # that tile's mosaic; mode=Repair with repair_*: a failed capture to
+    # repair (Astro Dwarf Session's Repair session - both sessions found on
+    # the Dwarf, see _apply_repair_request()) - the other modes keep opening
+    # on Merge, as before
+    repair = None
+    if mode == "Repair" and repair_failed and repair_new and repair_target:
+        repair = {"failed": repair_failed, "new": repair_new, "target": repair_target, "exp": repair_exp,
+                  "gain": repair_gain, "camera": repair_camera or "TELE"}
     ui.context.mosaic_app = MosaicApp(client, DB_NAME, DwarfId=DwarfId, Session=session, BackUrl=back_url, BackupId=BackupId,
-                                      Mode="MilkyWay" if mode == "MilkyWay" else "Merge",
-                                      Tile=(tile, tile_date) if tile else None)
+                                      Mode="MilkyWay" if mode == "MilkyWay" else "Repair" if repair else "Merge",
+                                      Tile=(tile, tile_date) if tile else None, Repair=repair)
 
 
 class MosaicApp(DbPageMixin):
-    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Merge", BackupId=None,  BackUrl=None, Tile=None):
+    def __init__(self, client: Client, database, DwarfId=None, Session=None, Mode="Merge", BackupId=None,  BackUrl=None, Tile=None,
+                 Repair=None):
         self.client = client
+        self.repair_request = Repair    # filled in once the Dwarf's folder is known
         self.database = database
         self.dwarfs = []
 
@@ -467,6 +482,47 @@ class MosaicApp(DbPageMixin):
             self.check_dir_dwarf()
             self.update_session_directories()
             self.refresh_error_sessions()
+            self._apply_repair_request()
+
+    def _apply_repair_request(self) -> None:
+        """Astro Dwarf Session's "Finish the repair": the repair session as
+        primary and the failed capture as secondary, both found on the Dwarf
+        (api/session_repair.find_session_folder()) - once, when the Dwarf's
+        folder is reachable. Said when one isn't found: picked by hand then."""
+        request = self.repair_request
+        if not request or self.mode != "Repair" or self.DwarfId != self.DwarfId_Init:
+            return
+        if not self.dwarf_astroDir or not os.path.isdir(self.dwarf_astroDir):
+            ui.notify(t("session_repair_dwarf_not_reachable"), type="warning", multi_line=True)
+            return
+        self.repair_request = None
+        from datetime import datetime
+        from api.session_repair import find_session_folder
+        found = {}
+        for key in ("new", "failed"):
+            try:
+                start = datetime.strptime(request[key][:19], "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                found[key] = None
+                continue
+            found[key] = find_session_folder(self.dwarf_astroDir, request["camera"], request["target"],
+                                             request["exp"], request["gain"], start)
+        self.primary_source_toggle.value = "Dwarf"
+        self.secondary_source_toggle.value = "Dwarf"
+        if found["new"]:
+            self.primary_session_dir = found["new"]
+            self.input_primary_dir.set_options([found["new"]], value=found["new"])
+            self.on_primary_dir_change()
+        if found["failed"]:
+            self.secondary_session_dir = found["failed"]
+            self.input_secondary_dir.set_options([found["failed"]], value=found["failed"])
+            self.on_secondary_dir_change()
+        if found["new"] and found["failed"]:
+            ui.notify(t("session_repair_prefilled"), type="positive", multi_line=True)
+        else:
+            missing = [request[k] for k in ("new", "failed") if not found[k]]
+            ui.notify(t("session_repair_not_found", target=request["target"], when=", ".join(missing)),
+                      type="warning", multi_line=True)
 
     def check_dir_dwarf(self):
         if self.dwarf_astroDir:
