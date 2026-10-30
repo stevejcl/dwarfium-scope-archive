@@ -19,6 +19,10 @@
     Mosaic page in Repair mode, the repair session (primary) and the failed capture (secondary) found on the Dwarf by
     camera, target, exposure, gain and time - the first capture within 90 min of each program's start; said when one
     isn't found. /Mosaic?mode=Repair no longer opens on Merge.
+    Repair of a failed capture with a work directory chosen: the new session's files it removes or replaces (its
+    images, stacked.jpg, stacked-16, shotsInfo.json) saved first in <work directory>/<session>_before_repair/ - a way
+    back (user-asked Oct 2026); nothing changed on the Dwarf when that copy fails. Without a work directory, no backup
+    (the dialog says so).
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's
     findcompstars failing). When it fails, the script asks APASS DR9 (II/336) on VizieR's mirrors - Harvard, Japan,
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as

@@ -1012,6 +1012,12 @@ class MosaicApp(DbPageMixin):
                            removed=len(plan["remove"]), copied=len(plan["copy"]))).classes("text-sm whitespace-pre-line")
                 for warning in plan["warnings"]:
                     ui.label(f"⚠️ {warning}").classes("text-sm text-orange-9")
+                backup_dir = (self.input_output_dir.value or "").strip()
+                if backup_dir:
+                    from api.session_repair import backup_path
+                    ui.label(t("session_repair_backup", folder=backup_path(backup_dir, new_dir))).classes("text-sm")
+                else:
+                    ui.label(t("session_repair_no_backup")).classes("text-xs text-gray-500")
             with ui.row().classes("w-full justify-end gap-2 mt-2"):
                 ui.button(t("cancel"), on_click=dialog.close).props("flat")
                 if not plan["error"]:
@@ -1028,8 +1034,9 @@ class MosaicApp(DbPageMixin):
         self.progress.value = 0
         self.progress_label.set_text(t("session_repair_running"))
         try:
+            backup_dir = (self.input_output_dir.value or "").strip() or None
             await run.io_bound(repair, failed_dir, new_dir, lambda m: print_log(m, self.log_ui),
-                               lambda p: safe_progress(self.progress, p * 100))
+                               lambda p: safe_progress(self.progress, p * 100), backup_dir)
         except Exception as e:
             traceback.print_exc()
             self.progress_label.set_text(t("session_repair_failed", error=e))

@@ -126,6 +126,8 @@ TRANSLATIONS: dict[str, str] = {
     "session_repair_dwarf_not_reachable": "Repair: the Dwarf's folder isn't reachable - connect the Dwarf (USB or network), then choose the Dwarf again",
     "session_repair_prefilled":      "Repair: the repair session (primary) and the failed capture (secondary) found on the Dwarf - check them, then Start Repair",
     "session_repair_not_found":      "Repair: {target} not found on the Dwarf for the program started at {when} - choose that session by hand",
+    "session_repair_backup":         "The new session's files replaced are saved first in {folder}",
+    "session_repair_no_backup":      "No backup of the new session's files (choose a work directory below to keep one)",
     "session_repair_title":          "Repair a failed session",
     "session_repair_plan":           "Failed session: {failed}\nNew session (2 images, same settings): {new}\n\n{removed} image(s) of the new session removed, {copied} file(s) of the failed one copied into it (images, thumbnails, shotsInfo.json, and its stacked image / stacked-16 PNG or FITS when there), renamed to its name and date - their time kept. The failed session is left as it is.",
     "session_repair_start":          "Repair",

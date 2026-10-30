@@ -149,17 +149,46 @@ def plan_repair(failed_dir: str, new_dir: str) -> dict:
     return plan
 
 
-def repair(failed_dir: str, new_dir: str, log=print, progress=None) -> dict:
+def backup_path(backup_dir: str, new_dir: str) -> str:
+    """Where backup_new_session() keeps the new session's files."""
+    return os.path.join(backup_dir, os.path.basename(os.path.normpath(new_dir)) + "_before_repair")
+
+
+def backup_new_session(plan: dict, new_dir: str, backup_dir: str) -> tuple[str, int]:
+    """Copies the new session's files the repair removes or replaces (its
+    images, stacked.jpg, stacked-16..., shotsInfo.json) into
+    <backup_dir>/<session>_before_repair/, same layout (user-asked Oct 2026:
+    a way back if the repair went wrong). Returns (folder, count); raises
+    when a copy fails - nothing changed on the Dwarf then."""
+    folder = backup_path(backup_dir, new_dir)
+    targets = list(plan["remove"]) + [dst for _, dst in plan["copy"] if os.path.isfile(dst)]
+    count = 0
+    for path in dict.fromkeys(targets):
+        rel = os.path.relpath(path, new_dir)
+        dst = os.path.join(folder, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(path, dst)
+        count += 1
+    return folder, count
+
+
+def repair(failed_dir: str, new_dir: str, log=print, progress=None, backup_dir: str | None = None) -> dict:
     """Applies plan_repair(): the new session's own images removed, the failed
     session's copied in (the failed session left as it is), repairInfo.json
     written. The new session's stacked-16 files, stacked.jpg... replaced by the
-failed session's when it has them, kept otherwise. Returns the plan with
-"copied" (count); raises on its error."""
+failed session's when it has them, kept otherwise. backup_dir: the new
+session's files saved there first (backup_new_session()). Returns the plan
+with "copied" (count) and "backup" (folder, when saved); raises on its
+error."""
     plan = plan_repair(failed_dir, new_dir)
     if plan["error"]:
         raise ValueError(plan["error"])
     for warning in plan["warnings"]:
         log(f"⚠️ {warning}")
+    if backup_dir:
+        folder, count = backup_new_session(plan, new_dir, backup_dir)
+        plan["backup"] = folder
+        log(f"💾 {count} file(s) of the new session saved in {folder}")
     for path in plan["remove"]:
         os.remove(path)
     log(f"ℹ️ {len(plan['remove'])} image(s) of the new session removed")
