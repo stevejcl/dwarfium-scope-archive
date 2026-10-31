@@ -3,12 +3,40 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Repair of a failed capture (user-asked Oct 2026, from DwarfLab's procedure "How I Fixed My Failed Session"):
+    a capture that ended badly (the Dwarf hung, an empty battery, a reboot) keeps its images on the Dwarf but not its
+    stacked FITS (user's Lion Nebula: no stacked-16_<...>.fits nor img_stacked_counter.png) - not in the Dwarf's
+    Album nor its Megastack. Such a session is now listed in Repair's sessions in error. Repair with a short new
+    session of the same settings as primary (2 images - Astro Dwarf Session's "Repair session" takes it), both on the
+    Dwarf: what will be done shown first, then the new session's images removed, the failed one's images,
+    thumbnails and shotsInfo.json copied into it - its stacked.jpg, thumbnail, reference and stacked-16 PNG / FITS too
+    when there, in place of the new session's, under its names -, renamed to its name and date (their time kept), repairInfo.json
+    (SESSION_REPAIR) written - the failed session left as it is; reboot the Dwarf: the session appears in its Album
+    and Megastack - then run a Megastack on it in the Dwarf app (user-tested on his Lion Nebula: 141 images seen): its Album
+    keeps the small session's figures saved by the Dwarf. Also a way to megastack two sessions of one region under
+    different names.
+    Repair opened from Astro Dwarf Session (its finished Repair session's "Finish the repair in Scope Archive"): the
+    Mosaic page in Repair mode, the repair session (primary) and the failed capture (secondary) found on the Dwarf by
+    camera, target, exposure, gain and time - the first capture within 90 min of each program's start; said when one
+    isn't found. /Mosaic?mode=Repair no longer opens on Merge.
+    Repair of a failed capture with a work directory chosen: the new session's files it removes or replaces (its
+    images, stacked.jpg, stacked-16, shotsInfo.json) saved first in <work directory>/<session>_before_repair/ - a way
+    back (user-asked Oct 2026); nothing changed on the Dwarf when that copy fails. Without a work directory, no backup
+    (the dialog says so).
+    Explore: a failed capture (its stacked.jpg but no stacked FITS - user-asked Oct 2026: shown as a normal session
+    while missing from the Dwarf's Album) says so, a red FAILED CAPTURE badge, and its Repair button opens the Mosaic
+    page's Repair with it as the secondary session.
     Photometry: comparison stars without Strasbourg (user-reported Oct 2026: VizieR at the CDS down two days, Siril's
     findcompstars failing). When it fails, the script asks APASS DR9 (II/336) on VizieR's mirrors - Harvard, Japan,
     India - around the star's VSX position (within 0.6 deg, 3 mag of the star, V error 0.03 at most, as
     findcompstars), else an earlier run's list of the star (more stars than the AAVSO's - user's DY Peg: 17 against
     4 - and common with its other sessions), else the AAVSO's own comparison stars (VSP); the CSV and the build
     log say which, and why the mirrors didn't answer. Check exposure too.
+    Comparison stars without any server (user-asked Oct 2026): from Siril's local Gaia DR3 extract (the one
+    installed for plate solving) - conesearch -cat=localgaia on the solved image, V from Gaia's G and Teff (BP-RP
+    from Teff, Mucciarelli & Bellazzini 2020; G - V, Riello et al. 2021), stars of colour 0.39 < BP-RP < 1.5,
+    within 3 mag of the star, the 70 nearest. Order when findcompstars fails: the star's earlier list, the local
+    Gaia catalog, APASS on a VizieR mirror, the AAVSO's stars.
     SIMBAD from Harvard when Strasbourg doesn't answer (user-reported Oct 2026: "RT And not found on SIMBAD" with the
     CDS down): Explore's sky search by name and Identify target ask simbad.cds.unistra.fr, then simbad.harvard.edu;
     a name neither finds is asked to the AAVSO's VSX (variable stars).
@@ -34,7 +62,19 @@
     major axis) and circle; the summary their median - in px and arcseconds -, to compare instruments. Sized on the
     image's own bright isolated stars (up to 40), not only its comparison stars (user's DY Peg: 1 image sized out of
     355 with the AAVSO's few stars); an image not sized keeps the previous one's circle; the summary says how many
-    were sized.
+    were sized. Hot pixels and cosmic rays left by the dark no longer taken for stars (user's DY Peg: FWHM 0 - 0.9 px
+    in 46 images, the circle down to 3 px): a star's peak has 3 bright neighbours at least, covers 6 pixels and has
+    a FWHM over 1.2 px.
+    Photometry: the measuring circle chosen on the light curve itself (user-agreed Oct 2026: DY Peg's check star
+    0.055 with a 3 - 4.7 px circle, 0.070 at 2 x FWHM) - each star measured with 1, 1.25, 1.5 and 2 x the image's
+    FWHM (the same star and background), the circle giving the steadiest check star kept (its std after a 3-sigma
+    clip; the comparison stars' scatter when there is no check star). The summary compares the four.
+    Photometry: a variable comparison star left out of the zero point (user's DY Peg, Oct 2026: its star 24 at 2.6 x
+    the scatter of similar stars, measured 0.4 mag off its catalogue V - a V 10.5 star of B-V 1.9 30" away in
+    Stellarium, too red for findcompstars' list): found on a first pass, then the circle chosen and the zero points
+    computed without it; the summary names it, the field survey still lists it.
+    Its rule looser than the survey's candidate: 1.5 x the scatter of similar stars and a chi2 of 5 (user's DY Peg:
+    star 24 at 2.6 x one night, 1.9 x / chi2 27 the next - kept in the zero point that night).
     Photometry: the flat used (user-asked Oct 2026): Prepare for Siril copied it to flat/ - the DWARF's factory
     calibration, one master per gain - but the photometry script calibrated with the dark only. A single flat is
     the master, several are stacked (-norm=mul); calibrate -flat=master_flat with or without the dark. Left out,
@@ -305,6 +345,8 @@
     output FITS and with the result opens MOSAIC_WCS.
 
 ### BugFix
+    Explore, stitching a mosaic: Discard left the temporary images of a failed stitch behind (a helper never
+    imported, its error silenced); each image is now removed on its own.
     Transfer page: Back shows the session it was opened for again (user-reported Oct 2026: Explore came back with
     no session shown) - its id passed back to Explore (SessionId), from the Dwarf or a backup drive.
     The Siril script (extern/Dwarfium_archive_selector.py) shipped in the release's zip, in extern/ (user-reported

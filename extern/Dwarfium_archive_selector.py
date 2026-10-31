@@ -401,7 +401,7 @@ def measure_star(data, wcs, ra, dec, **kwargs):
     return None if m is None else (m[0], m[1], m[2] / m[3] if m[3] > 0 else 0.0)
 
 
-def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20)):
+def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulus=(12, 20), radii=None):
     """(peak, background, flux, noise) in ADU of the star at ra/dec in a plate solved
     image (numpy array + astropy WCS), None when out of the field or not
     detected (peak under 5 sigma of the background, or a lone hot pixel). Measured here rather than
@@ -413,7 +413,9 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     the brightest pixel within peak_r of it (a fitted Gaussian is a third
     lower on these sharp stars); S/N of an aperture_r aperture, background
     from the annulus, a gain of 1 e-/ADU assumed for the star's own noise
-    (an estimate)."""
+    (an estimate). radii: several circles at once - {radius: (peak,
+    background, flux, noise)}, the same star and background for each
+    (choose_aperture())."""
     import numpy as np
     height, width = data.shape
     x, y = wcs.world_to_pixel_values(ra, dec)
@@ -448,10 +450,18 @@ def _star_measure(data, wcs, ra, dec, search_r=3, peak_r=3, aperture_r=4, annulu
     # A star: several pixels well above the background, not a lone hot pixel
     if sigma <= 0 or peak - background < 5 * sigma or (cut[dist <= 1.5] > background + 3 * sigma).sum() < 3:
         return None
-    aperture = cut[dist <= aperture_r]
-    flux = float((aperture - background).sum())
-    noise = (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
-    return peak, background, flux, noise
+    def _in(r):
+        aperture = cut[dist <= r]
+        flux = float((aperture - background).sum())
+        return peak, background, flux, (aperture.size * sigma ** 2 + max(flux, 0.0)) ** 0.5
+
+    if radii is not None:
+        return {r: _in(r) for r in radii}
+    return _in(aperture_r)
+
+
+_MIN_STAR_PIXELS = 6     # pixels 3 sigma above the background
+_MIN_STAR_FWHM = 1.2     # px: thinner is a hot pixel, not a star
 
 
 def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
@@ -477,7 +487,10 @@ def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
         return None
     w = np.where((dist <= r) & (values > 3 * sigma), values, 0.0)
     total = w.sum()
-    if total <= 0:
+    # A star covers several pixels: a hot pixel or a cosmic ray left by the
+    # dark is one or two (user's DY Peg, Oct 2026: FWHM 0 - 0.9 px in 46
+    # images out of 355, the circle shrunk to 3 px)
+    if total <= 0 or np.count_nonzero(w) < _MIN_STAR_PIXELS:
         return None
     mx, my = (w * gx).sum() / total, (w * gy).sum() / total
     sxx = (w * (gx - mx) ** 2).sum() / total
@@ -486,7 +499,10 @@ def shape_at(data, cx, cy, r=8, annulus=(12, 20), min_snr=10):
     half = (sxx + syy) / 2
     root = ((sxx - syy) ** 2 / 4 + sxy ** 2) ** 0.5
     major, minor = half + root, max(half - root, 1e-6)
-    return 2.3548 * ((major + minor) / 2) ** 0.5, float((minor / major) ** 0.5), peak
+    fwhm = 2.3548 * ((major + minor) / 2) ** 0.5
+    if fwhm < _MIN_STAR_FWHM:
+        return None
+    return fwhm, float((minor / major) ** 0.5), peak
 
 
 def star_shape(data, wcs, ra, dec, r=8, annulus=(12, 20), min_snr=10):
@@ -516,6 +532,12 @@ def bright_stars(data, saturation=None, count=40, margin=25, isolation=12):
     height, width = data.shape
     inside = (xs >= margin) & (xs < width - margin) & (ys >= margin) & (ys < height - margin)
     ys, xs = ys[inside], xs[inside]
+    # A star's peak has bright neighbours, a hot pixel none: 3 of its 8 at
+    # least 5 sigma above the background
+    bright = sum((data[ys + dy, xs + dx] > background + 5 * sigma).astype(int)
+                 for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy)
+    keep = bright >= 3
+    ys, xs = ys[keep], xs[keep]
     values = data[ys, xs]
     if saturation:
         keep = values < saturation
@@ -540,7 +562,73 @@ def bright_stars(data, saturation=None, count=40, margin=25, isolation=12):
 APERTURE_FWHM = 2.0          # radius = this x the median FWHM of the image,
 APERTURE_MIN, APERTURE_MAX = 3.0, 12.0     # within these px
 _MIN_SHAPES = 5
+# The circle chosen on the light curve itself (user-agreed Oct 2026: DY Peg's
+# check star 0.055 at 3 - 4.7 px, 0.070 at 2 x FWHM): each image measured with
+# these circles, the one giving the steadiest check star kept
+APERTURE_FACTORS = (1.0, 1.25, 1.5, 2.0)
 
+
+def aperture_circles(fwhm, default=5.0):
+    """{factor: radius px} of APERTURE_FACTORS for a FWHM (default for each
+    when not sized), and the background annulus beyond the largest - the
+    same background whatever the circle."""
+    radii = {f: default if fwhm is None else float(min(max(round(f * fwhm, 1), APERTURE_MIN), APERTURE_MAX))
+             for f in APERTURE_FACTORS}
+    largest = max(radii.values())
+    return radii, (int(max(12, largest + 5)), int(max(20, largest + 12)))
+
+
+
+def _clipped_std(values):
+    """Standard deviation after a 3-sigma clip around the median (a cloud or
+    a plane not counted), None under 5 values."""
+    import numpy as np
+    values = np.asarray(values, dtype=float)
+    if values.size < 5:
+        return None
+    for _ in range(3):
+        keep = np.abs(values - np.median(values)) <= 3 * max(float(np.std(values)), 1e-4)
+        if keep.all() or keep.sum() < 5:
+            break
+        values = values[keep]
+    return float(np.std(values))
+
+
+def choose_aperture(frames, comps, fixed, check, excluded=()):
+    """(factor, {factor: scatter}) - the circle of APERTURE_FACTORS giving
+    the steadiest light curve: the check star's std (its magnitude from the
+    other comparison stars' zero point), else the comparison stars' own
+    scatter around each image's zero point (median of the images). frames:
+    (name, mid, {factor: target}, {comp: {factor: measure}}). A small
+    circle loses a part of the star's light that changes with the seeing, a
+    large one adds the background's noise - the right one depends on the
+    stars and the night. 1.5 x FWHM when it can't be told (fewer than 5
+    images). excluded: comparison stars left out of the zero point (a
+    variable)."""
+    import math
+    import numpy as np
+    scatters = {}
+    for f in APERTURE_FACTORS:
+        check_mags, spreads = [], []
+        for _, _, _, measured in frames:
+            used = {i: m[f] for i, m in measured.items()
+                    if (fixed is None or i in fixed) and i != check and i not in excluded}
+            if len(used) < 2:
+                continue
+            zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
+            weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
+            keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
+            zp = float(np.average(zps[keep], weights=weights[keep]))
+            spreads.append(float(np.std(zps[keep])))
+            if check is not None and check in measured:
+                check_mags.append(-2.5 * math.log10(measured[check][f][2]) + zp)
+        value = _clipped_std(check_mags) if check is not None else (
+            float(np.median(spreads)) if len(spreads) >= 5 else None)
+        if value is not None:
+            scatters[f] = value
+    if len(scatters) < 2:
+        return 1.5, scatters
+    return min(scatters, key=scatters.get), scatters
 
 def frame_aperture(data, wcs, stars, saturation=None, default=5.0):
     """(radius, background annulus, median FWHM, median roundness) for one
@@ -672,8 +760,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     # The target's place in each image (user's two DWARF 3 at once, Oct 2026: 0.04 mag
     # apart on one of them only - a dust shadow, no flat?): x, y in the CSV
     positions = {}
-    shapes = {}      # image -> (median FWHM px, roundness, the circle's radius)
-    last_circle = None
+    shapes = {}      # image -> (median FWHM px, roundness, {factor: the circle's radius})
+    last_fwhm = None
     rows, skipped, frames, frame_info = [], [], [], []
     for index, path in enumerate(files, 1):
         if progress is not None:
@@ -717,21 +805,23 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
             if blended:
                 skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
                                f"another star within {2 * aperture_r} px, left out")
-        # One circle for every star of the image, sized on its stars
-        radius, annulus, fwhm, roundness = frame_aperture(
+        # The same circles for every star of the image, sized on its stars
+        _, _, fwhm, roundness = frame_aperture(
             data, wcs, [st for i, st in enumerate(comps) if i not in blended], saturation, aperture_r)
-        if fwhm is None and last_circle:      # not sized: the previous image's circle
-            radius, annulus = last_circle
-        elif fwhm is not None:
-            last_circle = (radius, annulus)
-        shapes[name] = (fwhm, roundness, radius)
-        t = _star_measure(data, wcs, target["ra"], target["dec"], aperture_r=radius, annulus=annulus)
+        if fwhm is not None:
+            last_fwhm = fwhm
+        radii, annulus = aperture_circles(fwhm if fwhm is not None else last_fwhm, aperture_r)
+        shapes[name] = (fwhm, roundness, radii)
+        t = _star_measure(data, wcs, target["ra"], target["dec"], annulus=annulus, radii=set(radii.values()))
         positions[name] = tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"]))
-        if t is None or t[2] <= 0:
+        if t is not None:
+            t = {f: t[r] for f, r in radii.items()}
+        if t is None or min(m[2] for m in t.values()) <= 0:
             skipped.append(f"{name}: target not measured")
             continue
-        if saturation and t[0] >= saturation and not keep_saturated:
-            skipped.append(f"{name}: target saturated (peak {t[0]:.0f})")
+        peak = next(iter(t.values()))[0]
+        if saturation and peak >= saturation and not keep_saturated:
+            skipped.append(f"{name}: target saturated (peak {peak:.0f})")
             continue
         # keep_saturated (user-asked Oct 2026: DY Peg at gain 110, saturated at its
         # maximum, compared with another software's curve that kept it): measured,
@@ -740,8 +830,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         for i, st in enumerate(comps):
             if i in blended:
                 continue
-            m = _star_measure(data, wcs, st["ra"], st["dec"], aperture_r=radius, annulus=annulus)
-            if m is not None and m[2] > 0 and not (saturation and m[0] >= saturation):
+            m = _star_measure(data, wcs, st["ra"], st["dec"], annulus=annulus, radii=set(radii.values()))
+            if m is None:
+                continue
+            m = {f: m[r] for f, r in radii.items()}
+            if min(v[2] for v in m.values()) > 0 and not (saturation and next(iter(m.values()))[0] >= saturation):
                 measured[i] = m
         frames.append((name, mid, t, measured))
         del data
@@ -764,40 +857,69 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     check = None
     if len(candidates) >= 4:
         check = min(candidates, key=lambda i: abs(comps[i]["mag"] - (target_mag if target_mag is not None else comps[i]["mag"])))
+    def _at(frames_all, f):
+        return [(name, mid, t[f], {i: m[f] for i, m in measured.items()}) for name, mid, t, measured in frames_all]
 
-    for name, mid, t, measured in frames:
-        used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check}
-        if len(used) < 2:
-            skipped.append(f"{name}: fewer than 2 comparison stars measured")
-            continue
-        ids = list(used)
-        zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
-        weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
-        keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
-        zps, weights = zps[keep], weights[keep]
-        zp = float(np.average(zps, weights=weights))
-        # Field survey: the zero point's terms kept, for each star's own
-        # magnitude from the others (field_variability())
-        zp_terms = {i: (z, w) for i, z, w in zip([i for i, k in zip(ids, keep) if k], zps, weights)}
-        frame_info.append((mid, measured, zp_terms, float(weights.sum()), float((zps * weights).sum())))
-        zp_err = float(np.std(zps) / math.sqrt(len(zps)))
-        mag = -2.5 * math.log10(t[2]) + zp
-        err = math.hypot(1.0857 * t[3] / t[2], zp_err)
-        check_mag = check_err = None
-        if check is not None and check in measured:
-            cm = measured[check]
-            check_mag = -2.5 * math.log10(cm[2]) + zp
-            check_err = math.hypot(1.0857 * cm[3] / cm[2], zp_err)
-        try:
-            hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
-            bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
-        except Exception as e:   # astropy's time tables: the magnitudes are kept
-            hjd = bjd = None
-            if not any(line.startswith("HJD / BJD not computed") for line in skipped):
-                skipped.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
-        rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
-                     _airmass(coord, mid, observer), positions.get(name),
-                     bool(saturation and t[0] >= saturation)))
+    def _zero_points(frames, excluded):
+        """The rows and frame_info (field_variability()) of the frames, the
+        comparison stars in `excluded` left out of the zero point; with the
+        lines to add to `skipped`."""
+        rows, frame_info, notes = [], [], []
+        for name, mid, t, measured in frames:
+            used = {i: m for i, m in measured.items() if (fixed is None or i in fixed) and i != check
+                    and i not in excluded}
+            if len(used) < 2:
+                notes.append(f"{name}: fewer than 2 comparison stars measured")
+                continue
+            ids = list(used)
+            zps = np.array([comps[i]["mag"] + 2.5 * math.log10(m[2]) for i, m in used.items()])
+            weights = np.array([1.0 / max((1.0857 * m[3] / m[2]) ** 2, 1e-6) for m in used.values()])
+            keep = np.abs(zps - np.median(zps)) <= 3 * max(np.std(zps), 1e-3)
+            zps, weights = zps[keep], weights[keep]
+            zp = float(np.average(zps, weights=weights))
+            # Field survey: the zero point's terms kept, for each star's own
+            # magnitude from the others (field_variability())
+            zp_terms = {i: (z, w) for i, z, w in zip([i for i, k in zip(ids, keep) if k], zps, weights)}
+            frame_info.append((mid, measured, zp_terms, float(weights.sum()), float((zps * weights).sum())))
+            zp_err = float(np.std(zps) / math.sqrt(len(zps)))
+            mag = -2.5 * math.log10(t[2]) + zp
+            err = math.hypot(1.0857 * t[3] / t[2], zp_err)
+            check_mag = check_err = None
+            if check is not None and check in measured:
+                cm = measured[check]
+                check_mag = -2.5 * math.log10(cm[2]) + zp
+                check_err = math.hypot(1.0857 * cm[3] / cm[2], zp_err)
+            try:
+                hjd = (mid + mid.light_travel_time(coord, "heliocentric", location=geocentre)).utc.jd
+                bjd = (mid.tdb + mid.light_travel_time(coord, "barycentric", location=geocentre)).jd
+            except Exception as e:   # astropy's time tables: the magnitudes are kept
+                hjd = bjd = None
+                if not any(line.startswith("HJD / BJD not computed") for line in notes):
+                    notes.append(f"HJD / BJD not computed: {str(e).splitlines()[0]}")
+            rows.append((name, mid.utc.jd, hjd, bjd, mag, err, len(zps), t[0], check_mag, check_err,
+                         _airmass(coord, mid, observer), positions.get(name),
+                         bool(saturation and t[0] >= saturation)))
+        return rows, frame_info, notes
+
+    # A variable among the comparison stars (user's DY Peg, Oct 2026: its star
+    # 24 at 2.6 x the scatter of similar stars, measured 0.4 mag off its
+    # catalogue V - a V 10.5 star of B-V 1.9 30" away in Stellarium, not in
+    # findcompstars' list): found on a first pass (1.5 x FWHM), out of the
+    # zero point from then on - the circle's choice included. Still in the
+    # field survey.
+    _, first_info, _ = _zero_points(_at(frames, 1.5), set())
+    zp_stars = {i for _, _, zp_terms, _, _ in first_info for i in zp_terms}
+    first_stats = _variability_stats(first_info) or []
+    variables = {st["i"] for st in first_stats
+                 if st["ratio"] >= ZP_VARIABLE_RATIO and st["chi2"] >= ZP_VARIABLE_CHI2} & zp_stars
+    if len(zp_stars - variables) < 3:
+        variables = set()
+    # The circle: the one giving the steadiest check star (choose_aperture())
+    factor, scatters = choose_aperture(frames, comps, fixed, check, variables)
+    frames = _at(frames, factor)
+    shapes = {name: (fwhm, roundness, radii[factor]) for name, (fwhm, roundness, radii) in shapes.items()}
+    rows, frame_info, notes = _zero_points(frames, variables)
+    skipped += notes
     rows.sort(key=lambda r: r[1])
     # A cloud (or a plane): fewer comparison stars, larger errors - flagged
     # among the unsaturated images (the saturated ones are apart already)
@@ -856,7 +978,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         summary.append(f"  stars: FWHM {f_med:.2f} px{scale} (median; {min(v[0] for v in sized):.2f} - "
                        f"{max(v[0] for v in sized):.2f}), roundness {float(np.median([v[1] for v in sized])):.2f} "
                        f"(1 = round), sized in {len(sized)} of {len(shapes)} images; measuring circle "
-                       f"{min(radii):g} - {max(radii):g} px ({APERTURE_FWHM:g} x FWHM)")
+                       f"{min(radii):g} - {max(radii):g} px ({factor:g} x FWHM)")
+        if scatters:
+            what = "check star std" if check is not None else "comparison stars' scatter"
+            summary.append(f"  circle chosen on the {what}: " + ", ".join(
+                f"{f:g} x FWHM {v:.3f}" + (" <-" if f == factor else "") for f, v in sorted(scatters.items())))
     elif shapes:
         summary.append(f"  stars: not sized (too few bright isolated stars) - measuring circle {aperture_r:g} px")
     if rows:
@@ -865,6 +991,11 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
         summary.append(f"  mag {mags.mean():.3f} (std {mags.std():.3f}, median error {np.median([r[5] for r in rows]):.3f}), "
                        f"{int(np.median([r[6] for r in rows]))} comparison stars per image"
                        + (f" (the same {len(fixed)} in every image)" if fixed else ""))
+    if variables:
+        ratios = {st["i"]: st["ratio"] for st in first_stats}
+        summary.append("  left out of the zero point, variable: " + ", ".join(
+            f"comparison {comps[i]['name']} (V {comps[i]['mag']}, {ratios.get(i, 0):.1f} x the scatter of similar stars)"
+            for i in sorted(variables)))
     if rows and check is not None:
         cmags = np.array([r[8] for r in rows if r[8] is not None and not r[13]])
         if cmags.size:
@@ -980,17 +1111,19 @@ def _skipped_summary(skipped, examples=3):
     return lines
 
 
-def field_variability(comps, frame_info, folder, target, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
-    """Variability survey of the field (user-requested Oct 2026: the stars
-    found in a session measured too): each comparison star's magnitude in
-    each image from the zero point of the others (leave-one-out), then its
-    scatter against that of the stars of similar brightness (median within
-    0.5 mag): a ratio of flag_ratio or more, and a scatter flag_chi2 times
-    its own errors (chi2) - a faint star's noise alone isn't one -, makes it a
-    candidate variable.
-    Known variables are not in findcompstars' list, the candidates are
-    uncatalogued ones (or a bad comparison star). Writes stars_variability.csv
-    and .png in folder; returns the summary lines."""
+# A comparison star left out of the zero point: a scatter 1.5 x that of
+# similar stars and 5 x its own errors - looser than the survey's candidate
+# (2 x, chi2 2): user's DY Peg, Oct 2026, its star 24 (30" from a V 10.5 red
+# star) at 2.6 x / chi2 56 one night, 1.9 x / chi2 27 the next - the second
+# night kept in the zero point. No other star of the zero point beyond both.
+ZP_VARIABLE_RATIO = 1.5
+ZP_VARIABLE_CHI2 = 5.0
+
+
+def _variability_stats(frame_info, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
+    """Each comparison star's scatter from the zero point of the others
+    (field_variability()): [{"i", "n", "mag", "std", "err", "chi2", "ratio",
+    "candidate"}] by ratio, None under 5 stars measured enough."""
     import math
     import numpy as np
     series = {}
@@ -1016,7 +1149,7 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
                       "err": float(np.median(errs)),
                       "chi2": float(np.mean(((mags - mags.mean()) / np.maximum(errs, 1e-4)) ** 2))})
     if len(stats) < 5:
-        return ["  field survey: fewer than 5 stars measured in enough images"]
+        return None
     for st in stats:   # the scatter expected at its brightness: the others'
         similar = [o["std"] for o in stats if o is not st and abs(o["mag"] - st["mag"]) <= 0.5]
         if len(similar) < 3:
@@ -1026,6 +1159,24 @@ def field_variability(comps, frame_info, folder, target, min_frames=10, flag_rat
     stats.sort(key=lambda st: st["ratio"], reverse=True)
     for st in stats:
         st["candidate"] = st["ratio"] >= flag_ratio and st["chi2"] >= flag_chi2
+
+    return stats
+
+
+def field_variability(comps, frame_info, folder, target, min_frames=10, flag_ratio=2.0, flag_chi2=2.0):
+    """Variability survey of the field (user-requested Oct 2026: the stars
+    found in a session measured too): each comparison star's magnitude in
+    each image from the zero point of the others (leave-one-out), then its
+    scatter against that of the stars of similar brightness (median within
+    0.5 mag): a ratio of flag_ratio or more, and a scatter flag_chi2 times
+    its own errors (chi2) - a faint star's noise alone isn't one -, makes it a
+    candidate variable.
+    Known variables are not in findcompstars' list, the candidates are
+    uncatalogued ones (or a bad comparison star). Writes stars_variability.csv
+    and .png in folder; returns the summary lines."""
+    stats = _variability_stats(frame_info, min_frames, flag_ratio, flag_chi2)
+    if stats is None:
+        return ["  field survey: fewer than 5 stars measured in enough images"]
 
     out_csv = os.path.join(folder, "stars_variability.csv")
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
@@ -1235,6 +1386,72 @@ def online_compstars(target_name, out_path, sources=("apass", "vsp")):
             writer.writerow(["Comp1", name, f"{cra:.6f}", f"{cdec:.6f}", f"{cv:.3f}"])
     return source, ""
 
+
+
+# Comparison stars from Siril's local Gaia DR3 extract (no server - user-
+# asked Oct 2026, Strasbourg down for days): its G magnitude and effective
+# temperature, the colour BP-RP from Teff (Mucciarelli & Bellazzini 2020,
+# dwarfs: 5040/Teff = 0.4929 + 0.5092 C - 0.0353 C^2), V = G - (G - V) with
+# Gaia's own transformation (Riello et al. 2021: G - V = -0.02704 +
+# 0.01424 C - 0.2156 C^2 + 0.01426 C^3) - a few hundredths of a magnitude,
+# within their valid colours 0.39 < BP-RP < 1.5
+_GAIA_MAX_COMPS = 70
+
+
+def bp_rp_from_teff(teff):
+    """BP-RP from Teff (K), None outside the relation's colours."""
+    import math
+    if not teff or teff <= 0:
+        return None
+    a, b, c = -0.0353, 0.5092, 0.4929 - 5040.0 / float(teff)
+    disc = b * b - 4 * a * c
+    if disc < 0:
+        return None
+    colour = (-b + math.sqrt(disc)) / (2 * a)
+    return colour if 0.39 < colour < 1.5 else None
+
+
+def v_from_gaia(g, bp_rp):
+    return g - (-0.02704 + 0.01424 * bp_rp - 0.2156 * bp_rp ** 2 + 0.01426 * bp_rp ** 3)
+
+
+def gaia_compstars(gaia_csv, star, ra, dec, v_target, out_path):
+    """Writes out_path as findcompstars does from a conesearch -cat=localgaia
+    CSV (ra, dec, mag = G, teff): the stars of known colour within _COMP_DV
+    of the target's V, not the target itself, the _GAIA_MAX_COMPS nearest it.
+    Returns how many."""
+    import math
+    rows = []
+    with open(gaia_csv, encoding="utf-8") as f:
+        for row in csv.DictReader(line for line in f if line.strip() and not line.startswith("#")):
+            try:
+                sra, sdec, g = float(row["ra"]), float(row["dec"]), float(row["mag"])
+                colour = bp_rp_from_teff(float(row.get("teff") or 0))
+            except (KeyError, ValueError):
+                continue
+            if colour is None:
+                continue
+            v = v_from_gaia(g, colour)
+            if v_target is not None and abs(v - v_target) > _COMP_DV:
+                continue
+            dist = math.hypot((sra - ra) * math.cos(math.radians(dec)), sdec - dec)
+            if dist < 10 / 3600:     # the target itself
+                continue
+            rows.append((dist, sra, sdec, v))
+    rows.sort()
+    rows = rows[:_GAIA_MAX_COMPS]
+    if not rows:
+        return 0
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        f.write(f"# Comparison stars for {star} from the local Gaia DR3 catalog (V from G and Teff, "
+                "Riello et al. 2021 - findcompstars' server unreachable)\n")
+        f.write(f"# Dwarfium Archive Selector: {len(rows)} stars\n")
+        writer = csv.writer(f)
+        writer.writerow(["type", "name", "ra", "dec", "mag"])
+        writer.writerow(["Target", star, f"{ra:.6f}", f"{dec:.6f}", "" if v_target is None else v_target])
+        for i, (_, sra, sdec, v) in enumerate(rows, 1):
+            writer.writerow(["Comp1", f"G{i}", f"{sra:.6f}", f"{sdec:.6f}", f"{v:.3f}"])
+    return len(rows)
 
 
 def archived_compstars(target_name, roots):
@@ -3833,17 +4050,11 @@ class PreprocessingInterface(QMainWindow):
                         out_path = out if os.path.isabs(out) else os.path.join(folder, out)
                         self._build_log(f"  failed: {e} - comparison stars asked elsewhere")
                         QApplication.processEvents()
-                        # APASS from a mirror; else the star's earlier list (the
-                        # same APASS stars, more of them than the AAVSO's - user's
-                        # DY Peg, Oct 2026: 17 against 4 - and common with its
-                        # other sessions); else the AAVSO's (VSP)
-                        source, why = online_compstars(args[1], out_path, sources=("apass",))
-                        if source:
-                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
-                                           LogColor.SALMON)
-                            self._build_log(f"  comparison stars from {source} -> {out_path}")
-                            continue
-                        self._build_log(f"  APASS not found on the mirrors: {why}")
+                        # The star's earlier list (the same stars as its other
+                        # sessions, more than the AAVSO's - user's DY Peg, Oct
+                        # 2026: 17 against 4); else the local Gaia DR3 extract
+                        # (no server); else APASS from a mirror; else the
+                        # AAVSO's (VSP)
                         known = archived_compstars(args[1], _script_roots(lines))
                         if known:
                             try:
@@ -3854,6 +4065,16 @@ class PreprocessingInterface(QMainWindow):
                                 continue
                             except OSError as copy_error:
                                 self._build_log(f"  earlier comparison stars not copied: {copy_error}")
+                        source = self._local_gaia_compstars(args[1], out_path)
+                        if not source:
+                            source, why = online_compstars(args[1], out_path, sources=("apass",))
+                            if not source:
+                                self._build_log(f"  APASS not found on the mirrors: {why}")
+                        if source:
+                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                           LogColor.SALMON)
+                            self._build_log(f"  comparison stars from {source} -> {out_path}")
+                            continue
                         source, why = online_compstars(args[1], out_path, sources=("vsp",))
                         if source:
                             self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
@@ -4013,6 +4234,26 @@ class PreprocessingInterface(QMainWindow):
             else:
                 failed += 1
         return removed, size, failed
+
+    def _local_gaia_compstars(self, target_name, out_path):
+        """Comparison stars from Siril's local Gaia DR3 extract
+        (gaia_compstars()), the plate solved image loaded: "local Gaia DR3
+        (N stars)", or None (no local catalog, the star not in VSX...)."""
+        star = simbad_name(target_name)
+        found = vsx_star(star, timeout=15) or {}
+        if found.get("ra") is None or found.get("dec") is None:
+            return None
+        v = found.get("max")
+        limit = (v if v is not None else 12.0) + _COMP_DV + 0.5
+        gaia_csv = os.path.join(os.path.dirname(out_path) or ".", "gaia_field.csv")
+        try:
+            self._siril_cmd("conesearch", f"{limit:.1f}", "-cat=localgaia",
+                            f'"-out={gaia_csv}"' if " " in gaia_csv else f"-out={gaia_csv}")
+            count = gaia_compstars(gaia_csv, star, float(found["ra"]), float(found["dec"]), v, out_path)
+        except Exception as e:      # no local catalog, or Siril refused
+            self._build_log(f"  local Gaia DR3 not used: {e}")
+            return None
+        return f"local Gaia DR3 ({count} stars)" if count else None
 
     def _siril_cmd(self, *args):
         """self.siril.cmd(*args) in a background thread, this window kept alive
@@ -4223,9 +4464,11 @@ class PreprocessingInterface(QMainWindow):
             try:
                 self.siril.cmd("findcompstars", f'"{star}"' if " " in star else star, f"-out={csv_name}")
             except s.SirilError:
-                # Its catalog server unreachable: APASS from a VizieR mirror,
-                # else the AAVSO's comparison stars (online_compstars())
-                if not online_compstars(star, os.path.join(work, csv_name))[0]:
+                # Its catalog server unreachable: the local Gaia DR3 extract,
+                # else APASS from a VizieR mirror, else the AAVSO's comparison
+                # stars (online_compstars())
+                out = os.path.join(work, csv_name)
+                if not self._local_gaia_compstars(star, out) and not online_compstars(star, out)[0]:
                     raise
             # The plate solved green image, measured with astropy (measure_star)
             self.siril.cmd("save", "solved_" + base)

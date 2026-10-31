@@ -124,6 +124,24 @@ TRANSLATIONS: dict[str, str] = {
     "folder_not_found":             "Folder not found!",  # TODO
     "no_folder_selected":           "No folder selected!",  # TODO
     "no_session_error":             "No error session selected.",  # TODO
+    "session_repair_on_dwarf":       "Repair of a session: both sessions must be read on the Dwarf (USB or network)",  # TODO
+    "session_repair_mixed":         "One session is a mosaic, the other not: a mosaic is repaired with a mosaic, a capture with a capture",  # TODO
+    "session_repair_dwarf_not_reachable": "Repair: the Dwarf's folder isn't reachable - connect the Dwarf (USB or network), then choose the Dwarf again",  # TODO
+    "session_repair_prefilled":      "Repair: the repair session (primary) and the failed capture (secondary) found on the Dwarf - check them, then Start Repair",  # TODO
+    "session_repair_not_found":      "Repair: {target} not found on the Dwarf for the program started at {when} - choose that session by hand",  # TODO
+    "failed_capture_badge":          "⚠️ FAILED CAPTURE",  # TODO
+    "failed_capture_hint":           "no stacked FITS: not in the Dwarf's Album nor its Megastack",  # TODO
+    "failed_capture_repair":         "Repair",  # TODO
+    "session_repair_not_on_dwarf":   "Repair: {name} isn't on the Dwarf (connected by USB or network?)",  # TODO
+    "session_repair_secondary_set":  "Repair: the failed capture is the secondary session - choose as primary a short session of the same settings (2 images), then Start Repair",  # TODO
+    "session_repair_backup":         "The new session's files replaced are saved first in {folder}",  # TODO
+    "session_repair_no_backup":      "No backup of the new session's files (choose a work directory below to keep one)",  # TODO
+    "session_repair_title":          "Repair a failed session",  # TODO
+    "session_repair_plan":           "Failed session: {failed}\nNew session (2 images, same settings): {new}\n\n{removed} image(s) of the new session removed, {copied} file(s) of the failed one copied into it (images, thumbnails, shotsInfo.json, and its stacked image / stacked-16 PNG or FITS when there), renamed to its name and date - their time kept. The failed session is left as it is.",  # TODO
+    "session_repair_start":          "Repair",  # TODO
+    "session_repair_running":        "Copying the failed session's images...",  # TODO
+    "session_repair_failed":         "Repair failed: {error}",  # TODO
+    "session_repair_done":           "Session repaired - reboot the Dwarf, then run a Megastack on this session in the Dwarf app: its Album keeps the small session's figures (images, exposure) saved by the Dwarf, the Megastack stacks all the images",  # TODO
     "no_location":                  "No location selected.",  # TODO
     "no_files_loaded":              "No files loaded",  # TODO
     "no_manual_entries":            "No manual entries found for this drive.",  # TODO
