@@ -3926,7 +3926,60 @@ class ExploreApp(DbPageMixin):
                         .props('flat dense no-caps')
                     ui.button(t('photometry_refresh'), icon='refresh',
                               on_click=lambda _e=None: self._show_photometry_tab()).props('flat dense no-caps')
+                    # The AAVSO's AID file (api/aavso_export.py): measured with its sequence only
+                    from api import aavso_export
+                    aavso_btn = ui.button(t('aavso_export'), icon='upload_file',
+                                          on_click=lambda _e=None, r=res: self._aavso_export_dialog(r)) \
+                        .props('flat dense no-caps')
+                    if not aavso_export.chart_of(res["curve_csv"]):
+                        aavso_btn.disable()
+                        aavso_btn.tooltip(t('aavso_export_no_chart'))
         self.tab_photometry.set_visibility(True)
+
+    def _aavso_export_dialog(self, res):
+        """The light curve as the AAVSO's AID file (api/aavso_export.py): the
+        observer code (kept), the star's AAVSO name, then aavso_<star>.txt
+        next to the light curve - to upload on the AAVSO's portal, File mode."""
+        from api import aavso_export
+        try:
+            meta, _ = aavso_export.read_curve(res["curve_csv"])
+        except OSError as e:
+            ui.notify(str(e), type="negative")
+            return
+        target = (meta.get("target") or res["star"]).split()
+        star_name = " ".join(target[:-2]) if len(target) > 2 else res["star"]
+        with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
+            ui.label(t("aavso_export_title")).classes("text-base font-medium")
+            ui.label(t("aavso_export_hint", chart=meta.get("aavso_chart", ""))).classes("text-xs text-gray-500")
+            code = ui.input(t("aavso_obscode"), value=app.storage.general.get("aavso_obscode", "")).classes("w-full")
+            starid = ui.input(t("aavso_starid"), value=star_name).classes("w-full")
+
+            def _go():
+                if not (code.value or "").strip():
+                    ui.notify(t("aavso_obscode_missing"), type="warning")
+                    return
+                app.storage.general["aavso_obscode"] = code.value.strip().upper()
+                try:
+                    from pages.astro_settings import _get_app_version
+                    version = _get_app_version()
+                except Exception:
+                    version = ""
+                try:
+                    path, written, skipped = aavso_export.write(
+                        res["curve_csv"], code.value, starid.value or star_name,
+                        f"Dwarfium Archive Selector (Siril) / Dwarfium Scope Archive {version}".strip())
+                except (OSError, ValueError) as e:
+                    ui.notify(t("aavso_export_failed", error=e), type="negative", multi_line=True)
+                    return
+                dialog.close()
+                ui.notify(t("aavso_export_done", count=written, skipped=skipped, path=str(path)),
+                          type="positive", multi_line=True, timeout=10000)
+                wcs_mosaic.show_in_folder(path)
+
+            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                ui.button(t("cancel"), on_click=dialog.close).props("flat")
+                ui.button(t("aavso_export"), icon="upload_file", on_click=_go).props("color=primary")
+        dialog.open()
 
     def _show_oc_diagram(self, res, _png):
         """The star's O-C diagram across all its sessions, every drive

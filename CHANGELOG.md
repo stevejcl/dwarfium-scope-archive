@@ -9,6 +9,11 @@
     else the latest session's -, one colour per instrument; the mean O-C, or the fitted line once the nights span 50
     cycles or more; corrected elements (epoch at the latest extremum, period) to type in Astro Dwarf Session.
     oc_<star>.png / .csv next to the star's sessions.
+    Photometry for the AAVSO (user-asked Oct 2026): the Siril script's "AAVSO sequence" option measures with the
+    AAVSO's comparison stars (VSP photometry table, named by their AUID) and keeps its chart ID in the light curve;
+    Explore's Photometry tab exports such a curve as the AAVSO's AID file (Extended, v2.0 of July 2025): TG,
+    untransformed, ensemble, the check star's AUID and magnitude, airmass, JD UTC, cloudy and saturated images left
+    out; your observer code asked once. aavso_<star>.txt next to the light curve, to upload on the AAVSO's portal.
     Photometry: a star measured before takes its last session's comparison stars at once, findcompstars no longer
     asked (user-asked Oct 2026: the same stars every night, its O-C comparable from night to night - and no 20 s
     wait on SIMBAD, Strasbourg being down). A new star still asks findcompstars first.
