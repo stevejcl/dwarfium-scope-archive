@@ -5355,17 +5355,25 @@ class ScriptRunner:
         except s.SirilError as e:
             if _siril_gone(e):
                 raise SirilGone("Plate solve of the sequence stopped.") from e
-            self.build_log(f"  seqplatesolve: {e} - image by image")
+            self.build_log(f"  seqplatesolve: not every image solved - the rest image by image ({e})")
             self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
         self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+
+        def _solved(frame):
+            cards = {key for _, key, _, _ in read_fits_cards(os.path.join(folder, frame))}
+            return "CTYPE1" in cards and ("CD1_1" in cards or "CDELT1" in cards)
+        # What seqplatesolve left, said before trying it image by image (user-
+        # reported Nov 2026: nothing written in the log meanwhile)
+        left = sum(1 for f in frames if not _solved(f))
+        self.build_log(f"platesolve: {len(frames) - left} / {len(frames)} images solved"
+                       + (f", {left} left - tried image by image" if left else ""))
         skipped = errors_in_a_row = 0
         for index, frame in enumerate(frames, 1):
             if self.stop_requested:
                 raise RuntimeError("stopped")
             base = os.path.splitext(frame)[0]
-            # Solved by an earlier run (resumed after a stop): kept as it is
-            cards = {key for _, key, _, _ in read_fits_cards(os.path.join(folder, frame))}
-            if "CTYPE1" in cards and ("CD1_1" in cards or "CDELT1" in cards):
+            # Solved by seqplatesolve or an earlier run (resumed after a stop): kept as it is
+            if _solved(frame):
                 solved, skipped = solved + 1, skipped + 1
                 first_solved = first_solved or base
                 continue
@@ -5376,6 +5384,7 @@ class ScriptRunner:
                 except s.SirilError:
                     pass
             try:
+                self.build_log(f"  platesolve {frame} ({index} / {len(frames)})")
                 self.siril.cmd("load", base)
                 self.siril.cmd("platesolve", *solve_args)
                 self.siril.cmd("save", base)
@@ -5389,6 +5398,7 @@ class ScriptRunner:
                     raise SirilGone(f"Plate solve stopped at image {index} / {len(frames)}, "
                                     f"{solved} solved so far.") from e
                 failed.append(frame)
+                self.build_log(f"    not solved: {e}")
                 self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
             except Exception as e:   # not Siril's: an image left out, not the whole run
                 failed.append(frame)
