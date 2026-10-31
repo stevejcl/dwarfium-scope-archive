@@ -3,6 +3,15 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore: "Photometry (auto)" on a session (user-asked Oct 2026) - its photometry with Siril in the background,
+    no Siril window nor script to load (siril-cli driven through pySiril; Siril 1.4 or later). Same work as the
+    Siril script's 📈 Photometry: calibration, green channel, plate solve, comparison stars, light curve, extrema,
+    results in _PHOTOMETRY and the Photometry tab. Asked once: the star, a working folder on this PC (the archive's
+    drive may be slow - the session read once, the folder deleted when the run succeeded, kept for a resume
+    otherwise), siril-cli, the AAVSO sequence (on; a star without one falls back to the other comparison stars, not
+    exportable then), keep saturated images, a new list of comparison stars, start again. Its steps, progress and
+    log shown, a Stop button; the session's earlier results moved to previous/. The Siril script's photometry and
+    Build Sessions now share this code (photometry_script(), ScriptRunner), the script importable without Siril.
     Explore, Photometry tab: the star's O-C diagram across all its sessions, every drive (user-asked Oct 2026:
     DY Peg's three nights on two Dwarfs on one diagram). Its times of maximum / minimum (each session's extrema
     file) and their O-C computed again against one set of elements - yours (Astro Dwarf Session) when typed in,

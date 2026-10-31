@@ -20,6 +20,16 @@ extra_data = [
     f"assets/catalog/bsc5_radec.csv{sep}assets/catalog",
 #    f"tools{sep}tools",
 ]
+
+# pySiril (Explore's automatic photometry, api/photometry_auto.py): its lib/
+# modules are imported by their bare names from its folder, which PyInstaller
+# doesn't follow - the package's folder shipped as it is
+import importlib.util as _ilu
+_pysiril = _ilu.find_spec("pysiril")
+if _pysiril and _pysiril.origin:
+    extra_data.append(f"{Path(_pysiril.origin).parent}{sep}pysiril")
+else:
+    print("WARNING: pysiril not installed - no automatic photometry in this build")
    
 APP_NAME = "DwarfiumScopeArchive"
 ICON_NAME = "DwarfiumScopeArchive.ico"

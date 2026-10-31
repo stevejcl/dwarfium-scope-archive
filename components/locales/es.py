@@ -1333,6 +1333,30 @@ TRANSLATIONS: dict[str, str] = {
     "oc_more_nights":                "The period is checked once the nights span about 50 cycles or more (a few weeks for a short period)",  # TODO
     "aavso_export":                  "Export for the AAVSO",  # TODO
     "aavso_export_no_chart":         "Measured without the AAVSO sequence: tick 'AAVSO sequence' in the Siril script and measure again",  # TODO
+    "photometry_auto": "Photometry (auto)",  # TODO
+    "photometry_auto_title": "Automatic photometry",  # TODO
+    "photometry_auto_hint": "Siril runs in the background (no window): calibration, green channel, plate solve, comparison stars, light curve. Results in the Photometry tab.",  # TODO
+    "photometry_auto_star": "Variable star",  # TODO
+    "photometry_auto_workdir": "Working folder (on this PC - deleted when the run succeeds)",  # TODO
+    "photometry_auto_siril": "siril-cli (Siril 1.4 or later)",  # TODO
+    "photometry_auto_aavso": "AAVSO sequence (else the other comparison stars, not exportable to the AAVSO)",  # TODO
+    "photometry_auto_saturated": "Keep the target's saturated images (flagged)",  # TODO
+    "photometry_auto_new_list": "New list of comparison stars (not the star's last one)",  # TODO
+    "photometry_auto_again": "Start again (an earlier stopped run is otherwise resumed)",  # TODO
+    "photometry_auto_start": "Start",  # TODO
+    "photometry_auto_stop": "Stop",  # TODO
+    "photometry_auto_stopping": "Stopping after the current Siril command…",  # TODO
+    "photometry_auto_no_siril": "siril-cli not found: give its path (Siril 1.4 or later, e.g. C:\\Program Files\\Siril\\bin\\siril-cli.exe)",  # TODO
+    "photometry_auto_no_pysiril": "pySiril is missing in this installation of Scope Archive",  # TODO
+    "photometry_auto_mosaic": "A mosaic session can't be measured",  # TODO
+    "photometry_auto_done": "Photometry done",  # TODO
+    "photometry_auto_failed": "Photometry not finished: {error}",  # TODO
+    "photometry_auto_show": "Show the results",  # TODO
+    "photometry_auto_running": "An automatic photometry is already running",  # TODO
+    "photometry_auto_step_copy": "Copying the session",  # TODO
+    "photometry_auto_step_siril": "Siril",  # TODO
+    "photometry_auto_step_platesolve": "Plate solve",  # TODO
+    "photometry_auto_step_photometry": "Measuring",  # TODO
     "aavso_export_title":            "Light curve as an AAVSO AID file",  # TODO
     "aavso_export_hint":             "Extended format, green channel (TG), untransformed, ensemble of the AAVSO chart {chart}; cloudy and saturated images left out. Upload the file on the AAVSO's portal, File mode, then check it before Submit.",  # TODO
     "aavso_obscode":                 "Your AAVSO observer code",  # TODO
