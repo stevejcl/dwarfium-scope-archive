@@ -4034,6 +4034,27 @@ class PreprocessingInterface(QMainWindow):
                 # text — shlex.split() above already stripped those quotes.
                 quoted_args = [f'"{a}"' if " " in a else a for a in args]
                 self._build_log(line)
+                if args[0] == "findcompstars" and len(args) > 1:
+                    # The star measured before: its last session's list, not
+                    # asked again (user-asked Oct 2026: the same stars every
+                    # night, the O-C comparable - and no 20 s wait on
+                    # SIMBAD while Strasbourg is down)
+                    known = archived_compstars(args[1], _script_roots(lines))
+                    if known:
+                        out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
+                                   "comparison_stars.csv")
+                        folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                                       for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                                      os.path.join(self.current_working_directory, "process"))
+                        out_path = out if os.path.isabs(out) else os.path.join(folder, out)
+                        try:
+                            shutil.copyfile(known, out_path)
+                            self.siril.log(f"[build] comparison stars of the star's last session: {known}",
+                                           LogColor.GREEN)
+                            self._build_log(f"  comparison stars of the star's last session used: {known}")
+                            continue
+                        except OSError as copy_error:
+                            self._build_log(f"  earlier comparison stars not copied: {copy_error} - asked to Siril")
                 try:
                     self._siril_cmd(*quoted_args)
                 except (s.CommandError, s.SirilError) as e:   # refused, or Siril no longer answering

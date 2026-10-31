@@ -3,6 +3,9 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry: a star measured before takes its last session's comparison stars at once, findcompstars no longer
+    asked (user-asked Oct 2026: the same stars every night, its O-C comparable from night to night - and no 20 s
+    wait on SIMBAD, Strasbourg being down). A new star still asks findcompstars first.
     Repair of a failed capture (user-asked Oct 2026, from DwarfLab's procedure "How I Fixed My Failed Session"):
     a capture that ended badly (the Dwarf hung, an empty battery, a reboot) keeps its images on the Dwarf but not its
     stacked FITS (user's Lion Nebula: no stacked-16_<...>.fits nor img_stacked_counter.png) - not in the Dwarf's
