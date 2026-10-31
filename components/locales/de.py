@@ -1326,6 +1326,20 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_extremum_min":   "Minimum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
     "photometry_extremum_min2":  "Secondary minimum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
     "photometry_o_c":            "O–C {o_c} min",  # TODO
+    "oc_title":                      "O-C diagram: {count} times of maximum / minimum, {nights} session(s), against the elements {source}",  # TODO
+    "oc_mean":                       "Mean O-C {oc} ± {err} min",  # TODO
+    "oc_slope":                      "O-C changing by {slope} ± {err} s per cycle: the period to correct",  # TODO
+    "oc_elements":                   "Corrected elements (to type in Astro Dwarf Session): epoch HJD {epoch} (± {epoch_err} min), period {period}{period_err} d",  # TODO
+    "oc_more_nights":                "The period is checked once the nights span about 50 cycles or more (a few weeks for a short period)",  # TODO
+    "aavso_export":                  "Export for the AAVSO",  # TODO
+    "aavso_export_no_chart":         "Measured without the AAVSO sequence: tick 'AAVSO sequence' in the Siril script and measure again",  # TODO
+    "aavso_export_title":            "Light curve as an AAVSO AID file",  # TODO
+    "aavso_export_hint":             "Extended format, green channel (TG), untransformed, ensemble of the AAVSO chart {chart}; cloudy and saturated images left out. Upload the file on the AAVSO's portal, File mode, then check it before Submit.",  # TODO
+    "aavso_obscode":                 "Your AAVSO observer code",  # TODO
+    "aavso_starid":                  "Star (its AAVSO name)",  # TODO
+    "aavso_obscode_missing":         "Your AAVSO observer code is needed (your AAVSO profile)",  # TODO
+    "aavso_export_failed":           "AAVSO file not written: {error}",  # TODO
+    "aavso_export_done":             "{count} measures written ({skipped} left out: clouds, saturation) - {path}",  # TODO
     "photometry_combined":        "All {count} sessions of the star, put together:",  # TODO
     "explore_no_image":           "Pick a session to see its image", # TODO
     "explore_image_missing":        "This session has no image to show", # TODO

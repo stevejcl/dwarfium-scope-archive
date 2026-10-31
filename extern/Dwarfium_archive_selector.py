@@ -730,7 +730,7 @@ def _airmass(coord, when, observer):
 
 
 def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None,
-                             site=None, session_name="", keep_saturated=False, elements=None):
+                             site=None, session_name="", keep_saturated=False, elements=None, chart=""):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -974,7 +974,10 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
                  f"{float(site[0]):.5f} {float(site[1]):.5f}" + (f" {site[2]}" if len(site) > 2 and site[2] else "")),
                 ("target", f"{target['name']} {target['ra']:.6f} {target['dec']:.6f}"),
                 ("check_star", "" if check is None else
-                 f"{comps[check]['name']} {comps[check]['ra']:.6f} {comps[check]['dec']:.6f} V {comps[check]['mag']}")]
+                 f"{comps[check]['name']} {comps[check]['ra']:.6f} {comps[check]['dec']:.6f} V {comps[check]['mag']}"),
+                # The AAVSO sequence's chart (aavso_sequence()): the session can be sent to the AAVSO
+                ("aavso_chart", chart or ""),
+                ("filter_band", "TG")]
         for key, value in meta:
             if value:
                 writer.writerow([f"# {key}: {value}"])
@@ -1380,6 +1383,67 @@ def aavso_vsp(star, errors=None):
     if not comps and errors is not None:
         errors.append("AAVSO VSP: no comparison star")
     return center, comps
+
+
+AAVSO_CHART_MARK = "# AAVSO chart:"
+
+
+def aavso_sequence(target_name, out_path):
+    """The AAVSO's comparison sequence of a variable (VSP, its photometry
+    table) written to out_path as findcompstars' CSV - the stars named by
+    their AUID, their chart label and V error in two more columns, and the
+    VSP chart ID in a "# AAVSO chart: <id>" line (user-asked Oct 2026: data
+    sent to the AAVSO need its own comparison stars and the chart, a
+    required CHART field of its AID file format). Returns (chart id, "") or
+    (None, why)."""
+    import json as _json
+    star = simbad_name(target_name)
+    try:
+        data = _json.loads(_http_text(_VSP_URL, {"star": star, "fov": int(_COMP_RADIUS_DEG * 120),
+                                                 "maglimit": 15, "format": "json"}))
+    except Exception as e:
+        return None, f"AAVSO VSP: {type(e).__name__}: {e}"[:200]
+    chart = str(data.get("chartid") or "").strip()
+    try:
+        ra, dec = _sexagesimal(data["ra"], True), _sexagesimal(data["dec"], False)
+    except (KeyError, ValueError, TypeError):
+        found = vsx_star(star, timeout=15) or {}
+        ra, dec = found.get("ra"), found.get("dec")
+    rows = []
+    for comp in data.get("photometry") or []:
+        band = next((b for b in comp.get("bands") or [] if b.get("band") == "V"), None)
+        try:
+            rows.append((str(comp.get("auid") or comp.get("label")), _sexagesimal(comp["ra"], True),
+                         _sexagesimal(comp["dec"], False), float(band["mag"]), str(comp.get("label") or ""),
+                         band.get("error")))
+        except (KeyError, ValueError, TypeError):
+            continue
+    if not chart or not rows or ra is None or dec is None:
+        return None, "AAVSO VSP: " + ("no chart" if not chart else "no comparison star" if not rows else "star not found")
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        f.write(f"# Comparison stars for {star} from the AAVSO sequence (VSP photometry table)\n")
+        f.write(f"{AAVSO_CHART_MARK} {chart}\n")
+        writer = csv.writer(f)
+        writer.writerow(["type", "name", "ra", "dec", "mag", "label", "mag_err"])
+        writer.writerow(["Target", star, f"{float(ra):.6f}", f"{float(dec):.6f}", "", "", ""])
+        for auid, cra, cdec, cv, label, err in rows:
+            writer.writerow(["Comp1", auid, f"{cra:.6f}", f"{cdec:.6f}", f"{cv:.3f}", label,
+                             "" if err in (None, "") else err])
+    return chart, ""
+
+
+def compstars_chart(path):
+    """The AAVSO chart ID of a comparison stars CSV (aavso_sequence()), or ""."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith(AAVSO_CHART_MARK):
+                    return line[len(AAVSO_CHART_MARK):].strip()
+                if not line.startswith("#"):
+                    break
+    except OSError:
+        pass
+    return ""
 
 
 def online_compstars(target_name, out_path, sources=("apass", "vsp")):
@@ -2562,6 +2626,17 @@ class PreprocessingInterface(QMainWindow):
             "Run it with Build Sessions. Requires Siril 1.4.0+ and Internet."
         )
         variable_layout.addWidget(self.photometry_checkbox)
+
+        # The AAVSO's own comparison sequence (VSP) instead of findcompstars':
+        # the session can then be sent to the AAVSO (its chart ID kept)
+        self.aavso_checkbox = QCheckBox("AAVSO sequence")
+        self.aavso_checkbox.setToolTip(
+            "Photometry with the AAVSO's comparison stars (VSP photometry table)\n"
+            "and its chart ID: needed to send the light curve to the AAVSO\n"
+            "(Explore's Photometry tab in Scope Archive exports its AID file).\n"
+            "Not every star has a sequence: the script then says so and stops."
+        )
+        variable_layout.addWidget(self.aavso_checkbox)
 
         # Exposure check: a few test frames of the variable star measured, to
         # choose the exposure / gain of the photometry session
@@ -3953,6 +4028,29 @@ class PreprocessingInterface(QMainWindow):
                         ran_ok = False
                         break
                     continue
+                if line.startswith("# PYTHON_AAVSO_SEQUENCE"):
+                    self._build_log(line)
+                    star, out = (line[len("# PYTHON_AAVSO_SEQUENCE"):].strip().split("|") + ["comparison_stars.csv"])[:2]
+                    folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                                   for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                                  os.path.join(self.current_working_directory, "process"))
+                    out_path = out if os.path.isabs(out) else os.path.join(folder, out)
+                    chart, why = aavso_sequence(star, out_path)
+                    if not chart:
+                        # Offline: the star's last AAVSO list, when it has one
+                        known = archived_compstars(star, _script_roots(lines))
+                        if known and compstars_chart(known):
+                            shutil.copyfile(known, out_path)
+                            chart = compstars_chart(known)
+                            self._build_log(f"  {why} - the star's last AAVSO sequence used: {known}")
+                    if not chart:
+                        self._build_log(f"  no AAVSO sequence for {star}: {why} - untick AAVSO sequence "
+                                        "(other comparison stars), or request one from the AAVSO (VSP)")
+                        self.siril.log(f"[build] No AAVSO sequence for {star}: {why}", LogColor.RED)
+                        ran_ok = False
+                        break
+                    self._build_log(f"  AAVSO sequence, chart {chart} -> {out_path}")
+                    continue
                 if line.startswith("# PYTHON_PHOTOMETRY_OPTIONS"):   # {"keep_saturated": ...}
                     try:
                         self._photometry_options = json.loads(line[len("# PYTHON_PHOTOMETRY_OPTIONS"):].strip() or "{}")
@@ -4018,6 +4116,7 @@ class PreprocessingInterface(QMainWindow):
                             keep_saturated=bool(getattr(self, "_photometry_options", {}).get("keep_saturated")),
                             session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
                             elements=elements,
+                            chart=compstars_chart(os.path.join(folder, "comparison_stars.csv")),
                         )
                         stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
                         self._build_log("\n".join(summary))
@@ -4793,9 +4892,13 @@ class PreprocessingInterface(QMainWindow):
             "# measured with its own solution, no registration: the dithering doesn't matter",
             f"# PYTHON_PLATESOLVE {proc}|{seq}|{solve_args}",
             "",
-            "# Comparison stars (APASS catalog, Internet), on the first solved image",
-            "# (loaded by the plate solve step)",
-            f'findcompstars "{star}" -out=comparison_stars.csv',
+            *(["# Comparison stars: the AAVSO's sequence (VSP photometry table) and its chart,",
+               "# to send the light curve to the AAVSO",
+               f"# PYTHON_AAVSO_SEQUENCE {star}|comparison_stars.csv"]
+              if self.aavso_checkbox.isChecked() else
+              ["# Comparison stars (APASS catalog, Internet), on the first solved image",
+               "# (loaded by the plate solve step)",
+               f'findcompstars "{star}" -out=comparison_stars.csv']),
             "",
             "# Differential photometry in Python (not Siril's light_curve): the target",
             "# and comparison stars at their coordinates in each image, times at",
