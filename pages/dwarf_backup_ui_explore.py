@@ -3966,9 +3966,10 @@ class ExploreApp(DbPageMixin):
             return
         job = getattr(self, "_auto_photometry_job", None)
         if job is not None and not job.finished:
-            self._auto_photometry_progress(job)
+            self._auto_photometry_progress(ui.context.client, job)
             return
         store = app.storage.general
+        client = ui.context.client
         target = (self.current_session_row[13] or "") if len(self.current_session_row) > 13 else ""
         with ui.dialog() as dialog, ui.card().classes("w-full max-w-xl"):
             ui.label(t("photometry_auto_title")).classes("text-base font-medium")
@@ -3992,7 +3993,7 @@ class ExploreApp(DbPageMixin):
             new_list = ui.checkbox(t("photometry_auto_new_list"), value=False)
             again = ui.checkbox(t("photometry_auto_again"), value=False)
 
-            def _start():
+            async def _start():
                 exe = photometry_auto.find_siril((siril.value or "").strip())
                 if not exe:
                     ui.notify(t("photometry_auto_no_siril"), type="warning", multi_line=True)
@@ -4003,34 +4004,43 @@ class ExploreApp(DbPageMixin):
                 store["photometry_work_dir"] = (work.value or "").strip()
                 store["photometry_auto_aavso"] = bool(aavso.value)
                 dialog.close()
-                background_tasks.create(self._run_auto_photometry(
-                    star.value, work.value, exe, aavso.value, saturated.value, new_list.value, again.value))
+                # Awaited here, not in a background task: the progress window
+                # and notifications need the page (user-reported Nov 2026: no
+                # sign the run had started)
+                await self._run_auto_photometry(client, star.value, work.value, exe, aavso.value,
+                                                saturated.value, new_list.value, again.value)
 
             with ui.row().classes("w-full justify-end gap-2 mt-2"):
                 ui.button(t("cancel"), on_click=dialog.close).props("flat")
                 ui.button(t("photometry_auto_start"), icon="play_arrow", on_click=_start).props("color=primary")
         dialog.open()
 
-    async def _run_auto_photometry(self, star, work_root, siril_exe, aavso, keep_saturated, new_list, again):
+    async def _run_auto_photometry(self, client, star, work_root, siril_exe, aavso, keep_saturated, new_list, again):
         from api import photometry_auto
-        try:
-            data = await generate_siril_session_json(
-                self.conn, self.current_session_row, self.current_backup_location or "",
-                session_full_dir=self.current_session_full_dir or "")
-        except Exception as e:
-            ui.notify(t("fits_json_error", error=e), type="negative")
-            return
+        with client.layout:
+            ui.notify(t("photometry_auto_preparing"), type="ongoing", timeout=4000)
+            try:
+                data = await generate_siril_session_json(
+                    self.conn, self.current_session_row, self.current_backup_location or "",
+                    session_full_dir=self.current_session_full_dir or "")
+            except Exception as e:
+                ui.notify(t("fits_json_error", error=e), type="negative")
+                return
         job = photometry_auto.AutoPhotometry(
             data, star, (work_root or "").strip(), siril_exe, aavso=aavso, keep_saturated=keep_saturated,
             new_comparison_list=new_list, start_again=again)
         job.session_dir = self.selected_path
         self._auto_photometry_job = job
         job.start()
-        self._auto_photometry_progress(job)
+        self._auto_photometry_progress(client, job)
 
-    def _auto_photometry_progress(self, job):
+    def _auto_photometry_progress(self, client, job):
         """The run's window: step, progress, its last log lines; Stop, then
-        the results."""
+        the results. In the page's layout (client), whatever called it."""
+        with client.layout:
+            self._auto_photometry_window(job)
+
+    def _auto_photometry_window(self, job):
         steps = {"copy": "photometry_auto_step_copy", "siril": "photometry_auto_step_siril",
                  "platesolve": "photometry_auto_step_platesolve", "photometry": "photometry_auto_step_photometry"}
         with ui.dialog().props("persistent") as dialog, ui.card().classes("w-full max-w-2xl"):

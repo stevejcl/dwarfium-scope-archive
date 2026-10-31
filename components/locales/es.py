@@ -1335,6 +1335,7 @@ TRANSLATIONS: dict[str, str] = {
     "aavso_export_no_chart":         "Measured without the AAVSO sequence: tick 'AAVSO sequence' in the Siril script and measure again",  # TODO
     "photometry_auto": "Photometry (auto)",  # TODO
     "photometry_auto_title": "Automatic photometry",  # TODO
+    "photometry_auto_preparing": "Preparing the session…",  # TODO
     "photometry_auto_hint": "Siril runs in the background (no window): calibration, green channel, plate solve, comparison stars, light curve. Results in the Photometry tab.",  # TODO
     "photometry_auto_star": "Variable star",  # TODO
     "photometry_auto_workdir": "Working folder (on this PC - deleted when the run succeeds)",  # TODO
