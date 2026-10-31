@@ -142,6 +142,42 @@ def _import_pysiril():
     return Siril, log_msg, thread_siril
 
 
+def _pipe_sirils():
+    """The siril-cli running in pipe mode ("-p") on this PC: only this
+    automatic photometry starts them (Siril's own window is siril.exe)."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    found = []
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            name = (proc.info.get("name") or "").lower()
+            cmdline = proc.info.get("cmdline") or []
+        except (psutil.Error, OSError):
+            continue
+        if name.startswith("siril-cli") and "-p" in cmdline[1:]:
+            found.append(proc)
+    return found
+
+
+def stop_pipe_sirils(log=None) -> int:
+    """siril-cli left in pipe mode by an earlier run stopped (user-reported
+    Nov 2026: one left hanging, the next run talked to it through the same
+    named pipe). Returns how many."""
+    procs = _pipe_sirils()
+    for proc in procs:
+        try:
+            proc.kill()
+            if log:
+                log(f"siril-cli left by an earlier run stopped (pid {proc.pid})")
+        except Exception:
+            pass
+    if procs:
+        time.sleep(1)
+    return len(procs)
+
+
 class SirilPipe:
     """siril-cli in pipe mode through pySiril, as the Siril script's
     self.siril: cmd(*args) raises the script's s.CommandError (refused) or
@@ -151,6 +187,7 @@ class SirilPipe:
         self._log = log
         self._errors = selector().s
         Siril, LogMsg, ThreadSiril = _import_pysiril()
+        stop_pipe_sirils(log)
         # pySiril prints everything: to our log instead (no console in the .exe)
         LogMsg.trace.WriteRaw = lambda _self, buffer: self._pysiril_line(buffer)
         if sys.platform.startswith("win"):
@@ -177,13 +214,46 @@ class SirilPipe:
             if line.startswith(("> ", ": log:", "ERROR", "WARNING")):
                 self._log("    " + line)
 
+    def _drain(self):
+        """Statuses left in pySiril's queue: not this command's."""
+        import queue
+        while True:
+            try:
+                self.app.qStatus.get_nowait()
+            except queue.Empty:
+                return
+
+    def _own_status(self, name):
+        """True / False: this command's own "status: success|error <name>"
+        line from Siril, waited for while Siril runs (None when it stopped).
+        pySiril takes the first status in its queue as the command's: one
+        left over from the command before (user-reported Nov 2026: Scope
+        Archive's run stuck after a seqplatesolve that ended in error) would
+        stand for this one, and this one's for the next."""
+        import re
+        pattern = re.compile(r"^status: (success|error) " + re.escape(name) + r"\b")
+        while True:
+            for line in list(self.app.GetData()):
+                m = pattern.match(line.strip())
+                if m:
+                    time.sleep(0.05)      # its queued status too, then dropped
+                    self._drain()
+                    return m[1] == "success"
+            if not self.app.thSiril.IsRunning():
+                return None
+            time.sleep(0.05)
+
     def cmd(self, *args):
         command = " ".join(str(a) for a in args)
+        name = command.split()[0] if command.split() else ""
+        self._drain()
         self.app.GetData().clear()
-        if self.app.Execute(command):
+        self.app.Execute(command)
+        ok = self._own_status(name)
+        if ok:
             return
         answer = [line for line in self.app.GetData() if line.strip()]
-        if not self.app.thSiril.IsRunning():
+        if ok is None or not self.app.thSiril.IsRunning():
             raise self._errors.SirilConnectionError(f"Siril stopped during '{command}'")
         why = next((line[len("log:"):].strip() for line in reversed(answer) if line.startswith("log:")), "")
         raise self._errors.CommandError(f"'{command}' failed" + (f": {why}" if why else ""))
@@ -196,6 +266,7 @@ class SirilPipe:
             self.app.Close()
         except Exception:
             pass
+        stop_pipe_sirils()       # none left behind, whatever happened
 
 
 # ----------------------------------------------------------------------------
@@ -295,8 +366,14 @@ class AutoPhotometry:
         try:
             self._run_locked()
         except Exception as e:
+            import traceback
             self.error = f"{type(e).__name__}: {e}"
             self.log(f"failed: {self.error} - the working folder is kept: the next run resumes there")
+            try:   # in build_sessions.log too (user-reported Nov 2026: the log just stopped)
+                with open(os.path.join(self.work, "build_sessions.log"), "a", encoding="utf-8") as f:
+                    f.write(f"{datetime.now():%H:%M:%S} failed: {self.error}\n{traceback.format_exc()}")
+            except OSError:
+                pass
         finally:
             if self._siril is not None:
                 self._siril.close()
