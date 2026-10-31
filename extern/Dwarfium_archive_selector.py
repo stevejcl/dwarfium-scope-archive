@@ -377,6 +377,36 @@ def vsx_star(name, timeout=10, errors=None):
             "period": _mag(obj.get("Period")), "epoch": _mag(obj.get("Epoch"))}
 
 
+def user_elements(name):
+    """{"period", "epoch", "type"} the user typed in for this star in Astro
+    Dwarf Session's eclipsing binaries (user-asked Oct 2026: RZ Dra's VSX
+    elements of 1979 put its minimum 2 h early, the Krakow up-to-date ones
+    right) - its star_elements.json in the user folder (~/.astro_dwarf_session,
+    ASTRO_DWARF_USER_DIR) - or None."""
+    from pathlib import Path
+    folder = os.environ.get("ASTRO_DWARF_USER_DIR") or str(Path.home() / ".astro_dwarf_session")
+    try:
+        with open(os.path.join(folder, "star_elements.json"), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    def key(text):
+        return re.sub(r"[^0-9a-z]", "", simbad_name(text or "").lower())
+
+    wanted = key(name)
+    for entry in data.values():
+        if isinstance(entry, dict) and key(entry.get("name")) == wanted:
+            try:
+                return {"period": float(entry["period_d"]), "epoch": float(entry["epoch_hjd"]),
+                        "type": entry.get("vartype") or ""}
+            except (KeyError, TypeError, ValueError):
+                return None
+    return None
+
+
 def moon_at(when_utc, ra, dec):
     """(illuminated fraction 0-1, separation from ra/dec in degrees) of the
     Moon at an astropy Time (geocentric: a degree off at most) - its light
@@ -3968,7 +3998,13 @@ class PreprocessingInterface(QMainWindow):
                         elements, vsx_errors = None, []
                         if target_stars:
                             found = vsx_star(target_stars[0]["name"], errors=vsx_errors)
-                            if found:
+                            own = user_elements(target_stars[0]["name"])
+                            if own:
+                                # Your elements (Astro Dwarf Session), VSX's type
+                                vartype = (found or {}).get("type") or own["type"]
+                                elements = {"period": own["period"], "epoch": own["epoch"], "type": vartype,
+                                            "source": f"your elements, {vartype or 'type unknown'}"}
+                            elif found:
                                 elements = {"period": found.get("period"), "epoch": found.get("epoch"),
                                             "type": found.get("type"),
                                             "source": f"VSX, {found.get('type') or 'type unknown'}"}
