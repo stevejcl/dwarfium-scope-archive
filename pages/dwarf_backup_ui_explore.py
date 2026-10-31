@@ -3905,6 +3905,7 @@ class ExploreApp(DbPageMixin):
                     if ext.get("O_C_min"):
                         text += " · " + t('photometry_o_c', o_c=ext["O_C_min"])
                     ui.label(text).classes('text-sm px-2')
+                self._show_oc_diagram(res, _png)
                 keys = ["curve_png", "survey_png"]
                 if res["combined_png"]:   # all the star's sessions put together, first
                     ui.label(t('photometry_combined', count=res["sessions"])).classes('text-sm text-gray-600 px-2')
@@ -3926,6 +3927,49 @@ class ExploreApp(DbPageMixin):
                     ui.button(t('photometry_refresh'), icon='refresh',
                               on_click=lambda _e=None: self._show_photometry_tab()).props('flat dense no-caps')
         self.tab_photometry.set_visibility(True)
+
+    def _show_oc_diagram(self, res, _png):
+        """The star's O-C diagram across all its sessions, every drive
+        (user-asked Oct 2026, api/oc_diagram.py): the plot, the mean O-C or
+        the fitted line, and corrected elements - to type in Astro Dwarf
+        Session. Written next to the star's sessions (oc_<star>.png / .csv)."""
+        from api import oc_diagram
+        from api.archive_paths import all_astronomy_roots
+        star_dir = res["curve_csv"].parent.parent
+        try:
+            roots = list(all_astronomy_roots()) + [str(star_dir.parent.parent)]
+            result = oc_diagram.diagram(res["star"], roots)
+        except Exception as e:
+            print(f"[O-C] {res['star']}: {e}")
+            return
+        if not result or not result["points"]:
+            return
+        name = res["curve_csv"].stem[len("light_curve_"):]
+        png, csv_path = star_dir / f"oc_{name}.png", star_dir / f"oc_{name}.csv"
+        try:
+            oc_diagram.write_csv(result, csv_path)
+        except OSError:
+            pass
+        f, el = result["fit"], result["elements"]
+        nights = len({p["session"] for p in result["points"]})
+        ui.label(t("oc_title", count=len(result["points"]), nights=nights, source=el["source"])) \
+            .classes('text-sm font-medium px-2 mt-2')
+        if f["slope"] is None:
+            ui.label(t("oc_mean", oc=f"{f['oc_mean']:+.2f}", err=f"{f['oc_err']:.2f}")).classes('text-sm px-2')
+        else:
+            ui.label(t("oc_slope", slope=f"{f['slope'] * 60:+.3f}", err=f"{f['slope_err'] * 60:.3f}")) \
+                .classes('text-sm px-2')
+        ui.label(t("oc_elements", epoch=f"{f['epoch']:.5f}", epoch_err=f"{f['epoch_err'] * 1440:.1f}",
+                   period=f"{f['period']:.7f}",
+                   period_err="" if f["period_err"] is None else f" ± {f['period_err']:.7f}")) \
+            .classes('text-sm px-2')
+        if f["slope"] is None:
+            ui.label(t("oc_more_nights")).classes('text-xs text-gray-500 px-2')
+        if oc_diagram.plot(result, png):
+            src = _png(png)
+            if src:
+                ui.image(src).classes('w-full h-auto cursor-pointer').props('fit=contain') \
+                    .on('click', lambda _e=None, p=png: wcs_mosaic.open_file(p)).tooltip(t('photometry_open_image'))
 
     def _open_fixed_preview(self):
         """The Image Fix tab's preview (the JPEG next to the fixed FITS) in the

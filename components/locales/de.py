@@ -1326,6 +1326,11 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_extremum_min":   "Minimum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
     "photometry_extremum_min2":  "Secondary minimum at {time} - HJD {hjd} ± {err} min, mag {mag}",  # TODO
     "photometry_o_c":            "O–C {o_c} min",  # TODO
+    "oc_title":                      "O-C diagram: {count} times of maximum / minimum, {nights} session(s), against the elements {source}",  # TODO
+    "oc_mean":                       "Mean O-C {oc} ± {err} min",  # TODO
+    "oc_slope":                      "O-C changing by {slope} ± {err} s per cycle: the period to correct",  # TODO
+    "oc_elements":                   "Corrected elements (to type in Astro Dwarf Session): epoch HJD {epoch} (± {epoch_err} min), period {period}{period_err} d",  # TODO
+    "oc_more_nights":                "The period is checked once the nights span about 50 cycles or more (a few weeks for a short period)",  # TODO
     "photometry_combined":        "All {count} sessions of the star, put together:",  # TODO
     "explore_no_image":           "Pick a session to see its image", # TODO
     "explore_image_missing":        "This session has no image to show", # TODO

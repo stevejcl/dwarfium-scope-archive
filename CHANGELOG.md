@@ -3,6 +3,12 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Explore, Photometry tab: the star's O-C diagram across all its sessions, every drive (user-asked Oct 2026:
+    DY Peg's three nights on two Dwarfs on one diagram). Its times of maximum / minimum (each session's extrema
+    file) and their O-C computed again against one set of elements - yours (Astro Dwarf Session) when typed in,
+    else the latest session's -, one colour per instrument; the mean O-C, or the fitted line once the nights span 50
+    cycles or more; corrected elements (epoch at the latest extremum, period) to type in Astro Dwarf Session.
+    oc_<star>.png / .csv next to the star's sessions.
     Photometry: a star measured before takes its last session's comparison stars at once, findcompstars no longer
     asked (user-asked Oct 2026: the same stars every night, its O-C comparable from night to night - and no 20 s
     wait on SIMBAD, Strasbourg being down). A new star still asks findcompstars first.
