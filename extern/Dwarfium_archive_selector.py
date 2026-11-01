@@ -776,8 +776,112 @@ def _airmass(coord, when, observer):
     return 1.0 / math.sin(math.radians(alt + 244.0 / (165.0 + 47.0 * alt ** 1.1)))
 
 
+def _read_frame(path, utc_offset_h, with_data=True):
+    """(data float32 | None, wcs, mid-exposure Time UTC, header) of an image."""
+    import warnings
+    from astropy.io import fits as _fits
+    from astropy.wcs import WCS
+    from astropy.time import Time
+    import astropy.units as u
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with _fits.open(path) as hdul:
+            header = hdul[0].header
+            data = hdul[0].data.astype("float32") if with_data else None   # half the memory of float64
+            wcs = WCS(header)
+    if data is not None:
+        if data.ndim == 3:
+            data = data[0]
+        if data.max() <= 1.5:   # 32-bit float image: 0..1
+            data = data * 65535.0
+    start = (Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
+             - (utc_offset_h or 0.0) * u.hour)
+    mid = start + float(header.get("EXPTIME", 0) or 0) / 2 * u.s
+    return data, wcs, mid, header
+
+
+def blended_comparisons(files, target, comps, aperture_r):
+    """The comparison stars (indexes) with another catalogue star or the
+    target within twice the aperture, in the first plate solved image."""
+    import numpy as np
+    for path in files:
+        try:
+            _, wcs, _, _ = _read_frame(path, 0, with_data=False)
+        except Exception:
+            continue
+        if not wcs.has_celestial:
+            continue
+        xy = np.array([wcs.world_to_pixel_values(st["ra"], st["dec"]) for st in [target] + comps], dtype=float)
+        blended = set()
+        for i in range(len(comps)):
+            others = np.delete(xy, i + 1, axis=0)
+            if (np.hypot(*(others - xy[i + 1]).T) < 2 * aperture_r).any():
+                blended.add(i)
+        return blended
+    return set()
+
+
+def measure_frame(path, target, comps, blended, saturation, keep_saturated, aperture_r, utc_offset_h,
+                  fallback_fwhm=None, final=True):
+    """One image of differential_light_curve(): {"skip": why | None, "mid":
+    (jd1, jd2), "instrument", "sized", "fwhm", "roundness", "radii",
+    "position", "t", "measured"} - picklable, so that images can be measured
+    in other processes. final False: an image whose stars couldn't be sized
+    returns {"need_fwhm": True} - its circles are the previous image's,
+    known once they are measured in order."""
+    try:
+        data, wcs, mid, header = _read_frame(path, utc_offset_h)
+        if not wcs.has_celestial:
+            return {"skip": "no plate solve"}
+        instrument = {key: str(header.get(key, "")).strip()
+                      for key in ("TELESCOP", "CAMERA", "FILTER", "EXPTIME", "GAIN")}
+    except Exception as e:
+        return {"skip": str(e)}
+    out = {"skip": None, "mid": (float(mid.jd1), float(mid.jd2)), "instrument": instrument}
+    try:
+        import numpy as np
+        from astropy.wcs.utils import proj_plane_pixel_scales
+        out["scale"] = float(np.mean(proj_plane_pixel_scales(wcs)))
+    except Exception:
+        pass
+    # The same circles for every star of the image, sized on its stars
+    _, _, fwhm, roundness = frame_aperture(
+        data, wcs, [st for i, st in enumerate(comps) if i not in blended], saturation, aperture_r)
+    if fwhm is None and not final:
+        return {"need_fwhm": True}
+    radii, annulus = aperture_circles(fwhm if fwhm is not None else fallback_fwhm, aperture_r)
+    out.update(sized=True, fwhm=fwhm, roundness=roundness, radii=radii,
+               position=tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"])))
+    t = _star_measure(data, wcs, target["ra"], target["dec"], annulus=annulus, radii=set(radii.values()))
+    if t is not None:
+        t = {f: t[r] for f, r in radii.items()}
+    if t is None or min(m[2] for m in t.values()) <= 0:
+        out["skip"] = "target not measured"
+        return out
+    peak = next(iter(t.values()))[0]
+    if saturation and peak >= saturation and not keep_saturated:
+        out["skip"] = f"target saturated (peak {peak:.0f})"
+        return out
+    # keep_saturated (user-asked Oct 2026: DY Peg at gain 110, saturated at its
+    # maximum, compared with another software's curve that kept it): measured,
+    # flagged - the comparison stars still left out above the level
+    measured = {}
+    for i, st in enumerate(comps):
+        if i in blended:
+            continue
+        m = _star_measure(data, wcs, st["ra"], st["dec"], annulus=annulus, radii=set(radii.values()))
+        if m is None:
+            continue
+        m = {f: m[r] for f, r in radii.items()}
+        if min(v[2] for v in m.values()) > 0 and not (saturation and next(iter(m.values()))[0] >= saturation):
+            measured[i] = m
+    out.update(t=t, measured=measured)
+    return out
+
+
 def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=None, utc_offset_h=0.0, progress=None,
-                             site=None, session_name="", keep_saturated=False, elements=None, chart=""):
+                             site=None, session_name="", keep_saturated=False, elements=None, chart="",
+                             measure_many=None):
     """Differential photometry of the target over plate solved images (user-
     requested Oct 2026, instead of Siril's light_curve: in 1.4.0 - 1.4.2 its
     -autoring loses the reference's plate solve, its default min_val rejects
@@ -809,10 +913,7 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     session, and its O-C (find_extrema(), user-requested Oct 2026, issue
     #200), in the summary, the plot and extrema_<sequence>.csv."""
     import math
-    import warnings
     import numpy as np
-    from astropy.io import fits as _fits
-    from astropy.wcs import WCS
     from astropy.time import Time
     from astropy.coordinates import SkyCoord, EarthLocation
     import astropy.units as u
@@ -833,88 +934,55 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     if site and site[0] is not None and site[1] is not None:
         observer = EarthLocation(lat=float(site[0]) * u.deg, lon=float(site[1]) * u.deg, height=0 * u.m)
     instrument = {}
-    blended = None   # comparison stars with another star in their aperture (first image)
+    rows, skipped, frames, frame_info = [], [], [], []
+    # Comparison stars with another catalogue star (or the target) within
+    # twice the aperture, from the first plate solved image - both in its
+    # aperture, it is measured too bright (user's HD 216964 test, Oct 2026:
+    # comparisons 1 and 2, V 12.20, 4 px apart, each measured 0.7 mag brighter)
+    blended = blended_comparisons(files, target, comps, aperture_r)
+    if blended:
+        skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
+                       f"another star within {2 * aperture_r} px, left out")
     # The target's place in each image (user's two DWARF 3 at once, Oct 2026: 0.04 mag
     # apart on one of them only - a dust shadow, no flat?): x, y in the CSV
     positions = {}
     shapes = {}      # image -> (median FWHM px, roundness, {factor: the circle's radius})
     last_fwhm = None
-    rows, skipped, frames, frame_info = [], [], [], []
+    pixel_scale = None   # degrees per pixel, of the last image measured
+    args = (target, comps, blended, saturation, keep_saturated, aperture_r, utc_offset_h)
+    # Each image measured alone (measure_frame()): by measure_many when given
+    # (Scope Archive: in parallel, other processes - user-asked Nov 2026, 1 min
+    # 15 s there for 23 s in Siril), else here one after the other. An image
+    # whose stars couldn't be sized takes the circles of the image before it,
+    # as before: measured again here, in order, once that one is known
+    if measure_many is not None:
+        results = measure_many(files, args, progress)
+    else:
+        results = None
     for index, path in enumerate(files, 1):
-        if progress is not None:
-            progress(index - 1, len(files))
+        if results is None:
+            if progress is not None:
+                progress(index - 1, len(files))
+            r = measure_frame(path, *args, fallback_fwhm=last_fwhm, final=True)
+        else:
+            r = results[index - 1]
+            if r.get("need_fwhm"):
+                r = measure_frame(path, *args, fallback_fwhm=last_fwhm, final=True)
         name = os.path.basename(path)
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                with _fits.open(path) as hdul:
-                    header = hdul[0].header
-                    data = hdul[0].data.astype("float32")   # half the memory of float64
-                    wcs = WCS(header)
-            if data.ndim == 3:
-                data = data[0]
-            if data.max() <= 1.5:   # 32-bit float image: 0..1
-                data = data * 65535.0
-            if not wcs.has_celestial:
-                skipped.append(f"{name}: no plate solve")
-                continue
-            start = (Time(str(header["DATE-OBS"]).replace("Z", ""), format="isot", scale="utc")
-                     - (utc_offset_h or 0.0) * u.hour)
-            mid = start + float(header.get("EXPTIME", 0) or 0) / 2 * u.s
-            if not instrument:
-                instrument = {key: str(header.get(key, "")).strip()
-                              for key in ("TELESCOP", "CAMERA", "FILTER", "EXPTIME", "GAIN")}
-        except Exception as e:
-            skipped.append(f"{name}: {e}")
+        if r.get("instrument") and not instrument:
+            instrument = r["instrument"]
+        if r.get("scale"):
+            pixel_scale = r["scale"]
+        if r.get("sized"):
+            if r["fwhm"] is not None:
+                last_fwhm = r["fwhm"]
+            shapes[name] = (r["fwhm"], r["roundness"], r["radii"])
+            positions[name] = r["position"]
+        if r.get("skip"):
+            skipped.append(f"{name}: {r['skip']}")
             continue
-
-        if blended is None:
-            # Left out: a comparison star with another catalogue star (or the
-            # target) within twice the aperture - both in its aperture, it is
-            # measured too bright (user's HD 216964 test, Oct 2026: comparisons
-            # 1 and 2, V 12.20, 4 px apart, each measured 0.7 mag brighter)
-            xy = np.array([wcs.world_to_pixel_values(st["ra"], st["dec"]) for st in [target] + comps], dtype=float)
-            blended = set()
-            for i in range(len(comps)):
-                others = np.delete(xy, i + 1, axis=0)
-                if (np.hypot(*(others - xy[i + 1]).T) < 2 * aperture_r).any():
-                    blended.add(i)
-            if blended:
-                skipped.append(f"comparison star(s) {', '.join(comps[i]['name'] for i in sorted(blended))}: "
-                               f"another star within {2 * aperture_r} px, left out")
-        # The same circles for every star of the image, sized on its stars
-        _, _, fwhm, roundness = frame_aperture(
-            data, wcs, [st for i, st in enumerate(comps) if i not in blended], saturation, aperture_r)
-        if fwhm is not None:
-            last_fwhm = fwhm
-        radii, annulus = aperture_circles(fwhm if fwhm is not None else last_fwhm, aperture_r)
-        shapes[name] = (fwhm, roundness, radii)
-        t = _star_measure(data, wcs, target["ra"], target["dec"], annulus=annulus, radii=set(radii.values()))
-        positions[name] = tuple(float(v) for v in wcs.world_to_pixel_values(target["ra"], target["dec"]))
-        if t is not None:
-            t = {f: t[r] for f, r in radii.items()}
-        if t is None or min(m[2] for m in t.values()) <= 0:
-            skipped.append(f"{name}: target not measured")
-            continue
-        peak = next(iter(t.values()))[0]
-        if saturation and peak >= saturation and not keep_saturated:
-            skipped.append(f"{name}: target saturated (peak {peak:.0f})")
-            continue
-        # keep_saturated (user-asked Oct 2026: DY Peg at gain 110, saturated at its
-        # maximum, compared with another software's curve that kept it): measured,
-        # flagged - the comparison stars still left out above the level
-        measured = {}
-        for i, st in enumerate(comps):
-            if i in blended:
-                continue
-            m = _star_measure(data, wcs, st["ra"], st["dec"], annulus=annulus, radii=set(radii.values()))
-            if m is None:
-                continue
-            m = {f: m[r] for f, r in radii.items()}
-            if min(v[2] for v in m.values()) > 0 and not (saturation and next(iter(m.values()))[0] >= saturation):
-                measured[i] = m
-        frames.append((name, mid, t, measured))
-        del data
+        mid = Time(r["mid"][0], r["mid"][1], format="jd", scale="utc")
+        frames.append((name, mid, r["t"], r["measured"]))
     if progress is not None:
         progress(len(files), len(files))
 
@@ -1050,11 +1118,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     if sized:
         f_med = float(np.median([v[0] for v in sized]))
         scale = ""
-        try:
-            from astropy.wcs.utils import proj_plane_pixel_scales
-            scale = f" = {f_med * float(np.mean(proj_plane_pixel_scales(wcs))) * 3600:.1f}\""
-        except Exception:
-            pass
+        if pixel_scale:
+            scale = f" = {f_med * pixel_scale * 3600:.1f}\""
         radii = [v[2] for v in sized]
         summary.append(f"  stars: FWHM {f_med:.2f} px{scale} (median; {min(v[0] for v in sized):.2f} - "
                        f"{max(v[0] for v in sized):.2f}), roundness {float(np.median([v[1] for v in sized])):.2f} "
@@ -5054,6 +5119,9 @@ class ScriptRunner:
         self.reuse_compstars = True   # findcompstars: the star's last list when it has one
         self.keep_previous = False    # archive_photometry: earlier results moved to previous/
         self.use_seqplatesolve = True  # the sequence at once, then image by image what it left
+        # differential_light_curve(progress=, **kwargs) run by this instead (Scope
+        # Archive: in another process, its images measured in parallel)
+        self.run_photometry = None
         self.options, self.roots, self.notes = {}, [], []
         self.summary = None
 
@@ -5206,16 +5274,19 @@ class ScriptRunner:
                                         "source": f"VSX, {found.get('type') or 'type unknown'}"}
                         else:
                             elements = {"error": f"VSX: {vsx_errors[0] if vsx_errors else 'not found'}"}
-                    summary = differential_light_curve(
-                        frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
-                        os.path.join(folder, f"light_curve_{seq_name}.csv"),
-                        saturation=float(saturation) or None, utc_offset_h=utc_offset,
-                        progress=_progress, site=site,
+                    photometry = dict(
+                        files=frames, stars=read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
+                        out_csv=os.path.join(folder, f"light_curve_{seq_name}.csv"),
+                        saturation=float(saturation) or None, utc_offset_h=utc_offset, site=site,
                         keep_saturated=bool(self.options.get("keep_saturated")),
                         session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
                         elements=elements,
                         chart=compstars_chart(os.path.join(folder, "comparison_stars.csv")),
                     )
+                    if self.run_photometry is not None:   # Scope Archive: in another process
+                        summary = self.run_photometry(photometry, _progress)
+                    else:
+                        summary = differential_light_curve(progress=_progress, **photometry)
                     stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
                     self.build_log("\n".join(summary))
                     n_measured = len(summary)

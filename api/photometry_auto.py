@@ -83,6 +83,102 @@ def _bundle_hint():   # pragma: no cover - never called
 
 
 # ----------------------------------------------------------------------------
+# The images measured in parallel (user-asked Nov 2026: 1 min 15 s here for
+# 23 s in Siril - the measure shared this process with the app). Other
+# processes, each loading the Siril script once; the results the same as
+# measured one after the other (measure_frame(), final=False: an image whose
+# stars couldn't be sized measured again in order by the caller).
+
+
+def _measure_worker(path, args):
+    return selector().measure_frame(path, *args, final=False)
+
+
+def measure_workers() -> int:
+    return max(1, min(8, (os.cpu_count() or 2) - 1))
+
+
+def measure_many(files, args, progress=None):
+    """measure_frame() of each file in other processes, in the files' order.
+    progress(done, total) as they come; an exception from it (a stop)
+    cancels the rest."""
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    results = [None] * len(files)
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=measure_workers(), mp_context=ctx) as pool:
+        futures = {pool.submit(_measure_worker, path, args): i for i, path in enumerate(files)}
+        try:
+            for done, future in enumerate(as_completed(futures), 1):
+                results[futures[future]] = future.result()
+                if progress is not None:
+                    progress(done, len(files))
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+    return results
+
+
+def _photometry_child(kwargs, queue, stop):
+    """differential_light_curve() in its own process: its progress, then its
+    summary or its error, put in queue. stop (an Event) set: ends at the next
+    image, its own processes closed first (killed, they were left behind)."""
+    import traceback
+
+    def _progress(done, total):
+        if stop.is_set():
+            raise RuntimeError("stopped")
+        queue.put(("progress", done, total))
+    try:
+        summary = selector().differential_light_curve(progress=_progress, measure_many=measure_many, **kwargs)
+        queue.put(("done", summary))
+    except BaseException as e:
+        queue.put(("error", f"{type(e).__name__}: {e}\n{traceback.format_exc()}"))
+
+
+def run_photometry(kwargs, progress):
+    """The measures and their analysis (differential_light_curve) in another
+    process, away from the app's own work (user-reported Nov 2026: twice to
+    three times slower here than in Siril, the analysis too), its images
+    measured in parallel there. progress(done, total) relayed; raising from
+    it (a stop) asks that process to stop - ended by force after 60 s only.
+    Returns the summary lines."""
+    import multiprocessing
+    import queue as _queue
+    ctx = multiprocessing.get_context("spawn")
+    messages, stop = ctx.Queue(), ctx.Event()
+    child = ctx.Process(target=_photometry_child, args=(kwargs, messages, stop))
+    child.start()
+    try:
+        while True:
+            try:
+                message = messages.get(timeout=0.5)
+            except _queue.Empty:
+                if not child.is_alive():
+                    raise RuntimeError(f"the photometry process ended (exit code {child.exitcode})")
+                continue
+            if message[0] == "progress":
+                progress(message[1], message[2])
+            elif message[0] == "done":
+                return message[1]
+            else:
+                raise RuntimeError(message[1])
+    except BaseException:
+        stop.set()
+        deadline = time.monotonic() + 60
+        while child.is_alive() and time.monotonic() < deadline:
+            try:   # read on: a full queue would keep it from ending
+                messages.get(timeout=0.5)
+            except _queue.Empty:
+                pass
+        if child.is_alive():
+            child.terminate()
+        raise
+    finally:
+        child.join(5)
+
+
+# ----------------------------------------------------------------------------
 # siril-cli
 
 
@@ -482,6 +578,7 @@ class AutoPhotometry:
         self.runner.reuse_compstars = not self.new_comparison_list
         self.runner.keep_previous = True     # the session's earlier results moved to previous/
         self.runner.use_seqplatesolve = False  # image by image (a seqplatesolve hung through the pipe)
+        self.runner.run_photometry = run_photometry  # in another process, images measured in parallel
         start = time.monotonic()
         self.ok = self.runner.run_script(ssf_path, lines)
         self.summary = self.runner.summary or []
