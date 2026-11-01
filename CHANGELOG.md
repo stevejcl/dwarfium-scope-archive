@@ -4,7 +4,7 @@
 
 ### Add
     Explore, a session's details: the total exposure of the frames on the disk next to their count ("288 fits images
-    on the disk - total exposure on the disk 1h 12m (288 × 15 s)") - frames deleted after a review show at a glance;
+    on the disk - Total exposure on the disk 1h 12m (288 × 15 s)") - frames deleted after a review show at a glance;
     the Dwarf's stacked count, the database and shotsInfo.json left as they are (user-asked Nov 2026).
     Explore, a session's trash: "Delete them from the Dwarf too" when the Dwarf is plugged in USB (user-asked Nov
     2026: frames reviewed on a copy downloaded over FTP, the Dwarf's Megastack still took them all) - the trash's
