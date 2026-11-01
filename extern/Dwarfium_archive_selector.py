@@ -1596,12 +1596,15 @@ def gaia_compstars(gaia_csv, star, ra, dec, v_target, out_path):
     return len(rows)
 
 
-def archived_compstars(target_name, roots):
+def archived_compstars(target_name, roots, aavso=None):
     """The newest comparison_stars_<star>.csv archived by an earlier run
     (archive_photometry: _PHOTOMETRY/<star>/<session>/) under one of
     `roots`, or None - findcompstars' stars when the catalog server can't
     be reached (user-reported Oct 2026: VizieR down, a session measured
-    before left unfinished). The same field gives the same stars."""
+    before left unfinished). The same field gives the same stars.
+    aavso: True, an AAVSO sequence's list only (its chart); False, any
+    other (user-reported Nov 2026: "AAVSO sequence" unticked took the
+    AAVSO list of the run before); None, either."""
     star = re.sub(r"[^\w.-]+", "_", simbad_name(target_name)) or "target"
     found = []
     for root in dict.fromkeys(r for r in roots if r):
@@ -1612,7 +1615,7 @@ def archived_compstars(target_name, roots):
             continue
         for session in sessions:
             path = os.path.join(star_dir, session, f"comparison_stars_{star}.csv")
-            if os.path.isfile(path):
+            if os.path.isfile(path) and (aavso is None or bool(compstars_chart(path)) == aavso):
                 found.append((os.path.getmtime(path), path))
     return max(found)[1] if found else None
 
@@ -5118,7 +5121,7 @@ class ScriptRunner:
                 chart, why = aavso_sequence(star, out_path)
                 if not chart:
                     # Offline: the star's last AAVSO list, when it has one
-                    known = archived_compstars(star, _script_roots(lines))
+                    known = archived_compstars(star, _script_roots(lines), aavso=True)
                     if known and compstars_chart(known):
                         shutil.copyfile(known, out_path)
                         chart = compstars_chart(known)
@@ -5272,7 +5275,7 @@ class ScriptRunner:
                 # asked again (user-asked Oct 2026: the same stars every
                 # night, the O-C comparable - and no 20 s wait on
                 # SIMBAD while Strasbourg is down)
-                known = archived_compstars(args[1], _script_roots(lines))
+                known = archived_compstars(args[1], _script_roots(lines), aavso=False)
                 if known:
                     out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
                                "comparison_stars.csv")
@@ -5309,7 +5312,7 @@ class ScriptRunner:
                     # 2026: 17 against 4); else the local Gaia DR3 extract
                     # (no server); else APASS from a mirror; else the
                     # AAVSO's (VSP)
-                    known = archived_compstars(args[1], _script_roots(lines))
+                    known = archived_compstars(args[1], _script_roots(lines), aavso=False)
                     if known:
                         try:
                             shutil.copyfile(known, out_path)
