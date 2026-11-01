@@ -4046,11 +4046,13 @@ class ExploreApp(DbPageMixin):
         with ui.dialog().props("persistent") as dialog, ui.card().classes("w-full max-w-2xl"):
             ui.label(f'{t("photometry_auto_title")} - {job.star}').classes("text-base font-medium")
             step = ui.label("").classes("text-sm")
+            # Siril's latest line: where it is
+            siril_line = ui.label("").classes("text-xs text-gray-500 break-all")
             bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
             log = ui.log(max_lines=400).classes("w-full h-64 text-xs")
             for line in job.lines:
                 log.push(line)
-            shown = {"n": len(job.lines), "end": False}
+            shown = {"n": job.line_count, "end": False}
             with ui.row().classes("w-full justify-end gap-2"):
                 stop = ui.button(t("photometry_auto_stop"), icon="stop",
                                  on_click=lambda: (job.stop(), ui.notify(t("photometry_auto_stopping")))) \
@@ -4067,12 +4069,16 @@ class ExploreApp(DbPageMixin):
             show.on_click(_show)
 
             def _tick():
-                new = job.lines[shown["n"]:] if len(job.lines) >= shown["n"] else job.lines
-                for line in new:
+                # The lines added since the last tick (the job keeps its last 400)
+                new = job.line_count - shown["n"]
+                for line in (job.lines[-new:] if 0 < new <= len(job.lines) else job.lines if new > 0 else []):
                     log.push(line)
-                shown["n"] = len(job.lines)
+                shown["n"] = job.line_count
                 label = t(steps[job.step]) if job.step in steps else job.step
-                step.text = f"{label}: {job.done} / {job.total}" if job.total else label
+                elapsed = int(time.monotonic() - job.step_started)
+                step.text = (f"{label}: {job.done} / {job.total}" if job.total
+                             else f"{label} - {elapsed // 60} min {elapsed % 60:02d} s")
+                siril_line.text = job.siril_last
                 bar.value = (job.done / job.total) if job.total else 0
                 if job.finished and not shown["end"]:
                     shown["end"] = True

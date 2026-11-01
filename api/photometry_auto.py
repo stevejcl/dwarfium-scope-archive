@@ -183,8 +183,13 @@ class SirilPipe:
     self.siril: cmd(*args) raises the script's s.CommandError (refused) or
     s.SirilConnectionError (Siril gone); log(text, color) to our log."""
 
-    def __init__(self, siril_exe: str, log):
+    def __init__(self, siril_exe: str, log, siril_line=None, log_file=None):
         self._log = log
+        # Siril's own lines: the latest one shown (where it is - user-reported
+        # Nov 2026: hundreds of "reading FITS" lines filled the window), all
+        # of them written to siril.log in the working folder
+        self._siril_line = siril_line or (lambda text: None)
+        self._log_file = log_file
         self._errors = selector().s
         Siril, LogMsg, ThreadSiril = _import_pysiril()
         stop_pipe_sirils(log)
@@ -208,10 +213,17 @@ class SirilPipe:
             raise RuntimeError("Siril did not start in pipe mode (siril-cli -p)")
 
     def _pysiril_line(self, buffer):
-        for line in str(buffer).splitlines():
-            line = line.rstrip()
-            # Siril's own log lines ("> command", ": log: ..."): what the user needs
-            if line.startswith(("> ", ": log:", "ERROR", "WARNING")):
+        lines = [line.rstrip() for line in str(buffer).splitlines() if line.strip()]
+        if self._log_file:
+            try:
+                with open(self._log_file, "a", encoding="utf-8") as f:
+                    f.write("".join(f"{datetime.now():%H:%M:%S} {line}\n" for line in lines))
+            except OSError:
+                pass
+        for line in lines:
+            if line.startswith(": log:"):
+                self._siril_line(line[len(": log:"):].strip())
+            elif line.startswith(("ERROR", "WARNING")):
                 self._log("    " + line)
 
     def _drain(self):
@@ -335,6 +347,7 @@ class AutoPhotometry:
         self.siril_exe, self.aavso, self.keep_saturated = siril_exe, aavso, keep_saturated
         self.new_comparison_list, self.start_again = new_comparison_list, start_again
         self.lines: list[str] = []
+        self.line_count, self.siril_last, self.step_started = 0, "", time.monotonic()
         self.step, self.done, self.total = "", 0, 0
         self.finished, self.ok, self.summary, self.error = False, False, [], ""
         self.runner = None
@@ -344,9 +357,15 @@ class AutoPhotometry:
     def log(self, text):
         line = f"{datetime.now():%H:%M:%S} {text}"
         self.lines.append(line)
+        self.line_count += 1          # the window shows the lines after the ones it has
         del self.lines[:-400]
 
+    def siril_line(self, text):
+        self.siril_last = text
+
     def progress(self, done, total, step=""):
+        if step and step != self.step:
+            self.step_started = time.monotonic()
         self.done, self.total, self.step = done, total, step or self.step
 
     def stop(self):
@@ -407,12 +426,18 @@ class AutoPhotometry:
 
         self.step = "siril"
         self.log(f"starting Siril: {self.siril_exe}")
-        siril = self._siril = SirilPipe(self.siril_exe, self.log)
+        siril = self._siril = SirilPipe(self.siril_exe, self.log, siril_line=self.siril_line,
+                                        log_file=os.path.join(self.work, "siril.log"))
         self.log(f"{siril.version} started (no window)")
         log_path = os.path.join(self.work, "build_sessions.log")
 
         def build_log(text, new=False):
             self.log(text)
+            word = text.split()[0] if text.split() else ""
+            if word and not text.startswith((" ", "#", "=")) and word.isalpha() and word.islower():
+                # A Siril command: the step shown with its time, not the last count
+                self.step, self.done, self.total = word, 0, 0
+                self.step_started = time.monotonic()
             try:
                 with open(log_path, "w" if new else "a", encoding="utf-8") as f:
                     f.write(f"{datetime.now():%H:%M:%S} {text}\n")
