@@ -599,7 +599,8 @@ async def open_trash(session_path: str, on_changed: Callable[[], Awaitable[None]
     """The trash of the backup copy in session_path: each frame marked
     Restore or Delete, done when leaving (or Apply); Empty the trash.
     dwarf_path: the session on the Dwarf plugged in USB - the frames
-    restored can be copied back onto it too."""
+    restored can be copied back onto it too, the ones in the trash still on
+    it deleted from it."""
     frames = await run.io_bound(list_frames, session_path, True)
     if not frames:
         ui.notify(t("trash_empty"), type="info")
@@ -629,9 +630,16 @@ async def open_trash(session_path: str, on_changed: Callable[[], Awaitable[None]
     gallery = _Gallery(frames, t("trash_title"), t("trash_hint"),
                        [("restore", "restore_from_trash", "positive", t("trash_restore"), "r"),
                         ("delete", "delete_forever", "negative", t("trash_delete"), "d")], leave)
+    # Frames reviewed on a backup copy (downloaded over FTP, say) while the
+    # Dwarf wasn't plugged in: the same frames deleted from it now (user-
+    # asked Nov 2026: its Megastack took them all)
+    on_dwarf = await run.io_bound(frames_at, dwarf_path, frames) if dwarf_path else []
     with gallery.footer:
         ui.button(t("trash_empty_btn"), icon="delete_forever", on_click=lambda: empty()) \
             .props("outline color=negative")
+        dwarf_btn = ui.button(t("trash_dwarf_delete_btn", count=len(on_dwarf)), icon="usb",
+                              on_click=lambda: delete_on_dwarf()).props("outline color=negative")
+        dwarf_btn.set_visibility(bool(on_dwarf))
         ui.space()
         ui.button(t("trash_all_restore"), on_click=lambda: [gallery.set_state(i, "restore") for i in gallery.alive()]) \
             .props("flat color=positive")
@@ -670,6 +678,17 @@ async def open_trash(session_path: str, on_changed: Callable[[], Awaitable[None]
         await apply()
         if not gallery.alive():
             await finish()
+
+    async def delete_on_dwarf() -> None:
+        if not on_dwarf or not await ask(
+                t("trash_title"), t("trash_dwarf_delete_confirm", count=len(on_dwarf), path=dwarf_path),
+                [(t("trash_dwarf_delete_btn", count=len(on_dwarf)), "delete_forever", "negative", True)]):
+            return
+        done, errors = await run.io_bound(delete_frames, on_dwarf)
+        _notify_result("trash_dwarf_deleted", done, errors)
+        on_dwarf[:] = await run.io_bound(frames_at, dwarf_path, frames)
+        dwarf_btn.set_text(t("trash_dwarf_delete_btn", count=len(on_dwarf)))
+        dwarf_btn.set_visibility(bool(on_dwarf))
 
     async def empty() -> None:
         count = len(gallery.alive())

@@ -17,3 +17,5 @@ reportlab
 psutil
 skyfield
 tifffile
+# Siril driven without its window (Explore's automatic photometry) - not on PyPI
+pysiril @ https://gitlab.com/free-astro/pysiril/uploads/8224707c29669f255ad43da3b93bc5ec/pysiril-0.0.15-py3-none-any.whl

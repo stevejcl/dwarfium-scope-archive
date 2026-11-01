@@ -49,6 +49,7 @@ from components.menu import menu
 from components.astro_object_associate import DwarfData, show_unknown_target_dialog
 from components.db_page_mixin import DbPageMixin
 from components.action_icon import ActionIcon
+from components.folder_picker import choose_folder
 from components import frame_review
 from components import wcs_mosaic
 from components import foreground_repair
@@ -441,6 +442,10 @@ class ExploreApp(DbPageMixin):
                             self.fullscreen_icon = ActionIcon(t("show_fullscreen_img"), "fullscreen", self.show_fullscreen_image)
                             self.siril_json_icon = ActionIcon(t("prepare_siril"), "layers", self.prepare_siril_json)
                             self.siril_json_icon.visible = False
+                            # The session's photometry, Siril in the background (api/photometry_auto.py)
+                            self.photometry_auto_icon = ActionIcon(t("photometry_auto"), "insights",
+                                                                   self._auto_photometry_dialog)
+                            self.photometry_auto_icon.visible = False
                             self.score_session_icon = ActionIcon(t("score_session_btn"), "grade", lambda: self._score_current_object())
                             self.score_session_icon.visible = False
                             self.action_fits_files_icon = ActionIcon("", "cleaning_services", lambda: self.action_cleanup_restore_fits())
@@ -2327,7 +2332,20 @@ class ExploreApp(DbPageMixin):
         if size_dir_kb is not None and size_dir_mb >= 2:
             details_directory_size = f"{t('directory_size')}: {size_dir_mb:.2f} MB"
 
-        _dir_line = f"{details_directory_size}{details_fits_files}{details_failed_fits_files}{details_tiff_files}{details_failed_tiff_files}"
+        # The frames left on the disk (some deleted after a review): their total
+        # exposure, next to the Dwarf's own stacked count - nothing written
+        # (user-asked Nov 2026: the session's quality at a glance)
+        details_exposure_on_disk = ""
+        try:
+            exp_s = parse_exposure(f"{self.current_session_row[2]}s") if self.current_session_row else 0
+        except (TypeError, IndexError):
+            exp_s = 0
+        if self.nb_fits_files and exp_s and not restacked_session:
+            details_exposure_on_disk = " - " + t("exposure_on_disk", total=format_seconds_hms(self.nb_fits_files * exp_s),
+                                                 count=self.nb_fits_files, exp=f"{exp_s:g}")
+
+        _dir_line = (f"{details_directory_size}{details_fits_files}{details_exposure_on_disk}"
+                     f"{details_failed_fits_files}{details_tiff_files}{details_failed_tiff_files}")
         if _dir_line:
             details_preview.append(_dir_line.removeprefix(" - "))
 
@@ -2518,6 +2536,8 @@ class ExploreApp(DbPageMixin):
         self.delete_session_icon.visible = False
         self.score_session_icon.visible = False
         self.siril_json_icon.visible = False
+        if getattr(self, "photometry_auto_icon", None):
+            self.photometry_auto_icon.visible = False
         self.action_fits_files_icon.disable()
         if self.linked_manual_session_icon:
             self.linked_manual_session_icon.visible = False
@@ -2674,6 +2694,10 @@ class ExploreApp(DbPageMixin):
                 else:
                     self.siril_json_icon.visible = False
                     self.siril_json_icon.disable()
+            if getattr(self, "photometry_auto_icon", None):
+                # One session, not a mosaic
+                self.photometry_auto_icon.visible = bool(
+                    self.mode == "backup" and self.selected_path and "_MOSAIC_" not in str(self.selected_path).upper())
 
             if not self.delete_session_icon:
                 self.delete_session_icon = ActionIcon(t("delete_session"), "delete", lambda: self.delete_directory(), danger=True).classes('ml-4')
@@ -3935,6 +3959,155 @@ class ExploreApp(DbPageMixin):
                         aavso_btn.disable()
                         aavso_btn.tooltip(t('aavso_export_no_chart'))
         self.tab_photometry.set_visibility(True)
+
+    async def _auto_photometry_dialog(self):
+        """The session's photometry with Siril in the background (user-asked
+        Oct 2026, api/photometry_auto.py): the star, the working folder on
+        this PC, siril-cli and the options (remembered), then the run - its
+        steps, progress and log, a Stop button - and the Photometry tab."""
+        from api import photometry_auto
+        if self.current_session_row is None or not self.selected_path:
+            ui.notify(t("no_session_selected"), type="warning")
+            return
+        if "_MOSAIC_" in str(self.selected_path).upper():
+            ui.notify(t("photometry_auto_mosaic"), type="warning")
+            return
+        if not await desktop_only():
+            return
+        if not photometry_auto.pysiril_available():
+            ui.notify(t("photometry_auto_no_pysiril"), type="negative")
+            return
+        job = getattr(self, "_auto_photometry_job", None)
+        if job is not None and not job.finished:
+            self._auto_photometry_progress(ui.context.client, job)
+            return
+        store = app.storage.general
+        client = ui.context.client
+        target = (self.current_session_row[13] or "") if len(self.current_session_row) > 13 else ""
+        with ui.dialog() as dialog, ui.card().classes("w-full max-w-xl"):
+            ui.label(t("photometry_auto_title")).classes("text-base font-medium")
+            ui.label(t("photometry_auto_hint")).classes("text-xs text-gray-500")
+            star = ui.input(t("photometry_auto_star"), value=target).classes("w-full")
+            with ui.row().classes("w-full items-end no-wrap gap-1"):
+                work = ui.input(t("photometry_auto_workdir"),
+                                value=store.get("photometry_work_dir") or photometry_auto.default_work_root()) \
+                    .classes("grow")
+
+                async def _pick():
+                    folder = await choose_folder(ui.context.client, work.value or None)
+                    if folder:
+                        work.value = folder
+                ui.button(icon="folder_open", on_click=_pick).props("flat dense")
+            siril = ui.input(t("photometry_auto_siril"),
+                             value=photometry_auto.find_siril(store.get("siril_cli", "")) or store.get("siril_cli", "")) \
+                .classes("w-full")
+            aavso = ui.checkbox(t("photometry_auto_aavso"), value=store.get("photometry_auto_aavso", True))
+            saturated = ui.checkbox(t("photometry_auto_saturated"), value=False)
+            new_list = ui.checkbox(t("photometry_auto_new_list"), value=False)
+            again = ui.checkbox(t("photometry_auto_again"), value=False)
+
+            async def _start():
+                exe = photometry_auto.find_siril((siril.value or "").strip())
+                if not exe:
+                    ui.notify(t("photometry_auto_no_siril"), type="warning", multi_line=True)
+                    return
+                if not (star.value or "").strip():
+                    return
+                store["siril_cli"] = exe
+                store["photometry_work_dir"] = (work.value or "").strip()
+                store["photometry_auto_aavso"] = bool(aavso.value)
+                dialog.close()
+                # Awaited here, not in a background task: the progress window
+                # and notifications need the page (user-reported Nov 2026: no
+                # sign the run had started)
+                await self._run_auto_photometry(client, star.value, work.value, exe, aavso.value,
+                                                saturated.value, new_list.value, again.value)
+
+            with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                ui.button(t("cancel"), on_click=dialog.close).props("flat")
+                ui.button(t("photometry_auto_start"), icon="play_arrow", on_click=_start).props("color=primary")
+        dialog.open()
+
+    async def _run_auto_photometry(self, client, star, work_root, siril_exe, aavso, keep_saturated, new_list, again):
+        from api import photometry_auto
+        with client.layout:
+            ui.notify(t("photometry_auto_preparing"), type="ongoing", timeout=4000)
+            try:
+                data = await generate_siril_session_json(
+                    self.conn, self.current_session_row, self.current_backup_location or "",
+                    session_full_dir=self.current_session_full_dir or "")
+            except Exception as e:
+                ui.notify(t("fits_json_error", error=e), type="negative")
+                return
+        job = photometry_auto.AutoPhotometry(
+            data, star, (work_root or "").strip(), siril_exe, aavso=aavso, keep_saturated=keep_saturated,
+            new_comparison_list=new_list, start_again=again)
+        job.session_dir = self.selected_path
+        self._auto_photometry_job = job
+        job.start()
+        self._auto_photometry_progress(client, job)
+
+    def _auto_photometry_progress(self, client, job):
+        """The run's window: step, progress, its last log lines; Stop, then
+        the results. In the page's layout (client), whatever called it."""
+        with client.layout:
+            self._auto_photometry_window(job)
+
+    def _auto_photometry_window(self, job):
+        steps = {"copy": "photometry_auto_step_copy", "siril": "photometry_auto_step_siril",
+                 "platesolve": "photometry_auto_step_platesolve", "photometry": "photometry_auto_step_photometry",
+                 "analysis": "photometry_auto_step_analysis"}
+        with ui.dialog().props("persistent") as dialog, ui.card().classes("w-full max-w-2xl"):
+            ui.label(f'{t("photometry_auto_title")} - {job.star}').classes("text-base font-medium")
+            step = ui.label("").classes("text-sm")
+            # Siril's latest line: where it is
+            siril_line = ui.label("").classes("text-xs text-gray-500 break-all")
+            bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
+            log = ui.log(max_lines=400).classes("w-full h-64 text-xs")
+            for line in job.lines:
+                log.push(line)
+            shown = {"n": job.line_count, "end": False}
+            with ui.row().classes("w-full justify-end gap-2"):
+                stop = ui.button(t("photometry_auto_stop"), icon="stop",
+                                 on_click=lambda: (job.stop(), ui.notify(t("photometry_auto_stopping")))) \
+                    .props("flat color=negative")
+                show = ui.button(t("photometry_auto_show"), icon="show_chart")
+                show.set_visibility(False)
+                ui.button(t("close"), on_click=dialog.close).props("flat")
+
+            def _show():
+                dialog.close()
+                if os.path.normpath(str(self.selected_path or "")) == os.path.normpath(str(job.session_dir or "")):
+                    self._show_photometry_tab()
+                    self.view_tabs.value = "photometry"
+            show.on_click(_show)
+
+            def _tick():
+                # The lines added since the last tick (the job keeps its last 400)
+                new = job.line_count - shown["n"]
+                for line in (job.lines[-new:] if 0 < new <= len(job.lines) else job.lines if new > 0 else []):
+                    log.push(line)
+                shown["n"] = job.line_count
+                label = t(steps[job.step]) if job.step in steps else job.step
+                elapsed = int(time.monotonic() - job.step_started)
+                step.text = (f"{label}: {job.done} / {job.total}" if job.total
+                             else f"{label} - {elapsed // 60} min {elapsed % 60:02d} s")
+                siril_line.text = job.siril_last
+                bar.value = (job.done / job.total) if job.total else 0
+                if job.finished and not shown["end"]:
+                    shown["end"] = True
+                    timer.deactivate()
+                    stop.set_visibility(False)
+                    if job.ok:
+                        step.text = t("photometry_auto_done")
+                        bar.value = 1
+                        show.set_visibility(True)
+                        ui.notify(t("photometry_auto_done"), type="positive")
+                    else:
+                        step.text = t("photometry_auto_failed", error=job.error)
+                        ui.notify(t("photometry_auto_failed", error=job.error), type="warning", multi_line=True)
+            timer = ui.timer(0.5, _tick)
+        dialog.open()
 
     def _aavso_export_dialog(self, res):
         """The light curve as the AAVSO's AID file (api/aavso_export.py): the

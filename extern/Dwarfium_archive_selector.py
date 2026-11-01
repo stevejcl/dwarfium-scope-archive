@@ -15,10 +15,33 @@ ChangeLog:
 
 from genericpath import exists
 
-import sirilpy as s
-from sirilpy import LogColor
+try:
+    import sirilpy as s
+    from sirilpy import LogColor
+    HEADLESS = False
+except ImportError:
+    # Imported by Scope Archive (its automatic photometry, Siril driven
+    # through pySiril - user-asked Oct 2026): the functions and ScriptRunner
+    # only, without sirilpy nor Qt
+    import types
 
-s.ensure_installed(["PyQt6"])
+    class _SirilError(Exception):
+        pass
+
+    class _CommandError(_SirilError):
+        pass
+
+    class _SirilConnectionError(_SirilError):
+        pass
+
+    s = types.SimpleNamespace(SirilError=_SirilError, CommandError=_CommandError,
+                              SirilConnectionError=_SirilConnectionError,
+                              ensure_installed=lambda packages: None)
+    LogColor = types.SimpleNamespace(DEFAULT=None, RED=None, SALMON=None, GREEN=None, BLUE=None)
+    HEADLESS = True
+
+if not HEADLESS:
+    s.ensure_installed(["PyQt6"])
 
 import csv
 import json
@@ -30,29 +53,53 @@ import sys
 import zipfile
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import (
-    QAbstractItemView,
-    QApplication,
-    QCheckBox,
-    QDialog,
-    QDoubleSpinBox,
-    QFileDialog,
-    QGroupBox,
-    QHBoxLayout,
-    QInputDialog,
-    QLabel,
-    QListWidget,
-    QMainWindow,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QSpinBox,
-    QTextEdit,
-    QVBoxLayout,
-    QWidget,
-)
+try:
+    from PyQt6.QtCore import Qt, QThread, pyqtSignal
+    from PyQt6.QtGui import QPixmap
+    from PyQt6.QtWidgets import (
+        QAbstractItemView,
+        QApplication,
+        QCheckBox,
+        QDialog,
+        QDoubleSpinBox,
+        QFileDialog,
+        QGroupBox,
+        QHBoxLayout,
+        QInputDialog,
+        QLabel,
+        QListWidget,
+        QMainWindow,
+        QMessageBox,
+        QProgressBar,
+        QPushButton,
+        QSpinBox,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
+except ImportError:   # Scope Archive (HEADLESS): the classes defined, never shown
+    QThread = QMainWindow = object
+    Qt = QPixmap = None
+    def pyqtSignal(*args, **kwargs):
+        return None
+    QAbstractItemView = None
+    QApplication = None
+    QCheckBox = None
+    QDialog = None
+    QDoubleSpinBox = None
+    QFileDialog = None
+    QGroupBox = None
+    QHBoxLayout = None
+    QInputDialog = None
+    QLabel = None
+    QListWidget = None
+    QMessageBox = None
+    QProgressBar = None
+    QPushButton = None
+    QSpinBox = None
+    QTextEdit = None
+    QVBoxLayout = None
+    QWidget = None
 
 APP_NAME = "Dwarfium Archive Selector"
 VERSION = "0.9.1"
@@ -963,7 +1010,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
-                         f"{len(comps)} comparison stars (findcompstars), times at mid-exposure in UTC "
+                         f"{len(comps)} comparison stars ({f'AAVSO sequence, chart {chart}' if chart else 'findcompstars'}), "
+                         "times at mid-exposure in UTC "
                          f"(DATE-OBS taken as UTC{utc_offset_h:+g} h)"])
         # One "# key: value" line each, for the sessions put together later
         meta = [("session", session_name),
@@ -1548,12 +1596,15 @@ def gaia_compstars(gaia_csv, star, ra, dec, v_target, out_path):
     return len(rows)
 
 
-def archived_compstars(target_name, roots):
+def archived_compstars(target_name, roots, aavso=None):
     """The newest comparison_stars_<star>.csv archived by an earlier run
     (archive_photometry: _PHOTOMETRY/<star>/<session>/) under one of
     `roots`, or None - findcompstars' stars when the catalog server can't
     be reached (user-reported Oct 2026: VizieR down, a session measured
-    before left unfinished). The same field gives the same stars."""
+    before left unfinished). The same field gives the same stars.
+    aavso: True, an AAVSO sequence's list only (its chart); False, any
+    other (user-reported Nov 2026: "AAVSO sequence" unticked took the
+    AAVSO list of the run before); None, either."""
     star = re.sub(r"[^\w.-]+", "_", simbad_name(target_name)) or "target"
     found = []
     for root in dict.fromkeys(r for r in roots if r):
@@ -1564,7 +1615,7 @@ def archived_compstars(target_name, roots):
             continue
         for session in sessions:
             path = os.path.join(star_dir, session, f"comparison_stars_{star}.csv")
-            if os.path.isfile(path):
+            if os.path.isfile(path) and (aavso is None or bool(compstars_chart(path)) == aavso):
                 found.append((os.path.getmtime(path), path))
     return max(found)[1] if found else None
 
@@ -1587,7 +1638,8 @@ def _script_roots(lines):
     return roots
 
 
-def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root="", failed=None):
+def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), root="", failed=None,
+                       keep_previous=False):
     """The light curve, the field survey and the comparison stars copied from
     the process folder to _PHOTOMETRY/<star>/<session folder>/ at the archive's root
     (`root`; without it, the session's parent folder - its grandparent when
@@ -1595,7 +1647,10 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
     astronomy_root()), named after the target too. Returns the folder, None
     when the session folder isn't reachable; a file that can't be written
     (open in Excel or an image viewer on Windows, user-reported Oct 2026)
-    is left as it was and added to `failed` (name, error), the others copied."""
+    is left as it was and added to `failed` (name, error), the others copied.
+    keep_previous: the folder's earlier files moved to previous/ first (one
+    earlier run kept - Scope Archive's automatic photometry, user-asked Oct
+    2026: no copy by hand before running again)."""
     if not session_dir or not os.path.isdir(session_dir):
         return None
     session_dir = os.path.normpath(session_dir)
@@ -1607,6 +1662,17 @@ def archive_photometry(folder, seq_name, session_dir, target_name, extra=(), roo
     star = re.sub(r"[^\w.-]+", "_", target_name) or "target"
     out = os.path.join(root, PHOTOMETRY_DIR, star, name)
     os.makedirs(out, exist_ok=True)
+    earlier = [f for f in os.listdir(out) if os.path.isfile(os.path.join(out, f))] if keep_previous else []
+    if earlier:
+        previous = os.path.join(out, "previous")
+        shutil.rmtree(previous, ignore_errors=True)
+        os.makedirs(previous, exist_ok=True)
+        for f in earlier:
+            try:
+                shutil.move(os.path.join(out, f), os.path.join(previous, f))
+            except OSError as e:     # open in another program: overwritten below, or reported
+                if failed is not None:
+                    failed.append((f, e))
     copies = {
         f"light_curve_{seq_name}.csv": f"light_curve_{star}.csv",
         f"light_curve_{seq_name}.png": f"light_curve_{star}.png",
@@ -2223,6 +2289,196 @@ def win_long_path(filepath):
         else: 
             return '\\\\?\\' + os.path.abspath(filepath_str)
     else: return str(filepath)
+
+def photometry_script(data, cwd, star, utc_offset, log=print, warn=print, resume=False,
+                      keep_saturated=False, aavso=False):
+    """The photometry script of a single session (data: its siril_session.json,
+    its lights copied to <cwd>/lights, darks to darks/, the flat to flat/):
+    calibration with the master dark, green channel (AAVSO TG band of these
+    colour sensors), plate solve of every image, comparison stars (Siril's
+    findcompstars, or the AAVSO's sequence when aavso), then the differential
+    photometry in Python (ScriptRunner) - light_curve_<sequence>.csv in the
+    process folder. Shared by the "📈 Photometry" option and Scope Archive's
+    automatic photometry (Siril driven through pySiril). resume /
+    keep_saturated: a bool, or a function asked with the green images found /
+    the saturation level. Returns (ssf_path, lines). Requires Siril 1.4.0+."""
+    lights_dir = os.path.join(cwd, "lights")
+    lights = sorted(
+        os.path.join(lights_dir, f) for f in os.listdir(lights_dir)
+        if f.lower().endswith((".fits", ".fit", ".fts"))
+    ) if os.path.isdir(lights_dir) else []
+    if not lights:
+        raise ValueError("No light FITS directly in lights/ (a mosaic session can't be measured).")
+    session = data.get("session", {})
+    site = data.get("site") if isinstance(data.get("site"), dict) and data["site"].get("lat") is not None else None
+    first = {key: value for _, key, value, _ in read_fits_cards(lights[0])}
+    fixed = sum(1 for f in lights if fix_dwarf_date_obs(f))
+    if fixed:
+        log(f"[photometry] DATE-OBS of {fixed} light(s) moved back by EXPTIME "
+            "(the DWARF writes the end of the exposure).")
+
+    darks_dir = os.path.join(cwd, "darks")
+    n_darks = len([
+        f for f in os.listdir(darks_dir) if f.lower().endswith((".fits", ".fit", ".fts"))
+    ]) if os.path.isdir(darks_dir) else 0
+    # The flat (user-asked Oct 2026: copied to flat/ by Prepare for Siril -
+    # the DWARF's factory calibration, one master per gain - but left out
+    # of the photometry): used when its size is the lights'. Not bias-
+    # subtracted: on a differential measure its offset changes the
+    # vignetting correction by a few percent, alike for the target and
+    # its neighbours
+    flat_dir = os.path.join(cwd, "flat")
+    flats = sorted(f for f in os.listdir(flat_dir)
+                   if f.lower().endswith((".fits", ".fit", ".fts"))) if os.path.isdir(flat_dir) else []
+    if flats:
+        flat_cards = {key: value for _, key, value, _ in read_fits_cards(os.path.join(flat_dir, flats[0]))}
+        size = lambda c: (str(c.get("NAXIS1", "")).strip(), str(c.get("NAXIS2", "")).strip())
+        if size(flat_cards) != size(first):
+            log(f"[photometry] flat left out: {flats[0]} is {'x'.join(size(flat_cards))}, "
+                f"the lights {'x'.join(size(first))}")
+            flats = []
+    n_flats = len(flats)
+    calibrated = bool(n_darks or n_flats)
+    proc = os.path.join(cwd, "process")
+    seq = "Green_pp_light" if calibrated else "Green_light"
+
+    lines = [
+        f"# Dwarfium photometry — {star} — {session.get('date', '')[:16]} — {session.get('dwarf', '')}",
+        f"# {len(lights)} light(s), {n_darks} dark(s), {n_flats} flat(s) — generated by Dwarfium Archive Selector",
+        "requires 1.4.0",
+        "setext fit",
+        f'cd "{cwd}"',
+        "",
+        "# Convert light frames",
+        "cd lights",
+        # link, not convert: the lights not copied once more (Naztronomy's
+        # Smart Telescope script, user-shared Oct 2026: 509 images took
+        # about 40 GB) - Siril copies when it can't link
+        "link light -out=../process",
+        "cd ..",
+        "",
+    ]
+    if n_darks:
+        lines += [
+            "# Convert darks",
+            "cd darks",
+            "convert dark -out=../process",
+            "cd ..",
+            "",
+        ]
+    if n_flats:
+        lines += [
+            "# Convert flats",
+            "cd flat",
+            "convert flat -out=../process",
+            "cd ..",
+            "",
+        ]
+    lines += ["cd process", ""]
+    if n_flats >= 2:
+        lines += ["# Master flat", "stack flat rej 3 3 -norm=mul -out=master_flat", ""]
+    elif n_flats == 1:
+        lines += ["# The DWARF's master flat", "load flat_00001", "save master_flat", ""]
+    if n_darks >= 2:
+        lines += ["# Master dark", "stack dark rej 3 3 -nonorm -out=master_dark", ""]
+    elif n_darks == 1:
+        lines += ["# Single pre-stacked dark used as master dark", "load dark_00001", "save master_dark", ""]
+    if calibrated:
+        options = (" -dark=master_dark -cc=dark" if n_darks else "") + (" -flat=master_flat" if n_flats else "")
+        lines += [
+            "# " + " and ".join(w for w, n in (("Dark", n_darks), ("flat", n_flats)) if n).capitalize()
+            + " calibration, kept as CFA",
+            f"calibrate light{options} -cfa",
+            f"# PYTHON_CLEANUP_SEQ {proc}|light_",
+            "",
+            "# Green channel of the CFA images (AAVSO TG band)",
+            "seqextract_Green pp_light",
+            f"# PYTHON_CLEANUP_SEQ {proc}|pp_light_",
+            "",
+        ]
+    else:
+        lines += [
+            "# No dark nor flat: green channel of the raw CFA images (AAVSO TG band)",
+            "seqextract_Green light",
+            f"# PYTHON_CLEANUP_SEQ {proc}|light_",
+            "",
+        ]
+    # Resumed after a stop (user-reported Oct 2026: Siril closed at image 95
+    # of 509, after 15 minutes of calibration and green channel): the
+    # green images all there, those steps skipped - the plate solve skips
+    # the images already solved
+    green = [f for f in os.listdir(proc) if f.startswith("Green_pp_light_" if calibrated else "Green_light_")
+             and f.lower().endswith((".fit", ".fits"))] if os.path.isdir(proc) else []
+    # Asked unless "Resume (keep the files)" was just chosen at the JSON's
+    # load (user-reported Oct 2026: asked twice)
+    if len(green) >= len(lights) and (resume(len(green)) if callable(resume) else resume):
+        start = lines.index("# Convert light frames")
+        lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
+                                 "cd process", ""]
+    # From Python (# PYTHON_PLATESOLVE): seqplatesolve first, run by
+    # _siril_cmd - the script's window kept alive, the time shown (it
+    # stayed frozen through its minutes on a 141-image session, user-
+    # reported Oct 2026) -, then image by image what it left unsolved.
+    # -noflip: each image saved as it is, its solution with it
+    solve_args = ["-noflip"] + dwarf_platesolve_args(lights[0])
+    # A session without a target (manual pointing: "Unknown", RA = DEC = 0
+    # in the header - the user's DY Peg data, Oct 2026): Siril starts its
+    # plate solve from the header's coordinates, so the star's are given -
+    # VSX's, in degrees (the archive's may be in hours)
+    center = _header_center(first)
+    if center is None:
+        found = vsx_star(star) or {}
+        ra, dec = found.get("ra"), found.get("dec")
+        if ra is not None and dec is not None:
+            solve_args.insert(0, f"{float(ra):.5f},{float(dec):+.5f}")
+        else:
+            warn(
+                f"No coordinates in the FITS header and {star} not found (VSX): the plate solve will "
+                "likely fail. Point the session at the star, or check its name.",
+            )
+    solve_args = " ".join(solve_args)
+    data_max = fits_data_max(lights[0])
+    saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
+    keep_saturated = bool(saturation) and bool(keep_saturated(saturation) if callable(keep_saturated)
+                                               else keep_saturated)
+    lines += [
+        "# Plate solve of every image (saved with its solution): the sequence by",
+        "# seqplatesolve, then one by one what it left unsolved - each image",
+        "# measured with its own solution, no registration: the dithering doesn't matter",
+        f"# PYTHON_PLATESOLVE {proc}|{seq}|{solve_args}",
+        "",
+        *(["# Comparison stars: the AAVSO's sequence (VSP photometry table) and its chart,",
+           "# to send the light curve to the AAVSO",
+           f"# PYTHON_AAVSO_SEQUENCE {star}|comparison_stars.csv"]
+          if aavso else
+          ["# Comparison stars (APASS catalog, Internet), on the first solved image",
+           "# (loaded by the plate solve step)",
+           f'findcompstars "{star}" -out=comparison_stars.csv']),
+        "",
+        "# Differential photometry in Python (not Siril's light_curve): the target",
+        "# and comparison stars at their coordinates in each image, times at",
+        "# mid-exposure in JD, HJD and BJD"
+        + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
+        f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
+        "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/,",
+        "# and the star's sessions put together with those of the other drives:",
+        f"# PYTHON_PHOTOMETRY_ROOTS {json.dumps(data.get('photometry_roots') or [])}",
+        f"# PYTHON_PHOTOMETRY_OPTIONS {json.dumps({'keep_saturated': keep_saturated})}",
+        f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
+        f"|{data.get('astronomy_root') or ''}"
+        + (f"|{site['lat']}|{site['lon']}|{(site.get('name') or '').replace('|', ' ')}" if site else ""),
+        "",
+        f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
+        "cd ..",
+    ]
+
+    star_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in star)
+    ssf_path = os.path.join(cwd, f"01_photometry_{star_safe}.ssf")
+    with open(ssf_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    log(f"Photometry script saved: {ssf_path}")
+    return ssf_path, lines
+
 
 class Target:
     """Target Class contains the targets from the Dwarfium archives with their sessions"""
@@ -3971,6 +4227,15 @@ class PreprocessingInterface(QMainWindow):
         self._build_log_path = os.path.join(self.current_working_directory, "build_sessions.log")
         self._build_log(f"=== Build Sessions {datetime.now():%Y-%m-%d %H:%M:%S}: "
                         + ", ".join(os.path.basename(p) for p, _ in scripts_to_run), new=True)
+
+        def _progress(done, total, step=""):
+            self.progressbar.setMaximum(max(total, 1))
+            self.progressbar.setValue(done)
+            self.progress_label.setText(f"{done} / {total}")
+
+        runner = ScriptRunner(self.siril, self.current_working_directory, self._build_log, progress=_progress,
+                              idle=QApplication.processEvents, run_cmd=self._siril_cmd,
+                              log_path=self._build_log_path)
         for ssf_path, lines in scripts_to_run:
             ssf_name = os.path.basename(ssf_path)
             # The script as it is on disk: a line changed by hand counts
@@ -3982,266 +4247,7 @@ class PreprocessingInterface(QMainWindow):
             except OSError:
                 pass
             self.siril.log(f"[build] Running {ssf_name}…", LogColor.BLUE)
-            for raw_line in lines:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                # A sequence's images deleted once the next step made its own:
-                # # PYTHON_CLEANUP_SEQ <folder>|<prefix> - before PYTHON_CLEANUP
-                # (paths / globs, the stacking scripts'), which took these lines
-                # and found nothing (user's 509-image run, Oct 2026)
-                if line.startswith("# PYTHON_CLEANUP_SEQ"):
-                    folder, prefix = line[len("# PYTHON_CLEANUP_SEQ"):].strip().split("|")
-                    self._build_log(line)
-                    removed, size, failed = self._remove_sequence_files(folder, prefix)
-                    self._build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
-                                    + (f", {failed} still in use" if failed else ""))
-                    continue
-                # Python-side cleanup: # PYTHON_CLEANUP <path_or_glob>
-                # Executed by Python (not sent to Siril) to free disk space
-                # as processing progresses. Supports glob patterns (*) and
-                # plain paths (files or directories).
-                if line.startswith("# PYTHON_CLEANUP"):
-                    cleanup_arg = line[len("# PYTHON_CLEANUP"):].strip()
-                    if cleanup_arg:
-                        import glob as _glob
-                        targets = _glob.glob(cleanup_arg)
-                        if not targets:
-                            targets = [cleanup_arg]  # try as literal path
-                        for target in targets:
-                            try:
-                                if os.path.isdir(target):
-                                    shutil.rmtree(target)
-                                    self.siril.log(f"[cleanup] Removed dir: {target}", LogColor.BLUE)
-                                elif os.path.isfile(target):
-                                    os.remove(target)
-                                    self.siril.log(f"[cleanup] Removed: {target}", LogColor.BLUE)
-                            except Exception as e:
-                                self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
-                    continue
-                # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
-                # Python-side plate solve (the sequence, then image by image): # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
-                if line.startswith("# PYTHON_PLATESOLVE"):
-                    self._build_log(line)
-                    folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
-                    if not self._platesolve_images(folder, seq_name, solve_args.split()):
-                        ran_ok = False
-                        break
-                    continue
-                if line.startswith("# PYTHON_AAVSO_SEQUENCE"):
-                    self._build_log(line)
-                    star, out = (line[len("# PYTHON_AAVSO_SEQUENCE"):].strip().split("|") + ["comparison_stars.csv"])[:2]
-                    folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
-                                   for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
-                                  os.path.join(self.current_working_directory, "process"))
-                    out_path = out if os.path.isabs(out) else os.path.join(folder, out)
-                    chart, why = aavso_sequence(star, out_path)
-                    if not chart:
-                        # Offline: the star's last AAVSO list, when it has one
-                        known = archived_compstars(star, _script_roots(lines))
-                        if known and compstars_chart(known):
-                            shutil.copyfile(known, out_path)
-                            chart = compstars_chart(known)
-                            self._build_log(f"  {why} - the star's last AAVSO sequence used: {known}")
-                    if not chart:
-                        self._build_log(f"  no AAVSO sequence for {star}: {why} - untick AAVSO sequence "
-                                        "(other comparison stars), or request one from the AAVSO (VSP)")
-                        self.siril.log(f"[build] No AAVSO sequence for {star}: {why}", LogColor.RED)
-                        ran_ok = False
-                        break
-                    self._build_log(f"  AAVSO sequence, chart {chart} -> {out_path}")
-                    continue
-                if line.startswith("# PYTHON_PHOTOMETRY_OPTIONS"):   # {"keep_saturated": ...}
-                    try:
-                        self._photometry_options = json.loads(line[len("# PYTHON_PHOTOMETRY_OPTIONS"):].strip() or "{}")
-                    except ValueError:
-                        self._photometry_options = {}
-                    continue
-                if line.startswith("# PYTHON_PHOTOMETRY_ROOTS"):   # the other drives, for combine_star_sessions
-                    try:
-                        self._photometry_roots = json.loads(line[len("# PYTHON_PHOTOMETRY_ROOTS"):].strip() or "[]")
-                    except ValueError:
-                        self._photometry_roots = []
-                    continue
-                if line.startswith("# PYTHON_PHOTOMETRY"):
-                    self._build_log(line)
-                    fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
-                    folder, seq_name, saturation = fields[:3]
-                    utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
-                    session_dir = fields[4] if len(fields) > 4 else ""
-                    astronomy_root = fields[5] if len(fields) > 5 else ""
-                    try:   # the session's site, for the airmass
-                        site = (float(fields[6]), float(fields[7]), fields[8] if len(fields) > 8 else "")
-                    except (IndexError, ValueError):
-                        site = None
-                    try:
-                        s.ensure_installed(["astropy", "matplotlib"])
-                        frames = sorted(
-                            os.path.join(folder, f) for f in os.listdir(folder)
-                            if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
-                        )
-                        def _progress(done, total):
-                            # The script's window kept alive, and where it is in Siril's log
-                            self.progressbar.setMaximum(max(total, 1))
-                            self.progressbar.setValue(done)
-                            self.progress_label.setText(f"{done} / {total}")
-                            if done == total or done % 10 == 0:
-                                self._build_log(f"photometry: {done} / {total} images measured")
-                                self.siril.log(f"[photometry] {done} / {total} images measured", LogColor.BLUE)
-                            QApplication.processEvents()
-
-                        self.siril.log(f"[photometry] {len(frames)} images to measure", LogColor.BLUE)
-                        # The star's elements for its times of maximum / minimum and O-C (VSX)
-                        target_stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
-                        elements, vsx_errors = None, []
-                        if target_stars:
-                            found = vsx_star(target_stars[0]["name"], errors=vsx_errors)
-                            own = user_elements(target_stars[0]["name"])
-                            if own:
-                                # Your elements (Astro Dwarf Session), VSX's type
-                                vartype = (found or {}).get("type") or own["type"]
-                                elements = {"period": own["period"], "epoch": own["epoch"], "type": vartype,
-                                            "source": f"your elements, {vartype or 'type unknown'}"}
-                            elif found:
-                                elements = {"period": found.get("period"), "epoch": found.get("epoch"),
-                                            "type": found.get("type"),
-                                            "source": f"VSX, {found.get('type') or 'type unknown'}"}
-                            else:
-                                elements = {"error": f"VSX: {vsx_errors[0] if vsx_errors else 'not found'}"}
-                        summary = differential_light_curve(
-                            frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
-                            os.path.join(folder, f"light_curve_{seq_name}.csv"),
-                            saturation=float(saturation) or None, utc_offset_h=utc_offset,
-                            progress=_progress, site=site,
-                            keep_saturated=bool(getattr(self, "_photometry_options", {}).get("keep_saturated")),
-                            session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
-                            elements=elements,
-                            chart=compstars_chart(os.path.join(folder, "comparison_stars.csv")),
-                        )
-                        stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
-                        self._build_log("\n".join(summary))
-                        failed, archive_error = [], None
-                        try:
-                            archived = archive_photometry(folder, seq_name, session_dir,
-                                                          stars[0]["name"] if stars else "target",
-                                                          extra=(ssf_path, self._build_log_path),
-                                                          root=astronomy_root, failed=failed)
-                        except OSError as e:
-                            archived, archive_error = None, e
-                            summary.append(f"  results not archived: {e}")
-                        for name, e in failed:
-                            summary.append(f"  {name} not updated - open in another program (Excel, an image "
-                                           f"viewer)? Close it and run again ({e})")
-                        if archived:
-                            summary.append(f"  archived with the session -> {archived}")
-                            try:   # with the star's other sessions
-                                summary += combine_star_sessions(os.path.dirname(archived),
-                                                                 getattr(self, "_photometry_roots", []))
-                            except OSError as e:
-                                summary.append(f"  sessions not put together - a combined_* file open in another "
-                                               f"program (Excel, an image viewer)? Close it and run again ({e})")
-                            except Exception as e:
-                                summary.append(f"  sessions not put together: {e}")
-                        elif session_dir and archive_error is None:
-                            summary.append(f"  not archived: session folder not reachable ({session_dir})")
-                        for text in summary:
-                            self.siril.log(text, LogColor.GREEN)
-                        self._last_photometry_summary = summary
-                    except Exception as e:
-                        self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)
-                        ran_ok = False
-                        break
-                    continue
-                if line.startswith("#"):
-                    continue
-                try:
-                    args = shlex.split(line)
-                except ValueError as e:
-                    self.siril.log(f"[build] Could not parse line '{line}': {e}", LogColor.RED)
-                    ran_ok = False
-                    break
-                if not args:
-                    continue
-                # Siril's command parser re-tokenizes the reconstructed
-                # command line and splits on whitespace, so any argument
-                # containing a space (e.g. a path under "Test Siril") must
-                # be re-quoted here, same as it was originally in the .ssf
-                # text — shlex.split() above already stripped those quotes.
-                quoted_args = [f'"{a}"' if " " in a else a for a in args]
-                self._build_log(line)
-                if args[0] == "findcompstars" and len(args) > 1:
-                    # The star measured before: its last session's list, not
-                    # asked again (user-asked Oct 2026: the same stars every
-                    # night, the O-C comparable - and no 20 s wait on
-                    # SIMBAD while Strasbourg is down)
-                    known = archived_compstars(args[1], _script_roots(lines))
-                    if known:
-                        out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
-                                   "comparison_stars.csv")
-                        folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
-                                       for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
-                                      os.path.join(self.current_working_directory, "process"))
-                        out_path = out if os.path.isabs(out) else os.path.join(folder, out)
-                        try:
-                            shutil.copyfile(known, out_path)
-                            self.siril.log(f"[build] comparison stars of the star's last session: {known}",
-                                           LogColor.GREEN)
-                            self._build_log(f"  comparison stars of the star's last session used: {known}")
-                            continue
-                        except OSError as copy_error:
-                            self._build_log(f"  earlier comparison stars not copied: {copy_error} - asked to Siril")
-                try:
-                    self._siril_cmd(*quoted_args)
-                except (s.CommandError, s.SirilError) as e:   # refused, or Siril no longer answering
-                    if args[0] == "findcompstars" and len(args) > 1 and not _siril_gone(e):
-                        # The catalog server unreachable (APASS / NOMAD are
-                        # only online): APASS from a VizieR mirror, else the
-                        # AAVSO's comparison stars, else the star's list from
-                        # an earlier run
-                        out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
-                                   "comparison_stars.csv")
-                        folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
-                                       for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
-                                      os.path.join(self.current_working_directory, "process"))
-                        out_path = out if os.path.isabs(out) else os.path.join(folder, out)
-                        self._build_log(f"  failed: {e} - comparison stars asked elsewhere")
-                        QApplication.processEvents()
-                        # The star's earlier list (the same stars as its other
-                        # sessions, more than the AAVSO's - user's DY Peg, Oct
-                        # 2026: 17 against 4); else the local Gaia DR3 extract
-                        # (no server); else APASS from a mirror; else the
-                        # AAVSO's (VSP)
-                        known = archived_compstars(args[1], _script_roots(lines))
-                        if known:
-                            try:
-                                shutil.copyfile(known, out_path)
-                                self.siril.log(f"[build] findcompstars failed ({e}) - the comparison stars of an "
-                                               f"earlier run used: {known}", LogColor.SALMON)
-                                self._build_log(f"  comparison stars of an earlier run used: {known}")
-                                continue
-                            except OSError as copy_error:
-                                self._build_log(f"  earlier comparison stars not copied: {copy_error}")
-                        source = self._local_gaia_compstars(args[1], out_path)
-                        if not source:
-                            source, why = online_compstars(args[1], out_path, sources=("apass",))
-                            if not source:
-                                self._build_log(f"  APASS not found on the mirrors: {why}")
-                        if source:
-                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
-                                           LogColor.SALMON)
-                            self._build_log(f"  comparison stars from {source} -> {out_path}")
-                            continue
-                        source, why = online_compstars(args[1], out_path, sources=("vsp",))
-                        if source:
-                            self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
-                                           LogColor.SALMON)
-                            self._build_log(f"  comparison stars from {source} -> {out_path}")
-                            continue
-                        self._build_log(f"  not found at the AAVSO either: {why}")
-                    self.siril.log(f"[build] Command '{line}' failed: {e}", LogColor.RED)
-                    self._build_log(f"  failed: {e}")
-                    ran_ok = False
-                    break
+            ran_ok = runner.run_script(ssf_path, lines)
             if not ran_ok:
                 break
             # Update step after each script completes successfully
@@ -4260,8 +4266,7 @@ class PreprocessingInterface(QMainWindow):
 
         if ran_ok:
             self.siril.log("[build] All scripts completed successfully.", LogColor.GREEN)
-            summary = getattr(self, "_last_photometry_summary", None)
-            self._last_photometry_summary = None
+            summary = runner.summary
             QMessageBox.information(self, "Build complete", "All scripts ran successfully."
                                     + ("\n\n" + "\n".join(summary) if summary else ""))
         else:
@@ -4283,133 +4288,6 @@ class PreprocessingInterface(QMainWindow):
                 os.fsync(f.fileno())
         except OSError:
             pass
-
-    def _platesolve_images(self, folder, seq_name, solve_args):
-        """platesolve of each image of the sequence, saved with its solution,
-        the progress shown between images (Siril's log, build_sessions.log,
-        the progress bar). An image that can't be solved is left as it is
-        (the photometry skips it). The first solved image is left loaded, for
-        findcompstars. False when none could be solved."""
-        frames = sorted(
-            f for f in os.listdir(folder)
-            if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
-        )
-        solved, failed, first_solved = 0, [], None
-        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
-        # The whole sequence first, by Siril itself (user-tested Oct 2026: 509
-        # images in 1 min 41 s, none failed - image by image took half an
-        # hour, and Siril's window crashed at the 177th, redrawing each
-        # image). It writes the solution in each image's header, read below:
-        # what it left unsolved is then tried image by image.
-        try:
-            self._build_log(f"seqplatesolve {seq_name} {' '.join(solve_args)}")
-            self._siril_cmd("seqplatesolve", seq_name, *solve_args)
-        except s.SirilError as e:
-            if _siril_gone(e):
-                raise SirilGone("Plate solve of the sequence stopped.") from e
-            self._build_log(f"  seqplatesolve: {e} - image by image")
-            self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
-        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
-        skipped = errors_in_a_row = 0
-        for index, frame in enumerate(frames, 1):
-            base = os.path.splitext(frame)[0]
-            # Solved by an earlier run (resumed after a stop): kept as it is
-            cards = {key for _, key, _, _ in read_fits_cards(os.path.join(folder, frame))}
-            if "CTYPE1" in cards and ("CD1_1" in cards or "CDELT1" in cards):
-                solved, skipped = solved + 1, skipped + 1
-                first_solved = first_solved or base
-                continue
-            # Siril's image closed now and then (a 509-image run stopped at the 95th)
-            if (index - skipped) % 25 == 0:
-                try:
-                    self.siril.cmd("close")
-                except s.SirilError:
-                    pass
-            try:
-                self.siril.cmd("load", base)
-                self.siril.cmd("platesolve", *solve_args)
-                self.siril.cmd("save", base)
-                solved += 1
-                first_solved = first_solved or base
-                errors_in_a_row = 0
-            except s.SirilError as e:
-                if _siril_gone(e):
-                    self._build_log(f"platesolve: Siril gone at image {index} / {len(frames)} "
-                                    f"({solved} solved so far)")
-                    raise SirilGone(f"Plate solve stopped at image {index} / {len(frames)}, "
-                                    f"{solved} solved so far.") from e
-                failed.append(frame)
-                self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
-            except Exception as e:   # not Siril's: an image left out, not the whole run
-                failed.append(frame)
-                errors_in_a_row += 1
-                self._build_log(f"  {frame}: {type(e).__name__}: {e}")
-                if errors_in_a_row >= 5:
-                    self._build_log("platesolve stopped: 5 errors in a row")
-                    break
-            self.progressbar.setMaximum(max(len(frames), 1))
-            self.progressbar.setValue(index)
-            self.progress_label.setText(f"{index} / {len(frames)}")
-            if index == len(frames) or index % 10 == 0:
-                self._build_log(f"platesolve: {index} / {len(frames)} images ({len(failed)} failed"
-                                + (f", {skipped} already solved" if skipped else "") + ")")
-                self.siril.log(f"[platesolve] {index} / {len(frames)} images ({len(failed)} failed)", LogColor.BLUE)
-            QApplication.processEvents()
-        if failed:
-            self.siril.log(f"[platesolve] not solved, left out: {', '.join(failed)}", LogColor.SALMON)
-        if first_solved:
-            # The next step (findcompstars) needs a plate solved image loaded
-            self.siril.cmd("load", first_solved)
-        return solved > 0
-
-    def _remove_sequence_files(self, folder, prefix):
-        """The images of the sequence `prefix` (prefix + number .fit/.fits/.fz;
-        a link only removes the link) deleted from folder, its .seq kept -
-        after the next step used them (Naztronomy's clean_up, user-shared Oct
-        2026: 509 images took about 40 GB). Siril's sequence closed first, a
-        file still held tried again. (removed, bytes freed, failed)."""
-        import time
-        try:
-            self.siril.cmd("close")
-        except s.SirilError:
-            pass
-        pattern = re.compile(re.escape(prefix) + r"\d+\.(fit|fits|fts)(\.fz)?$", re.IGNORECASE)
-        removed = size = failed = 0
-        for name in os.listdir(folder):
-            if not pattern.match(name):
-                continue
-            path = os.path.join(folder, name)
-            for attempt in range(3):
-                try:
-                    freed = 0 if os.path.islink(path) else os.path.getsize(path)
-                    os.remove(path)
-                    removed, size = removed + 1, size + freed
-                    break
-                except OSError:
-                    time.sleep(0.3)
-            else:
-                failed += 1
-        return removed, size, failed
-
-    def _local_gaia_compstars(self, target_name, out_path):
-        """Comparison stars from Siril's local Gaia DR3 extract
-        (gaia_compstars()), the plate solved image loaded: "local Gaia DR3
-        (N stars)", or None (no local catalog, the star not in VSX...)."""
-        star = simbad_name(target_name)
-        found = vsx_star(star, timeout=15) or {}
-        if found.get("ra") is None or found.get("dec") is None:
-            return None
-        v = found.get("max")
-        limit = (v if v is not None else 12.0) + _COMP_DV + 0.5
-        gaia_csv = os.path.join(os.path.dirname(out_path) or ".", "gaia_field.csv")
-        try:
-            self._siril_cmd("conesearch", f"{limit:.1f}", "-cat=localgaia",
-                            f'"-out={gaia_csv}"' if " " in gaia_csv else f"-out={gaia_csv}")
-            count = gaia_compstars(gaia_csv, star, float(found["ra"]), float(found["dec"]), v, out_path)
-        except Exception as e:      # no local catalog, or Siril refused
-            self._build_log(f"  local Gaia DR3 not used: {e}")
-            return None
-        return f"local Gaia DR3 ({count} stars)" if count else None
 
     def _siril_cmd(self, *args):
         """self.siril.cmd(*args) in a background thread, this window kept alive
@@ -4702,13 +4580,9 @@ class PreprocessingInterface(QMainWindow):
         return lines, (longest if peak < _DWARF_12BIT_PHOT_MAX and exposure > 0 and peak > background else None)
 
     def _generate_photometry_script(self, data: dict, cwd: str):
-        """Variable star photometry script for a single session (the
-        "📈 Photometry" option): calibration with the master dark, green
-        channel (AAVSO TG band of these colour sensors), plate solve of every
-        image, comparison stars found by Siril (APASS), then the differential
-        photometry in Python (differential_light_curve(), run by Build
-        Sessions) - light_curve_<sequence>.csv in the process folder. Returns (ssf_path, lines), or None when cancelled
-        or not possible. Requires Siril 1.4.0+ (findcompstars)."""
+        """The "📈 Photometry" option: the star and the UTC offset asked, then
+        photometry_script() (its questions in dialogs). Returns (ssf_path,
+        lines), or None when cancelled or not possible."""
         lights_dir = os.path.join(cwd, "lights")
         lights = sorted(
             os.path.join(lights_dir, f) for f in os.listdir(lights_dir)
@@ -4722,7 +4596,6 @@ class PreprocessingInterface(QMainWindow):
             return None
 
         session = data.get("session", {})
-        site = data.get("site") if isinstance(data.get("site"), dict) and data["site"].get("lat") is not None else None
         star, ok = QInputDialog.getText(
             self, "Photometry",
             "Variable star (name known to Siril / SIMBAD, e.g. RZ Cas):",
@@ -4744,185 +4617,25 @@ class PreprocessingInterface(QMainWindow):
         if not ok:
             return None
 
-        fixed = sum(1 for f in lights if fix_dwarf_date_obs(f))
-        if fixed:
-            self.siril.log(
-                f"[photometry] DATE-OBS of {fixed} light(s) moved back by EXPTIME "
-                "(the DWARF writes the end of the exposure).", LogColor.BLUE,
-            )
-
-        darks_dir = os.path.join(cwd, "darks")
-        n_darks = len([
-            f for f in os.listdir(darks_dir) if f.lower().endswith((".fits", ".fit", ".fts"))
-        ]) if os.path.isdir(darks_dir) else 0
-        # The flat (user-asked Oct 2026: copied to flat/ by Prepare for Siril -
-        # the DWARF's factory calibration, one master per gain - but left out
-        # of the photometry): used when its size is the lights'. Not bias-
-        # subtracted: on a differential measure its offset changes the
-        # vignetting correction by a few percent, alike for the target and
-        # its neighbours
-        flat_dir = os.path.join(cwd, "flat")
-        flats = sorted(f for f in os.listdir(flat_dir)
-                       if f.lower().endswith((".fits", ".fit", ".fts"))) if os.path.isdir(flat_dir) else []
-        if flats:
-            flat_cards = {key: value for _, key, value, _ in read_fits_cards(os.path.join(flat_dir, flats[0]))}
-            size = lambda c: (str(c.get("NAXIS1", "")).strip(), str(c.get("NAXIS2", "")).strip())
-            if size(flat_cards) != size(first):
-                self.siril.log(f"[photometry] flat left out: {flats[0]} is {'x'.join(size(flat_cards))}, "
-                               f"the lights {'x'.join(size(first))}", LogColor.SALMON)
-                flats = []
-        n_flats = len(flats)
-        calibrated = bool(n_darks or n_flats)
-        proc = os.path.join(cwd, "process")
-        seq = "Green_pp_light" if calibrated else "Green_light"
-
-        lines = [
-            f"# Dwarfium photometry — {star} — {session.get('date', '')[:16]} — {session.get('dwarf', '')}",
-            f"# {len(lights)} light(s), {n_darks} dark(s), {n_flats} flat(s) — generated by Dwarfium Archive Selector",
-            "requires 1.4.0",
-            "setext fit",
-            f'cd "{cwd}"',
-            "",
-            "# Convert light frames",
-            "cd lights",
-            # link, not convert: the lights not copied once more (Naztronomy's
-            # Smart Telescope script, user-shared Oct 2026: 509 images took
-            # about 40 GB) - Siril copies when it can't link
-            "link light -out=../process",
-            "cd ..",
-            "",
-        ]
-        if n_darks:
-            lines += [
-                "# Convert darks",
-                "cd darks",
-                "convert dark -out=../process",
-                "cd ..",
-                "",
-            ]
-        if n_flats:
-            lines += [
-                "# Convert flats",
-                "cd flat",
-                "convert flat -out=../process",
-                "cd ..",
-                "",
-            ]
-        lines += ["cd process", ""]
-        if n_flats >= 2:
-            lines += ["# Master flat", "stack flat rej 3 3 -norm=mul -out=master_flat", ""]
-        elif n_flats == 1:
-            lines += ["# The DWARF's master flat", "load flat_00001", "save master_flat", ""]
-        if n_darks >= 2:
-            lines += ["# Master dark", "stack dark rej 3 3 -nonorm -out=master_dark", ""]
-        elif n_darks == 1:
-            lines += ["# Single pre-stacked dark used as master dark", "load dark_00001", "save master_dark", ""]
-        if calibrated:
-            options = (" -dark=master_dark -cc=dark" if n_darks else "") + (" -flat=master_flat" if n_flats else "")
-            lines += [
-                "# " + " and ".join(w for w, n in (("Dark", n_darks), ("flat", n_flats)) if n).capitalize()
-                + " calibration, kept as CFA",
-                f"calibrate light{options} -cfa",
-                f"# PYTHON_CLEANUP_SEQ {proc}|light_",
-                "",
-                "# Green channel of the CFA images (AAVSO TG band)",
-                "seqextract_Green pp_light",
-                f"# PYTHON_CLEANUP_SEQ {proc}|pp_light_",
-                "",
-            ]
-        else:
-            lines += [
-                "# No dark nor flat: green channel of the raw CFA images (AAVSO TG band)",
-                "seqextract_Green light",
-                f"# PYTHON_CLEANUP_SEQ {proc}|light_",
-                "",
-            ]
-        # Resumed after a stop (user-reported Oct 2026: Siril closed at image 95
-        # of 509, after 15 minutes of calibration and green channel): the
-        # green images all there, those steps skipped - the plate solve skips
-        # the images already solved
-        green = [f for f in os.listdir(proc) if f.startswith("Green_pp_light_" if calibrated else "Green_light_")
-                 and f.lower().endswith((".fit", ".fits"))] if os.path.isdir(proc) else []
-        # Asked unless "Resume (keep the files)" was just chosen at the JSON's
-        # load (user-reported Oct 2026: asked twice)
-        if len(green) >= len(lights) and (getattr(self, "_resume_photometry", False) or QMessageBox.question(
+        return photometry_script(
+            data, cwd, star, utc_offset,
+            log=lambda text: self.siril.log(text, LogColor.BLUE),
+            warn=lambda text: QMessageBox.warning(self, "Photometry", text),
+            resume=lambda n_green: getattr(self, "_resume_photometry", False) or QMessageBox.question(
                 self, "Photometry",
-                f"process/ already holds the {len(green)} green images of an earlier run.\n"
+                f"process/ already holds the {n_green} green images of an earlier run.\n"
                 "Resume from the plate solve (calibration and green channel not done again)?",
-        ) == QMessageBox.StandardButton.Yes):
-            start = lines.index("# Convert light frames")
-            lines = lines[:start] + ["# Resumed: calibration and green channel of an earlier run kept",
-                                     "cd process", ""]
-        # From Python (# PYTHON_PLATESOLVE): seqplatesolve first, run by
-        # _siril_cmd - the script's window kept alive, the time shown (it
-        # stayed frozen through its minutes on a 141-image session, user-
-        # reported Oct 2026) -, then image by image what it left unsolved.
-        # -noflip: each image saved as it is, its solution with it
-        solve_args = ["-noflip"] + dwarf_platesolve_args(lights[0])
-        # A session without a target (manual pointing: "Unknown", RA = DEC = 0
-        # in the header - the user's DY Peg data, Oct 2026): Siril starts its
-        # plate solve from the header's coordinates, so the star's are given -
-        # VSX's, in degrees (the archive's may be in hours)
-        center = _header_center(first)
-        if center is None:
-            found = vsx_star(star) or {}
-            ra, dec = found.get("ra"), found.get("dec")
-            if ra is not None and dec is not None:
-                solve_args.insert(0, f"{float(ra):.5f},{float(dec):+.5f}")
-            else:
-                QMessageBox.warning(
-                    self, "Photometry",
-                    f"No coordinates in the FITS header and {star} not found (VSX): the plate solve will "
-                    "likely fail. Point the session at the star, or check its name.",
-                )
-        solve_args = " ".join(solve_args)
-        data_max = fits_data_max(lights[0])
-        saturation = _DWARF_12BIT_PHOT_MAX if data_max is not None and data_max <= _DWARF_12BIT_MAX else 0
-        keep_saturated = bool(saturation) and QMessageBox.question(
-            self, "Photometry",
-            f"Keep the target's saturated images (peak above {saturation} ADU)?\n\n"
-            "No (recommended): left out - a saturated star is measured too faint.\n"
-            "Yes: kept and flagged (drawn apart, target_saturated in the CSV), e.g. to compare with "
-            "another software's curve; the comparison stars are still left out above it.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes
-        lines += [
-            "# Plate solve of every image (saved with its solution): the sequence by",
-            "# seqplatesolve, then one by one what it left unsolved - each image",
-            "# measured with its own solution, no registration: the dithering doesn't matter",
-            f"# PYTHON_PLATESOLVE {proc}|{seq}|{solve_args}",
-            "",
-            *(["# Comparison stars: the AAVSO's sequence (VSP photometry table) and its chart,",
-               "# to send the light curve to the AAVSO",
-               f"# PYTHON_AAVSO_SEQUENCE {star}|comparison_stars.csv"]
-              if self.aavso_checkbox.isChecked() else
-              ["# Comparison stars (APASS catalog, Internet), on the first solved image",
-               "# (loaded by the plate solve step)",
-               f'findcompstars "{star}" -out=comparison_stars.csv']),
-            "",
-            "# Differential photometry in Python (not Siril's light_curve): the target",
-            "# and comparison stars at their coordinates in each image, times at",
-            "# mid-exposure in JD, HJD and BJD"
-            + (f", stars above {saturation} ADU left out (12-bit data)" if saturation else ""),
-            f"# DATE-OBS taken as UTC{utc_offset:+g} h (the DWARF's local time)",
-            "# Results then archived at the archive's root: _PHOTOMETRY/<star>/<session folder>/,",
-            "# and the star's sessions put together with those of the other drives:",
-            f"# PYTHON_PHOTOMETRY_ROOTS {json.dumps(data.get('photometry_roots') or [])}",
-            f"# PYTHON_PHOTOMETRY_OPTIONS {json.dumps({'keep_saturated': keep_saturated})}",
-            f"# PYTHON_PHOTOMETRY {proc}|{seq}|{saturation}|{utc_offset:g}|{session.get('session_dir') or ''}"
-            f"|{data.get('astronomy_root') or ''}"
-            + (f"|{site['lat']}|{site['lon']}|{(site.get('name') or '').replace('|', ' ')}" if site else ""),
-            "",
-            f"# Result: {os.path.join(proc, 'light_curve_' + seq + '.csv')}",
-            "cd ..",
-        ]
-
-        star_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in star)
-        ssf_path = os.path.join(cwd, f"01_photometry_{star_safe}.ssf")
-        with open(ssf_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-        self.siril.log(f"Photometry script saved: {ssf_path}", LogColor.GREEN)
-        return ssf_path, lines
+            ) == QMessageBox.StandardButton.Yes,
+            keep_saturated=lambda saturation: QMessageBox.question(
+                self, "Photometry",
+                f"Keep the target's saturated images (peak above {saturation} ADU)?\n\n"
+                "No (recommended): left out - a saturated star is measured too faint.\n"
+                "Yes: kept and flagged (drawn apart, target_saturated in the CSV), e.g. to compare with "
+                "another software's curve; the comparison stars are still left out above it.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
+            ) == QMessageBox.StandardButton.Yes,
+            aavso=self.aavso_checkbox.isChecked(),
+        )
 
     def build_mosaic_from_restacked(self):
         """Collect RESTACKED_ tiles from the last loaded siril_megastack.json,
@@ -5309,6 +5022,470 @@ class PreprocessingInterface(QMainWindow):
                 f"{t.target} ({len(t.sessions)}x {t.sessions[0].cam.capitalize()})"
             )
         self.target_listbox.addItems(self.target_list)
+
+
+class ScriptRunner:
+    """Runs a generated .ssf script line by line: Siril's commands sent to
+    Siril, the "# PYTHON_..." lines done in Python (plate solve image by
+    image, comparison stars, photometry, clean-up). Shared by Build Sessions
+    (this script, in Siril) and Scope Archive's automatic photometry (Siril
+    driven through pySiril, no window - user-asked Oct 2026).
+
+    siril: .cmd(*args) (raises s.SirilError / s.CommandError) and
+    .log(text, color); build_log(text): one line in build_sessions.log;
+    progress(done, total, step); idle(): the window kept alive; run_cmd: how
+    a long command is sent (Build Sessions: in a thread, the time shown).
+    stop_requested: set from another thread, the run stops at the next line
+    or image. aavso_fallback: no AAVSO sequence -> the other comparison stars
+    instead of a stop. reuse_compstars: findcompstars replaced by the star's
+    last list when it has one."""
+
+    def __init__(self, siril, cwd, build_log, progress=None, idle=None, run_cmd=None, log_path=None,
+                 aavso_fallback=False):
+        self.siril = siril
+        self.cwd = cwd
+        self.build_log = build_log
+        self.progress = progress or (lambda done, total, step="": None)
+        self.idle = idle or (lambda: None)
+        self.run_cmd = run_cmd or siril.cmd
+        self.log_path = log_path or os.path.join(cwd, "build_sessions.log")
+        self.aavso_fallback = aavso_fallback
+        self.stop_requested = False
+        self.reuse_compstars = True   # findcompstars: the star's last list when it has one
+        self.keep_previous = False    # archive_photometry: earlier results moved to previous/
+        self.use_seqplatesolve = True  # the sequence at once, then image by image what it left
+        self.options, self.roots, self.notes = {}, [], []
+        self.summary = None
+
+    def run_script(self, ssf_path, lines):
+        """True when every line ran; False on a failed command or a stop
+        (in build_sessions.log). Raises SirilGone when Siril is gone."""
+        ran_ok = True
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                continue
+            if self.stop_requested:
+                self.build_log("stopped")
+                ran_ok = False
+                break
+            # A sequence's images deleted once the next step made its own:
+            # # PYTHON_CLEANUP_SEQ <folder>|<prefix> - before PYTHON_CLEANUP
+            # (paths / globs, the stacking scripts'), which took these lines
+            # and found nothing (user's 509-image run, Oct 2026)
+            if line.startswith("# PYTHON_CLEANUP_SEQ"):
+                folder, prefix = line[len("# PYTHON_CLEANUP_SEQ"):].strip().split("|")
+                self.build_log(line)
+                removed, size, failed = self.remove_sequence_files(folder, prefix)
+                self.build_log(f"  {removed} {prefix}* file(s) removed ({size / 1e9:.1f} GB)"
+                                + (f", {failed} still in use" if failed else ""))
+                continue
+            # Python-side cleanup: # PYTHON_CLEANUP <path_or_glob>
+            # Executed by Python (not sent to Siril) to free disk space
+            # as processing progresses. Supports glob patterns (*) and
+            # plain paths (files or directories).
+            if line.startswith("# PYTHON_CLEANUP"):
+                cleanup_arg = line[len("# PYTHON_CLEANUP"):].strip()
+                if cleanup_arg:
+                    import glob as _glob
+                    targets = _glob.glob(cleanup_arg)
+                    if not targets:
+                        targets = [cleanup_arg]  # try as literal path
+                    for target in targets:
+                        try:
+                            if os.path.isdir(target):
+                                shutil.rmtree(target)
+                                self.siril.log(f"[cleanup] Removed dir: {target}", LogColor.BLUE)
+                            elif os.path.isfile(target):
+                                os.remove(target)
+                                self.siril.log(f"[cleanup] Removed: {target}", LogColor.BLUE)
+                        except Exception as e:
+                            self.siril.log(f"[cleanup] Could not remove {target}: {e}", LogColor.SALMON)
+                continue
+            # Python-side photometry: # PYTHON_PHOTOMETRY <folder>|<sequence>|<saturation>
+            # Python-side plate solve (the sequence, then image by image): # PYTHON_PLATESOLVE <folder>|<sequence>|<args>
+            if line.startswith("# PYTHON_PLATESOLVE"):
+                self.build_log(line)
+                folder, seq_name, solve_args = line[len("# PYTHON_PLATESOLVE"):].strip().split("|")
+                if not self.platesolve_images(folder, seq_name, solve_args.split()):
+                    ran_ok = False
+                    break
+                continue
+            if line.startswith("# PYTHON_AAVSO_SEQUENCE"):
+                self.build_log(line)
+                star, out = (line[len("# PYTHON_AAVSO_SEQUENCE"):].strip().split("|") + ["comparison_stars.csv"])[:2]
+                folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                               for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                              os.path.join(self.cwd, "process"))
+                out_path = out if os.path.isabs(out) else os.path.join(folder, out)
+                chart, why = aavso_sequence(star, out_path)
+                if not chart:
+                    # Offline: the star's last AAVSO list, when it has one
+                    known = archived_compstars(star, _script_roots(lines), aavso=True)
+                    if known and compstars_chart(known):
+                        shutil.copyfile(known, out_path)
+                        chart = compstars_chart(known)
+                        self.build_log(f"  {why} - the star's last AAVSO sequence used: {known}")
+                if not chart and self.aavso_fallback:
+                    # Scope Archive's automatic photometry (user-asked Oct 2026):
+                    # the other comparison stars instead of a stop - the light
+                    # curve then not exportable to the AAVSO
+                    self.build_log(f"  no AAVSO sequence for {star}: {why} - findcompstars instead")
+                    self.notes.append(f"  no AAVSO sequence for {star} ({why}): other comparison stars, "
+                                      "not exportable to the AAVSO")
+                    line = f'findcompstars "{star}" -out={out}'
+                elif not chart:
+                    self.build_log(f"  no AAVSO sequence for {star}: {why} - untick AAVSO sequence "
+                                    "(other comparison stars), or request one from the AAVSO (VSP)")
+                    self.siril.log(f"[build] No AAVSO sequence for {star}: {why}", LogColor.RED)
+                    ran_ok = False
+                    break
+                else:
+                    self.build_log(f"  AAVSO sequence, chart {chart} -> {out_path}")
+                    continue
+            if line.startswith("# PYTHON_PHOTOMETRY_OPTIONS"):   # {"keep_saturated": ...}
+                try:
+                    self.options = json.loads(line[len("# PYTHON_PHOTOMETRY_OPTIONS"):].strip() or "{}")
+                except ValueError:
+                    self.options = {}
+                continue
+            if line.startswith("# PYTHON_PHOTOMETRY_ROOTS"):   # the other drives, for combine_star_sessions
+                try:
+                    self.roots = json.loads(line[len("# PYTHON_PHOTOMETRY_ROOTS"):].strip() or "[]")
+                except ValueError:
+                    self.roots = []
+                continue
+            if line.startswith("# PYTHON_PHOTOMETRY"):
+                self.build_log(line)
+                fields = line[len("# PYTHON_PHOTOMETRY"):].strip().split("|")
+                folder, seq_name, saturation = fields[:3]
+                utc_offset = float(fields[3]) if len(fields) > 3 else 0.0
+                session_dir = fields[4] if len(fields) > 4 else ""
+                astronomy_root = fields[5] if len(fields) > 5 else ""
+                try:   # the session's site, for the airmass
+                    site = (float(fields[6]), float(fields[7]), fields[8] if len(fields) > 8 else "")
+                except (IndexError, ValueError):
+                    site = None
+                try:
+                    s.ensure_installed(["astropy", "matplotlib"])
+                    frames = sorted(
+                        os.path.join(folder, f) for f in os.listdir(folder)
+                        if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
+                    )
+                    def _progress(done, total):
+                        # The script's window kept alive, and where it is in Siril's log
+                        if self.stop_requested:
+                            raise RuntimeError("stopped")
+                        self.progress(done, total, "photometry")
+                        if done == total or done % 10 == 0:
+                            self.build_log(f"photometry: {done} / {total} images measured")
+                            self.siril.log(f"[photometry] {done} / {total} images measured", LogColor.BLUE)
+                        if done == total and total:
+                            # Then zero points, field survey, extrema, plots:
+                            # half a minute or more with nothing counted (user-
+                            # reported Nov 2026) - said, its time shown
+                            self.build_log("analysis: zero points, comparison stars' variability, extrema, plots")
+                            self.progress(0, 0, "analysis")
+                        self.idle()
+
+                    self.siril.log(f"[photometry] {len(frames)} images to measure", LogColor.BLUE)
+                    # The star's elements for its times of maximum / minimum and O-C (VSX)
+                    target_stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
+                    elements, vsx_errors = None, []
+                    if target_stars:
+                        found = vsx_star(target_stars[0]["name"], errors=vsx_errors)
+                        own = user_elements(target_stars[0]["name"])
+                        if own:
+                            # Your elements (Astro Dwarf Session), VSX's type
+                            vartype = (found or {}).get("type") or own["type"]
+                            elements = {"period": own["period"], "epoch": own["epoch"], "type": vartype,
+                                        "source": f"your elements, {vartype or 'type unknown'}"}
+                        elif found:
+                            elements = {"period": found.get("period"), "epoch": found.get("epoch"),
+                                        "type": found.get("type"),
+                                        "source": f"VSX, {found.get('type') or 'type unknown'}"}
+                        else:
+                            elements = {"error": f"VSX: {vsx_errors[0] if vsx_errors else 'not found'}"}
+                    summary = differential_light_curve(
+                        frames, read_compstars_csv(os.path.join(folder, "comparison_stars.csv")),
+                        os.path.join(folder, f"light_curve_{seq_name}.csv"),
+                        saturation=float(saturation) or None, utc_offset_h=utc_offset,
+                        progress=_progress, site=site,
+                        keep_saturated=bool(self.options.get("keep_saturated")),
+                        session_name=os.path.basename(os.path.normpath(session_dir)) if session_dir else "",
+                        elements=elements,
+                        chart=compstars_chart(os.path.join(folder, "comparison_stars.csv")),
+                    )
+                    stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
+                    self.build_log("\n".join(summary))
+                    n_measured = len(summary)
+                    failed, archive_error = [], None
+                    try:
+                        archived = archive_photometry(folder, seq_name, session_dir,
+                                                      stars[0]["name"] if stars else "target",
+                                                      extra=(ssf_path, self.log_path),
+                                                      root=astronomy_root, failed=failed,
+                                                      keep_previous=self.keep_previous)
+                    except OSError as e:
+                        archived, archive_error = None, e
+                        summary.append(f"  results not archived: {e}")
+                    for name, e in failed:
+                        summary.append(f"  {name} not updated - open in another program (Excel, an image "
+                                       f"viewer)? Close it and run again ({e})")
+                    if archived:
+                        summary.append(f"  archived with the session -> {archived}")
+                        try:   # with the star's other sessions
+                            summary += combine_star_sessions(os.path.dirname(archived),
+                                                             self.roots)
+                        except OSError as e:
+                            summary.append(f"  sessions not put together - a combined_* file open in another "
+                                           f"program (Excel, an image viewer)? Close it and run again ({e})")
+                        except Exception as e:
+                            summary.append(f"  sessions not put together: {e}")
+                    elif session_dir and archive_error is None:
+                        summary.append(f"  not archived: session folder not reachable ({session_dir})")
+                    for text in summary:
+                        self.siril.log(text, LogColor.GREEN)
+                    self.build_log("\n".join(summary[n_measured:]))   # where it was archived
+                    self.summary = self.notes + summary
+                except Exception as e:
+                    self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)
+                    ran_ok = False
+                    break
+                continue
+            if line.startswith("#"):
+                continue
+            try:
+                args = shlex.split(line)
+            except ValueError as e:
+                self.siril.log(f"[build] Could not parse line '{line}': {e}", LogColor.RED)
+                ran_ok = False
+                break
+            if not args:
+                continue
+            # Siril's command parser re-tokenizes the reconstructed
+            # command line and splits on whitespace, so any argument
+            # containing a space (e.g. a path under "Test Siril") must
+            # be re-quoted here, same as it was originally in the .ssf
+            # text — shlex.split() above already stripped those quotes.
+            quoted_args = [f'"{a}"' if " " in a else a for a in args]
+            self.build_log(line)
+            if args[0] == "findcompstars" and len(args) > 1 and self.reuse_compstars:
+                # The star measured before: its last session's list, not
+                # asked again (user-asked Oct 2026: the same stars every
+                # night, the O-C comparable - and no 20 s wait on
+                # SIMBAD while Strasbourg is down)
+                known = archived_compstars(args[1], _script_roots(lines), aavso=False)
+                if known:
+                    out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
+                               "comparison_stars.csv")
+                    folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                                   for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                                  os.path.join(self.cwd, "process"))
+                    out_path = out if os.path.isabs(out) else os.path.join(folder, out)
+                    try:
+                        shutil.copyfile(known, out_path)
+                        self.siril.log(f"[build] comparison stars of the star's last session: {known}",
+                                       LogColor.GREEN)
+                        self.build_log(f"  comparison stars of the star's last session used: {known}")
+                        continue
+                    except OSError as copy_error:
+                        self.build_log(f"  earlier comparison stars not copied: {copy_error} - asked to Siril")
+            try:
+                self.run_cmd(*quoted_args)
+            except (s.CommandError, s.SirilError) as e:   # refused, or Siril no longer answering
+                if args[0] == "findcompstars" and len(args) > 1 and not _siril_gone(e):
+                    # The catalog server unreachable (APASS / NOMAD are
+                    # only online): APASS from a VizieR mirror, else the
+                    # AAVSO's comparison stars, else the star's list from
+                    # an earlier run
+                    out = next((a.split("=", 1)[1] for a in args if a.startswith("-out=")),
+                               "comparison_stars.csv")
+                    folder = next((ln.strip()[len("# PYTHON_PHOTOMETRY"):].strip().split("|")[0]
+                                   for ln in lines if ln.strip().startswith("# PYTHON_PHOTOMETRY ")),
+                                  os.path.join(self.cwd, "process"))
+                    out_path = out if os.path.isabs(out) else os.path.join(folder, out)
+                    self.build_log(f"  failed: {e} - comparison stars asked elsewhere")
+                    self.idle()
+                    # The star's earlier list (the same stars as its other
+                    # sessions, more than the AAVSO's - user's DY Peg, Oct
+                    # 2026: 17 against 4); else the local Gaia DR3 extract
+                    # (no server); else APASS from a mirror; else the
+                    # AAVSO's (VSP)
+                    known = archived_compstars(args[1], _script_roots(lines), aavso=False)
+                    if known:
+                        try:
+                            shutil.copyfile(known, out_path)
+                            self.siril.log(f"[build] findcompstars failed ({e}) - the comparison stars of an "
+                                           f"earlier run used: {known}", LogColor.SALMON)
+                            self.build_log(f"  comparison stars of an earlier run used: {known}")
+                            continue
+                        except OSError as copy_error:
+                            self.build_log(f"  earlier comparison stars not copied: {copy_error}")
+                    source = self.local_gaia_compstars(args[1], out_path)
+                    if not source:
+                        source, why = online_compstars(args[1], out_path, sources=("apass",))
+                        if not source:
+                            self.build_log(f"  APASS not found on the mirrors: {why}")
+                    if source:
+                        self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                       LogColor.SALMON)
+                        self.build_log(f"  comparison stars from {source} -> {out_path}")
+                        continue
+                    source, why = online_compstars(args[1], out_path, sources=("vsp",))
+                    if source:
+                        self.siril.log(f"[build] findcompstars failed ({e}) - comparison stars from {source}",
+                                       LogColor.SALMON)
+                        self.build_log(f"  comparison stars from {source} -> {out_path}")
+                        continue
+                    self.build_log(f"  not found at the AAVSO either: {why}")
+                self.siril.log(f"[build] Command '{line}' failed: {e}", LogColor.RED)
+                self.build_log(f"  failed: {e}")
+                ran_ok = False
+                break
+        return ran_ok
+
+    def platesolve_images(self, folder, seq_name, solve_args):
+        """platesolve of each image of the sequence, saved with its solution,
+        the progress shown between images (Siril's log, build_sessions.log,
+        the progress bar). An image that can't be solved is left as it is
+        (the photometry skips it). The first solved image is left loaded, for
+        findcompstars. False when none could be solved."""
+        frames = sorted(
+            f for f in os.listdir(folder)
+            if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
+        )
+        solved, failed, first_solved = 0, [], None
+        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+        # The whole sequence first, by Siril itself (user-tested Oct 2026: 509
+        # images in 1 min 41 s, none failed - image by image took half an
+        # hour, and Siril's window crashed at the 177th, redrawing each
+        # image). It writes the solution in each image's header, read below:
+        # what it left unsolved is then tried image by image.
+        # Not through Scope Archive's pipe (user-reported Nov 2026: a
+        # seqplatesolve without answer for 11 minutes there, 22 s the run
+        # before): image by image, about 1 s each without a window
+        if self.use_seqplatesolve:
+            try:
+                self.build_log(f"seqplatesolve {seq_name} {' '.join(solve_args)}")
+                self.run_cmd("seqplatesolve", seq_name, *solve_args)
+            except s.SirilError as e:
+                if _siril_gone(e):
+                    raise SirilGone("Plate solve of the sequence stopped.") from e
+                self.build_log(f"  seqplatesolve: not every image solved - the rest image by image ({e})")
+                self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
+        self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
+
+        def _solved(frame):
+            cards = {key for _, key, _, _ in read_fits_cards(os.path.join(folder, frame))}
+            return "CTYPE1" in cards and ("CD1_1" in cards or "CDELT1" in cards)
+        # What seqplatesolve left, said before trying it image by image (user-
+        # reported Nov 2026: nothing written in the log meanwhile)
+        left = sum(1 for f in frames if not _solved(f))
+        self.build_log(f"platesolve: {len(frames) - left} / {len(frames)} images solved"
+                       + (f", {left} left - tried image by image" if left else ""))
+        skipped = errors_in_a_row = 0
+        for index, frame in enumerate(frames, 1):
+            if self.stop_requested:
+                raise RuntimeError("stopped")
+            base = os.path.splitext(frame)[0]
+            # Solved by seqplatesolve or an earlier run (resumed after a stop): kept as it is
+            if _solved(frame):
+                solved, skipped = solved + 1, skipped + 1
+                first_solved = first_solved or base
+                continue
+            # Siril's image closed now and then (a 509-image run stopped at the 95th)
+            if (index - skipped) % 25 == 0:
+                try:
+                    self.siril.cmd("close")
+                except s.SirilError:
+                    pass
+            try:
+                if self.use_seqplatesolve:   # the few it left: each one said
+                    self.build_log(f"  platesolve {frame} ({index} / {len(frames)})")
+                self.siril.cmd("load", base)
+                self.siril.cmd("platesolve", *solve_args)
+                self.siril.cmd("save", base)
+                solved += 1
+                first_solved = first_solved or base
+                errors_in_a_row = 0
+            except s.SirilError as e:
+                if _siril_gone(e):
+                    self.build_log(f"platesolve: Siril gone at image {index} / {len(frames)} "
+                                    f"({solved} solved so far)")
+                    raise SirilGone(f"Plate solve stopped at image {index} / {len(frames)}, "
+                                    f"{solved} solved so far.") from e
+                failed.append(frame)
+                self.build_log(f"    not solved: {e}")
+                self.siril.log(f"[platesolve] {frame}: {e}", LogColor.SALMON)
+            except Exception as e:   # not Siril's: an image left out, not the whole run
+                failed.append(frame)
+                errors_in_a_row += 1
+                self.build_log(f"  {frame}: {type(e).__name__}: {e}")
+                if errors_in_a_row >= 5:
+                    self.build_log("platesolve stopped: 5 errors in a row")
+                    break
+            self.progress(index, len(frames), "platesolve")
+            if index == len(frames) or index % 10 == 0:
+                self.build_log(f"platesolve: {index} / {len(frames)} images ({len(failed)} failed"
+                                + (f", {skipped} already solved" if skipped else "") + ")")
+                self.siril.log(f"[platesolve] {index} / {len(frames)} images ({len(failed)} failed)", LogColor.BLUE)
+            self.idle()
+        if failed:
+            self.siril.log(f"[platesolve] not solved, left out: {', '.join(failed)}", LogColor.SALMON)
+        if first_solved:
+            # The next step (findcompstars) needs a plate solved image loaded
+            self.siril.cmd("load", first_solved)
+        return solved > 0
+
+    def remove_sequence_files(self, folder, prefix):
+        """The images of the sequence `prefix` (prefix + number .fit/.fits/.fz;
+        a link only removes the link) deleted from folder, its .seq kept -
+        after the next step used them (Naztronomy's clean_up, user-shared Oct
+        2026: 509 images took about 40 GB). Siril's sequence closed first, a
+        file still held tried again. (removed, bytes freed, failed)."""
+        import time
+        try:
+            self.siril.cmd("close")
+        except s.SirilError:
+            pass
+        pattern = re.compile(re.escape(prefix) + r"\d+\.(fit|fits|fts)(\.fz)?$", re.IGNORECASE)
+        removed = size = failed = 0
+        for name in os.listdir(folder):
+            if not pattern.match(name):
+                continue
+            path = os.path.join(folder, name)
+            for attempt in range(3):
+                try:
+                    freed = 0 if os.path.islink(path) else os.path.getsize(path)
+                    os.remove(path)
+                    removed, size = removed + 1, size + freed
+                    break
+                except OSError:
+                    time.sleep(0.3)
+            else:
+                failed += 1
+        return removed, size, failed
+
+    def local_gaia_compstars(self, target_name, out_path):
+        """Comparison stars from Siril's local Gaia DR3 extract
+        (gaia_compstars()), the plate solved image loaded: "local Gaia DR3
+        (N stars)", or None (no local catalog, the star not in VSX...)."""
+        star = simbad_name(target_name)
+        found = vsx_star(star, timeout=15) or {}
+        if found.get("ra") is None or found.get("dec") is None:
+            return None
+        v = found.get("max")
+        limit = (v if v is not None else 12.0) + _COMP_DV + 0.5
+        gaia_csv = os.path.join(os.path.dirname(out_path) or ".", "gaia_field.csv")
+        try:
+            self.run_cmd("conesearch", f"{limit:.1f}", "-cat=localgaia",
+                            f'"-out={gaia_csv}"' if " " in gaia_csv else f"-out={gaia_csv}")
+            count = gaia_compstars(gaia_csv, star, float(found["ra"]), float(found["dec"]), v, out_path)
+        except Exception as e:      # no local catalog, or Siril refused
+            self.build_log(f"  local Gaia DR3 not used: {e}")
+            return None
+        return f"local Gaia DR3 ({count} stars)" if count else None
 
 
 class SirilGone(Exception):

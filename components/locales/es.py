@@ -876,6 +876,9 @@ TRANSLATIONS: dict[str, str] = {
     "trash_restored":                "{count} frame(s) restored into the session.",  # TODO
     "trash_restore_dwarf":           "The Dwarf is plugged in USB with this session on it:\n{path}\nCopy the {count} frame(s) restored back onto it too? (Else the session's restore, Restore FITS, puts them back later.)",  # TODO
     "trash_restore_dwarf_btn":       "Copy onto the Dwarf",  # TODO
+    "trash_dwarf_delete_btn": "Delete them from the Dwarf too ({count})",  # TODO
+    "trash_dwarf_delete_confirm": "{count} of these frames are still on the Dwarf ({path}). Delete them from it for good (FITS and thumbnail)? Its Megastack then leaves them out - restart the Dwarf first, as after a repair. They stay in this trash.",  # TODO
+    "trash_dwarf_deleted": "{count} frame(s) deleted from the Dwarf",  # TODO
     "trash_copied_dwarf":            "{count} frame(s) copied back onto the Dwarf.",  # TODO
     "trash_empty_btn":               "Empty the trash",  # TODO
     "trash_empty_confirm":           "{count} frame(s): their FITS and JPG are deleted for good.",  # TODO
@@ -885,6 +888,7 @@ TRANSLATIONS: dict[str, str] = {
     "max_temp":                     "MaxTemp",  # TODO
     "found_one_fits":               "Found one fits image on the disk",  # TODO
     "found_fits_images":            "fits images on the disk",  # TODO
+    "exposure_on_disk": "Total exposure on the disk {total} ({count} × {exp} s)",  # TODO
     "found_failed_images":          "failed images on the disk",  # TODO
 
     # ── Mosaic ────────────────────────────────────────────────────────────────────
@@ -1333,6 +1337,32 @@ TRANSLATIONS: dict[str, str] = {
     "oc_more_nights":                "The period is checked once the nights span about 50 cycles or more (a few weeks for a short period)",  # TODO
     "aavso_export":                  "Export for the AAVSO",  # TODO
     "aavso_export_no_chart":         "Measured without the AAVSO sequence: tick 'AAVSO sequence' in the Siril script and measure again",  # TODO
+    "photometry_auto": "Photometry (auto)",  # TODO
+    "photometry_auto_title": "Automatic photometry",  # TODO
+    "photometry_auto_preparing": "Preparing the session…",  # TODO
+    "photometry_auto_hint": "Siril runs in the background (no window): calibration, green channel, plate solve, comparison stars, light curve. Results in the Photometry tab.",  # TODO
+    "photometry_auto_star": "Variable star",  # TODO
+    "photometry_auto_workdir": "Working folder (on this PC - deleted when the run succeeds)",  # TODO
+    "photometry_auto_siril": "siril-cli (Siril 1.4 or later)",  # TODO
+    "photometry_auto_aavso": "AAVSO sequence (else the other comparison stars, not exportable to the AAVSO)",  # TODO
+    "photometry_auto_saturated": "Keep the target's saturated images (flagged)",  # TODO
+    "photometry_auto_new_list": "New list of comparison stars (not the star's last one)",  # TODO
+    "photometry_auto_again": "Start again (an earlier stopped run is otherwise resumed)",  # TODO
+    "photometry_auto_start": "Start",  # TODO
+    "photometry_auto_stop": "Stop",  # TODO
+    "photometry_auto_stopping": "Stopping after the current Siril command…",  # TODO
+    "photometry_auto_no_siril": "siril-cli not found: give its path (Siril 1.4 or later, e.g. C:\\Program Files\\Siril\\bin\\siril-cli.exe)",  # TODO
+    "photometry_auto_no_pysiril": "pySiril is missing in this installation of Scope Archive",  # TODO
+    "photometry_auto_mosaic": "A mosaic session can't be measured",  # TODO
+    "photometry_auto_done": "Photometry done",  # TODO
+    "photometry_auto_failed": "Photometry not finished: {error}",  # TODO
+    "photometry_auto_show": "Show the results",  # TODO
+    "photometry_auto_running": "An automatic photometry is already running",  # TODO
+    "photometry_auto_step_copy": "Copying the session",  # TODO
+    "photometry_auto_step_siril": "Siril",  # TODO
+    "photometry_auto_step_platesolve": "Plate solve",  # TODO
+    "photometry_auto_step_photometry": "Measuring",  # TODO
+    "photometry_auto_step_analysis": "Analysis: zero points, comparison stars, extrema, plots",  # TODO
     "aavso_export_title":            "Light curve as an AAVSO AID file",  # TODO
     "aavso_export_hint":             "Extended format, green channel (TG), untransformed, ensemble of the AAVSO chart {chart}; cloudy and saturated images left out. Upload the file on the AAVSO's portal, File mode, then check it before Submit.",  # TODO
     "aavso_obscode":                 "Your AAVSO observer code",  # TODO
