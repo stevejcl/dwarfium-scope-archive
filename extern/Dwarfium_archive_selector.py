@@ -1010,7 +1010,8 @@ def differential_light_curve(files, stars, out_csv, aperture_r=5, saturation=Non
     with open(out_csv, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([f"# {target['name']}: differential photometry, green channel (TG), "
-                         f"{len(comps)} comparison stars (findcompstars), times at mid-exposure in UTC "
+                         f"{len(comps)} comparison stars ({f'AAVSO sequence, chart {chart}' if chart else 'findcompstars'}), "
+                         "times at mid-exposure in UTC "
                          f"(DATE-OBS taken as UTC{utc_offset_h:+g} h)"])
         # One "# key: value" line each, for the sessions put together later
         meta = [("session", session_name),
@@ -5176,6 +5177,12 @@ class ScriptRunner:
                         if done == total or done % 10 == 0:
                             self.build_log(f"photometry: {done} / {total} images measured")
                             self.siril.log(f"[photometry] {done} / {total} images measured", LogColor.BLUE)
+                        if done == total and total:
+                            # Then zero points, field survey, extrema, plots:
+                            # half a minute or more with nothing counted (user-
+                            # reported Nov 2026) - said, its time shown
+                            self.build_log("analysis: zero points, comparison stars' variability, extrema, plots")
+                            self.progress(0, 0, "analysis")
                         self.idle()
 
                     self.siril.log(f"[photometry] {len(frames)} images to measure", LogColor.BLUE)
@@ -5208,6 +5215,7 @@ class ScriptRunner:
                     )
                     stars = read_compstars_csv(os.path.join(folder, "comparison_stars.csv"))
                     self.build_log("\n".join(summary))
+                    n_measured = len(summary)
                     failed, archive_error = [], None
                     try:
                         archived = archive_photometry(folder, seq_name, session_dir,
@@ -5235,6 +5243,7 @@ class ScriptRunner:
                         summary.append(f"  not archived: session folder not reachable ({session_dir})")
                     for text in summary:
                         self.siril.log(text, LogColor.GREEN)
+                    self.build_log("\n".join(summary[n_measured:]))   # where it was archived
                     self.summary = self.notes + summary
                 except Exception as e:
                     self.siril.log(f"[build] Photometry failed: {e}", LogColor.RED)

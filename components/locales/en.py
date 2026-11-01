@@ -1359,6 +1359,7 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_auto_step_siril": "Siril",
     "photometry_auto_step_platesolve": "Plate solve",
     "photometry_auto_step_photometry": "Measuring",
+    "photometry_auto_step_analysis": "Analysis: zero points, comparison stars, extrema, plots",
     "aavso_export_title":            "Light curve as an AAVSO AID file",
     "aavso_export_hint":             "Extended format, green channel (TG), untransformed, ensemble of the AAVSO chart {chart}; cloudy and saturated images left out. Upload the file on the AAVSO's portal, File mode, then check it before Submit.",
     "aavso_obscode":                 "Your AAVSO observer code",

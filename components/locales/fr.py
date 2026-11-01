@@ -1361,6 +1361,7 @@ TRANSLATIONS: dict[str, str] = {
     "photometry_auto_step_siril": "Siril",
     "photometry_auto_step_platesolve": "Résolution astrométrique",
     "photometry_auto_step_photometry": "Mesures",
+    "photometry_auto_step_analysis": "Analyse : points zéro, étoiles de comparaison, extrema, graphiques",
     "aavso_export_title":            "Courbe de lumière au format AID de l'AAVSO",
     "aavso_export_hint":             "Format étendu, canal vert (TG), non transformé, ensemble de la carte AAVSO {chart} ; images nuageuses et saturées écartées. Déposez le fichier sur le portail de l'AAVSO, mode File, et vérifiez-le avant Submit.",
     "aavso_obscode":                 "Votre code d'observateur AAVSO",

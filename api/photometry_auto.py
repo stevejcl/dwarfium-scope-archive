@@ -394,6 +394,8 @@ class AutoPhotometry:
     def progress(self, done, total, step=""):
         if step and step != self.step:
             self.step_started = time.monotonic()
+            if step in ("copy", "photometry", "analysis"):
+                self.siril_last = ""     # done here, not by Siril: its last line no longer meant anything
         self.done, self.total, self.step = done, total, step or self.step
 
     def stop(self):

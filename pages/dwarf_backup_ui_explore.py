@@ -4055,7 +4055,8 @@ class ExploreApp(DbPageMixin):
 
     def _auto_photometry_window(self, job):
         steps = {"copy": "photometry_auto_step_copy", "siril": "photometry_auto_step_siril",
-                 "platesolve": "photometry_auto_step_platesolve", "photometry": "photometry_auto_step_photometry"}
+                 "platesolve": "photometry_auto_step_platesolve", "photometry": "photometry_auto_step_photometry",
+                 "analysis": "photometry_auto_step_analysis"}
         with ui.dialog().props("persistent") as dialog, ui.card().classes("w-full max-w-2xl"):
             ui.label(f'{t("photometry_auto_title")} - {job.star}').classes("text-base font-medium")
             step = ui.label("").classes("text-sm")
