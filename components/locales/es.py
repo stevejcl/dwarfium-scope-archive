@@ -876,6 +876,9 @@ TRANSLATIONS: dict[str, str] = {
     "trash_restored":                "{count} frame(s) restored into the session.",  # TODO
     "trash_restore_dwarf":           "The Dwarf is plugged in USB with this session on it:\n{path}\nCopy the {count} frame(s) restored back onto it too? (Else the session's restore, Restore FITS, puts them back later.)",  # TODO
     "trash_restore_dwarf_btn":       "Copy onto the Dwarf",  # TODO
+    "trash_dwarf_delete_btn": "Delete them from the Dwarf too ({count})",  # TODO
+    "trash_dwarf_delete_confirm": "{count} of these frames are still on the Dwarf ({path}). Delete them from it for good (FITS and thumbnail)? Its Megastack then leaves them out - restart the Dwarf first, as after a repair. They stay in this trash.",  # TODO
+    "trash_dwarf_deleted": "{count} frame(s) deleted from the Dwarf",  # TODO
     "trash_copied_dwarf":            "{count} frame(s) copied back onto the Dwarf.",  # TODO
     "trash_empty_btn":               "Empty the trash",  # TODO
     "trash_empty_confirm":           "{count} frame(s): their FITS and JPG are deleted for good.",  # TODO
