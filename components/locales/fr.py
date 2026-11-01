@@ -887,6 +887,7 @@ TRANSLATIONS: dict[str, str] = {
     "max_temp":                     "TempMax",
     "found_one_fits":               "1 image FITS trouvée sur le disque",
     "found_fits_images":            "images FITS trouvées sur le disque",
+    "exposure_on_disk": "pose totale sur le disque {total} ({count} × {exp} s)",
     "found_failed_images":          "images en erreur sur le disque",
 
     # ── Mosaic ────────────────────────────────────────────────────────────────────

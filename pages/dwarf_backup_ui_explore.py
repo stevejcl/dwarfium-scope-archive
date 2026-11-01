@@ -2332,7 +2332,20 @@ class ExploreApp(DbPageMixin):
         if size_dir_kb is not None and size_dir_mb >= 2:
             details_directory_size = f"{t('directory_size')}: {size_dir_mb:.2f} MB"
 
-        _dir_line = f"{details_directory_size}{details_fits_files}{details_failed_fits_files}{details_tiff_files}{details_failed_tiff_files}"
+        # The frames left on the disk (some deleted after a review): their total
+        # exposure, next to the Dwarf's own stacked count - nothing written
+        # (user-asked Nov 2026: the session's quality at a glance)
+        details_exposure_on_disk = ""
+        try:
+            exp_s = parse_exposure(f"{self.current_session_row[2]}s") if self.current_session_row else 0
+        except (TypeError, IndexError):
+            exp_s = 0
+        if self.nb_fits_files and exp_s and not restacked_session:
+            details_exposure_on_disk = " - " + t("exposure_on_disk", total=format_seconds_hms(self.nb_fits_files * exp_s),
+                                                 count=self.nb_fits_files, exp=f"{exp_s:g}")
+
+        _dir_line = (f"{details_directory_size}{details_fits_files}{details_exposure_on_disk}"
+                     f"{details_failed_fits_files}{details_tiff_files}{details_failed_tiff_files}")
         if _dir_line:
             details_preview.append(_dir_line.removeprefix(" - "))
 
