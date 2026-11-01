@@ -5049,6 +5049,7 @@ class ScriptRunner:
         self.stop_requested = False
         self.reuse_compstars = True   # findcompstars: the star's last list when it has one
         self.keep_previous = False    # archive_photometry: earlier results moved to previous/
+        self.use_seqplatesolve = True  # the sequence at once, then image by image what it left
         self.options, self.roots, self.notes = {}, [], []
         self.summary = None
 
@@ -5349,14 +5350,18 @@ class ScriptRunner:
         # hour, and Siril's window crashed at the 177th, redrawing each
         # image). It writes the solution in each image's header, read below:
         # what it left unsolved is then tried image by image.
-        try:
-            self.build_log(f"seqplatesolve {seq_name} {' '.join(solve_args)}")
-            self.run_cmd("seqplatesolve", seq_name, *solve_args)
-        except s.SirilError as e:
-            if _siril_gone(e):
-                raise SirilGone("Plate solve of the sequence stopped.") from e
-            self.build_log(f"  seqplatesolve: not every image solved - the rest image by image ({e})")
-            self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
+        # Not through Scope Archive's pipe (user-reported Nov 2026: a
+        # seqplatesolve without answer for 11 minutes there, 22 s the run
+        # before): image by image, about 1 s each without a window
+        if self.use_seqplatesolve:
+            try:
+                self.build_log(f"seqplatesolve {seq_name} {' '.join(solve_args)}")
+                self.run_cmd("seqplatesolve", seq_name, *solve_args)
+            except s.SirilError as e:
+                if _siril_gone(e):
+                    raise SirilGone("Plate solve of the sequence stopped.") from e
+                self.build_log(f"  seqplatesolve: not every image solved - the rest image by image ({e})")
+                self.siril.log(f"[platesolve] seqplatesolve: {e} - image by image", LogColor.SALMON)
         self.siril.cmd("cd", f'"{folder}"' if " " in folder else folder)
 
         def _solved(frame):
@@ -5384,7 +5389,8 @@ class ScriptRunner:
                 except s.SirilError:
                     pass
             try:
-                self.build_log(f"  platesolve {frame} ({index} / {len(frames)})")
+                if self.use_seqplatesolve:   # the few it left: each one said
+                    self.build_log(f"  platesolve {frame} ({index} / {len(frames)})")
                 self.siril.cmd("load", base)
                 self.siril.cmd("platesolve", *solve_args)
                 self.siril.cmd("save", base)

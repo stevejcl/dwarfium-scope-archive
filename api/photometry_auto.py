@@ -255,16 +255,44 @@ class SirilPipe:
                 return None
             time.sleep(0.05)
 
+    # No line from Siril for this long during a command: it hangs (user-
+    # reported Nov 2026: a seqplatesolve without answer for 11 minutes) -
+    # stopped, the run ends with why (its working folder kept, to resume)
+    SILENT_LIMIT_S = 600
+
+    def _watch(self, done: threading.Event):
+        """Siril's lines counted while the command runs; none for
+        SILENT_LIMIT_S: siril-cli stopped (Execute then returns)."""
+        last_count, last_change = -1, time.monotonic()
+        while not done.wait(5):
+            count = len(self.app.GetData())
+            if count != last_count:
+                last_count, last_change = count, time.monotonic()
+            elif time.monotonic() - last_change > self.SILENT_LIMIT_S:
+                self.timed_out = True
+                self._log(f"Siril silent for {self.SILENT_LIMIT_S // 60} min: stopped")
+                stop_pipe_sirils()
+                return
+
     def cmd(self, *args):
         command = " ".join(str(a) for a in args)
         name = command.split()[0] if command.split() else ""
         self._drain()
         self.app.GetData().clear()
-        self.app.Execute(command)
-        ok = self._own_status(name)
+        self.timed_out = False
+        done = threading.Event()
+        threading.Thread(target=self._watch, args=(done,), daemon=True).start()
+        try:
+            self.app.Execute(command)
+            ok = self._own_status(name)
+        finally:
+            done.set()
         if ok:
             return
         answer = [line for line in self.app.GetData() if line.strip()]
+        if self.timed_out:
+            raise self._errors.SirilConnectionError(
+                f"Siril gave no sign of life for {self.SILENT_LIMIT_S // 60} min during '{command}': stopped")
         if ok is None or not self.app.thSiril.IsRunning():
             raise self._errors.SirilConnectionError(f"Siril stopped during '{command}'")
         why = next((line[len("log:"):].strip() for line in reversed(answer) if line.startswith("log:")), "")
@@ -451,6 +479,7 @@ class AutoPhotometry:
         # A new list of comparison stars, not the star's last one
         self.runner.reuse_compstars = not self.new_comparison_list
         self.runner.keep_previous = True     # the session's earlier results moved to previous/
+        self.runner.use_seqplatesolve = False  # image by image (a seqplatesolve hung through the pipe)
         start = time.monotonic()
         self.ok = self.runner.run_script(ssf_path, lines)
         self.summary = self.runner.summary or []
