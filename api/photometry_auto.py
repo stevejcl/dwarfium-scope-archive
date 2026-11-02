@@ -83,11 +83,42 @@ def _bundle_hint():   # pragma: no cover - never called
 
 
 # ----------------------------------------------------------------------------
-# The measures and their analysis in a process of their own (user-asked Nov
-# 2026: 1 min 15 s here for 23 s in Siril - the measure shared this process
-# with the app). The images one after the other there: measured in parallel
-# (a process pool, tried), they took as long - each image read from the
-# disk - plus some 20 s to start the pool's processes.
+# The images measured in parallel (user-asked Nov 2026: 1 min 15 s here for
+# 23 s in Siril - the measure shared this process with the app). User-
+# measured in the .exe: about 0.3 s an image in one process, 23 s for 293
+# images in a pool of 3 (93 s alone) - the pool's start some 7 s more. Other
+# processes, each loading the Siril script once; the results the same as
+# measured one after the other (measure_frame(), final=False: an image whose
+# stars couldn't be sized measured again in order by the caller).
+
+
+def _measure_worker(path, args):
+    return selector().measure_frame(path, *args, final=False)
+
+
+def measure_workers() -> int:
+    return max(1, min(8, (os.cpu_count() or 2) - 1))
+
+
+def measure_many(files, args, progress=None):
+    """measure_frame() of each file in other processes, in the files' order.
+    progress(done, total) as they come; an exception from it (a stop)
+    cancels the rest."""
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    results = [None] * len(files)
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=measure_workers(), mp_context=ctx) as pool:
+        futures = {pool.submit(_measure_worker, path, args): i for i, path in enumerate(files)}
+        try:
+            for done, future in enumerate(as_completed(futures), 1):
+                results[futures[future]] = future.result()
+                if progress is not None:
+                    progress(done, len(files))
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+    return results
 
 
 def _photometry_child(kwargs, queue, stop):
@@ -101,7 +132,7 @@ def _photometry_child(kwargs, queue, stop):
             raise RuntimeError("stopped")
         queue.put(("progress", done, total))
     try:
-        summary = selector().differential_light_curve(progress=_progress, **kwargs)
+        summary = selector().differential_light_curve(progress=_progress, measure_many=measure_many, **kwargs)
         queue.put(("done", summary))
     except BaseException as e:
         queue.put(("error", f"{type(e).__name__}: {e}\n{traceback.format_exc()}"))
@@ -549,7 +580,7 @@ class AutoPhotometry:
         self.runner.reuse_compstars = not self.new_comparison_list
         self.runner.keep_previous = True     # the session's earlier results moved to previous/
         self.runner.use_seqplatesolve = False  # image by image (a seqplatesolve hung through the pipe)
-        self.runner.run_photometry = run_photometry  # in a process of its own
+        self.runner.run_photometry = run_photometry  # in a process of its own, images measured in parallel
         start = time.monotonic()
         self.ok = self.runner.run_script(ssf_path, lines)
         self.summary = self.runner.summary or []
