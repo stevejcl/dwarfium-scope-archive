@@ -83,40 +83,11 @@ def _bundle_hint():   # pragma: no cover - never called
 
 
 # ----------------------------------------------------------------------------
-# The images measured in parallel (user-asked Nov 2026: 1 min 15 s here for
-# 23 s in Siril - the measure shared this process with the app). Other
-# processes, each loading the Siril script once; the results the same as
-# measured one after the other (measure_frame(), final=False: an image whose
-# stars couldn't be sized measured again in order by the caller).
-
-
-def _measure_worker(path, args):
-    return selector().measure_frame(path, *args, final=False)
-
-
-def measure_workers() -> int:
-    return max(1, min(8, (os.cpu_count() or 2) - 1))
-
-
-def measure_many(files, args, progress=None):
-    """measure_frame() of each file in other processes, in the files' order.
-    progress(done, total) as they come; an exception from it (a stop)
-    cancels the rest."""
-    import multiprocessing
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-    results = [None] * len(files)
-    ctx = multiprocessing.get_context("spawn")
-    with ProcessPoolExecutor(max_workers=measure_workers(), mp_context=ctx) as pool:
-        futures = {pool.submit(_measure_worker, path, args): i for i, path in enumerate(files)}
-        try:
-            for done, future in enumerate(as_completed(futures), 1):
-                results[futures[future]] = future.result()
-                if progress is not None:
-                    progress(done, len(files))
-        except BaseException:
-            pool.shutdown(wait=False, cancel_futures=True)
-            raise
-    return results
+# The measures and their analysis in a process of their own (user-asked Nov
+# 2026: 1 min 15 s here for 23 s in Siril - the measure shared this process
+# with the app). The images one after the other there: measured in parallel
+# (a process pool, tried), they took as long - each image read from the
+# disk - plus some 20 s to start the pool's processes.
 
 
 def _photometry_child(kwargs, queue, stop):
@@ -130,7 +101,7 @@ def _photometry_child(kwargs, queue, stop):
             raise RuntimeError("stopped")
         queue.put(("progress", done, total))
     try:
-        summary = selector().differential_light_curve(progress=_progress, measure_many=measure_many, **kwargs)
+        summary = selector().differential_light_curve(progress=_progress, **kwargs)
         queue.put(("done", summary))
     except BaseException as e:
         queue.put(("error", f"{type(e).__name__}: {e}\n{traceback.format_exc()}"))
@@ -139,8 +110,8 @@ def _photometry_child(kwargs, queue, stop):
 def run_photometry(kwargs, progress):
     """The measures and their analysis (differential_light_curve) in another
     process, away from the app's own work (user-reported Nov 2026: twice to
-    three times slower here than in Siril, the analysis too), its images
-    measured in parallel there. progress(done, total) relayed; raising from
+    three times slower here than in Siril, the analysis too). progress(done,
+    total) relayed; raising from
     it (a stop) asks that process to stop - ended by force after 60 s only.
     Returns the summary lines."""
     import multiprocessing
@@ -578,7 +549,7 @@ class AutoPhotometry:
         self.runner.reuse_compstars = not self.new_comparison_list
         self.runner.keep_previous = True     # the session's earlier results moved to previous/
         self.runner.use_seqplatesolve = False  # image by image (a seqplatesolve hung through the pipe)
-        self.runner.run_photometry = run_photometry  # in another process, images measured in parallel
+        self.runner.run_photometry = run_photometry  # in a process of its own
         start = time.monotonic()
         self.ok = self.runner.run_script(ssf_path, lines)
         self.summary = self.runner.summary or []

@@ -5120,7 +5120,7 @@ class ScriptRunner:
         self.keep_previous = False    # archive_photometry: earlier results moved to previous/
         self.use_seqplatesolve = True  # the sequence at once, then image by image what it left
         # differential_light_curve(progress=, **kwargs) run by this instead (Scope
-        # Archive: in another process, its images measured in parallel)
+        # Archive: in a process of its own)
         self.run_photometry = None
         self.options, self.roots, self.notes = {}, [], []
         self.summary = None
@@ -5240,10 +5240,15 @@ class ScriptRunner:
                         os.path.join(folder, f) for f in os.listdir(folder)
                         if f.startswith(seq_name + "_") and f.lower().endswith((".fit", ".fits", ".fts"))
                     )
+                    reported = {"done": None}
+
                     def _progress(done, total):
                         # The script's window kept alive, and where it is in Siril's log
                         if self.stop_requested:
                             raise RuntimeError("stopped")
+                        if done == reported["done"]:
+                            return     # said already
+                        reported["done"] = done
                         self.progress(done, total, "photometry")
                         if done == total or done % 10 == 0:
                             self.build_log(f"photometry: {done} / {total} images measured")
