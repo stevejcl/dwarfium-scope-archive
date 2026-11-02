@@ -3,6 +3,10 @@
 ## [V3.4.6] - 2026-10-17
 
 ### Add
+    Photometry (auto): the measures and their analysis in a process of their own, the images measured in parallel
+    there (user-reported Nov 2026: 1 min 15 s for the measures - 47 s now, 24 of them starting; 93 s in one process).
+    The same results, image by image; Stop closes those processes. Each image measured by measure_frame(), shared
+    with the Siril script.
     Explore, a session's details: the total exposure of the frames on the disk next to their count ("288 fits images
     on the disk - Total exposure on the disk 1h 12m (288 × 15 s)") - frames deleted after a review show at a glance;
     the Dwarf's stacked count, the database and shotsInfo.json left as they are (user-asked Nov 2026).
