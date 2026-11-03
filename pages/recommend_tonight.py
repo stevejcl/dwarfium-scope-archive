@@ -796,7 +796,7 @@ class RecommendTonightApp(DbPageMixin):
         for r in self.results:
             if self.magnitude_filter.value and r.magnitude and r.magnitude > self.magnitude_filter.value:
                 continue
-            if self.type_filter.value != "All" and r.object_type != self.type_filter.value:
+            if self.type_filter.value != "All" and self.type_filter.value.lower() not in r.object_type.lower():
                 continue
             by_category[r.category].append(r)
 
