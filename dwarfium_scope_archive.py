@@ -339,6 +339,9 @@ ui.add_css('''
     }
 ''', shared=True)
 
+from pathlib import Path
+app.add_static_files('/aladin', str(Path(__file__).parent / 'assets' / 'aladin'))
+
 if __name__ == '__main__':
     freeze_support()  # must be first statement in main guard
     try:

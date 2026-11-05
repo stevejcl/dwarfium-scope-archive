@@ -17,6 +17,7 @@ from api.dso_association import (
     load_catalog_index, get_unlinked_astro_objects, get_object_sessions,
     find_dso_candidates, make_thumbnail_data_url,
 )
+from api.name_resolver import get_aladin_url
 from components.astro_object_associate import show_assign_dialog
 from components.i18n import t
 
@@ -52,9 +53,7 @@ def render_session(session, thumb, nav=None):
             f"{_session_date(session['session_date'])} · {session['target'] or ''} · "
             f"RA {ra_txt} · DEC {dec_txt} · {_position_label(session)}"
         ).classes("text-sm")
-        aladin = (f"https://aladin.cds.unistra.fr/AladinLite/?target="
-                  f"{session['ra_deg']:.5f}+{session['dec_deg']:+.5f}"
-                  f"&fov=3&survey=P%2FDSS2%2Fcolor")
+        aladin =  get_aladin_url(session['ra_deg'], session['dec_deg'], fov=3)
         ui.button("Aladin", icon="public",
                   on_click=lambda u=aladin: ui.navigate.to(u, new_tab=True)
                   ).props("flat dense size=sm")

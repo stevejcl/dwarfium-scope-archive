@@ -9,12 +9,14 @@ import math
 import re
 import time
 import os
-import webbrowser
+from pathlib import Path
 from nicegui import ui, app
 from components.i18n import t
+from components.sky_link import open_in_sky_tab, SKYMAP_TAB
 from api.image_preview import build_preview_url, set_base_folder
 from api.dwarf_backup_fct import get_relative_file_path
 from api import sky_map_hidden
+from api.dwarf_backup_db_api import get_wcs_sessions, get_wcs_stats_per_dwarf, count_solved_panels
 
 _DWARF_FOV = {
     2.75: (3856, 2180),
@@ -23,6 +25,75 @@ _DWARF_FOV = {
     5.98: (1928, 1096),
     6.02: (1920, 1080),
 }
+
+# Aladin Lite is served by the app itself (the CDS server at Strasbourg was
+# down, Oct-Nov 2026): the GitHub build (cds-astro/aladin-lite), an ES module
+# with its WebAssembly inside, in a folder named "aladin" (aladin.js and
+# aladin.css) next to this file, at the project root, or in static/ or assets/.
+ALADIN_URL = "/aladin"
+ALADIN_LOCAL_JS = ALADIN_URL + "/aladin.js"
+ALADIN_LOCAL_CSS = ALADIN_URL + "/aladin.css"
+
+# Sky background (HiPS DSS colour), first answering one in this order: the
+# browser asks each one's "properties" file. ESA's is checked; the CFHT one is
+# not - edit the list to taste.
+HIPS_DSS_COLOR = (
+    "https://skies.esac.esa.int/DSSColor",              # checked (properties answers)
+    "https://alasky.cds.unistra.fr/DSS/DSSColor",
+    "https://alaskybis.cds.unistra.fr/DSS/DSS2Merged",
+    "https://alasky.cfht.hawaii.edu/DSS/DSSColor",
+)
+
+
+def _aladin_dir():
+    """The folder holding aladin.js, None when not found."""
+    here = Path(__file__).resolve().parent
+    for d in (here / "aladin", here.parent / "aladin",
+              here.parent / "static" / "aladin", here.parent / "assets" / "aladin"):
+        if (d / "aladin.js").is_file():
+            return d
+    return None
+
+
+def _ensure_aladin_static():
+    """Serves /aladin (once) unless the app already does."""
+    if any(getattr(r, 'path', '') == ALADIN_URL for r in app.routes):
+        return
+    d = _aladin_dir()
+    if d is None:
+        print('[sky_map] aladin.js not found: put aladin.js and aladin.css in an "aladin" folder')
+        return
+    app.add_static_files(ALADIN_URL, str(d))
+
+
+def _resolve_name(name):
+    """Blocking. {"ra", "dec"} (degrees) of an object name: SIMBAD with its
+    mirror (api/name_resolver.py), else VSX; None when unknown. Done here, not
+    by Aladin Lite, whose own resolver (Sesame) is at Strasbourg."""
+    from api.name_resolver import simbad_clients, vsx_position
+    for server, simbad in simbad_clients(TIMEOUT=10):
+        try:
+            table = simbad.query_object(name)
+        except Exception as e:
+            print(f'[sky_map] SIMBAD {server}: {e}')
+            continue
+        if table is None or len(table) == 0:
+            break                      # a server answered: unknown, try VSX
+        cols = {k.lower(): k for k in table.colnames}
+        if 'ra' not in cols or 'dec' not in cols:
+            break
+        ra, dec = table[0][cols['ra']], table[0][cols['dec']]
+        try:
+            return {'ra': float(ra), 'dec': float(dec)}      # degrees (recent astroquery)
+        except (TypeError, ValueError):
+            try:                                             # "00 42 44.3" / "+41 16 09"
+                from astropy.coordinates import SkyCoord
+                coord = SkyCoord(str(ra), str(dec), unit=('hourangle', 'deg'))
+                return {'ra': float(coord.ra.deg), 'dec': float(coord.dec.deg)}
+            except Exception:
+                break
+    pos = vsx_position(name)
+    return {'ra': pos['ra_deg'], 'dec': pos['dec_deg']} if pos else None
 
 
 def _image_size_from_plate_scale(plate_scale):
@@ -54,49 +125,6 @@ def _footprint_corners(ra, dec, plate_scale, orientation):
         ry = dx * sin_a + dy * cos_a
         sky.append([ra + rx / cos_dec, dec + ry])
     return sky
-
-
-def _load_wcs_sessions(conn):
-    return conn.execute("""
-        SELECT
-            sw.entry_type,
-            sw.entry_id,
-            sw.panel_num,
-            sw.ra_center,
-            sw.dec_center,
-            sw.plate_scale,
-            sw.orientation,
-            sw.solver,
-            sw.solved_at,
-            COALESCE(ao_b.name, ao_m.name, 'Unknown')           AS obj_name,
-            COALESCE(be.session_dir, me.session_dir, '')          AS session_dir,
-            COALESCE(sq.quality_score, 0)                         AS quality_score,
-            CASE
-              WHEN sw.entry_type = 'backup'
-              THEN bd.location || '/' || dd.file_path
-              ELSE ms.jpeg_path
-            END                                                    AS image_path,
-            CASE
-              WHEN sw.entry_type = 'backup'
-              THEN bd.location
-              ELSE ms.jpeg_path
-            END                                                    AS location,
-            sw.crval1, sw.crval2,
-            sw.cd1_1, sw.cd1_2, sw.cd2_1, sw.cd2_2,
-            sw.crpix1, sw.crpix2,
-            COALESCE(dw.name, 'Unknown')                       AS dwarf_name
-        FROM SessionWCS sw
-        LEFT JOIN BackupEntry        be   ON sw.entry_type = 'backup' AND sw.entry_id = be.id
-        LEFT JOIN DwarfData          dd   ON be.dwarf_data_id = dd.id
-        LEFT JOIN BackupDrive        bd   ON be.backup_drive_id = bd.id
-        LEFT JOIN AstroObject        ao_b ON be.astro_object_id = ao_b.id
-        LEFT JOIN SessionQuality     sq   ON be.id = sq.backup_entry_id
-        LEFT JOIN Dwarf              dw   ON be.dwarf_id = dw.id
-        LEFT JOIN ManualSessionEntry me   ON sw.entry_type = 'manual' AND sw.entry_id = me.id
-        LEFT JOIN ManualSession      ms   ON me.manual_session_id = ms.id
-        LEFT JOIN AstroObject        ao_m ON me.astro_object_id = ao_m.id
-        ORDER BY sw.entry_id, sw.panel_num
-    """).fetchall()
 
 
 def _quality_color(score):
@@ -211,7 +239,29 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
         'show_hidden': t('sky_map_show_hidden'),
         'hide': t('sky_map_hide'), 'unhide': t('sky_map_unhide'),
     }, ensure_ascii=False)
-    js  = 'var SERVER=' + srv + ';\n'
+    # The ES module is imported by a classic script, so the functions stay
+    # global (the popups' onclick="..."); initAL waits for window.A
+    js  = 'import(' + json.dumps(ALADIN_LOCAL_JS) + ').then(function(m){window.A=m.default;}).catch(function(e){\n'
+    js += '  document.getElementById("info").textContent="Aladin Lite not found: "+e;});\n'
+    js += 'var SERVER=' + srv + ';\n'
+    js += 'var HIPS=' + json.dumps(list(HIPS_DSS_COLOR)) + ';\n'
+    js += 'function _probe(u){var c=new AbortController(),t=setTimeout(function(){c.abort();},4000);\n'
+    js += '  return fetch(u.replace(/\\/$/,"")+"/properties",{signal:c.signal})\n'
+    js += '    .then(function(r){clearTimeout(t);return r.ok?u:null;}).catch(function(){clearTimeout(t);return null;});}\n'
+    # The first of the list that answers, without waiting for the dead ones'
+    # time-out: as soon as one is confirmed and all those before it failed
+    js += 'function _pickSurvey(){return new Promise(function(resolve){\n'
+    js += '  var res=new Array(HIPS.length);\n'
+    js += '  function check(){for(var i=0;i<HIPS.length;i++){if(res[i]===undefined)return;if(res[i])return resolve(res[i]);}resolve(HIPS[0]);}\n'
+    js += '  HIPS.forEach(function(u,i){_probe(u).then(function(r){res[i]=r||false;check();});});\n'
+    js += '});}\n'
+    js += 'function _goto(q){\n'
+    js += '  if(!q||!AL)return;\n'
+    js += '  fetch(SERVER+"/skymap_resolve?name="+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(res){\n'
+    js += '    if(res&&res.ok){AL.gotoRaDec(res.ra,res.dec);}\n'
+    js += '    else{document.getElementById("info").textContent="Not found: "+q;}\n'
+    js += '  }).catch(function(e){document.getElementById("info").textContent="Search error: "+e;});\n'
+    js += '}\n'
     js += 'var TX=' + texts + ';\n'
     # All sessions, then the shown ones: not hidden (unless "show hidden"),
     # the best score per object only when asked - kept in this browser
@@ -487,9 +537,9 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
 
     js += 'function initAL(){\n'
     js += '  if(typeof A==="undefined"){setTimeout(initAL,200);return;}\n'
-    js += '  A.init.then(function(){\n'
+    js += '  A.init.then(_pickSurvey).then(function(SURVEY){\n'
     js += '    var al=A.aladin("#aladin-lite-div",{\n'
-    js += '      survey:"P/DSS2/color",fov:180,target:"' + target + '",\n'
+    js += '      survey:SURVEY,fov:180,target:"' + target + '",\n'
     js += '      showReticle:false,showZoomControl:true,\n'
     js += '      showFullscreenControl:true,showLayersControl:true,\n'
     js += '      backgroundColor:"#111111"\n'
@@ -527,10 +577,10 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     js += '  });\n'
     js += '  document.getElementById("btn-search").addEventListener("click",function(){\n'
     js += '    var q=document.getElementById("search-input").value.trim();\n'
-    js += '    if(q&&AL){AL.gotoObject(q);}\n'
+    js += '    _goto(q);\n'
     js += '  });\n'
     js += '  document.getElementById("search-input").addEventListener("keydown",function(e){\n'
-    js += '    if(e.key==="Enter"){var q=this.value.trim();if(q&&AL)AL.gotoObject(q);}\n'
+    js += '    if(e.key==="Enter"){_goto(this.value.trim());}\n'
     js += '  });\n'
     js += '}\n'
     js += 'if(document.readyState==="loading"){\n'
@@ -541,8 +591,7 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
     html  = '<!DOCTYPE html>\n<html>\n<head>\n'
     html += '<meta charset="utf-8"/>\n'
     html += '<title>Dwarfium Sky Map</title>\n'
-    html += '<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css"/>\n'
-    html += '<script src="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"><' + '/script>\n'
+    html += '<link rel="stylesheet" href="' + ALADIN_LOCAL_CSS + '"/>\n'
     html += '<style>\n' + css + '</style>\n'
     html += '</head>\n<body>\n'
     html += '<div id="info">Loading...</div>\n'
@@ -565,12 +614,13 @@ def _build_aladin_html(footprints, ra_mean, dec_mean, server_url):
 
 def _register_skymap_route(footprints, ra_mean, dec_mean, server_url):
     from fastapi import Response, Query
+    _ensure_aladin_static()
     from fastapi.responses import JSONResponse
 
     html  = _build_aladin_html(footprints, ra_mean, dec_mean, server_url)
     app.routes[:] = [r for r in app.routes
                       if getattr(r, 'path', '') not in
-                      ('/skymap_view', '/skymap_setbase', '/skymap_data', '/skymap_hide')]
+                      ('/skymap_view', '/skymap_setbase', '/skymap_data', '/skymap_hide', '/skymap_resolve')]
     _html = html
     _fps  = footprints
 
@@ -602,6 +652,15 @@ def _register_skymap_route(footprints, ra_mean, dec_mean, server_url):
                 f['hidden'] = bool(hidden)
         return JSONResponse(content={'ok': True})
 
+    @app.get('/skymap_resolve', include_in_schema=False)
+    async def skymap_resolve(name: str = Query('')):
+        """An object name to its position (SIMBAD and its mirror, else VSX)."""
+        name = name.strip()
+        found = await asyncio.to_thread(_resolve_name, name) if name else None
+        if not found:
+            return JSONResponse(content={'ok': False})
+        return JSONResponse(content={'ok': True, **found})
+
     @app.get('/skymap_setbase', include_in_schema=False)
     async def skymap_setbase(base: str = Query('')):
         if base:
@@ -630,7 +689,7 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
         with ui.column().classes('items-end gap-1'):
             open_btn = ui.button(
                 t('sky_map_open_browser'),
-                on_click=lambda: webbrowser.open(server_url + '/skymap_view?v=' + str(int(time.time())))
+                on_click=lambda: open_in_sky_tab(server_url + '/skymap_view?v=' + str(int(time.time())), SKYMAP_TAB)
             ).props('color=primary unelevated size=md icon=travel_explore')
             open_btn.disable()
             ui.label(t('sky_map_open_hint')).classes('text-xs text-gray-500 italic')
@@ -639,30 +698,10 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
     def _load_dwarf_stats(min_q=60):
         from api.dwarf_backup_db import DB_NAME, connect_db, close_db
         c = connect_db(DB_NAME)
-        rows = c.execute("""
-            SELECT
-                COALESCE(dw.name, 'Unknown')                              AS dwarf_name,
-                COUNT(DISTINCT be.id)                                      AS total,
-                COUNT(DISTINCT sw.entry_id)                                AS solved,
-                COUNT(DISTINCT CASE WHEN sq.quality_score >= ? AND sw.entry_id IS NULL
-                                     AND LOWER(COALESCE(ao.name, '')) NOT IN
-                                         ('sun','moon','lune','soleil','jupiter','saturn',
-                                          'saturne','mars','venus','mercury','mercure',
-                                          'uranus','neptune')
-                                    THEN be.id END)                        AS pending,
-                COUNT(DISTINCT CASE WHEN sq.backup_entry_id IS NULL
-                                    THEN be.id END)                        AS no_score
-            FROM BackupEntry be
-            LEFT JOIN Dwarf          dw  ON be.dwarf_id        = dw.id
-            LEFT JOIN SessionQuality sq  ON sq.backup_entry_id = be.id
-            LEFT JOIN AstroObject    ao  ON be.astro_object_id = ao.id
-            LEFT JOIN SessionWCS     sw  ON sw.entry_type = 'backup'
-                                        AND sw.entry_id   = be.id
-                                        AND sw.panel_num  = 0
-            GROUP BY dw.name
-            ORDER BY dw.name
-        """, (min_q,)).fetchall()
-        close_db(c)
+        try:
+            rows = get_wcs_stats_per_dwarf(c, min_q)
+        finally:
+            close_db(c)
         return rows
 
     # ── Slider qualité + status sessions ─────────────────────────────────────
@@ -887,11 +926,7 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
                             _solve_mosaic_panels(conn, session, api_key, astap_db,
                                                  False, 0.2, 'auto')
                             # Count as solved only if at least one panel was resolved
-                            n_solved = conn.execute("""
-                                SELECT COUNT(*) FROM SessionWCS
-                                WHERE entry_type=? AND entry_id=? AND panel_num > 0
-                                  AND ra_center IS NOT NULL
-                            """, (session['entry_type'], session['entry_id'])).fetchone()[0]
+                            n_solved = count_solved_panels(conn, session['entry_type'], session['entry_id'])
                             if n_solved > 0:
                                 counts['solved'] += 1
                                 _update_progress(f'✅ {obj} (mosaic {n_solved} panels)')
@@ -1037,7 +1072,7 @@ def show_sky_map_wcs(conn=None, height='700px', limit=None):
         def _compute():
             try:
                 c    = connect_db(DB_NAME)
-                rows = _load_wcs_sessions(c)
+                rows = get_wcs_sessions(c)
                 if limit:
                     rows = rows[:limit]
                 # Hidden from the map by the user (api/sky_map_hidden.py)

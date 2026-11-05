@@ -1,7 +1,6 @@
-from nicegui import ui, events
+from nicegui import ui
 import sqlite3
 
-from astroquery.simbad import Simbad
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 
@@ -9,12 +8,13 @@ from api.dwarf_backup_db_api import get_dso_filtered, get_dso_registered, get_ds
 from api.dwarf_backup_db_api import get_astro_object_description, update_astro_object_dso, update_astro_object_description, get_db_path
 from api.dwarf_backup_fct import preprocess_dso_catalog_json, hms_to_hours, dms_to_degrees, hours_to_hms, deg_to_dms
 from api.dso_matching import angular_sep_deg
+from api.name_resolver import get_aladin_url
 
-import webbrowser
 from typing import Dict
 
 from dataclasses import dataclass
 from typing import Optional
+from components.sky_link import open_in_sky_tab
 
 from components.i18n import t
 
@@ -52,8 +52,10 @@ class DwarfData:
 shared = {'custom_name': ''}
 
 def open_aladin_sky_map(ra, dec, fov=3):
-    url = f"https://aladin.u-strasbg.fr/AladinLite/?target={ra}+{dec}&fov={fov}&survey=P%2FDSS2%2Fcolor"
-    webbrowser.open(url)
+    """Open an astronomical sky map using an available server."""
+
+    url = get_aladin_url(ra, dec, fov=fov)
+    open_in_sky_tab(url)
 
 def find_nearby_objects(dwarf_data_row, only_unknown=True, radius_deg=1.5, max_results=10):
     ra = float(dwarf_data_row[15])*15
