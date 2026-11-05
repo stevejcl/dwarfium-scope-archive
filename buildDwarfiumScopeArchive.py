@@ -18,7 +18,10 @@ extra_data = [
     f"astroquery/simbad/data/query_criteria_fields.json{sep}astroquery/simbad/data",
     # Bright Star Catalogue of the mosaic by astrometry (api/mosaic_wcs.py)
     f"assets/catalog/bsc5_radec.csv{sep}assets/catalog",
-#    f"tools{sep}tools",
+    # Aladin Lite, self-hosted: the CDS (Strasbourg) servers can be down
+    # (components/sky_map_wcs.py serves it at /aladin)
+    f"assets/aladin{sep}assets/aladin"
+    #    f"tools{sep}tools",
 ]
 
 # pySiril (Explore's automatic photometry, api/photometry_auto.py): its lib/
