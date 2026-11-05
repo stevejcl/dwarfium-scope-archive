@@ -48,6 +48,8 @@ from typing import Optional
 
 import requests
 
+from api.dwarf_backup_db_api import get_dso_image_cache_row, upsert_dso_image_cache
+
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 REQUEST_TIMEOUT = 6  # seconds — keep short, this must never hang the UI
@@ -126,13 +128,7 @@ def _candidate_titles(catalog_id: str, display_name: Optional[str]) -> list[str]
 
 def get_cached_image(conn: sqlite3.Connection, catalog_id: str) -> Optional[dict]:
     """Return the cached row for catalog_id, or None if nothing cached yet."""
-    cur = conn.execute(
-        "SELECT catalog_id, status, thumb_url, file_page_url, artist, "
-        "license_short_name, credit, fetched_at "
-        "FROM DsoImageCache WHERE catalog_id = ?",
-        (catalog_id,),
-    )
-    row = cur.fetchone()
+    row = get_dso_image_cache_row(conn, catalog_id)
     if not row:
         return None
     return {
@@ -171,23 +167,7 @@ def _upsert(conn: sqlite3.Connection, catalog_id: str, status: str, **fields) ->
         "credit": fields.get("credit"),
         "fetched_at": now,
     }
-    conn.execute(
-        """
-        INSERT INTO DsoImageCache
-            (catalog_id, status, thumb_url, file_page_url, artist, license_short_name, credit, fetched_at)
-        VALUES (:catalog_id, :status, :thumb_url, :file_page_url, :artist, :license_short_name, :credit, :fetched_at)
-        ON CONFLICT(catalog_id) DO UPDATE SET
-            status = excluded.status,
-            thumb_url = excluded.thumb_url,
-            file_page_url = excluded.file_page_url,
-            artist = excluded.artist,
-            license_short_name = excluded.license_short_name,
-            credit = excluded.credit,
-            fetched_at = excluded.fetched_at
-        """,
-        row,
-    )
-    conn.commit()
+    upsert_dso_image_cache(conn, row)
     return row
 
 

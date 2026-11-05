@@ -4,7 +4,7 @@ import sqlite3
 from typing import Dict
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db, commit_db
-from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, count_unused_astro_objects, insert_default_groups, clear_astro_object, load_catalog_data
+from api.dwarf_backup_db_api import get_astro_objects, get_dso_name, get_dso_filtered, get_dso_registered, get_dso_description, update_astro_object_dso, export_associations, delete_unused_astro_objects, count_unused_astro_objects, insert_default_groups, clear_astro_object, load_catalog_data, get_default_groups
 
 from components.menu import menu
 from components.app_logo import LOGO_SVG
@@ -265,12 +265,7 @@ class CatalogApp(DbPageMixin):
     def _default_groups(self):
         """Unknown / MOSAIC_Unknown / Manual groups: hidden from the catalog
         (no DSO to assign), listed with the groups for their sessions."""
-        from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
-        placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
-        return [(r[0], r[1], r[2], '', 1, 1) for r in self.conn.execute(
-            f"SELECT id, name, description FROM AstroObject "
-            f"WHERE is_group = 1 AND name IN ({placeholders}) ORDER BY name",
-            DEFAULT_GROUP_NAMES).fetchall()]
+        return [(r[0], r[1], r[2], '', 1, 1) for r in get_default_groups(self.conn)]
 
     def update_row(self, ao_id: int):
         """Refresh only the row that was just modified — no full reload."""

@@ -37,10 +37,10 @@ def _backup_roots(original=False) -> list[str]:
     roots = []
     try:
         from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+        from api.dwarf_backup_db_api import get_backup_drive_roots
         conn = connect_db(DB_NAME)
         try:
-            for location, astro_dir in conn.cursor().execute(
-                    "SELECT location, astronomy_dir FROM BackupDrive WHERE location IS NOT NULL").fetchall():
+            for location, astro_dir in get_backup_drive_roots(conn):
                 if location:
                     roots.append(os.path.normpath(os.path.join(location, astro_dir or "")))
         finally:

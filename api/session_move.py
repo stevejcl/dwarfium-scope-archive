@@ -29,6 +29,11 @@ from typing import Optional
 
 from api.dwarf_backup_db import connect_db, close_db
 from api.archive_paths import RESULT_DIRS
+from api.dwarf_backup_db_api import (
+    get_backup_session_row, get_backup_entry_ids_for_object, get_user_groups, get_dwarf_backup_drives,
+    get_backup_entry_ids_in_drive_for_object, count_backup_entry_attachments, carry_over_backup_entry_data,
+    remove_backup_entry_keep_shared_data, get_backup_drive_location, get_backup_entry_candidates,
+)
 from api.dwarf_backup_fct import (
     scan_backup_folder, extract_astro_name_from_folder, print_log,
 )
@@ -66,18 +71,7 @@ def get_backup_session(conn, backup_entry_id: int) -> Optional[dict]:
     astro_object_id, object_name, group_name, session_date, location,
     astronomy_dir, data_root, session_path (full path of the folder),
     session_name, subfolder (top-level folder holding it, None at root)."""
-    row = conn.execute("""
-        SELECT be.id, be.backup_drive_id, bd.name, be.dwarf_id, be.dwarf_data_id,
-               be.astro_object_id, ao.name, grp.name, be.session_date,
-               bd.location, bd.astronomy_dir, dd.file_path, dw.name, dd.ra, dd.dec
-        FROM BackupEntry be
-        JOIN BackupDrive bd ON be.backup_drive_id = bd.id
-        JOIN DwarfData dd ON be.dwarf_data_id = dd.id
-        LEFT JOIN Dwarf dw ON be.dwarf_id = dw.id
-        LEFT JOIN AstroObject ao ON be.astro_object_id = ao.id
-        LEFT JOIN AstroObject grp ON be.astro_group_id = grp.id
-        WHERE be.id = ?
-    """, (backup_entry_id,)).fetchone()
+    row = get_backup_session_row(conn, backup_entry_id)
     if not row:
         return None
     (entry_id, drive_id, drive_name, dwarf_id, data_id, ao_id, ao_name, group_name,
@@ -125,11 +119,7 @@ def session_image_path(session: dict) -> Optional[str]:
 
 def get_object_backup_sessions(conn, astro_object_id: int) -> list[dict]:
     """Archive sessions whose object or group is astro_object_id."""
-    ids = [r[0] for r in conn.execute("""
-        SELECT be.id FROM BackupEntry be
-        WHERE be.astro_object_id = ? OR be.astro_group_id = ?
-        ORDER BY be.session_date DESC
-    """, (astro_object_id, astro_object_id)).fetchall()]
+    ids = get_backup_entry_ids_for_object(conn, astro_object_id)
     return [s for s in (get_backup_session(conn, i) for i in ids) if s]
 
 
@@ -148,13 +138,8 @@ def find_misfiled_sessions(conn, index: dict, threshold_deg: float) -> list[dict
     sessions.
     """
     from api.dso_association import check_sessions
-    from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
-    placeholders = ", ".join(["?"] * len(DEFAULT_GROUP_NAMES))
     result = []
-    for group_id, name in conn.execute(f"""
-            SELECT id, name FROM AstroObject
-            WHERE is_group = 1 AND name NOT IN ({placeholders})
-            ORDER BY name COLLATE NOCASE""", DEFAULT_GROUP_NAMES).fetchall():
+    for group_id, name in get_user_groups(conn):
         sessions = get_object_backup_sessions(conn, group_id)
         if not sessions:
             continue
@@ -177,9 +162,7 @@ def get_dwarf_archives(conn, dwarf_id: int) -> list[dict]:
     """Archives (BackupDrive) of a Dwarf: id, name, location, astronomy_dir,
     data_root, available (folder reachable now)."""
     archives = []
-    for drive_id, name, location, astronomy_dir in conn.execute(
-            "SELECT id, name, location, astronomy_dir FROM BackupDrive "
-            "WHERE dwarf_id = ? ORDER BY name, id", (dwarf_id,)).fetchall():
+    for drive_id, name, location, astronomy_dir in get_dwarf_backup_drives(conn, dwarf_id):
         if not location:
             continue
         data_root = _data_root(location, astronomy_dir)
@@ -210,9 +193,7 @@ def suggested_subfolders(conn, backup_drive_id: int, astro_object_id: int,
                          exclude_entry_id: Optional[int] = None) -> list[str]:
     """Sub-folders of an archive already holding sessions of the same object."""
     found = []
-    for (entry_id,) in conn.execute(
-            "SELECT id FROM BackupEntry WHERE backup_drive_id = ? AND astro_object_id = ?",
-            (backup_drive_id, astro_object_id)).fetchall():
+    for entry_id in get_backup_entry_ids_in_drive_for_object(conn, backup_drive_id, astro_object_id):
         if entry_id == exclude_entry_id:
             continue
         s = get_backup_session(conn, entry_id)
@@ -224,16 +205,7 @@ def suggested_subfolders(conn, backup_drive_id: int, astro_object_id: int,
 def count_attached_data(conn, backup_entry_id: int) -> dict:
     """Data attached to the BackupEntry (re-attached to the new entry by a
     move; ManualSessionEntry blocks the move)."""
-    def _count(sql):
-        try:
-            return conn.execute(sql, (backup_entry_id,)).fetchone()[0]
-        except Exception:
-            return 0
-    return {
-        "notes": _count("SELECT COUNT(*) FROM SessionNotes WHERE backup_entry_id = ?"),
-        "wcs": _count("SELECT COUNT(*) FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?"),
-        "manual": _count("SELECT COUNT(*) FROM ManualSessionEntry WHERE backup_entry_id = ?"),
-    }
+    return count_backup_entry_attachments(conn, backup_entry_id)
 
 
 def validate_subfolder_name(name: str) -> Optional[str]:
@@ -246,71 +218,6 @@ def validate_subfolder_name(name: str) -> Optional[str]:
     if name in SKIP_DIRS or extract_astro_name_from_folder(name) or "_MOSAIC_" in name:
         return "move_err_name"
     return None
-
-
-def _carry_over_attached_data(conn, old_entry_id: int, new_entry_id: int,
-                              old_path: str, new_path: str):
-    """
-    Re-attach to the new BackupEntry what was computed or entered for the
-    old one (the session is the same, only its folder moved): notes,
-    quality / SkyBot scores and plate solving results. Without this they
-    would be deleted with the old entry (ON DELETE CASCADE), as for a
-    session moved by hand.
-    """
-    with conn:
-        conn.execute("UPDATE SessionNotes SET backup_entry_id = ? WHERE backup_entry_id = ?",
-                     (new_entry_id, old_entry_id))
-        conn.execute("UPDATE SkyBotResult SET backup_entry_id = ? WHERE backup_entry_id = ?",
-                     (new_entry_id, old_entry_id))
-        # The scan has just created a quality row (folder size) for the new
-        # entry: keep the old one, which also holds the scores
-        if conn.execute("SELECT 1 FROM SessionQuality WHERE backup_entry_id = ?",
-                        (old_entry_id,)).fetchone():
-            size_cols = ("folder_size_bytes", "folder_sized_at", "dwarf_size_bytes",
-                         "dwarf_size_no_fits_bytes", "dwarf_sized_at")
-            fresh = conn.execute(
-                f"SELECT {', '.join(size_cols)} FROM SessionQuality WHERE backup_entry_id = ?",
-                (new_entry_id,)).fetchone()
-            conn.execute("DELETE FROM SessionQuality WHERE backup_entry_id = ?", (new_entry_id,))
-            if fresh:
-                # Fill the sizes the old row does not have yet
-                conn.execute(
-                    f"UPDATE SessionQuality SET "
-                    f"{', '.join(f'{c} = COALESCE({c}, ?)' for c in size_cols)} "
-                    f"WHERE backup_entry_id = ?", (*fresh, old_entry_id))
-            conn.execute("UPDATE SessionQuality SET backup_entry_id = ? WHERE backup_entry_id = ?",
-                         (new_entry_id, old_entry_id))
-        # Plate solving: same entry, and the .wcs file moved with the folder
-        old_prefix = os.path.normpath(old_path) + os.sep
-        rows = conn.execute(
-            "SELECT id, wcs_file FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?",
-            (old_entry_id,)).fetchall()
-        if rows:
-            conn.execute("DELETE FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?",
-                         (new_entry_id,))
-        for wcs_id, wcs_file in rows:
-            if wcs_file and os.path.normpath(wcs_file).startswith(old_prefix):
-                wcs_file = os.path.join(new_path, os.path.relpath(os.path.normpath(wcs_file),
-                                                                  os.path.normpath(old_path)))
-            conn.execute("UPDATE SessionWCS SET entry_id = ?, wcs_file = ? WHERE id = ?",
-                         (new_entry_id, wcs_file, wcs_id))
-
-
-def _remove_old_entry(conn, backup_drive_id: int, dwarf_id: int, dwarf_data_id: int):
-    """Remove the BackupEntry of the old location, as
-    delete_backup_entry_and_dwarf_data does when a session folder is
-    deleted from Explore; the DwarfData row is kept while the Dwarf entry or
-    another archive still uses it."""
-    with conn:
-        conn.execute(
-            "DELETE FROM BackupEntry WHERE backup_drive_id = ? AND dwarf_id = ? AND dwarf_data_id = ?",
-            (backup_drive_id, dwarf_id, dwarf_data_id))
-        used = conn.execute(
-            "SELECT (SELECT COUNT(*) FROM BackupEntry WHERE dwarf_data_id = ?)"
-            "     + (SELECT COUNT(*) FROM DwarfEntry WHERE dwarf_data_id = ?)",
-            (dwarf_data_id, dwarf_data_id)).fetchone()[0]
-        if not used:
-            conn.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
 
 
 def move_backup_session(db_name: str, backup_entry_id: int, dst_drive_id: int,
@@ -329,9 +236,7 @@ def move_backup_session(db_name: str, backup_entry_id: int, dst_drive_id: int,
     conn = connect_db(db_name)
     try:
         src = get_backup_session(conn, backup_entry_id)
-        dst = conn.execute(
-            "SELECT id, location, astronomy_dir, dwarf_id FROM BackupDrive WHERE id = ?",
-            (dst_drive_id,)).fetchone()
+        dst = get_backup_drive_location(conn, dst_drive_id)
         if not src or not dst:
             result["error"] = "move_err_not_found"
             return result
@@ -385,11 +290,7 @@ def move_backup_session(db_name: str, backup_entry_id: int, dst_drive_id: int,
     conn = connect_db(db_name)
     try:
         new_id = None
-        for row in conn.execute("""
-                SELECT be.id, dd.file_path FROM BackupEntry be
-                JOIN DwarfData dd ON be.dwarf_data_id = dd.id
-                WHERE be.backup_drive_id = ? AND be.dwarf_id = ? AND be.session_dir = ?
-                """, (dst_drive_id, src["dwarf_id"], src["session_name"])).fetchall():
+        for row in get_backup_entry_candidates(conn, dst_drive_id, src["dwarf_id"], src["session_name"]):
             full = os.path.normcase(os.path.abspath(os.path.join(dst_location, row[1])))
             if full.startswith(os.path.normcase(os.path.abspath(dst_path)) + os.sep):
                 new_id = row[0]
@@ -401,9 +302,9 @@ def move_backup_session(db_name: str, backup_entry_id: int, dst_drive_id: int,
             return result
         result["new_entry_id"] = new_id
         if new_id != backup_entry_id:
-            _carry_over_attached_data(conn, backup_entry_id, new_id,
-                                      src["session_path"], dst_path)
-            _remove_old_entry(conn, src["backup_drive_id"], src["dwarf_id"], src["dwarf_data_id"])
+            carry_over_backup_entry_data(conn, backup_entry_id, new_id,
+                                         src["session_path"], dst_path)
+            remove_backup_entry_keep_shared_data(conn, src["backup_drive_id"], src["dwarf_id"], src["dwarf_data_id"])
         result["ok"] = True
         return result
     finally:

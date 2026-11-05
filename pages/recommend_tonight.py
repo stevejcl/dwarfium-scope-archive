@@ -25,6 +25,7 @@ from components.menu import menu
 from components.app_logo import LOGO_SVG
 from components.db_page_mixin import DbPageMixin
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
+from api.dwarf_backup_db_api import get_simple_sessions_for_recommendation, get_mosaic_sessions_for_recommendation
 from api.wiki_images import get_cached_image, fetch_and_cache_image
 
 # The targets' Wikimedia images load on their own small pool, not NiceGUI's
@@ -251,25 +252,7 @@ def get_sessions_grouped_by_catalog_id(conn, catalog, catalog_sorted, catalog_de
     """
     from api.dwarf_backup_fct import parse_exposure
 
-    rows = conn.execute("""
-        SELECT
-            DC.designation,
-            AO.name,
-            AO.description,
-            DD.ra,
-            DD.dec,
-            BE.id,
-            DD.exp_time,
-            DD.shotsStacked,
-            DD.ircut,
-            BE.session_date
-        FROM BackupEntry BE
-        JOIN DwarfData   DD ON BE.dwarf_data_id = DD.id
-        JOIN AstroObject AO ON BE.astro_object_id = AO.id
-        LEFT JOIN DsoCatalog DC ON AO.dso_id = DC.id
-        WHERE DD.exp_time IS NOT NULL AND DD.shotsStacked IS NOT NULL
-          AND BE.session_dir NOT LIKE '%MOSAIC%'
-    """).fetchall()
+    rows = get_simple_sessions_for_recommendation(conn)
 
     name_index = build_catalog_name_index(catalog)
 
@@ -326,25 +309,7 @@ def get_mosaic_projects_with_panels(conn, catalog, catalog_sorted, catalog_decs)
     """
     from api.dwarf_backup_fct import parse_exposure
 
-    rows = conn.execute("""
-        SELECT
-            DC.designation,
-            AO.name,
-            AO.description,
-            DD.ra,
-            DD.dec,
-            BE.id,
-            DD.exp_time,
-            DD.shotsStacked,
-            SW.panel_num
-        FROM BackupEntry BE
-        JOIN DwarfData   DD ON BE.dwarf_data_id = DD.id
-        JOIN AstroObject AO ON BE.astro_object_id = AO.id
-        LEFT JOIN DsoCatalog DC ON AO.dso_id = DC.id
-        LEFT JOIN SessionWCS SW
-               ON SW.entry_type = 'backup' AND SW.entry_id = BE.id AND SW.panel_num > 0
-        WHERE BE.session_dir LIKE '%MOSAIC%'
-    """).fetchall()
+    rows = get_mosaic_sessions_for_recommendation(conn)
 
     name_index = build_catalog_name_index(catalog)
 

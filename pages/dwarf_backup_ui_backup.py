@@ -431,7 +431,6 @@ class ConfigApp(DbPageMixin):
             ui.notify(t("fill_fields_save_dwarf"), type="negative")
             return
 
-        cursor = self.conn.cursor()
         try:
             add_backupDrive_detail(self.conn, name, desc, location, astroDir, dwarf_id)
             self.refresh_backupDrive_list()

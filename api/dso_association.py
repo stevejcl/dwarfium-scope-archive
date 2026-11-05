@@ -27,7 +27,11 @@ from api.dso_matching import (
     load_dso_catalog, find_nearest_catalog_object, angular_sep_deg_fast,
     build_catalog_name_index, normalize_name,
 )
-from api.dwarf_backup_db_api import DEFAULT_GROUP_NAMES
+from api.dwarf_backup_db_api import (
+    DEFAULT_GROUP_NAMES, get_dso_designation_ids, get_solved_wcs_rows, get_backup_entry_ids_for_data,
+    get_unlinked_astro_objects, get_linked_astro_objects, get_object_backup_session_rows,
+    get_object_dwarf_session_rows, get_object_manual_session_rows, get_astro_object_dso_info,
+)
 from api.dwarf_backup_fct import hms_to_hours, dms_to_degrees, get_Backup_fullpath
 
 
@@ -51,8 +55,7 @@ def load_catalog_index(conn) -> dict:
     catalog = [o for o in load_dso_catalog()
                if o.get("ra_deg") is not None and o.get("dec_deg") is not None]
     catalog_sorted = sorted(catalog, key=lambda o: o["dec_deg"])
-    db_ids = {row[0]: row[1] for row in
-              conn.execute("SELECT designation, id FROM DsoCatalog").fetchall()}
+    db_ids = {row[0]: row[1] for row in get_dso_designation_ids(conn)}
     by_designation = {(o.get("designation") or o.get("id")): o for o in catalog}
     return {
         "sorted": catalog_sorted,
@@ -153,14 +156,7 @@ def parse_coords(ra, dec) -> Optional[tuple[float, float]]:
 def solved_center(conn, entry_type: str, entry_id: int) -> Optional[tuple[float, float]]:
     """Plate-solved centre of a session (SessionWCS): the panel 0 solve, else
     the mean of the individual mosaic panels; None when not solved."""
-    try:
-        rows = conn.execute("""
-            SELECT panel_num, ra_center, dec_center FROM SessionWCS
-            WHERE entry_type = ? AND entry_id = ?
-              AND ra_center IS NOT NULL AND dec_center IS NOT NULL
-        """, (entry_type, entry_id)).fetchall()
-    except Exception:
-        return None  # SessionWCS not created yet
+    rows = get_solved_wcs_rows(conn, entry_type, entry_id)
     if not rows:
         return None
     main = [r for r in rows if r[0] == 0]
@@ -201,8 +197,7 @@ def session_position(conn, source: str, entry_id: int, ra, dec,
         if source == "backup":
             solved = solved_center(conn, "backup", entry_id)
         if solved is None and data_id is not None:
-            for (be_id,) in conn.execute("SELECT id FROM BackupEntry WHERE dwarf_data_id = ?",
-                                         (data_id,)).fetchall():
+            for be_id in get_backup_entry_ids_for_data(conn, data_id):
                 solved = solved_center(conn, "backup", be_id)
                 if solved:
                     break
@@ -237,18 +232,6 @@ def _session_image(image_path: Optional[str]) -> Optional[str]:
     ])
 
 
-def get_unlinked_astro_objects(conn) -> list[tuple]:
-    """AstroObjects (not groups) without dso_id: (id, name, description).
-    Unknown / MOSAIC_Unknown / Manual objects are included: the scan creates
-    one per position, so each can be linked to its own DSO."""
-    return conn.execute("""
-        SELECT id, name, description FROM AstroObject
-        WHERE dso_id IS NULL
-          AND COALESCE(is_group, 0) = 0
-        ORDER BY name COLLATE NOCASE, id
-    """).fetchall()
-
-
 def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True) -> list[dict]:
     """
     Sessions referencing an AstroObject that have a position (plate-solved
@@ -266,22 +249,8 @@ def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True)
     sessions: list[dict] = []
     seen_data_ids: set[int] = set()
 
-    backup_rows = conn.execute("""
-        SELECT be.id, be.session_date, be.session_dir, dd.id, dd.target, dd.ra, dd.dec,
-               dd.file_path, bd.location, be.dwarf_id
-        FROM BackupEntry be
-        JOIN DwarfData dd ON be.dwarf_data_id = dd.id
-        LEFT JOIN BackupDrive bd ON be.backup_drive_id = bd.id
-        WHERE be.astro_object_id = ?
-    """, (astro_object_id,)).fetchall()
-    dwarf_rows = conn.execute("""
-        SELECT de.id, de.session_date, de.session_dir, dd.id, dd.target, dd.ra, dd.dec,
-               dd.file_path, d.usb_astronomy_dir, de.dwarf_id
-        FROM DwarfEntry de
-        JOIN DwarfData dd ON de.dwarf_data_id = dd.id
-        LEFT JOIN Dwarf d ON de.dwarf_id = d.id
-        WHERE de.astro_object_id = ?
-    """, (astro_object_id,)).fetchall()
+    backup_rows = get_object_backup_session_rows(conn, astro_object_id)
+    dwarf_rows = get_object_dwarf_session_rows(conn, astro_object_id)
 
     for source, rows in (("backup", backup_rows), ("dwarf", dwarf_rows)):
         for entry_id, session_date, session_dir, data_id, target, ra, dec, file_path, root, dwarf_id in rows:
@@ -301,16 +270,7 @@ def get_object_sessions(conn, astro_object_id: int, resolve_images: bool = True)
                 "image_ref": ("dwarf", root, file_path, dwarf_id),
             })
 
-    manual_rows = conn.execute("""
-        SELECT mse.id, mse.manual_session_id, mse.session_date, ms.session_name, ms.ra, ms.dec,
-               COALESCE(ms.jpeg_path, ms.stacked_png_path), mse.session_dir,
-               bd.location, msd.location
-        FROM ManualSessionEntry mse
-        JOIN ManualSession ms ON mse.manual_session_id = ms.id
-        LEFT JOIN BackupDrive bd ON mse.backup_drive_id = bd.id
-        LEFT JOIN ManualSessionDrive msd ON mse.manual_session_drive = msd.id
-        WHERE mse.astro_object_id = ?
-    """, (astro_object_id,)).fetchall()
+    manual_rows = get_object_manual_session_rows(conn, astro_object_id)
     seen_manual_ids: set[int] = set()
     for (entry_id, manual_session_id, session_date, name, ra, dec, jpeg_path,
          session_dir, location, manual_location) in manual_rows:
@@ -411,18 +371,6 @@ def session_threshold(session: dict, threshold_deg: float) -> float:
     return threshold_deg * 2 if is_mosaic_session(session) else threshold_deg
 
 
-def get_linked_astro_objects(conn) -> list[tuple]:
-    """AstroObjects (not groups) linked to a DSO:
-    (id, name, description, dso_id, designation)."""
-    return conn.execute("""
-        SELECT ao.id, ao.name, ao.description, ao.dso_id, d.designation
-        FROM AstroObject ao
-        JOIN DsoCatalog d ON ao.dso_id = d.id
-        WHERE COALESCE(ao.is_group, 0) = 0
-        ORDER BY ao.name COLLATE NOCASE, ao.id
-    """).fetchall()
-
-
 def find_inconsistent_objects(conn, index: dict,
                               threshold_deg: float = INCONSISTENT_DEFAULT_DEG) -> list[dict]:
     """
@@ -511,10 +459,7 @@ def check_sessions(conn, index: dict, astro_object_id: int, sessions: list[dict]
                                      "separation_deg": float or None,
                                      "inconsistent": bool, "no_coords": bool}}}
     """
-    row = conn.execute("""
-        SELECT ao.name, COALESCE(ao.is_group, 0), d.designation
-        FROM AstroObject ao LEFT JOIN DsoCatalog d ON ao.dso_id = d.id
-        WHERE ao.id = ?""", (astro_object_id,)).fetchone()
+    row = get_astro_object_dso_info(conn, astro_object_id)
     name, is_group, designation = row if row else (None, 0, None)
 
     coords = {}

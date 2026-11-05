@@ -32,6 +32,7 @@ import time
 
 from nicegui import Client, background_tasks, run, ui
 
+from api.dwarf_backup_db_api import get_drive_sessions_for_mosaic
 from components.i18n import t
 from components.folder_picker import on_this_pc
 
@@ -84,12 +85,7 @@ def _stacked_fits(location, stacked_rel, file_rel):
 def drive_tiles(conn, backup_drive_id) -> list[dict]:
     """The mosaic tiles among the drive's sessions: {entry_id, prefix, row,
     col, label, date, session, fits}, sorted by prefix then date."""
-    rows = conn.execute("""
-        SELECT be.id, be.session_date, be.session_dir, dd.target, dd.stacked_fits_path, dd.file_path, bd.location
-        FROM BackupEntry be
-        JOIN DwarfData dd ON be.dwarf_data_id = dd.id
-        JOIN BackupDrive bd ON be.backup_drive_id = bd.id
-        WHERE be.backup_drive_id = ?""", (backup_drive_id,)).fetchall()
+    rows = get_drive_sessions_for_mosaic(conn, backup_drive_id)
     tiles = []
     for entry_id, date, session_dir, target, stacked_rel, file_rel, location in rows:
         k = tile_key(target, session_dir)

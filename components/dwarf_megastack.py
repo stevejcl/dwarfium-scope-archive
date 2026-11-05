@@ -18,7 +18,7 @@ import os
 import requests
 from nicegui import run, ui
 
-from api.dwarf_backup_db_api import get_dwarf_ble_id, get_dwarf_detail
+from api.dwarf_backup_db_api import get_dwarf_ble_id, get_dwarf_detail, get_measured_fits
 from api.dwarf_backup_fct import count_fits_files, is_Restacked
 from api.peer import peer_url
 from components.i18n import t
@@ -74,23 +74,6 @@ def is_mosaic(row: list) -> bool:
     return "_MOSAIC_" in str(row[_SESSION_DIR] or "")
 
 
-def _measured_fits(conn, dwarf_id, session_dir: str) -> bool | None:
-    """The Storage Report's measure (Measure the Dwarf): raw FITS still on
-    the Dwarf, None when never measured."""
-    try:
-        row = conn.execute(
-            """
-            SELECT MAX(q.dwarf_size_bytes > q.dwarf_size_no_fits_bytes)
-            FROM BackupEntry b JOIN SessionQuality q ON q.backup_entry_id = b.id
-            WHERE b.session_dir = ? AND b.dwarf_id = ? AND q.dwarf_size_bytes IS NOT NULL
-            """,
-            (session_dir, dwarf_id),
-        ).fetchone()
-    except Exception:  # an older database without the measure's columns
-        return None
-    return None if not row or row[0] is None else bool(row[0])
-
-
 def fits_state(conn, dwarf_id, row: list, session_path: str) -> bool | None:
     """Blocking. The session's raw FITS on the Dwarf: read in its folder when
     the Dwarf is plugged in USB (a mosaic's in its panels' subfolders), else
@@ -99,7 +82,7 @@ def fits_state(conn, dwarf_id, row: list, session_path: str) -> bool | None:
     usb = os.path.normpath(str(row[_USB_DIR] or "")) if row[_USB_DIR] else ""
     if usb and session_path and os.path.normpath(session_path).startswith(usb) and os.path.isdir(session_path):
         return bool(count_fits_files(session_path))
-    return _measured_fits(conn, dwarf_id, str(row[_SESSION_DIR] or ""))
+    return get_measured_fits(conn, dwarf_id, str(row[_SESSION_DIR] or ""))
 
 
 def _thumbnail(session_path: str) -> str | None:

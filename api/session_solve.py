@@ -18,20 +18,13 @@ from __future__ import annotations
 from typing import Optional
 
 from api.dwarf_backup_db import connect_db, close_db
+from api.dwarf_backup_db_api import get_solved_center_row, get_session_solve_row
 
 
 def get_solved_position(conn, entry_type: str, entry_id: int) -> Optional[dict]:
     """Plate-solved centre of a session (panel 0), or None:
     {"ra_deg", "dec_deg", "solver", "solved_at"}."""
-    try:
-        row = conn.execute("""
-            SELECT ra_center, dec_center, solver, solved_at FROM SessionWCS
-            WHERE entry_type = ? AND entry_id = ? AND panel_num = 0
-              AND ra_center IS NOT NULL AND dec_center IS NOT NULL
-            ORDER BY solved_at DESC LIMIT 1
-        """, (entry_type, entry_id)).fetchone()
-    except Exception:
-        return None  # SessionWCS not created yet
+    row = get_solved_center_row(conn, entry_type, entry_id)
     if not row:
         return None
     return {"ra_deg": float(row[0]), "dec_deg": float(row[1]),
@@ -43,24 +36,7 @@ def _session_dict(conn, entry_type: str, entry_id: int) -> Optional[dict]:
     (get_sessions_to_solve), for one entry whatever its quality score."""
     keys = ['entry_type', 'entry_id', 'session_date', 'session_dir',
             'dwarf_file_path', 'stacked_fits_path', 'drive_location', 'object_name']
-    if entry_type == 'manual':
-        row = conn.execute("""
-            SELECT 'manual', mse.id, mse.session_date, mse.session_dir,
-                   ms.jpeg_path, ms.stacked_fits_path, msd.location, ao.name
-            FROM ManualSessionEntry mse
-            JOIN ManualSession ms ON mse.manual_session_id = ms.id
-            LEFT JOIN ManualSessionDrive msd ON mse.manual_session_drive = msd.id
-            LEFT JOIN AstroObject ao ON mse.astro_object_id = ao.id
-            WHERE mse.id = ?""", (entry_id,)).fetchone()
-    else:
-        row = conn.execute("""
-            SELECT 'backup', be.id, be.session_date, be.session_dir,
-                   dd.file_path, dd.stacked_fits_path, bd.location, ao.name
-            FROM BackupEntry be
-            JOIN DwarfData dd ON be.dwarf_data_id = dd.id
-            JOIN BackupDrive bd ON be.backup_drive_id = bd.id
-            LEFT JOIN AstroObject ao ON be.astro_object_id = ao.id
-            WHERE be.id = ?""", (entry_id,)).fetchone()
+    row = get_session_solve_row(conn, entry_type, entry_id)
     return dict(zip(keys, row)) if row else None
 
 

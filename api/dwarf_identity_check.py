@@ -24,6 +24,7 @@ import os
 import posixpath
 import sqlite3
 
+from api.dwarf_backup_db_api import count_dwarf_entries_by_session, get_dwarf_name
 from api.dwarf_identity import normalize_ble_id, read_device_identity
 
 # Sessions of another Dwarf needed to say the drive is its own (one
@@ -66,26 +67,16 @@ def sessions_owner(conn: sqlite3.Connection, dwarf_id: int, session_names: list[
     names = sorted({n for n in session_names if n})
     if not names or not dwarf_id:
         return None
-    counts: dict[int, int] = {}
-    try:
-        for i in range(0, len(names), 500):          # SQLite's parameter limit
-            chunk = names[i:i + 500]
-            rows = conn.execute(
-                f"SELECT dwarf_id, COUNT(DISTINCT session_dir) FROM DwarfEntry "
-                f"WHERE session_dir IN ({','.join('?' * len(chunk))}) GROUP BY dwarf_id", chunk).fetchall()
-            for owner, count in rows:
-                counts[owner] = counts.get(owner, 0) + count
-        if counts.get(dwarf_id, 0):
-            return None                                # known sessions of the chosen Dwarf: it is
-        others = [(c, d) for d, c in counts.items() if d != dwarf_id]
-        if not others:
-            return None                                # nothing known: can't tell
-        count, other_id = max(others)
-        if count < min(MIN_FOREIGN_SESSIONS, len(names)):
-            return None
-        row = conn.execute("SELECT name FROM Dwarf WHERE id = ?", (other_id,)).fetchone()
-        return {"other_id": other_id, "other_name": row[0] if row else f"#{other_id}",
-                "count": count, "total": len(names)}
-    except sqlite3.Error as e:
-        print(f"[DB ERROR] sessions_owner: {e}")
+    counts = count_dwarf_entries_by_session(conn, names)
+    if counts is None:                                 # database error
         return None
+    if counts.get(dwarf_id, 0):
+        return None                                    # known sessions of the chosen Dwarf: it is
+    others = [(c, d) for d, c in counts.items() if d != dwarf_id]
+    if not others:
+        return None                                    # nothing known: can't tell
+    count, other_id = max(others)
+    if count < min(MIN_FOREIGN_SESSIONS, len(names)):
+        return None
+    return {"other_id": other_id, "other_name": get_dwarf_name(conn, other_id) or f"#{other_id}",
+            "count": count, "total": len(names)}

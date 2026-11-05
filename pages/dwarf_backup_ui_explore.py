@@ -31,7 +31,8 @@ from api.dwarf_backup_db_api import (
     get_session_present_in_Dwarf, get_session_present_in_backupDrive, get_sessions_backup, toggle_favorite,
     has_related_manual_sessions, get_ManualSession_by_backup_entry_id, insert_session_quality_dwarf_folder_data,
     find_matching_darks, generate_siril_session_json, get_backupDrive_id_from_backupEntry, 
-    get_dwarf_session_error_by_dir, get_sky_filter_entry_ids, get_folder_size_bytes, insert_session_quality_folder_data
+    get_dwarf_session_error_by_dir, get_sky_filter_entry_ids, get_folder_size_bytes, insert_session_quality_folder_data,
+    get_astro_object_coords
 )
 from api.dwarf_backup_fct import (
     get_Backup_fullpath, get_extension, check_files, get_file_path, generate_fits_preview, show_date_session, show_short_date_session,
@@ -1264,11 +1265,7 @@ class ExploreApp(DbPageMixin):
         if all_sessions:
             names += [str(self.current_session_row[13] or "")]
         if object_id is not None:
-            try:
-                row = self.conn.execute("SELECT name, ra, dec FROM AstroObject WHERE id = ?",
-                                        (object_id,)).fetchone()
-            except Exception:
-                row = None
+            row = get_astro_object_coords(self.conn, object_id)
             if row:
                 coords = parse(row[1], row[2])
                 if coords:

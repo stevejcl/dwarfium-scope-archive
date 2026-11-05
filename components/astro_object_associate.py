@@ -6,7 +6,7 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 
 from api.dwarf_backup_db_api import get_dso_filtered, get_dso_registered, get_dso_description, get_dso_registered_by_designation
-from api.dwarf_backup_db_api import get_astro_object_description, update_astro_object_dso, update_astro_object_description
+from api.dwarf_backup_db_api import get_astro_object_description, update_astro_object_dso, update_astro_object_description, get_db_path
 from api.dwarf_backup_fct import preprocess_dso_catalog_json, hms_to_hours, dms_to_degrees, hours_to_hms, deg_to_dms
 from api.dso_matching import angular_sep_deg
 
@@ -326,7 +326,7 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group
                     position = get_solved_position(conn, entry_type, entry_id)
                     if not position:
                         # No plate solving yet: blind solve (the goto RA/DEC is not trusted)
-                        db_path = conn.execute("PRAGMA database_list").fetchone()[2]
+                        db_path = get_db_path(conn)
                         solve_btn.disable()
                         solve_spinner.set_visibility(True)
                         solve_status.set_text(t("plate_solving_running"))
@@ -591,7 +591,7 @@ def show_assign_dialog(db_path_or_conn, astro_object_row, on_done=None):
     if isinstance(db_path_or_conn, str):
         db_path = db_path_or_conn
     else:
-        db_path = db_path_or_conn.execute("PRAGMA database_list").fetchone()[2]
+        db_path = get_db_path(db_path_or_conn)
 
     def _open():
         c = _sqlite3.connect(db_path)

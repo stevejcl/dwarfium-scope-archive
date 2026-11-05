@@ -129,6 +129,16 @@ def get_db_local_dwarf_dir(conn: sqlite3.Connection):
         print(f"[DB ERROR] Failed to fetch local_dwarf_dir: {e}")
         return None
 
+def get_db_path(conn: sqlite3.Connection) -> str:
+    """File of the database behind this connection ("" if unknown) - to open
+    a connection of its own in a worker thread."""
+    try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+        return row[2] if row else ""
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch database path: {e}")
+        return ""
+
 ##################
 # Dwarf functions
 ##################
@@ -428,6 +438,15 @@ def set_backup_scan_date(conn: sqlite3.Connection, backupDrive_id=None):
     except Exception as e:
         print(f"[DB ERROR] Failed to set backup last_backup_scan_date: {e}")
         return False
+
+def get_backup_drive_roots(conn: sqlite3.Connection):
+    """(location, astronomy_dir) of every backup drive with a location."""
+    try:
+        return conn.execute(
+            "SELECT location, astronomy_dir FROM BackupDrive WHERE location IS NOT NULL").fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup drive roots: {e}")
+        return []
 
 ###################
 # Delete functions
@@ -791,6 +810,23 @@ def _fits_condition(conn: sqlite3.Connection, fits):
               AND FitsSize.dwarf_size_bytes {compare} FitsSize.dwarf_size_no_fits_bytes
         )
     """
+
+def get_measured_fits(conn: sqlite3.Connection, dwarf_id, session_dir: str):
+    """The Storage Report's measure (Measure the Dwarf): True when the
+    session's raw FITS are still on the Dwarf, False when gone, None when
+    never measured (or an older database without the measure's columns)."""
+    try:
+        row = conn.execute(
+            """
+            SELECT MAX(q.dwarf_size_bytes > q.dwarf_size_no_fits_bytes)
+            FROM BackupEntry b JOIN SessionQuality q ON q.backup_entry_id = b.id
+            WHERE b.session_dir = ? AND b.dwarf_id = ? AND q.dwarf_size_bytes IS NOT NULL
+            """,
+            (session_dir, dwarf_id),
+        ).fetchone()
+    except Exception:  # an older database without the measure's columns
+        return None
+    return None if not row or row[0] is None else bool(row[0])
 
 
 def get_Objects_dwarf(conn: sqlite3.Connection, dwarf_id=None, only_on_dwarf=None, only_on_backup=None, filter_object=None, min_quality=None, fits=None):
@@ -2514,6 +2550,551 @@ def get_session_present_in_backupDrive(conn: sqlite3.Connection, session_dir=Non
         print(f"[DB ERROR] Failed to get session present in backupDrive for {session_dir}: {e}")
         return []
 
+def get_backup_entries_for_session(conn: sqlite3.Connection, dwarf_id, session):
+    """Backup drives already holding this session (a BackupEntry with this
+    session_dir for this Dwarf: the folder's name alone, or a path ending
+    with it). Rows: (drive_id, drive_name, location, astronomy_dir,
+    session_dir, file_path, backup_entry_id)."""
+    try:
+        return conn.execute(
+            """
+            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir, dd.file_path, be.id
+            FROM BackupEntry be JOIN BackupDrive bd ON bd.id = be.backup_drive_id
+            LEFT JOIN DwarfData dd ON dd.id = be.dwarf_data_id
+            WHERE be.dwarf_id = ? AND (be.session_dir = ? OR be.session_dir LIKE ? OR be.session_dir LIKE ?)
+            """,
+            (dwarf_id, session, f"%/{session}", f"%\\{session}"),
+        ).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup entries for session {session}: {e}")
+        return []
+
+def get_simple_sessions_for_recommendation(conn: sqlite3.Connection):
+    """Non-mosaic backed up sessions with their exposure data and the linked
+    DSO designation (None when not linked) - "What to shoot tonight".
+    Rows: (designation, object name, description, ra (hours), dec, backup_entry_id,
+    exp_time, shotsStacked, ircut, session_date)."""
+    try:
+        return conn.execute("""
+            SELECT
+                DC.designation,
+                AO.name,
+                AO.description,
+                DD.ra,
+                DD.dec,
+                BE.id,
+                DD.exp_time,
+                DD.shotsStacked,
+                DD.ircut,
+                BE.session_date
+            FROM BackupEntry BE
+            JOIN DwarfData   DD ON BE.dwarf_data_id = DD.id
+            JOIN AstroObject AO ON BE.astro_object_id = AO.id
+            LEFT JOIN DsoCatalog DC ON AO.dso_id = DC.id
+            WHERE DD.exp_time IS NOT NULL AND DD.shotsStacked IS NOT NULL
+              AND BE.session_dir NOT LIKE '%MOSAIC%'
+        """).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_simple_sessions_for_recommendation: {e}")
+        return []
+
+def get_mosaic_sessions_for_recommendation(conn: sqlite3.Connection):
+    """Mosaic backed up sessions with their exposure data, the linked DSO
+    designation and the panel number resolved by SessionWCS (None when
+    not resolved) - "What to shoot tonight".
+    Rows: (designation, object name, description, ra (hours), dec, backup_entry_id,
+    exp_time, shotsStacked, panel_num)."""
+    try:
+        return conn.execute("""
+            SELECT
+                DC.designation,
+                AO.name,
+                AO.description,
+                DD.ra,
+                DD.dec,
+                BE.id,
+                DD.exp_time,
+                DD.shotsStacked,
+                SW.panel_num
+            FROM BackupEntry BE
+            JOIN DwarfData   DD ON BE.dwarf_data_id = DD.id
+            JOIN AstroObject AO ON BE.astro_object_id = AO.id
+            LEFT JOIN DsoCatalog DC ON AO.dso_id = DC.id
+            LEFT JOIN SessionWCS SW
+                   ON SW.entry_type = 'backup' AND SW.entry_id = BE.id AND SW.panel_num > 0
+            WHERE BE.session_dir LIKE '%MOSAIC%'
+        """).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_mosaic_sessions_for_recommendation: {e}")
+        return []
+
+def get_wcs_sessions(conn: sqlite3.Connection):
+    """Every plate-solved session (SessionWCS) of the Sky Map, backup copies
+    and manual sessions, ordered by entry then panel. Rows: (entry_type,
+    entry_id, panel_num, ra_center, dec_center, plate_scale, orientation,
+    solver, solved_at, object_name, session_dir, quality_score, image_path,
+    location, crval1, crval2, cd1_1, cd1_2, cd2_1, cd2_2, crpix1, crpix2,
+    dwarf_name)."""
+    try:
+        return conn.execute("""
+            SELECT
+                sw.entry_type,
+                sw.entry_id,
+                sw.panel_num,
+                sw.ra_center,
+                sw.dec_center,
+                sw.plate_scale,
+                sw.orientation,
+                sw.solver,
+                sw.solved_at,
+                COALESCE(ao_b.name, ao_m.name, 'Unknown')           AS obj_name,
+                COALESCE(be.session_dir, me.session_dir, '')          AS session_dir,
+                COALESCE(sq.quality_score, 0)                         AS quality_score,
+                CASE
+                  WHEN sw.entry_type = 'backup'
+                  THEN bd.location || '/' || dd.file_path
+                  ELSE ms.jpeg_path
+                END                                                    AS image_path,
+                CASE
+                  WHEN sw.entry_type = 'backup'
+                  THEN bd.location
+                  ELSE ms.jpeg_path
+                END                                                    AS location,
+                sw.crval1, sw.crval2,
+                sw.cd1_1, sw.cd1_2, sw.cd2_1, sw.cd2_2,
+                sw.crpix1, sw.crpix2,
+                COALESCE(dw.name, 'Unknown')                       AS dwarf_name
+            FROM SessionWCS sw
+            LEFT JOIN BackupEntry        be   ON sw.entry_type = 'backup' AND sw.entry_id = be.id
+            LEFT JOIN DwarfData          dd   ON be.dwarf_data_id = dd.id
+            LEFT JOIN BackupDrive        bd   ON be.backup_drive_id = bd.id
+            LEFT JOIN AstroObject        ao_b ON be.astro_object_id = ao_b.id
+            LEFT JOIN SessionQuality     sq   ON be.id = sq.backup_entry_id
+            LEFT JOIN Dwarf              dw   ON be.dwarf_id = dw.id
+            LEFT JOIN ManualSessionEntry me   ON sw.entry_type = 'manual' AND sw.entry_id = me.id
+            LEFT JOIN ManualSession      ms   ON me.manual_session_id = ms.id
+            LEFT JOIN AstroObject        ao_m ON me.astro_object_id = ao_m.id
+            ORDER BY sw.entry_id, sw.panel_num
+        """).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_wcs_sessions: {e}")
+        return []
+
+def get_wcs_stats_per_dwarf(conn: sqlite3.Connection, min_quality=60):
+    """Sky Map, per Dwarf: sessions total, plate-solved, still to solve
+    (quality >= min_quality, solar system objects left out) and without a
+    quality score. Rows: (dwarf_name, total, solved, pending, no_score)."""
+    try:
+        return conn.execute("""
+            SELECT
+                COALESCE(dw.name, 'Unknown')                              AS dwarf_name,
+                COUNT(DISTINCT be.id)                                      AS total,
+                COUNT(DISTINCT sw.entry_id)                                AS solved,
+                COUNT(DISTINCT CASE WHEN sq.quality_score >= ? AND sw.entry_id IS NULL
+                                     AND LOWER(COALESCE(ao.name, '')) NOT IN
+                                         ('sun','moon','lune','soleil','jupiter','saturn',
+                                          'saturne','mars','venus','mercury','mercure',
+                                          'uranus','neptune')
+                                    THEN be.id END)                        AS pending,
+                COUNT(DISTINCT CASE WHEN sq.backup_entry_id IS NULL
+                                    THEN be.id END)                        AS no_score
+            FROM BackupEntry be
+            LEFT JOIN Dwarf          dw  ON be.dwarf_id        = dw.id
+            LEFT JOIN SessionQuality sq  ON sq.backup_entry_id = be.id
+            LEFT JOIN AstroObject    ao  ON be.astro_object_id = ao.id
+            LEFT JOIN SessionWCS     sw  ON sw.entry_type = 'backup'
+                                        AND sw.entry_id   = be.id
+                                        AND sw.panel_num  = 0
+            GROUP BY dw.name
+            ORDER BY dw.name
+        """, (min_quality,)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_wcs_stats_per_dwarf: {e}")
+        return []
+
+def count_solved_panels(conn: sqlite3.Connection, entry_type, entry_id) -> int:
+    """Number of a mosaic's panels (panel_num > 0) plate-solved so far."""
+    try:
+        return conn.execute("""
+            SELECT COUNT(*) FROM SessionWCS
+            WHERE entry_type=? AND entry_id=? AND panel_num > 0
+              AND ra_center IS NOT NULL
+        """, (entry_type, entry_id)).fetchone()[0]
+    except Exception as e:
+        print(f"[DB ERROR] Failed to count solved panels for {entry_type} {entry_id}: {e}")
+        return 0
+
+def get_drive_sessions_for_mosaic(conn: sqlite3.Connection, backup_drive_id):
+    """The sessions of a backup drive (the Milky Way mosaic tab looks among
+    them for the tiles). Rows: (backup_entry_id, session_date, session_dir,
+    target, stacked_fits_path, file_path, drive_location)."""
+    try:
+        return conn.execute("""
+            SELECT be.id, be.session_date, be.session_dir, dd.target, dd.stacked_fits_path, dd.file_path, bd.location
+            FROM BackupEntry be
+            JOIN DwarfData dd ON be.dwarf_data_id = dd.id
+            JOIN BackupDrive bd ON be.backup_drive_id = bd.id
+            WHERE be.backup_drive_id = ?""", (backup_drive_id,)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch get_drive_sessions_for_mosaic: {e}")
+        return []
+
+def get_dwarf_name(conn: sqlite3.Connection, dwarf_id):
+    """Name of a Dwarf, None if unknown."""
+    try:
+        row = conn.execute("SELECT name FROM Dwarf WHERE id = ?", (dwarf_id,)).fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch dwarf name for {dwarf_id}: {e}")
+        return None
+
+def count_dwarf_entries_by_session(conn: sqlite3.Connection, session_names):
+    """{dwarf_id: number of distinct session folders among session_names
+    archived under that Dwarf (DwarfEntry)}; None on a database error."""
+    counts = {}
+    try:
+        for i in range(0, len(session_names), 500):          # SQLite's parameter limit
+            chunk = session_names[i:i + 500]
+            rows = conn.execute(
+                f"SELECT dwarf_id, COUNT(DISTINCT session_dir) FROM DwarfEntry "
+                f"WHERE session_dir IN ({','.join('?' * len(chunk))}) GROUP BY dwarf_id", chunk).fetchall()
+            for owner, count in rows:
+                counts[owner] = counts.get(owner, 0) + count
+        return counts
+    except Exception as e:
+        print(f"[DB ERROR] Failed to count dwarf entries by session: {e}")
+        return None
+
+def get_solved_center_row(conn: sqlite3.Connection, entry_type, entry_id):
+    """Plate-solved centre of a session (panel 0): (ra_center, dec_center,
+    solver, solved_at), the latest one, None when not solved."""
+    try:
+        return conn.execute("""
+            SELECT ra_center, dec_center, solver, solved_at FROM SessionWCS
+            WHERE entry_type = ? AND entry_id = ? AND panel_num = 0
+              AND ra_center IS NOT NULL AND dec_center IS NOT NULL
+            ORDER BY solved_at DESC LIMIT 1
+        """, (entry_type, entry_id)).fetchone()
+    except Exception:
+        return None  # SessionWCS not created yet
+
+def get_solved_wcs_rows(conn: sqlite3.Connection, entry_type, entry_id):
+    """Every solved SessionWCS row of a session: (panel_num, ra_center,
+    dec_center)."""
+    try:
+        return conn.execute("""
+            SELECT panel_num, ra_center, dec_center FROM SessionWCS
+            WHERE entry_type = ? AND entry_id = ?
+              AND ra_center IS NOT NULL AND dec_center IS NOT NULL
+        """, (entry_type, entry_id)).fetchall()
+    except Exception:
+        return []  # SessionWCS not created yet
+
+def get_session_solve_row(conn: sqlite3.Connection, entry_type, entry_id):
+    """What the plate solving of one session needs, whatever its quality
+    score: (entry_type, entry_id, session_date, session_dir, file_path /
+    jpeg_path, stacked_fits_path, drive location, object name); entry_type
+    'manual' (ManualSessionEntry) or else 'backup' (BackupEntry)."""
+    try:
+        if entry_type == 'manual':
+            return conn.execute("""
+                SELECT 'manual', mse.id, mse.session_date, mse.session_dir,
+                       ms.jpeg_path, ms.stacked_fits_path, msd.location, ao.name
+                FROM ManualSessionEntry mse
+                JOIN ManualSession ms ON mse.manual_session_id = ms.id
+                LEFT JOIN ManualSessionDrive msd ON mse.manual_session_drive = msd.id
+                LEFT JOIN AstroObject ao ON mse.astro_object_id = ao.id
+                WHERE mse.id = ?""", (entry_id,)).fetchone()
+        return conn.execute("""
+            SELECT 'backup', be.id, be.session_date, be.session_dir,
+                   dd.file_path, dd.stacked_fits_path, bd.location, ao.name
+            FROM BackupEntry be
+            JOIN DwarfData dd ON be.dwarf_data_id = dd.id
+            JOIN BackupDrive bd ON be.backup_drive_id = bd.id
+            LEFT JOIN AstroObject ao ON be.astro_object_id = ao.id
+            WHERE be.id = ?""", (entry_id,)).fetchone()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch session to solve {entry_type} {entry_id}: {e}")
+        return None
+
+def get_backup_entry_ids_for_data(conn: sqlite3.Connection, dwarf_data_id):
+    """Ids of the BackupEntry (archive copies) of a DwarfData."""
+    try:
+        return [r[0] for r in conn.execute(
+            "SELECT id FROM BackupEntry WHERE dwarf_data_id = ?", (dwarf_data_id,)).fetchall()]
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup entries of data {dwarf_data_id}: {e}")
+        return []
+
+def get_backup_entry_ids_for_object(conn: sqlite3.Connection, astro_object_id):
+    """Ids of the archive sessions whose object or group is astro_object_id,
+    newest first."""
+    try:
+        return [r[0] for r in conn.execute("""
+            SELECT be.id FROM BackupEntry be
+            WHERE be.astro_object_id = ? OR be.astro_group_id = ?
+            ORDER BY be.session_date DESC
+        """, (astro_object_id, astro_object_id)).fetchall()]
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup entries of object {astro_object_id}: {e}")
+        return []
+
+def get_backup_entry_ids_in_drive_for_object(conn: sqlite3.Connection, backup_drive_id, astro_object_id):
+    """Ids of the sessions of an archive (backup drive) of one object."""
+    try:
+        return [r[0] for r in conn.execute(
+            "SELECT id FROM BackupEntry WHERE backup_drive_id = ? AND astro_object_id = ?",
+            (backup_drive_id, astro_object_id)).fetchall()]
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup entries of drive {backup_drive_id}: {e}")
+        return []
+
+def get_backup_session_row(conn: sqlite3.Connection, backup_entry_id):
+    """An archive session with its paths: (id, backup_drive_id, drive name,
+    dwarf_id, dwarf_data_id, astro_object_id, object name, group name,
+    session_date, drive location, astronomy_dir, file_path, dwarf name, ra,
+    dec); None when unknown."""
+    try:
+        return conn.execute("""
+            SELECT be.id, be.backup_drive_id, bd.name, be.dwarf_id, be.dwarf_data_id,
+                   be.astro_object_id, ao.name, grp.name, be.session_date,
+                   bd.location, bd.astronomy_dir, dd.file_path, dw.name, dd.ra, dd.dec
+            FROM BackupEntry be
+            JOIN BackupDrive bd ON be.backup_drive_id = bd.id
+            JOIN DwarfData dd ON be.dwarf_data_id = dd.id
+            LEFT JOIN Dwarf dw ON be.dwarf_id = dw.id
+            LEFT JOIN AstroObject ao ON be.astro_object_id = ao.id
+            LEFT JOIN AstroObject grp ON be.astro_group_id = grp.id
+            WHERE be.id = ?
+        """, (backup_entry_id,)).fetchone()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup session {backup_entry_id}: {e}")
+        return None
+
+def get_backup_drive_location(conn: sqlite3.Connection, backup_drive_id):
+    """(id, location, astronomy_dir, dwarf_id) of a backup drive, None if unknown."""
+    try:
+        return conn.execute(
+            "SELECT id, location, astronomy_dir, dwarf_id FROM BackupDrive WHERE id = ?",
+            (backup_drive_id,)).fetchone()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup drive {backup_drive_id}: {e}")
+        return None
+
+def get_dwarf_backup_drives(conn: sqlite3.Connection, dwarf_id):
+    """Archives (BackupDrive) of a Dwarf: (id, name, location, astronomy_dir)."""
+    try:
+        return conn.execute(
+            "SELECT id, name, location, astronomy_dir FROM BackupDrive "
+            "WHERE dwarf_id = ? ORDER BY name, id", (dwarf_id,)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup drives of dwarf {dwarf_id}: {e}")
+        return []
+
+def get_backup_entry_candidates(conn: sqlite3.Connection, backup_drive_id, dwarf_id, session_dir):
+    """Sessions of an archive with this folder name for a Dwarf: (id, file_path)."""
+    try:
+        return conn.execute("""
+            SELECT be.id, dd.file_path FROM BackupEntry be
+            JOIN DwarfData dd ON be.dwarf_data_id = dd.id
+            WHERE be.backup_drive_id = ? AND be.dwarf_id = ? AND be.session_dir = ?
+        """, (backup_drive_id, dwarf_id, session_dir)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup entry candidates for {session_dir}: {e}")
+        return []
+
+def count_backup_entry_attachments(conn: sqlite3.Connection, backup_entry_id) -> dict:
+    """Data attached to a BackupEntry: {"notes", "wcs", "manual"} counts
+    (re-attached to the new entry by a move; ManualSessionEntry blocks it)."""
+    def _count(sql):
+        try:
+            return conn.execute(sql, (backup_entry_id,)).fetchone()[0]
+        except Exception:
+            return 0
+    return {
+        "notes": _count("SELECT COUNT(*) FROM SessionNotes WHERE backup_entry_id = ?"),
+        "wcs": _count("SELECT COUNT(*) FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?"),
+        "manual": _count("SELECT COUNT(*) FROM ManualSessionEntry WHERE backup_entry_id = ?"),
+    }
+
+def carry_over_backup_entry_data(conn: sqlite3.Connection, old_entry_id, new_entry_id, old_path, new_path):
+    """
+    Re-attach to the new BackupEntry what was computed or entered for the
+    old one (the session is the same, only its folder moved): notes,
+    quality / SkyBot scores and plate solving results. Without this they
+    would be deleted with the old entry (ON DELETE CASCADE), as for a
+    session moved by hand. One transaction; a database error is raised
+    (the move must not look done).
+    """
+    with conn:
+        conn.execute("UPDATE SessionNotes SET backup_entry_id = ? WHERE backup_entry_id = ?",
+                     (new_entry_id, old_entry_id))
+        conn.execute("UPDATE SkyBotResult SET backup_entry_id = ? WHERE backup_entry_id = ?",
+                     (new_entry_id, old_entry_id))
+        # The scan has just created a quality row (folder size) for the new
+        # entry: keep the old one, which also holds the scores
+        if conn.execute("SELECT 1 FROM SessionQuality WHERE backup_entry_id = ?",
+                        (old_entry_id,)).fetchone():
+            size_cols = ("folder_size_bytes", "folder_sized_at", "dwarf_size_bytes",
+                         "dwarf_size_no_fits_bytes", "dwarf_sized_at")
+            fresh = conn.execute(
+                f"SELECT {', '.join(size_cols)} FROM SessionQuality WHERE backup_entry_id = ?",
+                (new_entry_id,)).fetchone()
+            conn.execute("DELETE FROM SessionQuality WHERE backup_entry_id = ?", (new_entry_id,))
+            if fresh:
+                # Fill the sizes the old row does not have yet
+                conn.execute(
+                    f"UPDATE SessionQuality SET "
+                    f"{', '.join(f'{c} = COALESCE({c}, ?)' for c in size_cols)} "
+                    f"WHERE backup_entry_id = ?", (*fresh, old_entry_id))
+            conn.execute("UPDATE SessionQuality SET backup_entry_id = ? WHERE backup_entry_id = ?",
+                         (new_entry_id, old_entry_id))
+        # Plate solving: same entry, and the .wcs file moved with the folder
+        old_prefix = os.path.normpath(old_path) + os.sep
+        rows = conn.execute(
+            "SELECT id, wcs_file FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?",
+            (old_entry_id,)).fetchall()
+        if rows:
+            conn.execute("DELETE FROM SessionWCS WHERE entry_type = 'backup' AND entry_id = ?",
+                         (new_entry_id,))
+        for wcs_id, wcs_file in rows:
+            if wcs_file and os.path.normpath(wcs_file).startswith(old_prefix):
+                wcs_file = os.path.join(new_path, os.path.relpath(os.path.normpath(wcs_file),
+                                                                  os.path.normpath(old_path)))
+            conn.execute("UPDATE SessionWCS SET entry_id = ?, wcs_file = ? WHERE id = ?",
+                         (new_entry_id, wcs_file, wcs_id))
+
+def remove_backup_entry_keep_shared_data(conn: sqlite3.Connection, backup_drive_id, dwarf_id, dwarf_data_id):
+    """Remove the BackupEntry of a session's old location, as
+    delete_backup_entry_and_dwarf_data does when a session folder is deleted
+    from Explore; the DwarfData row is kept while the Dwarf entry or another
+    archive still uses it. One transaction; a database error is raised."""
+    with conn:
+        conn.execute(
+            "DELETE FROM BackupEntry WHERE backup_drive_id = ? AND dwarf_id = ? AND dwarf_data_id = ?",
+            (backup_drive_id, dwarf_id, dwarf_data_id))
+        used = conn.execute(
+            "SELECT (SELECT COUNT(*) FROM BackupEntry WHERE dwarf_data_id = ?)"
+            "     + (SELECT COUNT(*) FROM DwarfEntry WHERE dwarf_data_id = ?)",
+            (dwarf_data_id, dwarf_data_id)).fetchone()[0]
+        if not used:
+            conn.execute("DELETE FROM DwarfData WHERE id = ?", (dwarf_data_id,))
+
+def get_user_groups(conn: sqlite3.Connection):
+    """Groups (AstroObject is_group) other than the default ones (Unknown /
+    MOSAIC_Unknown / Manual): (id, name), by name."""
+    try:
+        placeholders = ", ".join(["?"] * len(DEFAULT_GROUP_NAMES))
+        return conn.execute(f"""
+            SELECT id, name FROM AstroObject
+            WHERE is_group = 1 AND name NOT IN ({placeholders})
+            ORDER BY name COLLATE NOCASE""", DEFAULT_GROUP_NAMES).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch user groups: {e}")
+        return []
+
+def get_dso_designation_ids(conn: sqlite3.Connection):
+    """(designation, id) of every DsoCatalog row."""
+    try:
+        return conn.execute("SELECT designation, id FROM DsoCatalog").fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch DSO designations: {e}")
+        return []
+
+def get_astro_object_dso_info(conn: sqlite3.Connection, astro_object_id):
+    """(name, is_group, DSO designation or None) of an AstroObject, None if unknown."""
+    try:
+        return conn.execute("""
+            SELECT ao.name, COALESCE(ao.is_group, 0), d.designation
+            FROM AstroObject ao LEFT JOIN DsoCatalog d ON ao.dso_id = d.id
+            WHERE ao.id = ?""", (astro_object_id,)).fetchone()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch astro object {astro_object_id}: {e}")
+        return None
+
+def get_unlinked_astro_objects(conn: sqlite3.Connection) -> list:
+    """AstroObjects (not groups) without dso_id: (id, name, description).
+    Unknown / MOSAIC_Unknown / Manual objects are included: the scan creates
+    one per position, so each can be linked to its own DSO."""
+    try:
+        return conn.execute("""
+            SELECT id, name, description FROM AstroObject
+            WHERE dso_id IS NULL
+              AND COALESCE(is_group, 0) = 0
+            ORDER BY name COLLATE NOCASE, id
+        """).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch unlinked astro objects: {e}")
+        return []
+
+def get_linked_astro_objects(conn: sqlite3.Connection) -> list:
+    """AstroObjects (not groups) linked to a DSO:
+    (id, name, description, dso_id, designation)."""
+    try:
+        return conn.execute("""
+            SELECT ao.id, ao.name, ao.description, ao.dso_id, d.designation
+            FROM AstroObject ao
+            JOIN DsoCatalog d ON ao.dso_id = d.id
+            WHERE COALESCE(ao.is_group, 0) = 0
+            ORDER BY ao.name COLLATE NOCASE, ao.id
+        """).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch linked astro objects: {e}")
+        return []
+
+def get_object_backup_session_rows(conn: sqlite3.Connection, astro_object_id):
+    """Archive sessions of an object: (BackupEntry.id, session_date,
+    session_dir, DwarfData.id, target, ra, dec, file_path, drive location,
+    dwarf_id)."""
+    try:
+        return conn.execute("""
+            SELECT be.id, be.session_date, be.session_dir, dd.id, dd.target, dd.ra, dd.dec,
+                   dd.file_path, bd.location, be.dwarf_id
+            FROM BackupEntry be
+            JOIN DwarfData dd ON be.dwarf_data_id = dd.id
+            LEFT JOIN BackupDrive bd ON be.backup_drive_id = bd.id
+            WHERE be.astro_object_id = ?
+        """, (astro_object_id,)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch backup sessions of object {astro_object_id}: {e}")
+        return []
+
+def get_object_dwarf_session_rows(conn: sqlite3.Connection, astro_object_id):
+    """Sessions of an object on the Dwarf: (DwarfEntry.id, session_date,
+    session_dir, DwarfData.id, target, ra, dec, file_path, usb_astronomy_dir,
+    dwarf_id)."""
+    try:
+        return conn.execute("""
+            SELECT de.id, de.session_date, de.session_dir, dd.id, dd.target, dd.ra, dd.dec,
+                   dd.file_path, d.usb_astronomy_dir, de.dwarf_id
+            FROM DwarfEntry de
+            JOIN DwarfData dd ON de.dwarf_data_id = dd.id
+            LEFT JOIN Dwarf d ON de.dwarf_id = d.id
+            WHERE de.astro_object_id = ?
+        """, (astro_object_id,)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch dwarf sessions of object {astro_object_id}: {e}")
+        return []
+
+def get_object_manual_session_rows(conn: sqlite3.Connection, astro_object_id):
+    """Manual sessions of an object: (ManualSessionEntry.id,
+    manual_session_id, session_date, session_name, ra, dec, image path,
+    session_dir, backup drive location, manual drive location)."""
+    try:
+        return conn.execute("""
+            SELECT mse.id, mse.manual_session_id, mse.session_date, ms.session_name, ms.ra, ms.dec,
+                   COALESCE(ms.jpeg_path, ms.stacked_png_path), mse.session_dir,
+                   bd.location, msd.location
+            FROM ManualSessionEntry mse
+            JOIN ManualSession ms ON mse.manual_session_id = ms.id
+            LEFT JOIN BackupDrive bd ON mse.backup_drive_id = bd.id
+            LEFT JOIN ManualSessionDrive msd ON mse.manual_session_drive = msd.id
+            WHERE mse.astro_object_id = ?
+        """, (astro_object_id,)).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch manual sessions of object {astro_object_id}: {e}")
+        return []
+
 ########################
 # Insert data functions
 ########################
@@ -4108,6 +4689,14 @@ def get_astro_object_description(conn: sqlite3.Connection, object_id=None):
         result = conn.execute('SELECT description FROM AstroObject Where id = ? ', (object_id,)).fetchone()
         return result[0] if result else None
 
+def get_astro_object_coords(conn: sqlite3.Connection, object_id=None):
+    """(name, ra, dec) of an AstroObject, None when not found."""
+    try:
+        return conn.execute("SELECT name, ra, dec FROM AstroObject WHERE id = ?", (object_id,)).fetchone()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch astro object coords {object_id}: {e}")
+        return None
+
 def get_astro_object_groupId(conn: sqlite3.Connection, name):
     with conn:
         result = conn.execute('SELECT id FROM AstroObject Where name = ? and is_group = True', (name,)).fetchone()
@@ -4257,6 +4846,19 @@ def get_default_group_id(name: str):
     """Get the ID of a default group by name."""
     return DEFAULT_GROUP_IDS.get(name)
 
+def get_default_groups(conn: sqlite3.Connection):
+    """The default groups (Unknown / MOSAIC_Unknown / Manual) as rows
+    (id, name, description), ordered by name."""
+    try:
+        placeholders = ', '.join(['?'] * len(DEFAULT_GROUP_NAMES))
+        return conn.execute(
+            f"SELECT id, name, description FROM AstroObject "
+            f"WHERE is_group = 1 AND name IN ({placeholders}) ORDER BY name",
+            DEFAULT_GROUP_NAMES).fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch default groups: {e}")
+        return []
+
 def insert_astro_group(conn: sqlite3.Connection, name=None):
     try:
         if name:
@@ -4278,6 +4880,46 @@ def insert_astro_group(conn: sqlite3.Connection, name=None):
     except Exception as e:
         print(f"[DB ERROR] Failed to insert astro group {name}: {e}")
         return None, None
+
+def get_dso_image_cache_row(conn: sqlite3.Connection, catalog_id):
+    """Cached Wikipedia / Commons image of a DSO (DsoImageCache): (catalog_id,
+    status, thumb_url, file_page_url, artist, license_short_name, credit,
+    fetched_at); None when nothing cached."""
+    try:
+        return conn.execute(
+            "SELECT catalog_id, status, thumb_url, file_page_url, artist, "
+            "license_short_name, credit, fetched_at "
+            "FROM DsoImageCache WHERE catalog_id = ?",
+            (catalog_id,),
+        ).fetchone()
+    except Exception as e:
+        print(f"[DB ERROR] Failed to fetch DSO image cache for {catalog_id}: {e}")
+        return None
+
+def upsert_dso_image_cache(conn: sqlite3.Connection, row: dict) -> bool:
+    """Stores a DSO image lookup (row: the DsoImageCache columns by name)."""
+    try:
+        conn.execute(
+            """
+            INSERT INTO DsoImageCache
+                (catalog_id, status, thumb_url, file_page_url, artist, license_short_name, credit, fetched_at)
+            VALUES (:catalog_id, :status, :thumb_url, :file_page_url, :artist, :license_short_name, :credit, :fetched_at)
+            ON CONFLICT(catalog_id) DO UPDATE SET
+                status = excluded.status,
+                thumb_url = excluded.thumb_url,
+                file_page_url = excluded.file_page_url,
+                artist = excluded.artist,
+                license_short_name = excluded.license_short_name,
+                credit = excluded.credit,
+                fetched_at = excluded.fetched_at
+            """,
+            row,
+        )
+        commit_db(conn)
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to store DSO image cache for {row.get('catalog_id')}: {e}")
+        return False
 
 ################
 # DSO functions

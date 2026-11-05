@@ -29,7 +29,7 @@ import urllib.parse
 from nicegui import run, ui
 
 from api.dwarf_backup_db import DB_NAME, connect_db, close_db
-from api.dwarf_backup_db_api import get_dwarf_detail
+from api.dwarf_backup_db_api import get_dwarf_detail, get_backup_entries_for_session
 from api.dwarf_backup_fct import (
     create_local_dwarf_dir,
     get_local_dwarf_dir,
@@ -75,17 +75,7 @@ def _existing_backups(dwarf_id: int, session: str) -> list[dict]:
     if not conn:
         return []
     try:
-        rows = conn.execute(
-            """
-            SELECT DISTINCT bd.id, bd.name, bd.location, bd.astronomy_dir, be.session_dir, dd.file_path, be.id
-            FROM BackupEntry be JOIN BackupDrive bd ON bd.id = be.backup_drive_id
-            LEFT JOIN DwarfData dd ON dd.id = be.dwarf_data_id
-            WHERE be.dwarf_id = ? AND (be.session_dir = ? OR be.session_dir LIKE ? OR be.session_dir LIKE ?)
-            """,
-            (dwarf_id, session, f"%/{session}", f"%\\{session}"),
-        ).fetchall()
-    except Exception:
-        return []
+        rows = get_backup_entries_for_session(conn, dwarf_id, session)
     finally:
         close_db(conn)
     out = []
