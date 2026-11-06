@@ -11,7 +11,7 @@ siril-cli, the photometry done here in Python. The results land where the
 script puts them: _PHOTOMETRY/<star>/<session>/ at the archive's root.
 
 In a working folder of this PC (user-asked: the archive's drive may be slow):
-<work folder>/<session folder>/ - lights, darks and flat copied there, the
+<work folder>/<session folder>/ - lights, darks and flats copied there, the
 session read once. An earlier run stopped there is resumed (its green
 images kept, its plate solved images skipped). Deleted once the run
 succeeded (user-chosen), kept when it failed - for the next run to resume.
@@ -437,7 +437,7 @@ def earlier_run(work: str, n_lights: int) -> bool:
 
 
 def _copy_session(data: dict, work: str, log, progress, stopped=lambda: False):
-    """lights/, darks/, flat/ of the working folder, as the Siril script's
+    """lights/, darks/, flats/ of the working folder, as the Siril script's
     Load Dwarfium JSON (the bias isn't used by the photometry)."""
     lights = data.get("lights") or []
     if len({os.path.dirname(f) for f in lights}) > 1:
@@ -448,10 +448,10 @@ def _copy_session(data: dict, work: str, log, progress, stopped=lambda: False):
     pairs += [(f, "darks") for f in (data.get("darks") or {}).get("files", [])]
     flat_file, flat_dir = data.get("flat_file"), data.get("flat_dir")
     if flat_file and os.path.isfile(flat_file):
-        pairs.append((flat_file, "flat"))
+        pairs.append((flat_file, "flats"))
     elif flat_dir and os.path.isdir(flat_dir):
-        pairs += [(os.path.join(flat_dir, f), "flat") for f in _fits_in(flat_dir)]
-    for sub in ("lights", "darks", "flat"):
+        pairs += [(os.path.join(flat_dir, f), "flats") for f in _fits_in(flat_dir)]
+    for sub in ("lights", "darks", "flats"):
         os.makedirs(os.path.join(work, sub), exist_ok=True)
     for i, (src, sub) in enumerate(pairs, 1):
         if stopped():
@@ -459,7 +459,7 @@ def _copy_session(data: dict, work: str, log, progress, stopped=lambda: False):
         shutil.copy2(src, os.path.join(work, sub, os.path.basename(src)))
         progress(i, len(pairs), "copy")
     log(f"{len(lights)} light(s), {sum(1 for _, s in pairs if s == 'darks')} dark(s), "
-        f"{sum(1 for _, s in pairs if s == 'flat')} flat(s) copied to {work}")
+        f"{sum(1 for _, s in pairs if s == 'flats')} flat(s) copied to {work}")
 
 
 class AutoPhotometry:
