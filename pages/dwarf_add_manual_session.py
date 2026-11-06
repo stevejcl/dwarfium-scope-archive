@@ -489,26 +489,22 @@ class AddManualSession(DbPageMixin):
                         self.backup_status_label = ui.label("").classes('pb-2')
 
             with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
-                ui.label(f'Backup {self.mode} Files')
+                ui.label(t("backup_files", mode = self.mode))
 
                 # --- SESSION SELECTION ---
                 with ui.row().classes("items-center mb-4"):
                     ui.label(t("select_backup_session"))
                     self.session_dropdown = ui.select(options=[], on_change=self.on_session_select).classes("w-auto min-w-[250px] mobile-full")
                     ui.label(t("session_name"))
-                    self.session_dirname = ui.input(self.session_select_status_label, value="", placeholder="Enter new session name", on_change=self.on_check_session_dirname).classes("min-w-[550px] w-auto overflow-x-auto whitespace-nowrap mobile-full")
-                    ui.label(t("tag")).tooltip("Tag is Optional. The files will be saved in a sub-folder: session_name / tag")
+                    self.session_dirname = ui.input(self.session_select_status_label, value="", placeholder=t("enter_new_session_name"), on_change=self.on_check_session_dirname).classes("min-w-[550px] w-auto overflow-x-auto whitespace-nowrap mobile-full")
+                    ui.label(t("tag")).tooltip(t("tag_optional_tooltip"))
                     self.session_tag = (
-                        ui.input(self.session_select_tag_label, value="", placeholder="optional — e.g. v2, Siril",
+                        ui.input(self.session_select_tag_label, value="", placeholder=t("tag_optional"),
                                  on_change=self.on_check_session_tag)
                         .classes("min-w-[160px] w-auto overflow-x-auto whitespace-nowrap mobile-full")
                     )
                     with ui.row().classes("items-center"):
-                        ui.label("Help: " \
-                            "Tag is Optional. Leave empty for a single version.\n" \
-                            "Use a tag (e.g. 'v2', 'Siril') to keep multiple " \
-                            "imports of the same session side by side.\n" \
-                        ).style('color: grey')
+                        ui.label(t("tag_help_optional")).style('color: grey')
 
                 with ui.row().classes('w-full items-start'):
                     # LEFT COLUMN
@@ -528,7 +524,7 @@ class AddManualSession(DbPageMixin):
                     with ui.column().classes("items-center justify-center text-center w-full"):
                         ui.label(t("select_local_jpg")).classes("mt-2 font-medium")
                         self.file_picker_jpg = ui.upload(
-                            label="Upload JPG",
+                            label=t("upload_files", type = "JPG"),
                             auto_upload=True,
                             multiple=True,
                             on_upload=self.handle_upload,
@@ -537,7 +533,7 @@ class AddManualSession(DbPageMixin):
                     with ui.column().classes("items-center justify-center text-center w-full"):
                         ui.label(t("select_local_png")).classes("mt-2 font-medium")
                         self.file_picker_png = ui.upload(
-                            label="Upload PNG",
+                            label=t("upload_files", type = "PNG"),
                             auto_upload=True,
                             multiple=True,
                             on_upload=self.handle_upload,
@@ -546,13 +542,10 @@ class AddManualSession(DbPageMixin):
                     with ui.column().classes("items-center justify-center text-center w-full"):
                         with ui.row().classes("items-center gap-1"):
                             ui.label(t("select_local_fits")).classes("mt-2 font-medium")
-                            ui.icon("info").classes("text-gray-400 cursor-help mt-2").tooltip(
-                                "First FITS → renamed to stacked-16_{session}.fits\n"
-                                "Additional FITS → original filename kept\n"
-                                "(e.g. Cave_Nebula_Starless.fits stays as-is)"
-                            )
+                            with ui.icon("info").classes("text-gray-400 cursor-help mt-2"):
+                                ui.tooltip(t("fits_optional_tooltip")).classes("whitespace-pre-line")
                         self.file_picker_fit = ui.upload(
-                            label="Upload FITS",
+                            label=t("upload_files", type = "FITS"),
                             auto_upload=True,
                             multiple=True,
                             on_upload=self.handle_upload,
@@ -576,21 +569,22 @@ class AddManualSession(DbPageMixin):
                 #    .classes("mb-4")
                 #)
                 
-                ui.label(f"Select {self.mode} FITS file(s)").classes("mt-2 font-medium")
+                ui.label(t("select_fits_files", mode = self.mode)).classes("mt-2 font-medium")
 
                 with ui.row().classes("w-full items-center gap-2"):
                     self.link_input = ui.input(
-                        placeholder="Enter FITS file URL (https://...)",
+                        placeholder=t("enter_fits_URL"),
                         on_change=self.on_fits_file_change
                     ).props('clearable').classes("flex-1")
                     self.url_suffix_select = ui.select(
-                        options=["", "Auto", "Denoise", "Starless"],
+                        options=["", "Auto", "Stars", "Starless"],
                         value="",
                         label="Type",
-                    ).props('stack-label outlined').classes('w-32').tooltip(
-                        "Suffix added to the filename for Stellar Studio files. "
-                        "Leave empty for the first/main stack."
-                    )
+                    ).props('stack-label outlined').classes('w-32')
+
+                    with self.url_suffix_select:
+                        ui.tooltip(t("tooltip_fits_URL")).classes("whitespace-pre-line")
+        
                     self.add_button = ui.button(t("add"), on_click=self.add_or_remove_file)
 
                 with ui.card().tight().classes('w-full'):
@@ -611,12 +605,11 @@ class AddManualSession(DbPageMixin):
                     self.details_files = ui.list().classes('w-full h-50 overflow-y-auto')
  
                 # --- Observations ---
-                with ui.expansion("📋 Observations (optionnel)", icon="notes").classes("w-full mt-2"):
+                with ui.expansion(t("notes_section"), icon="notes").classes("w-full mt-2"):
                     self._notes_manual_session_id = None  # filled after save
                     self._notes_container = ui.column().classes("w-full")
                     with self._notes_container:
-                        ui.label("Les observations pourront être ajoutées après l'import de la session.") \
-                            .classes("text-sm text-gray-400 italic")
+                        ui.label(t("notes_after_import")).classes("text-sm text-gray-400 italic")
 
                 self.DestinationDirectory = ui.label(t("backup_destination")).classes("mt-2 font-medium")
                 with ui.row().classes("w-full items-center gap-2"):
@@ -626,7 +619,7 @@ class AddManualSession(DbPageMixin):
             # --- ACTION BUTTONS ---
             with ui.row().classes("mt-4 gap-4 items-center"):
                 self.Import_Files = ui.button(
-                    "Import Files" if not self.edit_mode else "Update Session Files",
+                    t("import_files") if not self.edit_mode else "Update Session Files",
                     on_click=self.start_import_files,
                 ).classes("bg-green-600 text-white")
                 self.view_session_button = ui.button(
@@ -760,9 +753,9 @@ class AddManualSession(DbPageMixin):
     def check_status_backup(self):
         if self.backup_path:
            if os.path.exists(self.backup_path):
-               self.backup_status_label.text = "✅ Path detected."
+               self.backup_status_label.text = t("path_detected")
            else:
-               self.backup_status_label.text = "❌ Path not detected."
+               self.backup_status_label.text = t("path_not_detected")
 
     def get_sessions_list(self):
         print("get_sessions_list")
@@ -961,18 +954,18 @@ class AddManualSession(DbPageMixin):
         if os.path.exists(effective):
             if tag:
                 # Directory with this exact tag exists — warn and ask for a new tag
-                self.session_dirname.label = f"⚠️ '{dirname}/{tag}' already exists — choose a different tag or files will be added to the existing one"
-                self.session_tag.label = "Change tag"
+                self.session_dirname.label = t("already_exists_add_tag", dirname = dirname, tag=tag)
+                self.session_tag.label = t("change_tag")
             else:
                 # No tag, base directory already used — suggest using a tag
-                self.session_dirname.label = "⚠️ Already exists — add a Tag to create a new version or files will be added to the existing one"
-                self.session_tag.label ="Add a tag"
+                self.session_dirname.label = t("exists_add_tag")
+                self.session_tag.label = t("add_a_tag")
         else:
             self.session_tag.label = ""
             if tag:
-                self.session_dirname.label = f"new {self.mode} session (tag: {tag})"
+                self.session_dirname.label = t("new_session_tag", mode = self.mode, tag=tag)
             else:
-                self.session_dirname.label = f"new {self.mode} session"
+                self.session_dirname.label = t("new_session_no_tag", mode = self.mode)
 
     def update_remove_button(self):
         self.remove_button.enable() if self.client.storage.uploaded_files  and len(self.client.storage.uploaded_files) > 0 else self.remove_button.disable()

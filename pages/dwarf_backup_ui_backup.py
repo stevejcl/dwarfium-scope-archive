@@ -121,7 +121,7 @@ class ConfigApp(DbPageMixin):
 
                     with ui.card().tight():
                         ui.colors(brand='#A1A0A1')
-                        ui.item_label('Last Scan on:').props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
+                        ui.item_label(t("last_scan")).props('stack-label').classes('pl-3 pr-3 pt-2').classes('text-brand')
                         self.backup_scan_date = ui.label("").classes("pl-3 pr-3 pb-2")
 
             # ── Bottom: action buttons centered ───────────────────────────────

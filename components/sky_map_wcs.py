@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from nicegui import ui, app
 from components.i18n import t
-from components.sky_link import open_in_sky_tab, SKYMAP_TAB
+from components.sky_link import open_in_sky_tab, SKYMAP_TAB, aladin_dir
 from api.image_preview import build_preview_url, set_base_folder
 from api.dwarf_backup_fct import get_relative_file_path
 from api import sky_map_hidden
@@ -46,13 +46,8 @@ HIPS_DSS_COLOR = (
 
 
 def _aladin_dir():
-    """The folder holding aladin.js, None when not found."""
-    here = Path(__file__).resolve().parent
-    for d in (here / "aladin", here.parent / "aladin",
-              here.parent / "static" / "aladin", here.parent / "assets" / "aladin"):
-        if (d / "aladin.js").is_file():
-            return d
-    return None
+    """The folder holding aladin.js, None when not found (components/sky_link.py)."""
+    return aladin_dir()
 
 
 def _ensure_aladin_static():

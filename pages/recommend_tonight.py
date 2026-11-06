@@ -810,8 +810,8 @@ class RecommendTonightApp(DbPageMixin):
 
     def _open_aladin(self, r: TargetRecommendation):
         """Open the target in Aladin Lite (external browser)."""
-        from components.astro_object_associate import open_aladin_sky_map
-        open_aladin_sky_map(r.ra_deg, r.dec_deg)
+        from components.aladin_view import open_aladin_view
+        open_aladin_view(r.ra_deg, r.dec_deg)
 
     def _plan_on_dwarf(self, r: TargetRecommendation):
         """Plan this target alone in Astro Dwarf Session, or add it to

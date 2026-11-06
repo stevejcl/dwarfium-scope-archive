@@ -19,8 +19,7 @@ from api.dso_association import (
     load_catalog_index, check_sessions, parse_coords, make_thumbnail_data_url,
     INCONSISTENT_DEFAULT_DEG,
 )
-from api.name_resolver import get_aladin_url
-from components.sky_link import open_in_sky_tab
+from components.aladin_view import open_aladin_view
 from components.i18n import t
 
 
@@ -242,9 +241,6 @@ async def show_session_image(session, info=None):
     # The sky map server is probed over the network: not on the UI thread
     coords = ((session["ra_deg"], session["dec_deg"]) if session.get("ra_deg") is not None
               else parse_coords(session.get("ra"), session.get("dec")))
-    url = None
-    if coords:
-        url = await run.io_bound(get_aladin_url, coords[0], coords[1], 10 if _is_wide_field(session) else 3)
     with ui.dialog() as dialog, ui.card().style("width: 1100px; max-width: 95vw"):
         ui.label(session["session_name"]).classes("text-sm font-medium break-all")
         ui.label(f"🔭 {session.get('dwarf_name') or '?'} · 💾 {session['drive_name']} · "
@@ -257,9 +253,9 @@ async def show_session_image(session, info=None):
         else:
             ui.label(t("dso_wizard_no_image")).classes("text-sm text-orange-600")
         with ui.row().classes("w-full justify-end gap-2"):
-            if url:
+            if coords:
                 ui.button("Aladin", icon="public",
-                          on_click=lambda u=url: open_in_sky_tab(u)).props("flat")
+                          on_click=lambda: open_aladin_view(coords[0], coords[1], 10 if _is_wide_field(session) else 3)).props("flat")
             ui.button(t("close"), on_click=dialog.close).props("flat")
     dialog.open()
 

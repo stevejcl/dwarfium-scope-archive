@@ -13,7 +13,10 @@ from api.dwarf_backup_db_api import (
     get_or_create_DarkLibrary,
     delete_DarkLibrary,
     scan_dark_library,
+    get_dark_library_locations,
+    get_dwarf_sessions_for_darks,
 )
+from api.dark_missing import analyse_missing_darks
 from api.dark_library_legacy import pair_masters, scan_legacy_darks
 from components.win_log import WinLog
 from components.menu import menu, setStyle
@@ -106,7 +109,7 @@ class DarkLibraryApp(DbPageMixin):
 
                     with ui.card().tight():
                         ui.colors(brand='#A1A0A1')
-                        ui.item_label('Last Scan on:').props('stack-label').classes(
+                        ui.item_label(t("last_scan")).props('stack-label').classes(
                             'pl-3 pr-3 pt-2 text-brand')
                         self.last_scan_label = ui.label("").classes("pl-3 pr-3 pb-2")
 
@@ -119,12 +122,23 @@ class DarkLibraryApp(DbPageMixin):
                           on_click=self.navigate_to_download).props("color=indigo").classes(sizeBTN)
                 ui.button(t("scan_library"),
                           on_click=self.scan_library).props("color=teal").classes(sizeBTN)
+            # The darks the Dwarf's sessions need and the libraries don't have
+            with ui.row().classes("w-full mb-2"):
+                ui.button(t("missing_darks_btn"), icon="rule",
+                          on_click=self.show_missing_darks).props("color=orange").classes(sizeBTN)
+                ui.label(t("missing_darks_btn_hint")).classes("text-xs text-gray-500 self-center")
 
         # ── Inventory card (shown after scan) ────────────────────────────────
         with ui.card().classes("w-full max-w-3xl mx-auto mt-4") as self.inventory_card:
             ui.label(t("dark_inventory")).classes("text-lg font-semibold mb-2")
             self.inventory_container = ui.column().classes('w-full')
         self.inventory_card.visible = False
+
+        # ── Missing darks card (shown by the "Missing darks" button) ─────────
+        with ui.card().classes("w-full max-w-3xl mx-auto mt-4") as self.missing_card:
+            ui.label(t("missing_darks_title")).classes("text-lg font-semibold mb-2")
+            self.missing_container = ui.column().classes('w-full')
+        self.missing_card.visible = False
 
         setStyle()
         self.refresh_library_list()
@@ -148,6 +162,10 @@ class DarkLibraryApp(DbPageMixin):
     def refresh_library_list(self):
         self.libraries = get_DarkLibrary_list(self.conn)
         self.library_map = {}
+        self.inventory_card.visible = False
+        self.inventory_container.clear()
+        self.missing_card.visible = False
+        self.missing_container.clear()
 
         options = []
         for row in self.libraries:
@@ -156,7 +174,7 @@ class DarkLibraryApp(DbPageMixin):
             self.library_map[label] = row
 
         self.library_selector.set_options(options)
-
+        
         # Auto-select if LibraryId was passed
         if self.library_id:
             for label, row in self.library_map.items():
@@ -197,8 +215,15 @@ class DarkLibraryApp(DbPageMixin):
         self.location_input.value = ""
         self.last_scan_label.text = ""
         self.inventory_card.visible = False
+        self.inventory_container.clear()
+        self.missing_card.visible = False
+        self.missing_container.clear()
 
     def load_selected_library(self, _):
+        self.inventory_card.visible = False
+        self.inventory_container.clear()
+        self.missing_card.visible = False
+        self.missing_container.clear()
         label = self.library_selector.value
         if label and label in self.library_map:
             self._fill_form(self.library_map[label])
@@ -397,6 +422,103 @@ class DarkLibraryApp(DbPageMixin):
 
         self._show_inventory(result)
 
+    # =========================================================================
+    # Missing darks
+    # =========================================================================
+
+    async def show_missing_darks(self):
+        """The sessions of the selected Dwarf against the darks of its libraries."""
+        dwarf_name = self.dwarf_selector.value
+        dwarf_id = self.dwarf_name_to_id.get(dwarf_name)
+        if not dwarf_id:
+            ui.notify(t("missing_darks_no_dwarf"), type="warning")
+            return
+        libraries = get_dark_library_locations(self.conn, dwarf_id)
+        if not libraries:
+            ui.notify(t("missing_darks_no_library"), type="warning")
+            return
+        rows = get_dwarf_sessions_for_darks(self.conn, dwarf_id)
+
+        self.missing_card.visible = True
+        self.missing_container.clear()
+        with self.missing_container:
+            with ui.row().classes("items-center gap-2"):
+                ui.spinner(size="md")
+                ui.label(t("missing_darks_running")).classes("text-gray-500")
+        try:
+            result = await run.io_bound(analyse_missing_darks, rows, libraries)
+        except Exception as e:
+            self.missing_container.clear()
+            with self.missing_container:
+                ui.label(f"❌ {e}").classes("text-red-600")
+            return
+        self._show_missing(result, dwarf_name, len(libraries))
+
+    def _show_missing(self, result: dict, dwarf_name: str, n_libraries: int):
+        self.missing_container.clear()
+        cam_label = {"cam_0": "📷 Tele (cam_0)", "cam_1": "📷 Wide (cam_1)"}
+        with self.missing_container:
+            session_key = "session_singular" if result["sessions"] == 1 else "session_plural"
+            lib_key = "library_singular" if n_libraries == 1 else "library_plural"
+
+            ui.label(t(
+                "missing_darks_summary",
+                dwarf=dwarf_name,
+                n=result["sessions"],
+                lib_sessions=t(session_key),
+                ok=result["ok"],
+                libs=n_libraries,
+                lib_label=t(lib_key),
+                partial=result["partial"],
+                none=result["none"]
+            )).classes("text-sm text-gray-700")
+
+            if result["skipped"]:
+                session_key = "session_singular" if result["skipped"] == 1 else "session_plural"
+                ui.label(t(
+                    "missing_darks_skipped",
+                    n=result["skipped"],
+                    lib_sessions=t(session_key)
+                )).classes("text-xs text-gray-500")
+
+            if not result["groups"]:
+                ui.label("✅ " + t("missing_darks_all_ok")).classes("text-green-700 font-semibold mt-2")
+                return
+
+            ui.label(t("missing_darks_hint")).classes("mt-2 font-semibold")
+
+            with ui.row().classes("items-center gap-4 text-xs"):
+                ui.label("🟥 " + t("missing_darks_legend_none")).classes("text-red-600")
+                ui.label("🟧 " + t("missing_darks_legend_temp")).classes("text-orange-600")
+
+            for g in result["groups"]:
+                exp = f"{g['exp_s']:g}"
+                recipe = f"{cam_label.get(g['cam'], g['cam'])}  exp={exp}s  gain={g['gain']}  bin={g['binning']}"
+                if g["min_temp"] is not None and g["max_temp"] is not None:
+                    span = (f"{g['min_temp']}°C" if g["min_temp"] == g["max_temp"]
+                            else f"{g['min_temp']}–{g['max_temp']}°C")
+                    recipe += f"  ~{span}"
+                n = len(g["sessions"])
+                session_key = "session_singular" if n == 1 else "session_plural"
+                # red: no dark of these settings; orange: darks, but not at the
+                # sessions' temperature (user-asked Nov 2026)
+                if g["status"] == "none":
+                    state = t("missing_darks_status_none")
+                    color, icon, quasar = "text-red-600", "block", "red-8"
+                else:
+                    have = ", ".join(f"{tc}°C" for tc in g["available_temps"]) or "?"
+                    state = t("missing_darks_status_temp", have=have)
+                    color, icon, quasar = "text-orange-600", "device_thermostat", "orange-8"
+                with ui.expansion(f"{recipe}  →  {t('missing_darks_n_sessions', n=n, lib_sessions=t(session_key))}",
+                                  icon=icon, caption=state).classes("w-full") \
+                        .props(f"header-class=text-{quasar} expand-icon-class=text-{quasar}"):
+                    for sess in g["sessions"]:
+                        temps = ""
+                        if sess["min_temp"] is not None and sess["max_temp"] is not None:
+                            temps = f"  ({sess['min_temp']}–{sess['max_temp']}°C)"
+                        ui.label(f"• {sess['date'][:10]}  {sess['target'] or '?'}{temps}"
+                                 ).classes(f"text-sm ml-4 {color}")
+
     def _show_legacy_inventory(self, legacy: dict):
         """The DWARF_DARK raw sets without a CALI_FRAME master (all of them on
         a firmware making none, an older session at the same temperature, a
@@ -439,10 +561,10 @@ class DarkLibraryApp(DbPageMixin):
                 ui.label(t("no_dark_files")).classes(
                     "text-orange-600")
                 ui.label(
-                    "Expected format: dark_exp_15.0_gain_80_bin_1_14C.fits"
+                    f"{t('expected_format')}: dark_exp_15.0_gain_80_bin_1_14C.fits"
                 ).classes("text-xs text-gray-500 mt-1")
             elif total:
-                ui.label(f"✅ {total} dark file(s) found.").classes("text-green-700 font-semibold")
+                ui.label(t("total_dark_files", total=total)).classes("text-green-700 font-semibold")
 
             for cam_name, entries in by_cam.items():
                 cam_label = "📷 Tele (cam_0)" if cam_name == "cam_0" else "📷 Wide (cam_1)"
@@ -461,7 +583,7 @@ class DarkLibraryApp(DbPageMixin):
                         for tc, raw in sorted(temps, key=lambda p: p[0]))
                     ui.label(
                         f"  exp={exp}s  gain={gain}  bin={binning}  "
-                        f"→  {len(temps)} file(s)  temps: {temps_str}"
+                        f"→  {len(temps)} {t("darks_files_temp")} {temps_str}"
                     ).classes("text-sm text-gray-700 ml-4")
 
             if unpaired or legacy["errors"]:

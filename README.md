@@ -34,6 +34,7 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 - [Tools](#tools)
 - [Platform support](#platform-support)
 - [Contributing](#contributing)
+- [Third-party components](#third-party-components)
 - [License](#license)
 
 ---
@@ -52,10 +53,10 @@ A desktop application to **back up, organise, explore and process** your [DWARF 
 | **Mosaic** | Stitch multi-panel mosaics, repair partially transferred mosaics, merge panels from different sessions |
 | **Storage Report** | View session sizes by backup drive or Dwarf, identify large sessions, trigger size calculation and Clean/Restore FITS directly |
 | **Image Quality Score** | Automatically score sessions 0–100 based on metadata (stack rate, exposure, darks) and image analysis (dynamic range, contrast, entropy) |
-| **Sky Map** | Visualise all sessions on an interactive Aladin Lite sky map, with WCS footprints, overlap detection and per-panel mosaic display |
+| **Sky Map** | Visualise all sessions on an interactive Aladin Lite sky map (self-hosted, works while the CDS servers are down), with WCS footprints, overlap detection and per-panel mosaic display |
 | **Astrometry** | Resolve session RA/Dec via ASTAP (local) or Nova astrometry.net API (online fallback), storing WCS data for sky map display |
 | **Session Notes** | Record observation conditions per session: moon phase, seeing, location, free-text summary and detailed notes |
-| **DSO Catalog** | Match session targets to a built-in DSO catalog (NGC / IC / Messier), identify targets from RA/Dec coordinates, open in Aladin |
+| **DSO Catalog** | Match session targets to a built-in DSO catalog (NGC / IC / Messier), identify targets from RA/Dec coordinates, open the target in the built-in Aladin Lite viewer |
 | **SkyBot** | Query the IMCCE SkyBot service to detect comets and asteroids visible in the field at the time of the session |
 | **Video Export** | Generate a timelapse-style video slideshow from your favourite or filtered sessions with customisable captions and transitions |
 | **Disk Space** | Live disk space widgets on Dwarf, Backup and Report pages with colour-coded fill bar; cached values shown when the drive is offline |
@@ -556,7 +557,13 @@ Identify which sessions take the most disk space on a backup drive or Dwarf.
 
 ### Sky Map
 
-Visualise your sessions on an interactive sky map powered by **Aladin Lite v3** (opens in an external browser window).
+Visualise your sessions on an interactive sky map powered by **Aladin Lite v3** (opens in a browser tab).
+
+Aladin Lite is **bundled with the application** (`assets/aladin/`, served at `/aladin`), so the map does not depend on the CDS servers in Strasbourg. Only the sky background (HiPS DSS colour) and the object-name lookups come from the network, each with fallbacks:
+
+- **Sky background** — ESA's DSS colour survey first, then the CDS ones; the first that answers is used.
+- **Object names** (SIMBAD) — CDS Strasbourg, then the Harvard mirrors; a mirror that fails is tried last for 15 minutes.
+- **Open in Aladin** (Explore, Recommended tonight, target identification) — shows the target in the same built-in viewer (`/aladin_view`), with a link to [ESASky](https://sky.esa.int/esasky/) and ESASky as the fallback if Aladin Lite is not available. In a web browser the same tab is reused for each target; in the app's own window each one opens a new tab in the system browser, to compare targets side by side.
 
 - Sessions are resolved via **ASTAP** (local solver) or the **Nova astrometry.net API** (online fallback)
 - WCS footprints are drawn for each resolved session; mosaic panels are shown individually
@@ -655,6 +662,15 @@ Contributions are welcome!
 4. Open a pull request
 
 For bugs or feature requests, please [open an issue](https://github.com/stevejcl/dwarfium-scope-archive/issues).
+
+---
+
+## Third-party components
+
+- **[Aladin Lite](https://github.com/cds-astro/aladin-lite)** (CDS, Strasbourg astronomical Data Center) — the interactive sky viewer, shipped unmodified in `assets/aladin/` and used under the [LGPL-3.0](https://github.com/cds-astro/aladin-lite?tab=LGPL-3.0-1-ov-file) license (`LICENSE.txt` and `COPYING.txt` — the LGPL-3.0 and the GPL-3.0 it builds on — are in that folder and shipped with every release). The Aladin logo and link at the bottom right of the view are left intact, as the [terms of use](https://aladin.cds.unistra.fr/AladinLite/) ask.
+- **[SIMBAD](https://simbad.cds.unistra.fr/)** (CDS) and its [Harvard mirror](https://simbad.cfa.harvard.edu/) — object names and positions, through [astroquery](https://astroquery.readthedocs.io/).
+- **ESA Sky / HiPS** ([ESASky](https://sky.esa.int/esasky/), `skies.esac.esa.int`) — sky background and fallback sky map. The DSS surveys come from the Digitized Sky Surveys (STScI / POSS).
+- **[SkyBot](https://vo.imcce.fr/webservices/skybot/)** (IMCCE) — comets and asteroids in the field.
 
 ---
 

@@ -149,6 +149,17 @@ for music_file in Path("assets/music").glob("*"):
         print(f"Copying {music_file} to {dest}")
         shutil.copy2(music_file, dest)
 
+# Copy assets/aladin/ into dist/assets/aladin/: Aladin Lite as a separate file, with
+# its licenses (LGPL-3.0 + GPL-3.0), so that it can be replaced by a modified version
+# (the app looks there first - components/sky_link.py aladin_dir)
+DIST_ALADIN_DIR = DIST_DIR / "assets" / "aladin"
+DIST_ALADIN_DIR.mkdir(parents=True, exist_ok=True)
+for aladin_file in Path("assets/aladin").glob("*"):
+   if aladin_file.is_file():
+       dest = DIST_ALADIN_DIR / aladin_file.name
+       print(f"Copying {aladin_file} to {dest}")
+       shutil.copy2(aladin_file, dest)
+
 # Copy tools/ into dist/tools/ (quality_scan, skybot_scan, etc.)
 #DIST_TOOLS_DIR = DIST_DIR / "tools"
 #DIST_TOOLS_DIR.mkdir(parents=True, exist_ok=True)

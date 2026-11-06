@@ -1538,6 +1538,8 @@ def extract_datetime_from_session_name(session_name: str):
 
 
 def get_session_detail(conn, row, dwarf_id):
+    from components.i18n import t
+
     label_title = ""
     label_text = ""
     thumbnail_path = None
@@ -1573,12 +1575,12 @@ def get_session_detail(conn, row, dwarf_id):
         gain = gainDB if gainDB is not None else "N/A"
         astro_filter = f"{IR_filter}" if IR_filter else "No Filter"
 
-        info_stack = RESTACK if is_Restacked(session_dir) else TAKEN
+        info_stack = t("restack") if is_Restacked(session_dir) else t("taken")
         target = init_target[:10]
         description,_ =  get_name_object(descriptionDB)
         # Building the details string with the star icon
         label_text = f"{description}\n"
-        label_text = label_text + f"{info_stack} with 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, Gain {gain}, {astro_filter} 📊 Stacks {stacks}\n"
+        label_text = label_text + f"{info_stack} {t('with_label')} 🔭 {dwarf_name}{lens} 📅 {session_date} ⚙️ Exp {exp}, {t('gain_label')} {gain}, {astro_filter} 📊 Stacks {stacks}\n"
         label_text = label_text + f" RA: {hours_to_hms(right_ascencion)} | Dec: {deg_to_dms(declination)}\n"
 
         full_path = get_Backup_fullpath (conn, backup_path, "", file_path, dwarf_id)
@@ -1594,8 +1596,8 @@ def get_session_detail(conn, row, dwarf_id):
                 if fits_path and os.path.isfile(fits_path):
                     exposure_time = format_seconds_hms(get_total_exposure(fits_path))
 
-        label_title = f"Session: {session_dir}"
-        label_text = label_text + f"{stacks} stacked shots for a total exposure time of {exposure_time}"
+        label_title = f"{t("session_name")} {session_dir}"
+        label_text = label_text + f"{stacks} {t('stacked_shots') if stacks > 1 else t('stacked_shots_one')} {exposure_time}"
         thumbnail_path = astro_files.get('thumbnail')
         image_path = astro_files.get('jpg') or astro_files.get('png')
         print(image_path)

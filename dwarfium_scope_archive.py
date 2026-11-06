@@ -339,8 +339,12 @@ ui.add_css('''
     }
 ''', shared=True)
 
-from pathlib import Path
-app.add_static_files('/aladin', str(Path(__file__).parent / 'assets' / 'aladin'))
+from components.sky_link import aladin_dir
+
+_ad = aladin_dir()
+if _ad:
+    app.add_static_files('/aladin', str(_ad))
+    print(f"[aladin] folder used: {_ad}")
 
 if __name__ == '__main__':
     freeze_support()  # must be first statement in main guard

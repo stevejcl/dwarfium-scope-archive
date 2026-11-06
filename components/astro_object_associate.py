@@ -8,13 +8,12 @@ from api.dwarf_backup_db_api import get_dso_filtered, get_dso_registered, get_ds
 from api.dwarf_backup_db_api import get_astro_object_description, update_astro_object_dso, update_astro_object_description, get_db_path
 from api.dwarf_backup_fct import preprocess_dso_catalog_json, hms_to_hours, dms_to_degrees, hours_to_hms, deg_to_dms
 from api.dso_matching import angular_sep_deg
-from api.name_resolver import get_aladin_url
 
 from typing import Dict
 
 from dataclasses import dataclass
 from typing import Optional
-from components.sky_link import open_in_sky_tab
+from components.aladin_view import open_aladin_view
 
 from components.i18n import t
 
@@ -50,12 +49,6 @@ class DwarfData:
 
 # used for sharing description field
 shared = {'custom_name': ''}
-
-def open_aladin_sky_map(ra, dec, fov=3):
-    """Open an astronomical sky map using an available server."""
-
-    url = get_aladin_url(ra, dec, fov=fov)
-    open_in_sky_tab(url)
 
 def find_nearby_objects(dwarf_data_row, only_unknown=True, radius_deg=1.5, max_results=10):
     ra = float(dwarf_data_row[15])*15
@@ -526,7 +519,7 @@ def show_dso_dialog(target, ra, dec, objects, conn, astro_object_id, astro_group
 
 
             # ── end comet section ──────────────────────────────────────────────
-            ui.button(t('open_in_aladin'), on_click=lambda: open_aladin_sky_map(pos["ra"], pos["dec"], fov=3.0)).props('flat color=primary')
+            ui.button(t('open_in_aladin'), on_click=lambda: open_aladin_view(pos["ra"], pos["dec"], fov=3.0)).props('flat color=primary')
 
             with ui.row().classes("justify-end mt-4"):
                 custom_name = ui.input(label=t('custom_description2'), value=old_description).bind_value(shared, 'custom_name').classes('mt-2').style('width: 600px; ; max-width: none')
@@ -690,75 +683,3 @@ def show_assign_dialog(db_path_or_conn, astro_object_row, on_done=None):
 
     dialog.open()
 
-def show_dso_dialog_old(target, ra, dec, objects, conn, astro_object_id, astro_group_id, old_description, on_add_dso, on_done = None):
-
-    if error:
-        ui.label(error).classes('text-red-600')
-    elif not objects:
-        ui.label(t("no_nearby_dso")).classes('text-red-600')
-        with ui.dialog() as dialog:
-            with ui.card().classes("w-full p-4").style("max-width: 600px; margin: auto"):
-                ui.label(f'🔭 Target: {target} - RA: {hours_to_hms(ra/15)}, DEC: {deg_to_dms(dec)}').classes('text-lg font-bold')
-                ui.label(t("no_nearby_dso")).classes('text-red-600')
-                ui.button(t('open_in_aladin'), on_click=lambda: open_aladin_sky_map(ra, dec, fov=3.0)).props('flat color=primary')
-
-                custom_name = ui.input(label=t('custom_description2'), value=old_description).classes("w-full mt-4")
-
-                def save_custom_name():
-                    description = custom_name.value.strip()
-                    if description:
-                        # Your logic to store/save the description
-                        update_astro_object_description(conn, astro_object_id, description)
-                        ui.notify(f"✅ Saved as: {description}", type="positive")
-                    else:
-                        ui.notify(t("please_description"), type="warning")
-
-                with ui.row().classes("justify-end mt-4"):
-                    ui.button(t('save'), on_click=save_custom_name).props('color=primary')
-                    ui.button(t('close'), on_click=dialog.close).props('flat')
-        dialog.open()
-    else:
-        with ui.dialog() as dialog:
-            with ui.card().classes("w-full p-4").style("max-width: 2600px; margin: auto"):
-                ui.label(f'🔭 Target: {target} - RA: {hours_to_hms(ra/15)}, DEC: {deg_to_dms(dec)}').classes('text-lg font-bold')
-
-                if not objects:
-                    ui.label(t("no_nearby_dso")).classes('text-red-600')
-                else:
-                    columns=[
-                        {'name': 'name', 'label': 'Object', 'field': 'name'},
-                        {'name': 'type', 'label': t('col_type'), 'field': 'type'},
-                        {'name': 'ra', 'label': 'RA (H)', 'field': 'ra'},
-                        {'name': 'dec', 'label': 'DEC (°)', 'field': 'dec'},
-                        {'name': 'separation_deg', 'label': 'Δθ (°)', 'field': 'separation_deg'},
-                        {'name': 'actions', 'label': 'Actions'},
-                    ]
-
-                    table = ui.table(columns=columns, rows=[], row_key='name').classes('w-full')
-
-                    ui.button(t('open_in_aladin'), on_click=lambda: open_aladin_sky_map(ra, dec, fov=3.0)).props('flat color=primary')
-
-                custom_name = ui.input(label=t('custom_description2')).classes("w-full mt-4")
-
-                if objects:
-                    reload( table, target, objects, astro_object_id, astro_group_id, custom_name)
-                        
-                    ui.update() 
-
-                    # Bind the action
-                    table.on('add_dso', on_add_dso)
-
-                def save_custom_name():
-                    description = custom_name.value.strip()
-                    if description:
-                        # Your logic to store/save the description
-                        update_astro_object_description(conn, astro_object_id, description)
-                        ui.notify(f"✅ Saved as: {description}", type="positive")
-                    else:
-                        ui.notify(t("please_description"), type="warning")
-
-                with ui.row().classes("justify-end mt-4"):
-                    ui.button(t('save'), on_click=save_custom_name).props('color=primary')
-                    ui.button(t('close'), on_click=dialog.close).props('flat')
-
-        dialog.open()

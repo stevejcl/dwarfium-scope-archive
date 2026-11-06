@@ -3450,6 +3450,45 @@ def delete_DarkLibrary(conn, library_id):
         return False
 
 
+def get_dark_library_locations(conn, dwarf_id):
+    """The locations of the Dark Libraries of a Dwarf (through its backup drives)."""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT dl.location FROM DarkLibrary dl
+            JOIN BackupDrive bd ON dl.backup_drive_id = bd.id
+            WHERE bd.dwarf_id = ? AND dl.location IS NOT NULL
+        """, (dwarf_id,))
+        return [r[0] for r in cursor.fetchall()]
+    except Exception as e:
+        print(f"[DB ERROR] get_dark_library_locations: {e}")
+        return []
+
+
+def get_dwarf_sessions_for_darks(conn, dwarf_id):
+    """The sessions of a Dwarf - backed up or still on the Dwarf - with what
+    their darks depend on (api/dark_missing.py).
+    Result columns: [0]DwarfData.id [1]session_date [2]session_dir [3]exp_time
+                    [4]gain [5]binning [6]minTemp [7]maxTemp [8]target"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT dd.id, e.session_date, e.session_dir, dd.exp_time, dd.gain,
+                   dd.binning, dd.minTemp, dd.maxTemp, dd.target
+            FROM (
+                SELECT dwarf_data_id, session_date, session_dir FROM BackupEntry WHERE dwarf_id = ?
+                UNION
+                SELECT dwarf_data_id, session_date, session_dir FROM DwarfEntry WHERE dwarf_id = ?
+            ) e
+            JOIN DwarfData dd ON dd.id = e.dwarf_data_id
+            ORDER BY e.session_date DESC
+        """, (dwarf_id, dwarf_id))
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"[DB ERROR] get_dwarf_sessions_for_darks: {e}")
+        return []
+
+
 def find_matching_darks(conn, dwarf_id, exp_s, gain, binning, min_temp, max_temp, cam_name=None,
                         session_date=None, session_firmware=None):
     """

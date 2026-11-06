@@ -198,7 +198,7 @@ def pair_masters(masters: list[dict], raw_sets: list[dict]) -> list[dict]:
     return [r for r in raw_sets if id(r) not in paired]
 
 
-TEMP_MARGIN_C = 2       # around the session's range: still a match (user-requested Oct 2026)
+TEMP_MARGIN_C = 5       # around the session's range: still a match (user-requested Oct 2026)
 TEMP_SLACK_C = 1        # temperatures this close to the best one count as equal
 UNKNOWN_FRAMES = 10     # a master without _stack_N: a dark session's usual frame count
 ERA_DAYS = 90           # darks this close to the session's date: the same sensor / firmware era

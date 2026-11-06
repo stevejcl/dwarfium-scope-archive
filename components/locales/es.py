@@ -587,8 +587,12 @@ TRANSLATIONS: dict[str, str] = {
     # ── Manual Session ────────────────────────────────────────────────────────────
     "add_manual_session":           "Add Manual Session",  # TODO
     "edit_manual_session":          "Edit Manual Session",  # TODO
+    "enter_new_session_name":       "Enter new session name",  # TODO
+    "backup_files":                 "Backup {mode} Files",  # TODO
     "import_files":                 "Import Files",  # TODO
+    "upload_files":                 "Upload {type}",  # TODO
     "update_session_files":         "Update Session Files",  # TODO
+    "select_fits_files":            "Select {mode} FITS file(s)",  # TODO
     "fits_files_list":              "Added FITS files list",  # TODO
     "choose_failed":                "Choose Failed session",  # TODO
     "choose_new":                   "Choose new session",  # TODO
@@ -602,6 +606,20 @@ TRANSLATIONS: dict[str, str] = {
     "primary_fits_deleted":         "Primary FITS deleted — please upload a replacement.",  # TODO
     "db_saved_failed":              "⚠️ Files saved but database registration failed.",  # TODO
     "tag_optional":                 "Help: Tag is Optional. Leave empty for a single version.\nUse a tag (e.g. 'v2', 'Siril') to keep multiple imports of the same session side by side.\n",  # TODO
+    "tag_help_optional":            "Help: Tag is Optional. Leave empty for a single version.\nUse a tag (e.g. 'v2', 'Siril') to keep multiple imports of the same session side by side.\n",  # TODO
+    "tag_optional_tooltip":         "Tag is Optional. The files will be saved in a sub-folder: session_name / tag",  # TODO
+    "exists_add_tag":               "⚠️ Already exists — add a Tag to create a new version or files will be added to the existing one",  # TODO
+    "already_exists_add_tag":       "⚠️ '{dirname}/{tag}' already exists — choose a different tag or files will be added to the existing one",  # TODO
+    "add_a_tag":                    "Add a tag",  # TODO
+    "change_tag":                   "Change tag",  # TODO
+    "new_session_tag":              "new {mode} session (tag: {tag})",  # TODO
+    "new_session_no_tag":           "new {mode} session",  # TODO
+    "fits_optional_tooltip":        "First FITS → renamed to stacked-16_{session}.fits\nAdditional FITS → original filename kept\n(e.g. Cave_Nebula_Starless.fits stays as-is)",  # TODO
+    "enter_fits_URL":               "Enter FITS file URL (https://...)",  # TODO
+    "tooltip_fits_URL":             "Suffix added to the filename for Stellar Studio files.\nLeave empty for the first/main stack.",  # TODO
+    "stars_only":                   "Stars Only",  # TODO
+    "starless":                     "Starless",  # TODO
+    "update_session_files":         "Update Session Files",  # TODO
     "folder_not_in_loc":            "Selected folder is not inside the Location folder.",  # TODO
     "fits_icon_clicked":            "FITS icon clicked",  # TODO
     "jpg_icon_clicked":             "JPG icon clicked",  # TODO
@@ -758,6 +776,8 @@ TRANSLATIONS: dict[str, str] = {
     "show_all_libraries":           "📋 Show All Libraries",  # TODO
     "no_library_selected":          "No library selected.",  # TODO
     "no_dark_files":                "⚠️ No dark files found matching the naming convention.",  # TODO
+    "expected_format":              "Expected format",  # TODO
+    "total_dark_files":             "✅ {total} dark file(s) found.",  # TODO
     "set_cali_first":               "Please set a CALI_FRAME location first.",  # TODO
     "save_lib_first":               "Save the library first to set the CALI_FRAME location.",  # TODO
     "no_subfolders":                "No subdirectories found in Astronomy folder.",  # TODO
@@ -768,7 +788,27 @@ TRANSLATIONS: dict[str, str] = {
     "legacy_darks_undated":         "undated",  # TODO
     "legacy_darks_unknown":         "⚠️ {n} folder(s) of DWARF_DARK not recognised",  # TODO
     "darks_legacy":                 "(DWARF_DARK raw frames)",  # TODO
+    "darks_files_temp":             "file(s)  temps:",  #TODO
     "darks_master_raws":            " ({n} raw, {date}, firmware {fw})",  # TODO
+    "missing_darks_btn":            "Missing darks",  # TODO
+    "missing_darks_btn_hint":       "Compares the Dwarf's sessions with the darks of its libraries",  # TODO
+    "missing_darks_title":          "Missing darks",  # TODO
+    "missing_darks_running":        "Reading the libraries...",  # TODO
+    "missing_darks_legend_none":    "no dark of these settings",  # TODO
+    "missing_darks_legend_temp":    "darks, but not at the temperature",  # TODO
+    "missing_darks_summary":        "{dwarf} : {n} {lib_sessions}, {ok} covered by the darks of {libs} {lib_label}, {partial} with no dark at their temperature, {none} with no dark of their settings",  # TODO
+    "session_singular":             "session",  # TODO
+    "session_plural":               "sessions",  # TODO
+    "library_singular":             "library",  # TODO
+    "library_plural":               "libraries",  # TODO
+    "missing_darks_skipped":        "{n} {lib_sessions} without exposure or gain left out",  # TODO
+    "missing_darks_all_ok":         "No dark missing for these sessions",  # TODO
+    "missing_darks_hint":           "Darks to take (same exposure, gain and binning as the sessions, at about the temperature given):",  # TODO
+    "missing_darks_status_none":    "no dark of these settings",  # TODO
+    "missing_darks_status_temp":    "darks only at {have}",  # TODO
+    "missing_darks_n_sessions":     "{n} {lib_sessions}",  # TODO
+    "missing_darks_no_dwarf":       "Select a Dwarf first",  # TODO
+    "missing_darks_no_library":     "This Dwarf has no saved Dark Library",  # TODO
     "wcs_mosaic_btn":               "Mosaic (astrometry)",  # TODO
     "wcs_mosaic_title":             "Mosaic by astrometry",  # TODO
     "wcs_mosaic_hint":              "The tiles ticked are assembled: each stacked FITS placed where its sky is (its WCS, else plate solved), refit on the bright stars, its foreground (roof, trees) left out, levelled to its neighbours. The result is linear: background extraction, colour calibration and stretch in Siril.",  # TODO
