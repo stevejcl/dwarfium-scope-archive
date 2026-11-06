@@ -1,5 +1,21 @@
 # Changelog
 
+## [V3.4.7] - 2026-11-06
+
+### Added
+- Integrated Aladin locally into `assets/aladin/` to comply with licensing requirements.
+- Added a fallback mechanism to search alternative servers and verify availability for each request (mitigating issues when primary CDS/Strasbourg servers are unavailable, which previously made Aladin, SIMBAD, and HiPS inaccessible).
+- Integrated Aladin directly into the application, improving speed and availability.
+- Implemented a multi-server rotation/combination for SIMBAD and HiPS requests.
+- Updated the Dwarf Archive Selector script for Siril: bias and flat frames are now copied consistently into `biases/` and `flats/`, and version/labels have been updated. (A merge request has been submitted for official integration into Siril).
+- Add a Dark Library report comparing sessions against available darks in the Dark Library page.
+
+### Fixed
+- Fixed an issue in "What to Shoot Tonight" where filters other than "All" were inactive and displayed no results.
+
+### Changed
+- Moved database queries into dedicated database API files.
+
 ## [V3.4.6] - 2026-10-17
 
 ### Add
