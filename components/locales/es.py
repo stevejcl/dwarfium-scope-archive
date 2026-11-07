@@ -22,6 +22,7 @@ TRANSLATIONS: dict[str, str] = {
     "close":                        "Close",  # TODO
     "delete":                       "🗑️ Delete",  # TODO
     "add":                          "Add",  # TODO
+    "remove":                       "Remove",  # TODO
     "edit":                         "Edit",  # TODO
     "update":                       "Update",  # TODO
     "select":                       "Select",  # TODO
@@ -630,6 +631,28 @@ TRANSLATIONS: dict[str, str] = {
     "please_select_dwarf":          "Please select a Dwarf first",  # TODO
     "empty_archive":                "🗑️ Empty Local Archive",  # TODO
     "remove_all_files":             "🗑️ Remove all files",  # TODO
+    "resolving_image":              '🔍 Resolving Image, please wait..',  # TODO
+    "no_files_remaining_reset":     "⚠️ Upload widget was reset. No files remaining in session.",  # TODO
+    "no_files_remaining":           "No files remaining in session folder.",  # TODO
+    "no_files_to_backup":           "No files to backup.",  # TODO
+    "no_files_to_copy":             "No files to copy.",  # TODO
+    "session_taken":                "Session taken on",  # TODO
+    "total_exposure":               "for a total exposure time of",  # TODO
+    "unresolved":                   "UNRESOLVED",  # TODO
+    "fits_read":                    "✅ FITS read:",  # TODO
+    "original_fallback":            "⚠️ Coordinates from the original linked session were used as fallback.",  # TODO
+    "no_coordinates_found":         "⚠️ No coordinates found in the FITS file — ",  # TODO
+    "original_fallback_end":        "Coordinates from the original linked session were used as fallback.",  # TODO
+    "destination_not_found":        "❌ Destination path not found:",  # TODO
+    "no_permission":                "❌ No permission to create:",   # TODO
+    "os_error_creating":            "❌ OS error while creating",  # TODO
+    "all_files_saving":             "✅ All files saved in:",  # TODO
+    "files_copied":                 "✅ Copied:",  # TODO
+    "files_copied_result":          "files Copied:",  # TODO
+    "files_copied_failed":          "⚠️ Failed to copy",  # TODO
+    "backup_partial":               "⚠️ Backup partially completed",  # TODO
+    "database_error":               "⚠️ Database error:",  # TODO
+    "error_backup":                 "❌ Unexpected error during backup:",  # TODO
 
     # ── DSO Catalog ───────────────────────────────────────────────────────────────
     "catalog":                      "Catalog",  # TODO

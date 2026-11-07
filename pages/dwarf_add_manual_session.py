@@ -315,7 +315,7 @@ class AddManualSession(DbPageMixin):
         self.existing_files_list.clear()
         with self.existing_files_list:
             if not self.existing_files_on_disk:
-                ui.item("No files remaining in session folder.").classes("text-gray-400 text-sm")
+                ui.item(t("no_files_remaining")).classes("text-gray-400 text-sm")
                 return
 
             for file_info in list(self.existing_files_on_disk):
@@ -377,9 +377,9 @@ class AddManualSession(DbPageMixin):
     def set_mode_UI(self):
 
         self.DestinationDirectory.set_text(t("dest_backup_drive_label"))
-        self.DestinationMainDir = "the backup directory!"
-        self.ScanningMessage = "🔍 Scanning Dwarf drive, please wait..."
-        self.EndScanningMessage = "End of Scanning Dwarf drive"
+        self.DestinationMainDir = t("the_backup_dir")
+        self.ScanningMessage = t("scanning_dwarf_drive")
+        self.EndScanningMessage = t("end_scanning_dwarf")
 
     def switch_mode(self):
         self.mode = self.mode_toggle.value
@@ -619,11 +619,11 @@ class AddManualSession(DbPageMixin):
             # --- ACTION BUTTONS ---
             with ui.row().classes("mt-4 gap-4 items-center"):
                 self.Import_Files = ui.button(
-                    t("import_files") if not self.edit_mode else "Update Session Files",
+                    t("import_files") if not self.edit_mode else t("update_session_files"),
                     on_click=self.start_import_files,
                 ).classes("bg-green-600 text-white")
                 self.view_session_button = ui.button(
-                    "🔭 View Session in Explore",
+                    t("view_session_explore"),
                     on_click=lambda: None,
                 ).props("color=teal")
                 self.view_session_button.visible = False
@@ -1047,7 +1047,7 @@ class AddManualSession(DbPageMixin):
             )
         else:
             ui.notify(
-                "⚠️ Upload widget was reset. No files remaining in session.",
+                t("no_files_remaining_reset"),
                 type='warning',
             )
 
@@ -1129,7 +1129,7 @@ class AddManualSession(DbPageMixin):
         # Reset state
         self.selected_file = None
         self.refresh_fits_file_list_uploaded()
-        self.add_button.text = "Add"
+        self.add_button.text = t("add")
 
     def download_fits(self, url):
         """Run requests.get in a background thread."""
@@ -1190,17 +1190,17 @@ class AddManualSession(DbPageMixin):
 
     def on_fits_file_change(self, e):
         self.selected_file = None
-        self.add_button.text = "Add"
+        self.add_button.text = t("add")
         return
 
     def on_fits_file_selected(self, selected_name):
         if not selected_name:
             self.selected_file = None
-            self.add_button.text = "Add"
+            self.add_button.text = t("add")
             return
 
         self.selected_file = next((f for f in self.uploaded_fits_files if f["name"] == selected_name), None)
-        self.add_button.text = "Remove"
+        self.add_button.text = t("remove")
 
     def refresh_fits_file_list_uploaded(self):
         if self.details_fits_files:
@@ -1291,8 +1291,8 @@ class AddManualSession(DbPageMixin):
                     date_extract = extract_datetime_from_session_name(name)
                     date_obs = date_extract.strftime("%B %d, %Y at %I:%M:%S %p") if date_extract else "N/A"
 
-                    ui.item(f"Session taken on {date_obs}").classes('text-indigo-600')
-                    ui.item("Dwarf Target: UNRESOLVED").classes('text-green-600')
+                    ui.item(f"{t("session_taken")} {date_obs}").classes('text-indigo-600')
+                    ui.item(f"{t("dwarf_target")}: {t("unresolved")}").classes('text-green-600')
 
                     with ui.row():
                         ui.button(t("resolve_file"), on_click=resolve_and_refresh)
@@ -1300,7 +1300,7 @@ class AddManualSession(DbPageMixin):
 
                 # --- CASE 2: FITS metadata available ---
                 else:
-                    ui.notify(f"✅ FITS read: {self.meta_info.get('OBJECT')} (RA={self.meta_info.get('RA')}, DEC={self.meta_info.get('DEC')})")
+                    ui.notify(f"{t("fits_read")} {self.meta_info.get('OBJECT')} (RA={self.meta_info.get('RA')}, DEC={self.meta_info.get('DEC')})")
 
                     self.current_file_info = {
                         "path": tmp_path,
@@ -1310,7 +1310,7 @@ class AddManualSession(DbPageMixin):
                         "is_temp": True,
                     }
 
-                    ui.item(f"Dwarf Target: {self.meta_info.get('OBJECT')}").classes('text-green-600')
+                    ui.item(f"{t("dwarf_target")}: {self.meta_info.get('OBJECT')}").classes('text-green-600')
                     ui.item(f"RA: {hours_to_hms(self.meta_info.get('RA'))} | Dec: {deg_to_dms(self.meta_info.get('DEC'))}").classes('text-purple-600')
 
                     lens = self.meta_info.get('CAMERA', 'N/A')
@@ -1330,7 +1330,7 @@ class AddManualSession(DbPageMixin):
                         if self.meta_info.get('TEMP', ''):
                             ui.item(f"Temp: {self.meta_info.get('TEMP','N/A')}").classes('text-sky-700')
 
-                    ui.item(f"Session taken on {date_obs} for a total exposure time of {exposure_time}").classes('text-indigo-600')
+                    ui.item(f"{t("session_taken")} {date_obs} {t("total_exposure")} {exposure_time}").classes('text-indigo-600')
 
                     with ui.row():
                         # Offer resolution when RA or DEC is missing from the FITS header
@@ -1358,7 +1358,7 @@ class AddManualSession(DbPageMixin):
                     if key in self.meta_info:
                         self.main_meta_info[key] = self.meta_info[key]
 
-            print(f"Dwarf Target: {self.meta_info.get('OBJECT')} RA: {hours_to_hms(self.meta_info.get('RA'))} | Dec: {deg_to_dms(self.meta_info.get('DEC'))}")
+            print(f"{t("dwarf_target")}: {self.meta_info.get('OBJECT')} RA: {hours_to_hms(self.meta_info.get('RA'))} | Dec: {deg_to_dms(self.meta_info.get('DEC'))}")
             astro_name = self.meta_info.get('OBJECT')
             find_unknown = False
             if astro_name and (astro_name.lower() == UNKNOWN or astro_name.lower() == MOSAIC_UNKNOWN or astro_name.lower() == MANUAL):
@@ -1375,7 +1375,7 @@ class AddManualSession(DbPageMixin):
             with self.details_files:
 
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"Dwarf Target: {self.meta_info.get('OBJECT')}").classes('text-green-600')
+                    ui.item(f"{t("dwarf_target")}: {self.meta_info.get('OBJECT')}").classes('text-green-600')
                     if self.dso_catalog:
                         ui.button(t("identify_target"), on_click=lambda: self.on_identify_target_click(dwarf_data, ""))
 
@@ -1402,14 +1402,14 @@ class AddManualSession(DbPageMixin):
                     if self.meta_info.get('TEMP', ''):
                         ui.item(f"Temp: {self.meta_info.get('TEMP','N/A')}").classes('text-sky-700')
 
-                ui.item(f"Session taken on {date_obs} for a total exposure time of {exposure_time}").classes('text-indigo-600')
+                ui.item(f"{t("session_taken")} {date_obs} {t("total_exposure")} {exposure_time}").classes('text-indigo-600')
 
         else:
             self.linked_data.update({ "astro_object_id": None})
 
             with self.details_files:
                 with ui.row().classes('w-full gap-8 items-start'):
-                    ui.item(f"Dwarf Target: UNRESOLVED").classes('text-green-600')
+                    ui.item(f"{t("dwarf_target")}: {t("unresolved")}").classes('text-green-600')
                     ui.button(t("resolve_files"), on_click=self.resolve_files_action)
 
         self.details_files.update();
@@ -1432,7 +1432,7 @@ class AddManualSession(DbPageMixin):
 
         # Update the label text or text
         if classified:
-            classified_text = f"Classified as: {classified}"
+            classified_text = f"{t("classified_as")} {classified}"
 
         if not text_only and self.classified_label:
             self.classified_label.set_text(classified_text)
@@ -1461,7 +1461,7 @@ class AddManualSession(DbPageMixin):
                             self.meta_info['DEC'] = fallback_dec
             if any(f.get('ra_from_fallback') for f in fits_files):
                 ui.notify(
-                    "⚠️ Coordinates from the original linked session were used as fallback.",
+                    t("original_fallback"),
                     type="warning", timeout=8000,
                 )
             elif fits_files:
@@ -1479,7 +1479,7 @@ class AddManualSession(DbPageMixin):
             with ui.card().style('width: 800px; max-width: none'):
                 error_label = ui.label().style('color: red')  # Empty label for future error messages
                 close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
-                ui.label(f"🔍 Resolving Image, please wait...")
+                ui.label(t("resolving_image"))
                 spiner = ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
@@ -1507,8 +1507,7 @@ class AddManualSession(DbPageMixin):
         fallback_used = any(f.get('ra_from_fallback') for f in fits_files)
         if fallback_used:
             ui.notify(
-                "⚠️ No coordinates found in the FITS file — "
-                "coordinates from the original linked session were used as fallback.",
+                f"{t("no_coordinates_found")}{t("original_fallback_end")}",
                 type="warning",
                 timeout=8000,
             )
@@ -1540,7 +1539,7 @@ class AddManualSession(DbPageMixin):
                         self.meta_info['RA'] = fallback_ra
                         self.meta_info['DEC'] = fallback_dec
                     ui.notify(
-                        "⚠️ Coordinates from the original linked session were used as fallback.",
+                        t("original_fallback"),
                         type="warning", timeout=8000,
                     )
                 else:
@@ -1552,7 +1551,7 @@ class AddManualSession(DbPageMixin):
             with ui.card().style('width: 800px; max-width: none'):
                 error_label = ui.label().style('color: red')  # Empty label for future error messages
                 close_button = ui.button(t("close"), on_click=dialog.close, color="secondary").props('visible')  # initially hidden
-                ui.label(f"🔍 Resolving Image, please wait...")
+                ui.label(t("resolving_image"))
                 ui.spinner(size="lg")
                 log = ui.log(max_lines=20).classes('w-full').style('height: 400px; overflow: hidden;')
 
@@ -1575,8 +1574,7 @@ class AddManualSession(DbPageMixin):
 
         if self.current_file_info.get('ra_from_fallback'):
             ui.notify(
-                "⚠️ No coordinates found in the FITS file — "
-                "coordinates from the original linked session were used as fallback.",
+                f"{t("no_coordinates_found")}{t("original_fallback_end")}",
                 type="warning",
                 timeout=8000,
             )
@@ -1640,13 +1638,13 @@ class AddManualSession(DbPageMixin):
         try:
             os.makedirs(dest_path, exist_ok=True)
         except FileNotFoundError:
-            self.error_execute(f"❌ Destination path not found: {dest_path}", type="error")
+            self.error_execute(f"{t("destination_not_found")} {dest_path}", type="error")
             return
         except PermissionError:
-            self.error_execute(f"❌ No permission to create: {dest_path}", type="error")
+            self.error_execute(f"{t("no_permission")} {dest_path}", type="error")
             return
         except OSError as e:
-            self.error_execute(f"❌ OS error while creating {dest_path}: {e}", type="error")
+            self.error_execute(f"{t("os_error_creating")} {dest_path}: {e}", type="error")
             return
 
         list_files = self.client.storage.uploaded_files
@@ -1655,7 +1653,7 @@ class AddManualSession(DbPageMixin):
             total_files = len(list_files)
 
         if total_files == 0:
-            self.error_execute("No files to copy.", type="info")
+            self.error_execute(t("no_files_to_copy"), type="info")
             return
         else:
             self.progress_label.set_text(t("starting_copy", total=total_files))
@@ -1665,7 +1663,7 @@ class AddManualSession(DbPageMixin):
 
         if result:
             self.progress_label.set_text(t("end_of_backup"))
-            ui.notify(f"✅ All files saved in: {dest_path}", type="positive")
+            ui.notify(f"{t("all_files_saving")} {dest_path}", type="positive")
 
         else:
             self.progress_label.set_text(t("backup_interrupted"))
@@ -1683,7 +1681,7 @@ class AddManualSession(DbPageMixin):
         result = False
 
         if total_files == 0:
-            self.error_execute("No files to backup.", type="info")
+            self.error_execute(t("no_files_to_backup"), type="info")
             return False
 
         # Mark the first file of each extension type so rename logic knows
@@ -1767,10 +1765,10 @@ class AddManualSession(DbPageMixin):
                     verified_files += 1
                     progress = round((i / total_files) * 100)
                     progress_bar.value = progress
-                    ui.notify(f"✅ Copied: {filename}")
+                    ui.notify(f"{t("files_copied")} {filename}")
 
                 except Exception as e:
-                    ui.notify(f"⚠️ Failed to copy {filename}: {e}", type="warning")
+                    ui.notify(f"{t("files_copied_failed")} {filename}: {e}", type="warning")
 
             # --- Final result ---
             if not self.cancel_backup and verified_files == total_files:
@@ -1778,7 +1776,7 @@ class AddManualSession(DbPageMixin):
                 ui.notify(t("backup_complete"), type="positive")
             elif not self.cancel_backup and verified_files > 0:
                 result = True
-                ui.notify(f"⚠️ Backup partially completed ({verified_files}/{total_files} files copied).", type="warning")
+                ui.notify(f"{t("backup_partial")} ({verified_files}/{total_files} {t("files_copied_result")}).", type="warning")
 
             # --- Register in database (as long as at least one file was copied) ---
             if not self.cancel_backup and verified_files > 0:
@@ -1946,14 +1944,14 @@ class AddManualSession(DbPageMixin):
                         ui.notify(t("db_saved_failed"), type="warning")
 
                 except Exception as db_err:
-                    ui.notify(f"⚠️ Database error: {db_err}", type="warning")
+                    ui.notify(f"{t("database_error")} {db_err}", type="warning")
                     print(f"[DB ERROR] Manual session registration failed: {db_err}")
 
             elif not self.cancel_backup:
                 ui.notify(t("backup_incomplete"), type="warning")
 
         except Exception as e:
-            ui.notify(f"❌ Unexpected error during backup: {e}", type="error")
+            ui.notify(f"{t("error_backup")} {e}", type="error")
 
         finally:
             progress_bar.value = 100 if result else progress_bar.value
