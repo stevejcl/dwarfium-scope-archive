@@ -20,6 +20,7 @@ import time
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from nicegui import app
+from starlette.requests import ClientDisconnect
 
 PEER_TIMEOUT_S = 75
 
@@ -53,6 +54,12 @@ def register() -> None:
         try:
             body = await request.json()
             port = int(body.get("port"))
+        except ClientDisconnect:
+            # Astro Dwarf Session gave up (its short timeout, or it was stopped)
+            # before sending the body: nobody to answer, and not an error - the
+            # next hello comes in 30 s. Unhandled, it was logged as a 500 with
+            # a full traceback.
+            return JSONResponse({"error": "client disconnected"}, status_code=499)
         except (ValueError, TypeError, AttributeError):
             return JSONResponse({"error": "port is required"}, status_code=400)
         if body.get("app") != "astro_dwarf_session" or not 0 < port < 65536 or not request.client:

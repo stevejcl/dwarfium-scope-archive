@@ -25,6 +25,7 @@ from api.dwarf_location_api import (
     delete_location,
     set_default_location,
 )
+from api.site_time import available_zone_names, guess_timezone, is_valid_timezone
 from components.i18n import t
 
 
@@ -110,6 +111,48 @@ def _open_edit_dialog(conn,
                 format="%.6f",
             ).classes("flex-1")
 
+        # Timezone of the site (IANA name): the DWARF's FITS files carry none,
+        # their DATE-OBS is the site's local time; empty = this PC's time
+        with ui.row().classes("w-full items-center gap-2 no-wrap"):
+            current_tz = (location.get("timezone") or "") if is_edit else ""
+            zone_names = available_zone_names()
+            if zone_names:
+                # searchable list: no typo possible (a stored name the system
+                # doesn't know is kept in the list so it still shows)
+                if current_tz and current_tz not in zone_names:
+                    zone_names = sorted(zone_names + [current_tz])
+                tz_input = ui.select(
+                    zone_names,
+                    label=t("loc_timezone"),
+                    value=current_tz or None,
+                    with_input=True,
+                    clearable=True,
+                ).classes("flex-1").tooltip(t("loc_timezone_hint"))
+            else:
+                tz_input = ui.input(
+                    label=t("loc_timezone"),
+                    value=current_tz,
+                    placeholder="Europe/Paris",
+                ).classes("flex-1").tooltip(t("loc_timezone_hint"))
+
+            def _guess_timezone(announce: bool = True):
+                zone = guess_timezone(lat_input.value, lon_input.value)
+                if zone:
+                    if zone_names and zone not in zone_names:
+                        zone_names.append(zone)
+                        tz_input.set_options(sorted(zone_names))
+                    tz_input.set_value(zone)
+                elif announce:
+                    ui.notify(t("loc_timezone_guess_failed"), type="warning")
+
+            ui.button(icon="travel_explore", on_click=lambda: _guess_timezone()) \
+                .props("flat dense round").tooltip(t("loc_timezone_guess"))
+
+        def _maybe_guess_timezone():
+            """A zone guessed from the coordinates, only while the field is empty."""
+            if not (tz_input.value or "").strip():
+                _guess_timezone(announce=False)
+
         address_input = ui.input(
             label=t("loc_address"),
             value=location.get("address", "") if is_edit else "",
@@ -139,6 +182,7 @@ def _open_edit_dialog(conn,
                     city_label = f" — {city}" if city else ""
                     detect_status.set_text(f"🌐 IP{city_label} ({ip_lat:.4f}, {ip_lon:.4f})")
                     _refresh_map_link()
+                    _maybe_guess_timezone()
                 else:
                     detect_status.set_text("❌ " + t("loc_detect_failed"))
 
@@ -158,8 +202,8 @@ def _open_edit_dialog(conn,
                 )
             else:
                 map_link.set_content("")
-        lat_input.on("blur", lambda _: _refresh_map_link())
-        lon_input.on("blur", lambda _: _refresh_map_link())
+        lat_input.on("blur", lambda _: (_refresh_map_link(), _maybe_guess_timezone()))
+        lon_input.on("blur", lambda _: (_refresh_map_link(), _maybe_guess_timezone()))
         if is_edit:
             _refresh_map_link()
 
@@ -176,12 +220,19 @@ def _open_edit_dialog(conn,
                 addr = address_input.value.strip()
                 cmt  = comment_input.value.strip()
                 dflt = default_toggle.value
+                tz_name = (tz_input.value or "").strip()
+                if tz_name and not is_valid_timezone(tz_name):
+                    ui.notify(t("loc_timezone_invalid", tz=tz_name), type="warning")
+                    return
 
                 if is_edit:
+                    # "" = this PC's time, set on purpose when the field was cleared
                     update_location(conn, location["id"], name, lat, lon,
-                                    addr, cmt, dflt)
+                                    addr, cmt, dflt, timezone=tz_name)
                 else:
-                    insert_location(conn, name, lat, lon, addr, cmt, dflt)
+                    # empty: guessed from the coordinates when possible
+                    insert_location(conn, name, lat, lon, addr, cmt, dflt,
+                                    timezone=tz_name or None)
 
                 ui.notify(t("loc_saved"), type="positive")
                 dialog.close()
@@ -215,6 +266,8 @@ def _render_location_row(conn, loc: dict, container, on_changed: Callable):
             ui.label(loc["name"]).classes("font-medium text-sm")
             if loc.get("latitude") is not None:
                 coord_str = f"{loc['latitude']:.4f}, {loc['longitude']:.4f}"
+                if loc.get("timezone"):
+                    coord_str += f" · {loc['timezone']}"
                 if loc.get("address"):
                     coord_str += f" — {loc['address']}"
                 ui.label(coord_str).classes("text-xs text-gray-500")

@@ -3760,11 +3760,13 @@ def find_matching_bias_flat(location, cam_name, ir_filter, gain):
 
 
 def _session_site(conn, dwarf_data_id):
-    """The session's observation site {"name", "lat", "lon"} (its location in
-    the archive, else the default one), or None - the Siril script's airmass."""
+    """The session's observation site {"name", "lat", "lon", "timezone"} (its
+    location in the archive, else the default one), or None - the Siril
+    script's airmass; "timezone" (IANA name, "" = this PC's) is the zone of
+    the FITS DATE-OBS, which carries none."""
     try:
         r = conn.cursor().execute("""
-            SELECT l.name, l.latitude, l.longitude FROM ObservationLocation l
+            SELECT l.name, l.latitude, l.longitude, l.timezone FROM ObservationLocation l
             WHERE l.id = COALESCE((SELECT location_id FROM DwarfData WHERE id = ?),
                                   (SELECT id FROM ObservationLocation WHERE is_default = 1 LIMIT 1))
         """, (dwarf_data_id,)).fetchone()
@@ -3772,7 +3774,7 @@ def _session_site(conn, dwarf_data_id):
         return None
     if not r or r[1] is None or r[2] is None:
         return None
-    return {"name": r[0] or "", "lat": float(r[1]), "lon": float(r[2])}
+    return {"name": r[0] or "", "lat": float(r[1]), "lon": float(r[2]), "timezone": r[3] or ""}
 
 
 def _photometry_roots():

@@ -276,7 +276,8 @@ def create_ObservationLocation_sql():
             longitude   REAL,
             address     TEXT,
             comment     TEXT,
-            is_default  INTEGER DEFAULT 0
+            is_default  INTEGER DEFAULT 0,
+            timezone    TEXT
         )
         """
 
@@ -432,7 +433,7 @@ def commit_db(conn):
     if conn:
         conn.commit()
 
-CURRENT_DB_VERSION = 16
+CURRENT_DB_VERSION = 18
 
 def init_db(conn):
     try:
@@ -1046,6 +1047,29 @@ def migrate_v17(conn):
     except Exception as e:
         print(f"[DB ERROR] Failed to migrate DB v17: {e}")
 
+def migrate_v18(conn):
+    try:
+        print("Migrating Database to V18...")
+        # The location's timezone (IANA name, e.g. "Pacific/Auckland"): the
+        # DWARF's FITS files have no timezone, DATE-OBS is the site's local
+        # time (api/site_time.py). Empty = this PC's time.
+        add_column_if_not_exists(conn, "ObservationLocation", "timezone", "TEXT")
+        # A zone guessed from the coordinates of the locations that have none
+        # (offline, when the optional timezonefinder package is installed)
+        from api.site_time import guess_timezone
+        for loc_id, lat, lon in conn.execute(
+                "SELECT id, latitude, longitude FROM ObservationLocation "
+                "WHERE (timezone IS NULL OR timezone = '') "
+                "AND latitude IS NOT NULL AND longitude IS NOT NULL").fetchall():
+            zone = guess_timezone(lat, lon)
+            if zone:
+                conn.execute("UPDATE ObservationLocation SET timezone = ? WHERE id = ?", (zone, loc_id))
+                print(f"  Location {loc_id}: timezone {zone} (from its coordinates)")
+        conn.commit()
+        print("Migration v18 applied.")
+    except Exception as e:
+        print(f"[DB ERROR] Failed to migrate DB v18: {e}")
+
 MIGRATIONS = {
     1: migrate_v1,
     2: migrate_v2,
@@ -1064,6 +1088,7 @@ MIGRATIONS = {
     15: migrate_v15,
     16: migrate_v16,
     17: migrate_v17,
+    18: migrate_v18,
     # Add more later...
 }
 

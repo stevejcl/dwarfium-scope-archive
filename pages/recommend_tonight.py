@@ -20,6 +20,8 @@ from typing import Optional
 from nicegui import ui, run, background_tasks
 
 from components.tonight_plan import PlanTarget, TonightPlan, iso_utc, tonight
+from components.sky_altitude_chart import render_altitude_chart
+from api.site_time import local_noon_window_utc, location_zone
 from components.i18n import t
 from components.menu import menu
 from components.app_logo import LOGO_SVG
@@ -227,6 +229,7 @@ def get_all_locations_simple(conn) -> list[dict]:
             "lon": l["longitude"],
             "elevation_m": 0,
             "is_default": bool(l.get("is_default")),
+            "timezone": l.get("timezone") or "",
         }
         for l in locs
         if l.get("latitude") is not None and l.get("longitude") is not None
@@ -238,7 +241,8 @@ def get_default_location_simple(conn) -> Optional[dict]:
     loc = _get_default_location(conn)
     if not loc or loc.get("latitude") is None:
         return None
-    return {"name": loc["name"], "lat": loc["latitude"], "lon": loc["longitude"], "elevation_m": 0}
+    return {"name": loc["name"], "lat": loc["latitude"], "lon": loc["longitude"], "elevation_m": 0,
+            "timezone": loc.get("timezone") or ""}
 
 
 def get_sessions_grouped_by_catalog_id(conn, catalog, catalog_sorted, catalog_decs) -> dict[str, SessionInfo]:
@@ -379,12 +383,16 @@ def _get_skyfield_context():
     return _ts, _eph
 
 
-def astro_twilight_window(observer, target_date: date):
+def astro_twilight_window(observer, target_date: date, zone=None):
+    """The longest dark stretch of the night of target_date. The night runs
+    from 12:00 that day to 12:00 the next in the site's timezone (zone; None
+    = this PC's) - from 12:00 UTC, a night in the Americas or Asia-Pacific
+    straddled the cut and was truncated."""
     from skyfield import almanac
 
     ts, eph = _get_skyfield_context()
-    t0 = ts.utc(target_date.year, target_date.month, target_date.day, 12)
-    t1 = ts.utc(target_date.year, target_date.month, target_date.day + 1, 12)
+    start_utc, end_utc = local_noon_window_utc(target_date, zone)
+    t0, t1 = ts.from_datetime(start_utc), ts.from_datetime(end_utc)
 
     f = almanac.dark_twilight_day(eph, observer)
     times, events = almanac.find_discrete(t0, t1, f)
@@ -412,7 +420,7 @@ def compute_night_context(location: dict, target_date: date):
     observer_topo = wgs84.latlon(location["lat"], location["lon"], elevation_m=location.get("elevation_m", 0))
     observer = eph["earth"] + observer_topo
 
-    t0, t1 = astro_twilight_window(observer_topo, target_date)
+    t0, t1 = astro_twilight_window(observer_topo, target_date, location_zone(location))
     times = ts.linspace(t0, t1, SAMPLES_PER_NIGHT)
     minutes_per_sample = (t1 - t0) * 24 * 60 / SAMPLES_PER_NIGHT
 
@@ -872,6 +880,34 @@ class RecommendTonightApp(DbPageMixin):
                 if self.show_images.value:
                     with ui.column().classes("w-1/3 shrink-0"):
                         self._render_target_image(r, credit_holder)
+            # Altitude over the night (chart shared with Astro Dwarf Session)
+            self._render_altitude_expansion(r)
+
+    def _render_altitude_expansion(self, r: TargetRecommendation):
+        """Collapsed section with the target's altitude chart for the night
+        of the results: Sun, Moon, dark window, best slot, compass
+        directions. Computed on the first opening only - with hundreds of
+        cards, a chart each would cost far more than it shows."""
+        location = dict(self.results_location or self.location or {})
+        if location.get("lat") is None or location.get("lon") is None:
+            return
+        night = self.results_night or self.target_date
+        expansion = ui.expansion(t("tonight_chart_title"), icon="show_chart").classes("w-full")
+        built = [False]
+
+        def on_toggle(e):
+            if not e.value or built[0]:
+                return
+            built[0] = True
+            with expansion:
+                try:
+                    render_altitude_chart(
+                        r.ra_deg, r.dec_deg, location, night, min_altitude=MIN_ALTITUDE_DEG
+                    )
+                except Exception as err:
+                    ui.label(t("error_generic", error=str(err))).classes("text-sm text-red-600")
+
+        expansion.on_value_change(on_toggle)
 
     def _render_target_image(self, r: TargetRecommendation, credit_holder):
         """Lazily loads and shows a Wikimedia Commons image for this target

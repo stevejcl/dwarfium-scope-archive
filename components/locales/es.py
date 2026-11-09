@@ -1070,6 +1070,11 @@ TRANSLATIONS: dict[str, str] = {
     "loc_set_default":              '⭐ Set as default',  # TODO
     "loc_is_default":               '⭐ Default',  # TODO
     "loc_open_map":                 '🗺️ Map',  # TODO
+    "loc_timezone": "Timezone",  # TODO
+    "loc_timezone_hint": "IANA name of the site's timezone (e.g. Europe/Paris, Pacific/Auckland). The DWARF's FITS files carry no timezone: their DATE-OBS is the site's local time. Empty = this PC's time.",  # TODO
+    "loc_timezone_guess": "Guess from the coordinates",  # TODO
+    "loc_timezone_guess_failed": "Could not guess the timezone from the coordinates (optional package 'timezonefinder' not installed?) - type it, e.g. Europe/Paris.",  # TODO
+    "loc_timezone_invalid": "Unknown timezone: {tz} (expected an IANA name such as Europe/Paris).",  # TODO
     "loc_no_locations":             'No observation locations yet.',  # TODO
     "loc_confirm_delete":           'Delete this location?',  # TODO
     "loc_saved":                    'Location saved.',  # TODO
@@ -1448,6 +1453,21 @@ TRANSLATIONS: dict[str, str] = {
     "tonight_show_images_hint":     "Fetches a photo of each target from Wikimedia Commons (needs internet the first time per target; cached afterwards). Only free-licensed images are used, with credit shown below each photo.", # TODO
     "tonight_image_credit_unknown": "Wikimedia Commons", # TODO
     "tonight_size":                 "Size", # TODO
+    "tonight_chart_title": "Altitude tonight",  # TODO
+    "tonight_chart_night_of": "Night of {date} (this PC's local time)",  # TODO
+    "tonight_chart_night": "Night",  # TODO
+    "tonight_chart_best": "Best slot",  # TODO
+    "tonight_chart_target": "Target",  # TODO
+    "tonight_chart_moon": "Moon ({pct}%)",  # TODO
+    "tonight_chart_sun": "Sun",  # TODO
+    "tonight_chart_compass": "N,NE,E,SE,S,SW,W,NW",  # TODO
+    "tonight_chart_culmination": "Highest at {time} ({alt}°, {direction})",  # TODO
+    "tonight_chart_dark_window": "dark {start} → {end}",  # TODO
+    "tonight_chart_never_dark": "no full darkness this night",  # TODO
+    "tonight_chart_best_slot": "best slot {start} → {end}",  # TODO
+    "tonight_chart_no_slot": "never above {alt}° in the dark",  # TODO
+    "tonight_chart_moon_info": "Moon {pct}% at {sep}°",  # TODO
+    "tonight_chart_night_of_tz": "Night of {date} (site timezone: {tz})",  # TODO
 
 
     # ── Import one session (from Astro Dwarf Session) ──

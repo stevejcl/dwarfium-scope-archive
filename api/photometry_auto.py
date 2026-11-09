@@ -32,6 +32,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from api import site_time
+
 PHOTOMETRY_WORK_SUBDIR = "DwarfiumPhotometry"
 _FITS = (".fits", ".fit", ".fts")
 _LOCK = threading.Lock()     # one Siril at a time: pySiril's pipes have fixed names
@@ -543,14 +545,26 @@ class AutoPhotometry:
             _copy_session(data, self.work, self.log, self.progress, stopped=lambda: self._stop)
         if self._stop:
             raise RuntimeError("stopped")
-        # The DWARF's local time in DATE-OBS: this PC's offset at that date
+        # The DWARF's local time in DATE-OBS (no timezone in the FITS): the
+        # offset of the session's site at that date (its location's timezone,
+        # daylight saving time included), else this PC's - a session shot far
+        # from this PC would otherwise be hours off in UTC, HJD and BJD
         first = {k: v for _, k, v, _ in sel.read_fits_cards(os.path.join(self.work, "lights",
                                                                           _fits_in(os.path.join(self.work, "lights"))[0]))}
-        utc_offset = sel.local_utc_offset_hours(first.get("DATE-OBS", ""))
+        site = data.get("site") if isinstance(data.get("site"), dict) else {}
+        site_zone = (site.get("timezone") or "").strip()
+        utc_offset = site_time.utc_offset_hours(first.get("DATE-OBS", ""), site_zone)
+        if utc_offset is None:
+            utc_offset = sel.local_utc_offset_hours(first.get("DATE-OBS", ""))
+            if site_zone:
+                self.log(f"⚠️ unknown timezone {site_zone!r} for the session's site - DATE-OBS read in this PC's time")
+            zone_label = "this PC's time"
+        else:
+            zone_label = site_zone
         ssf_path, lines = sel.photometry_script(
             data, self.work, star, utc_offset, log=self.log, warn=lambda t: self.log(f"⚠️ {t}"),
             resume=resume, keep_saturated=self.keep_saturated, aavso=self.aavso)
-        self.log(f"script: {ssf_path} (UTC{utc_offset:+g} h)")
+        self.log(f"script: {ssf_path} (UTC{utc_offset:+g} h, DATE-OBS in {zone_label})")
 
         self.step = "siril"
         self.log(f"starting Siril: {self.siril_exe}")

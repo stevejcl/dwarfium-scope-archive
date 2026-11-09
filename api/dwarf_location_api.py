@@ -27,7 +27,7 @@ def get_all_locations(conn: sqlite3.Connection) -> list[dict]:
     """Return all ObservationLocation rows as dicts, default first."""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, name, latitude, longitude, address, comment, is_default
+        SELECT id, name, latitude, longitude, address, comment, is_default, timezone
         FROM ObservationLocation
         ORDER BY is_default DESC, name ASC
     """)
@@ -39,7 +39,7 @@ def get_location(conn: sqlite3.Connection, location_id: int) -> Optional[dict]:
     """Return one ObservationLocation by id, or None."""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, name, latitude, longitude, address, comment, is_default
+        SELECT id, name, latitude, longitude, address, comment, is_default, timezone
         FROM ObservationLocation WHERE id = ?
     """, (location_id,))
     row = cursor.fetchone()
@@ -53,7 +53,7 @@ def get_default_location(conn: sqlite3.Connection) -> Optional[dict]:
     """Return the location flagged as default, or None."""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, name, latitude, longitude, address, comment, is_default
+        SELECT id, name, latitude, longitude, address, comment, is_default, timezone
         FROM ObservationLocation WHERE is_default = 1 LIMIT 1
     """)
     row = cursor.fetchone()
@@ -74,19 +74,25 @@ def insert_location(conn: sqlite3.Connection, name: str,
                     longitude: Optional[float] = None,
                     address: str = "",
                     comment: str = "",
-                    is_default: bool = False) -> int:
+                    is_default: bool = False,
+                    timezone: Optional[str] = None) -> int:
     """
     Insert a new ObservationLocation.
     If is_default=True, clears any existing default first.
+    timezone: IANA name of the site's zone (api/site_time.py); None = guessed
+    from the coordinates when possible, "" = this PC's time.
     Returns the new row id.
     """
+    from api.site_time import guess_timezone
+    if timezone is None:
+        timezone = guess_timezone(latitude, longitude)
     cursor = conn.cursor()
     if is_default:
         cursor.execute("UPDATE ObservationLocation SET is_default = 0")
     cursor.execute("""
-        INSERT INTO ObservationLocation (name, latitude, longitude, address, comment, is_default)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (name, latitude, longitude, address, comment, int(is_default)))
+        INSERT INTO ObservationLocation (name, latitude, longitude, address, comment, is_default, timezone)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (name, latitude, longitude, address, comment, int(is_default), timezone or ""))
     conn.commit()
     return cursor.lastrowid
 
@@ -97,8 +103,10 @@ def update_location(conn: sqlite3.Connection, location_id: int,
                     longitude: Optional[float] = None,
                     address: str = "",
                     comment: str = "",
-                    is_default: bool = False) -> bool:
-    """Update an existing ObservationLocation. Returns True on success."""
+                    is_default: bool = False,
+                    timezone: Optional[str] = None) -> bool:
+    """Update an existing ObservationLocation. Returns True on success.
+    timezone: None keeps the stored one, "" sets this PC's time."""
     cursor = conn.cursor()
     if is_default:
         cursor.execute(
@@ -107,9 +115,10 @@ def update_location(conn: sqlite3.Connection, location_id: int,
         )
     cursor.execute("""
         UPDATE ObservationLocation
-        SET name=?, latitude=?, longitude=?, address=?, comment=?, is_default=?
+        SET name=?, latitude=?, longitude=?, address=?, comment=?, is_default=?,
+            timezone=COALESCE(?, timezone)
         WHERE id=?
-    """, (name, latitude, longitude, address, comment, int(is_default), location_id))
+    """, (name, latitude, longitude, address, comment, int(is_default), timezone, location_id))
     conn.commit()
     return cursor.rowcount > 0
 

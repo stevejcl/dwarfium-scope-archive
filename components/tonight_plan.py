@@ -31,6 +31,7 @@ from urllib.parse import urlencode
 from nicegui import app, run, ui
 
 from api.peer import peer_url
+from api.site_time import location_zone
 from components.i18n import t
 
 # Settings page, "Session" card (Settings table)
@@ -96,7 +97,8 @@ def visibility_for(ra_deg: float, dec_deg: float, location: dict, night: date):
     that site: its stretch above the minimum altitude around its best time
     in the dark window (Recommended tonight's computation). Blocking."""
     from pages.recommend_tonight import compute_night_context, compute_visibility_fast
-    key = (round(float(location["lat"]), 4), round(float(location["lon"]), 4), night)
+    key = (round(float(location["lat"]), 4), round(float(location["lon"]), 4), night,
+           location.get("timezone") or "")
     if key not in _night_cache:
         _night_cache.clear()   # one night / site at a time is enough
         _night_cache[key] = compute_night_context(location, night)
@@ -109,10 +111,12 @@ def window_for(ra_deg: float, dec_deg: float, location: dict, night: date) -> tu
     return start, end
 
 
-def _hhmm(iso: Optional[str]) -> str:
+def _hhmm(iso: Optional[str], zone=None) -> str:
+    """HH:MM of a UTC ISO time, on the wall clock of `zone` (the site's,
+    see api/site_time.py), this PC's when it is None."""
     if not iso:
         return "—"
-    return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).astimezone().strftime("%H:%M")
+    return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).astimezone(zone).strftime("%H:%M")
 
 
 class TonightPlan:
@@ -175,12 +179,14 @@ class TonightPlan:
 
     def choose(self, target: PlanTarget, location: dict, night: date, max_alt: Optional[float] = None) -> None:
         """The target button: plan it alone, or add it to the list."""
-        site = {"name": location.get("name", ""), "lat": location.get("lat"), "lon": location.get("lon")}
+        site = {"name": location.get("name", ""), "lat": location.get("lat"), "lon": location.get("lon"),
+                "timezone": location.get("timezone") or ""}
+        zone = location_zone(site)
         with ui.dialog() as dialog, ui.card().classes("min-w-[320px]"):
             ui.label(target.name).classes("text-lg font-semibold")
             alt = f" (max {max_alt:.0f}°)" if max_alt is not None else ""
             if target.start_utc and target.end_utc:
-                ui.label(f"{t('tonight_plan_window')}: {_hhmm(target.start_utc)} – {_hhmm(target.end_utc)}{alt}"
+                ui.label(f"{t('tonight_plan_window')}: {_hhmm(target.start_utc, zone)} – {_hhmm(target.end_utc, zone)}{alt}"
                          f" · {site['name']}").classes("text-sm text-gray-500")
             else:
                 ui.label(t("tonight_plan_not_visible", alt=alt.strip(" ()"), site=site["name"])).classes("text-sm text-amber-600")
@@ -223,7 +229,8 @@ class TonightPlan:
                     data["targets"][i] = asdict(target)
                     self._save(data)
                     dialog.close()
-                ui.button(f"{tg['name']}  ({_hhmm(tg.get('start_utc'))} – {_hhmm(tg.get('end_utc'))})",
+                ui.button(f"{tg['name']}  ({_hhmm(tg.get('start_utc'), location_zone(site))} – "
+                          f"{_hhmm(tg.get('end_utc'), location_zone(site))})",
                           icon="swap_horiz", on_click=replace).props("flat no-caps align=left").classes("w-full")
             ui.button(t("cancel"), on_click=dialog.close).props("flat")
         dialog.open()
@@ -276,9 +283,10 @@ class TonightPlan:
                     ui.button(t("tonight_plan_clear"), icon="delete_sweep", on_click=self.clear).props("dense flat")
             if len(targets) >= limit:
                 ui.label(t("tonight_plan_full_send", n=len(targets))).classes("text-sm text-amber-600")
+            zone = location_zone(data["site"])
             for tg in targets:
                 with ui.row().classes("items-center gap-3 w-full"):
                     ui.label(tg["name"]).classes("min-w-[140px]")
-                    ui.label(f"{_hhmm(tg.get('start_utc'))} – {_hhmm(tg.get('end_utc'))}").classes("text-sm text-gray-500")
+                    ui.label(f"{_hhmm(tg.get('start_utc'), zone)} – {_hhmm(tg.get('end_utc'), zone)}").classes("text-sm text-gray-500")
                     ui.button(icon="close", on_click=lambda cid=tg["catalog_id"]: self.remove(cid)) \
                         .props("flat dense round size=sm").tooltip(t("tonight_plan_remove"))
