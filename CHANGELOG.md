@@ -1,5 +1,11 @@
 # Changelog
 
+## [V3.4.8] - 2026-11-09
+### Added
+  - Add Timezone to Observation locations
+  _ Add in What to shoot tonight page, altitude view screen for each target
+
+
 ## [V3.4.7] - 2026-11-06
 
 ### Added
